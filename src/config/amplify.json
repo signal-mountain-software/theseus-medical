@@ -1,0 +1,11 @@
+{
+  "aws_project_region": "us-east-1",
+  "aws_cognito_identity_pool_id": "us-east-1:2eab7d0e-ed55-4d09-867e-479253fb4ffb",
+  "aws_cognito_region": "us-east-1",
+  "aws_user_pools_id": "us-east-1_7n1OKYYne",
+  "aws_user_pools_web_client_id": "78hdm84utpvm36tdsmfce37q8d",
+  "oauth": {},
+  "aws_appsync_graphqlEndpoint": "https://xbhtfprx2nbuvi3ztmqwlhmjdm.appsync-api.us-east-1.amazonaws.com/graphql",
+  "aws_appsync_region": "us-east-1",
+  "aws_appsync_authenticationType": "AMAZON_COGNITO_USER_POOLS"
+}
