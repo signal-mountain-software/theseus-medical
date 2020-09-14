@@ -5,11 +5,14 @@ import Box from '@material-ui/core/Box';
 import ActivitySection from '../components/ActivitySection';
 import FactSection from '../components/FactSection';
 import { getSessionWithPatient } from '../graphql/queries';
+import useSnackbar from '../hooks/useSnackbar';
+import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
 
 export default () => {
   const [patient, setPatient] = React.useState(null);
   const [session, setSession] = React.useState(null);
   const [newFact, setNewFact] = React.useState(null);
+  const { dispatch } = useSnackbar();
 
   React.useEffect(() => {
     let mounted = true;
@@ -18,7 +21,14 @@ export default () => {
       result = await API.graphql(
         graphqlOperation(getSessionWithPatient, { client_id: 'SMSoft', device_id: 'TESTDEVICE' })
       ).catch(error => {
-        alert(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`);
+        dispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching a patient by session: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
+        });
       });
 
       if (mounted) {
@@ -32,7 +42,7 @@ export default () => {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Box>

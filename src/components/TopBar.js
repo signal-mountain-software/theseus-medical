@@ -30,7 +30,6 @@ export default () => {
     dispatch({
       type: SHOW_SNACKBAR,
       payload: {
-        severity: 'success',
         message: 'Successfully logged out!',
         anchor: { vertical: 'top' },
         direction: 'down',
