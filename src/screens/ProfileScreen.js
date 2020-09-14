@@ -2,9 +2,11 @@ import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import Box from '@material-ui/core/Box';
 
+import ProfileSection from '../components/ProfileSection';
 import { getSessionWithPatient } from '../graphql/queries';
 import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
 import useSnackbar from '../hooks/useSnackbar';
+import PatientSection from '../components/PatientSection';
 
 export default () => {
   const [patient, setPatient] = React.useState(null);
@@ -43,8 +45,8 @@ export default () => {
 
   return (
     <Box>
-      {JSON.stringify(patient)}
-      {JSON.stringify(session)}
+      <ProfileSection session={session} />
+      <PatientSection patient={patient} />
     </Box>
   );
 };
