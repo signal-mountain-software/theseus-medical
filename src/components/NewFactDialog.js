@@ -46,7 +46,6 @@ const DynamicForm = ({ type, values, newFact, setNewFact }) => {
   const onChangeNum1 = event => {
     setNum1(event.target.value);
     newFact.value = 'number.' + event.target.value + '.' + num2;
-    console.log(newFact);
     setNewFact(newFact);
   };
 
