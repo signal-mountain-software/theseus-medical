@@ -28,7 +28,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const DynamicForm = ({ type, values, newFact, setNewFact }) => {
+const DynamicForm = ({ type, defaultValue, values, newFact, setNewFact }) => {
   const [value, setValue] = React.useState('');
   const [num1, setNum1] = React.useState(0);
   const [num2, setNum2] = React.useState(0);
@@ -37,6 +37,11 @@ const DynamicForm = ({ type, values, newFact, setNewFact }) => {
   const onChangeValue = event => {
     setValue(event.target.value);
     newFact.value = 'observation.' + event.target.value;
+    setNewFact(newFact);
+  };
+
+  const onChangeNum = event => {
+    newFact.value = 'number.' + event.target.value;
     setNewFact(newFact);
   };
 
@@ -54,6 +59,14 @@ const DynamicForm = ({ type, values, newFact, setNewFact }) => {
     setNewFact(newFact);
   };
 
+  React.useEffect(() => {
+    if (defaultValue) {
+      newFact.value = 'observation.' + defaultValue;
+      setNewFact(newFact);
+      setValue(defaultValue);
+    }
+  }, [defaultValue, newFact, setNewFact]);
+
   switch (type) {
     case 'characteristic_num':
       return (
@@ -61,7 +74,7 @@ const DynamicForm = ({ type, values, newFact, setNewFact }) => {
           label='Number'
           type='number'
           variant='outlined'
-          onChange={onChangeValue}
+          onChange={onChangeNum}
           InputLabelProps={{ shrink: true }}
           fullWidth
         />
@@ -152,7 +165,13 @@ export default ({ fact, session, open, onClose, onSave }) => {
         </Toolbar>
       </AppBar>
       <Box p={3} flexGrow={1}>
-        <DynamicForm type={fact?.type} values={fact?.valid_values_list} newFact={newFact} setNewFact={setNewFact} />
+        <DynamicForm
+          type={fact?.type}
+          defaultValue={fact?.default_value}
+          values={fact?.valid_values_list}
+          newFact={newFact}
+          setNewFact={setNewFact}
+        />
       </Box>
     </Dialog>
   );
