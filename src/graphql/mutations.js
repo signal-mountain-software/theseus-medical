@@ -12,8 +12,7 @@ export const createEvents = /* GraphQL */ `
         allow_bulk_update
         expiration_minutes
         name
-        normal_value
-        permitted_role
+        type
       }
     }
   }
@@ -29,8 +28,7 @@ export const updateEvents = /* GraphQL */ `
         allow_bulk_update
         expiration_minutes
         name
-        normal_value
-        permitted_role
+        type
       }
     }
   }
@@ -52,8 +50,7 @@ export const createActivities = /* GraphQL */ `
       allow_bulk_update
       expiration_minutes
       name
-      normal_value
-      permitted_role
+      type
     }
   }
 `;
@@ -65,8 +62,7 @@ export const updateActivities = /* GraphQL */ `
       allow_bulk_update
       expiration_minutes
       name
-      normal_value
-      permitted_role
+      type
     }
   }
 `;
@@ -78,8 +74,7 @@ export const deleteActivities = /* GraphQL */ `
       allow_bulk_update
       expiration_minutes
       name
-      normal_value
-      permitted_role
+      type
     }
   }
 `;

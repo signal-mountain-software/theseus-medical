@@ -1,5 +1,5 @@
 import React from 'react';
-
+import { API, graphqlOperation } from 'aws-amplify';
 import Box from '@material-ui/core/Box';
 import Divider from '@material-ui/core/Divider';
 import FormControl from '@material-ui/core/FormControl';
@@ -11,23 +11,7 @@ import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { useMediaQuery } from '@material-ui/core';
 
-// TODO: Pull from Events table
-const events = [
-  {
-    event_id: 'covid_assessment',
-    activities: [
-      { M: { activity_code: { S: 'characteristic.blood_oxygen' } } },
-      { M: { activity_code: { S: 'characteristic.blood_pressure_diastolic' } } },
-      { M: { activity_code: { S: 'characteristic.blood_pressure_systolic' } } },
-      { M: { activity_code: { S: 'characteristic.temperature' } } },
-      { M: { activity_code: { S: 'condition.cough' }, normal_value: { S: 'absent' } } },
-      { M: { activity_code: { S: 'condition.chills' }, normal_value: { S: 'absent' } } },
-      { M: { activity_code: { S: 'condition.loss_of_taste' }, normal_value: { S: 'absent' } } },
-      { M: { activity_code: { S: 'condition.loss_of_smell' }, normal_value: { S: 'absent' } } },
-    ],
-  },
-  { event_id: 'daily_update', activities: null },
-];
+import { getEventsByClient } from '../graphql/queries';
 
 // TODO: Pull from Activity_Types table
 const types = [
@@ -65,9 +49,20 @@ const useStyles = makeStyles(theme => ({
 }));
 
 export default () => {
+  const [events, setEvents] = React.useState([]);
+  const [event, setEvent] = React.useState('');
   const [type, setType] = React.useState('');
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
+
+  React.useEffect(() => {
+    (async () => {
+      const result = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
+        alert(`Whoops! Something went wrong when fetching events by client id: ${error.message}`);
+      });
+      setEvents(result.data.getEventsByClient.items);
+    })();
+  }, []);
 
   return (
     <Paper component={Box} m={2}>
@@ -81,9 +76,9 @@ export default () => {
           <FormControl className={classes.formControl}>
             {isMobile ? <InputLabel htmlFor='event-label'>Event</InputLabel> : null}
             <NativeSelect
-              value={type}
+              value={event}
               onChange={event => {
-                setType(event.target.value);
+                setEvent(event.target.value);
               }}
               id='event-label'
               name='event'

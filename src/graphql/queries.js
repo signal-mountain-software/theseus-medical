@@ -1,6 +1,21 @@
 /* eslint-disable */
 // this is an auto generated file. This will be overwritten
 
+export const getActivityData = /* GraphQL */ `
+  query GetActivityData($input: ActivityDataInput) {
+    getActivityData(input: $input) {
+      code
+      name
+      type
+      most_recent_observation
+      observation_expires
+      observation_status
+      normal_value
+      default_value
+      valid_values_list
+    }
+  }
+`;
 export const getActivities = /* GraphQL */ `
   query GetActivities($client_id: String!, $activity_code: String!) {
     getActivities(client_id: $client_id, activity_code: $activity_code) {
@@ -9,8 +24,7 @@ export const getActivities = /* GraphQL */ `
       allow_bulk_update
       expiration_minutes
       name
-      normal_value
-      permitted_role
+      type
     }
   }
 `;
@@ -33,8 +47,7 @@ export const getActivitiesByClient = /* GraphQL */ `
         allow_bulk_update
         expiration_minutes
         name
-        normal_value
-        permitted_role
+        type
       }
       nextToken
     }
@@ -51,8 +64,7 @@ export const getEvents = /* GraphQL */ `
         allow_bulk_update
         expiration_minutes
         name
-        normal_value
-        permitted_role
+        type
       }
     }
   }
@@ -127,11 +139,11 @@ export const getSessions = /* GraphQL */ `
     getSessions(client_id: $client_id, device_id: $device_id) {
       client_id
       device_id
+      method
+      patient_id
       current_event
       current_filter
       message
-      method
-      patient_id
       session_id
       status
       user_id
@@ -145,11 +157,11 @@ export const getSessionWithFacts = /* GraphQL */ `
       session {
         client_id
         device_id
+        method
+        patient_id
         current_event
         current_filter
         message
-        method
-        patient_id
         session_id
         status
         user_id
@@ -175,17 +187,18 @@ export const getSessionWithPatient = /* GraphQL */ `
       session {
         client_id
         device_id
+        method
+        patient_id
         current_event
         current_filter
         message
-        method
-        patient_id
         session_id
         status
         user_id
         user_role
       }
       patient {
+        client_id
         person_id
         clients {
           groups
@@ -198,21 +211,23 @@ export const getSessionWithPatient = /* GraphQL */ `
           mi
           suffix
         }
+        roles
         relationship {
           type
           person_id
-        }
-        roles
-        activities {
-          activity_key
-          baseline
-          permitted_roles
         }
         messaging {
           email
           sms
         }
         preferred_method
+        activity_customizations {
+          activity_key
+          baseline
+          permitted_roles
+        }
+        priority_activities
+        favorite_activities
       }
     }
   }
