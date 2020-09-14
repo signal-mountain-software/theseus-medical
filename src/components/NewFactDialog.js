@@ -29,29 +29,28 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const DynamicForm = ({ type, values, newFact, setNewFact }) => {
+  const [value, setValue] = React.useState('');
   const [num1, setNum1] = React.useState(0);
   const [num2, setNum2] = React.useState(0);
   const classes = useStyles();
 
   const onChangeValue = event => {
-    newFact.value = event.target.value;
-    setNewFact(newFact);
-  };
-
-  const onChangeNum = event => {
-    newFact.value = 'number.' + event.target.value;
+    setValue(event.target.value);
+    newFact.value = 'observation.' + event.target.value;
     setNewFact(newFact);
   };
 
   const onChangeNum1 = event => {
-    setNum1(event.target.value);
-    newFact.value = 'number.' + event.target.value + '.' + num2;
+    const value = event.target.value;
+    setNum1(value);
+    newFact.value = 'number.' + value + '.' + num2;
     setNewFact(newFact);
   };
 
   const onChangeNum2 = event => {
-    setNum2(event.target.value);
-    newFact.value = 'number.' + num1 + '.' + event.target.value;
+    const value = event.target.value;
+    setNum2(value);
+    newFact.value = 'number.' + num1 + '.' + value;
     setNewFact(newFact);
   };
 
@@ -62,7 +61,7 @@ const DynamicForm = ({ type, values, newFact, setNewFact }) => {
           label='Number'
           type='number'
           variant='outlined'
-          onChange={onChangeNum}
+          onChange={onChangeValue}
           InputLabelProps={{ shrink: true }}
           fullWidth
         />
@@ -97,13 +96,13 @@ const DynamicForm = ({ type, values, newFact, setNewFact }) => {
         <FormControl className={classes.formControl}>
           <InputLabel htmlFor='value-label'>Value</InputLabel>
           <NativeSelect
-            value={type}
-            onChange={onChangeValue}
+            value={value}
             id='value-label'
             name='value'
+            onChange={onChangeValue}
             inputProps={{ 'aria-label': 'value' }}>
             {values.map(value => (
-              <option key={value} value={'observation.' + value}>
+              <option key={value} value={value}>
                 {value}
               </option>
             ))}
