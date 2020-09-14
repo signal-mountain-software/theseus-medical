@@ -9,7 +9,6 @@ import TableContainer from '@material-ui/core/TableContainer';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import Typography from '@material-ui/core/Typography';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { getActivityData } from '../graphql/queries';
@@ -24,7 +23,6 @@ const useStyles = makeStyles({
 
 export default ({ patient, newFact }) => {
   const [facts, setFacts] = React.useState([]);
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
   const { dispatch } = useSnackbar();
 
@@ -63,7 +61,7 @@ export default ({ patient, newFact }) => {
 
   return (
     <Paper component={Box} m={2}>
-      <Box mt={1} py={isMobile ? 2.25 : 1.25} px={3} borderBottom={2} display='flex' flexDirection='row'>
+      <Box mt={1} py={1.25} px={3} borderBottom={2} display='flex' flexDirection='row'>
         <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
           <Typography variant='subtitle1'>Facts</Typography>
         </Box>

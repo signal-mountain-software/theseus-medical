@@ -4,7 +4,6 @@ import Box from '@material-ui/core/Box';
 import Divider from '@material-ui/core/Divider';
 import FormControl from '@material-ui/core/FormControl';
 import Grid from '@material-ui/core/Grid';
-import InputLabel from '@material-ui/core/InputLabel';
 import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
@@ -168,14 +167,13 @@ export default ({ patient, session, setNewFact }) => {
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Event:</Typography>}
           <FormControl className={classes.formControl}>
-            {isMobile ? <InputLabel htmlFor='event-label'>Event</InputLabel> : null}
             <NativeSelect
               value={event}
               onChange={onChangeEvent}
               id='event-label'
               name='event'
               inputProps={{ 'aria-label': 'event' }}>
-              <option value=''>{isMobile ? '' : 'None'}</option>
+              <option value=''>None</option>
               {events.map(event => (
                 <option key={event.event_id} value={event.event_id}>
                   {event.event_id}
@@ -188,7 +186,6 @@ export default ({ patient, session, setNewFact }) => {
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Type:</Typography>}
           <FormControl className={classes.formControl}>
-            {isMobile ? <InputLabel htmlFor='type-label'>Type</InputLabel> : null}
             <NativeSelect
               value={type}
               onChange={onChangeType}
