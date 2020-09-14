@@ -10,6 +10,9 @@ import Typography from '@material-ui/core/Typography';
 import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 
+import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
+import useSnackbar from '../hooks/useSnackbar';
+
 const HideOnScroll = ({ children }) => {
   const trigger = useScrollTrigger();
 
@@ -21,9 +24,21 @@ const HideOnScroll = ({ children }) => {
 };
 
 export default () => {
+  const { dispatch } = useSnackbar();
+
   const onSignOut = () => {
+    dispatch({
+      type: SHOW_SNACKBAR,
+      payload: {
+        message: 'Successfully logged out!',
+        anchor: { vertical: 'top' },
+        direction: 'down',
+      },
+    });
     Auth.signOut().then(() => {
-      window.location.reload();
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
     });
   };
 

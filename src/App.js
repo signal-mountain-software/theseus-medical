@@ -7,9 +7,11 @@ import ChatIcon from '@material-ui/icons/Chat';
 
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
+import withAlerts from './hocs/withAlerts';
 import withAuth from './hocs/withAuth';
 import withDarkMode from './hocs/withDarkMode';
 import withRouter from './hocs/withRouter';
+import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
 import RootNavigation from './navigation/RootNavigation';
 import ChatScreen from './screens/ChatScreen';
@@ -39,4 +41,4 @@ const App = () => (
   </Box>
 );
 
-export default hocFactory(App, [withDarkMode, withTheme, withRouter, withAuth]);
+export default hocFactory(App, [withDarkMode, withTheme, withSnackbar, withAlerts, withRouter, withAuth]);

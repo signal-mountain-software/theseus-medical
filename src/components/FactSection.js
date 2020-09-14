@@ -13,6 +13,8 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { getActivityData } from '../graphql/queries';
+import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
+import useSnackbar from '../hooks/useSnackbar';
 
 const useStyles = makeStyles({
   container: {
@@ -24,21 +26,40 @@ export default ({ patient, newFact }) => {
   const [facts, setFacts] = React.useState([]);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
+  const { dispatch } = useSnackbar();
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
       if (patient) {
-        const result = await API.graphql(
+        let result;
+        result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: { client_id: 'SMSoft', person_id: patient.person_id, fact_data: true },
           })
         ).catch(error => {
-          alert(`Whoops! Something went wrong when fetching activity data: ${JSON.stringify(error)}`);
+          dispatch({
+            type: SHOW_SNACKBAR,
+            payload: {
+              message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
+              anchor: { vertical: 'bottom' },
+              direction: 'up',
+            },
+          });
         });
-        setFacts(result.data.getActivityData);
+
+        if (mounted) {
+          setFacts(result.data.getActivityData);
+        } else {
+          API.cancel(result, 'FactSection unmounted');
+        }
       }
     })();
-  }, [patient, newFact]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [patient, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>

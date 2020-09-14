@@ -13,6 +13,8 @@ import { useMediaQuery } from '@material-ui/core';
 
 import { createPutFact } from '../graphql/mutations';
 import { getActivityData, getEventsByClient } from '../graphql/queries';
+import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
+import useSnackbar from '../hooks/useSnackbar';
 import NewFactDialog from './NewFactDialog';
 
 // TODO: Pull from Activity_Types table
@@ -48,6 +50,7 @@ export default ({ patient, session, setNewFact }) => {
   const [fact, setFact] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
+  const { dispatch } = useSnackbar();
 
   const onChangeEvent = event => {
     setType('activity');
@@ -73,36 +76,87 @@ export default ({ patient, session, setNewFact }) => {
   const onSaveFact = newFact => {
     (async () => {
       await API.graphql(graphqlOperation(createPutFact, { input: newFact })).catch(error => {
-        alert(`Whoops! Something went wrong when fetching events by client id: ${error.message}`);
+        dispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching events by client id: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
+        });
       });
       setNewFact(newFact);
       setOpen(false);
+      dispatch({
+        type: SHOW_SNACKBAR,
+        payload: {
+          message: `Successfully saved '${fact.name}' fact!`,
+          anchor: { vertical: 'bottom' },
+          direction: 'up',
+        },
+      });
     })();
   };
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
-      const result = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
-        alert(`Whoops! Something went wrong when fetching events by client id: ${error.message}`);
+      let result;
+      result = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
+        dispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching events by client id: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
+        });
       });
-      setEvents(result.data.getEventsByClient.items);
+
+      if (mounted) {
+        setEvents(result.data.getEventsByClient.items);
+      } else {
+        API.cancel(result, 'ActivitySection unmounted');
+      }
     })();
-  }, []);
+
+    return () => {
+      mounted = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
       if (patient) {
-        const result = await API.graphql(
+        let result;
+        result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: { client_id: 'SMSoft', event_id: event, activity_type: type, limit: limit },
           })
         ).catch(error => {
-          alert(`Whoops! Something went wrong when fetching activity data: ${JSON.stringify(error.error)}`);
+          dispatch({
+            type: SHOW_SNACKBAR,
+            payload: {
+              message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
+              anchor: { vertical: 'bottom' },
+              direction: 'up',
+            },
+          });
         });
-        setFacts(result.data.getActivityData);
+
+        if (mounted) {
+          setFacts(result.data.getActivityData);
+        } else {
+          API.cancel(result, 'ActivitySection unmounted');
+        }
       }
     })();
-  }, [patient, event, type, limit]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [patient, event, type, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
