@@ -13,7 +13,7 @@ export default ({ menu, homePath }) => {
   };
 
   return (
-    <Box width='100%' position='fixed' top='auto' bottom={0} clone>
+    <Box width='100%' position='fixed' top='auto' bottom={0} zIndex={3} clone>
       <BottomNavigation value={value} onChange={handleChange}>
         {menu.map(item => (
           <BottomNavigationAction

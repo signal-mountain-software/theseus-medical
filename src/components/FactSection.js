@@ -16,11 +16,11 @@ import { getActivityData } from '../graphql/queries';
 
 const useStyles = makeStyles({
   container: {
-    maxHeight: 440,
+    maxHeight: 400,
   },
 });
 
-export default ({ patient }) => {
+export default ({ patient, newFact }) => {
   const [facts, setFacts] = React.useState([]);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
@@ -38,7 +38,7 @@ export default ({ patient }) => {
         setFacts(result.data.getActivityData);
       }
     })();
-  }, [patient]);
+  }, [patient, newFact]);
 
   return (
     <Paper component={Box} m={2}>

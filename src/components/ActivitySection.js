@@ -7,12 +7,13 @@ import Grid from '@material-ui/core/Grid';
 import InputLabel from '@material-ui/core/InputLabel';
 import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
-import TouchRipple from '@material-ui/core/ButtonBase/TouchRipple';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { useMediaQuery } from '@material-ui/core';
 
+import { createPutFact } from '../graphql/mutations';
 import { getActivityData, getEventsByClient } from '../graphql/queries';
+import NewFactDialog from './NewFactDialog';
 
 // TODO: Pull from Activity_Types table
 const types = [
@@ -27,18 +28,6 @@ const types = [
   { activity_type_code: 'state', name: 'State' },
 ];
 
-// TODO: Pull from Facts table
-const facts = [
-  { code: 1, name: 'sm=3, xs=6' },
-  { code: 2, name: 'sm=3, xs=6' },
-  { code: 3, name: 'sm=3, xs=6' },
-  { code: 4, name: 'sm=3, xs=6' },
-  { code: 5, name: 'sm=3, xs=6' },
-  { code: 6, name: 'sm=3, xs=6' },
-  { code: 7, name: 'sm=3, xs=6' },
-  { code: 8, name: 'sm=3, xs=6' },
-];
-
 const useStyles = makeStyles(theme => ({
   formControl: {
     margin: theme.spacing(1),
@@ -49,12 +38,14 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ patient }) => {
+export default ({ patient, session, setNewFact }) => {
   const [events, setEvents] = React.useState([]);
   const [facts, setFacts] = React.useState([]);
   const [event, setEvent] = React.useState('');
   const [type, setType] = React.useState('activity');
   const [limit, setLimit] = React.useState(7);
+  const [open, setOpen] = React.useState(false);
+  const [fact, setFact] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
 
@@ -72,6 +63,21 @@ export default ({ patient }) => {
 
   const onShowMore = () => {
     setLimit(limit + 8);
+  };
+
+  const onChooseFact = fact => {
+    setFact(fact);
+    setOpen(true);
+  };
+
+  const onSaveFact = newFact => {
+    (async () => {
+      await API.graphql(graphqlOperation(createPutFact, { input: newFact })).catch(error => {
+        alert(`Whoops! Something went wrong when fetching events by client id: ${error.message}`);
+      });
+      setNewFact(newFact);
+      setOpen(false);
+    })();
   };
 
   React.useEffect(() => {
@@ -94,7 +100,6 @@ export default ({ patient }) => {
           alert(`Whoops! Something went wrong when fetching activity data: ${JSON.stringify(error.error)}`);
         });
         setFacts(result.data.getActivityData);
-        console.log(result.data.getActivityData);
       }
     })();
   }, [patient, event, type, limit]);
@@ -150,7 +155,12 @@ export default ({ patient }) => {
           {facts.slice(0, limit).map(fact => (
             <Grid key={fact.code} sm={3} xs={6} item>
               <Box py={6} px={2} textAlign='center' clone>
-                <Paper elevation={4} square>
+                <Paper
+                  elevation={4}
+                  onClick={() => {
+                    onChooseFact(fact);
+                  }}
+                  square>
                   <Typography noWrap>{fact.name}</Typography>
                 </Paper>
               </Box>
@@ -165,6 +175,15 @@ export default ({ patient }) => {
           </Grid>
         </Grid>
       </Box>
+      <NewFactDialog
+        fact={fact}
+        session={session}
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        onSave={onSaveFact}
+      />
     </Paper>
   );
 };
