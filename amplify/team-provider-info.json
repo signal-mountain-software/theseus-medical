@@ -1,0 +1,15 @@
+{
+    "prod": {
+        "awscloudformation": {
+            "AuthRoleName": "amplify-theseusmedical-prod-172658-authRole",
+            "UnauthRoleArn": "arn:aws:iam::125549937716:role/amplify-theseusmedical-prod-172658-unauthRole",
+            "AuthRoleArn": "arn:aws:iam::125549937716:role/amplify-theseusmedical-prod-172658-authRole",
+            "Region": "us-east-1",
+            "DeploymentBucketName": "amplify-theseusmedical-prod-172658-deployment",
+            "UnauthRoleName": "amplify-theseusmedical-prod-172658-unauthRole",
+            "StackName": "amplify-theseusmedical-prod-172658",
+            "StackId": "arn:aws:cloudformation:us-east-1:125549937716:stack/amplify-theseusmedical-prod-172658/dd046c40-f607-11ea-b57c-0a6046b66d41",
+            "AmplifyAppId": "d15l07lb81poya"
+        }
+    }
+}
