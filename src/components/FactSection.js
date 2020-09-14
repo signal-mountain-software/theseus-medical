@@ -26,18 +26,29 @@ export default ({ patient, newFact }) => {
   const classes = useStyles();
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
       if (patient) {
-        const result = await API.graphql(
+        let result;
+        result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: { client_id: 'SMSoft', person_id: patient.person_id, fact_data: true },
           })
         ).catch(error => {
           alert(`Whoops! Something went wrong when fetching activity data: ${JSON.stringify(error)}`);
         });
-        setFacts(result.data.getActivityData);
+
+        if (mounted) {
+          setFacts(result.data.getActivityData);
+        } else {
+          API.cancel(result, 'FactSection unmounted');
+        }
       }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, [patient, newFact]);
 
   return (

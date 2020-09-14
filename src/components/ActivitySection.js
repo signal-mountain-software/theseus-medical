@@ -81,27 +81,49 @@ export default ({ patient, session, setNewFact }) => {
   };
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
-      const result = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
+      let result;
+      result = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
         alert(`Whoops! Something went wrong when fetching events by client id: ${error.message}`);
       });
-      setEvents(result.data.getEventsByClient.items);
+
+      if (mounted) {
+        setEvents(result.data.getEventsByClient.items);
+      } else {
+        API.cancel(result, 'ActivitySection unmounted');
+      }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
       if (patient) {
-        const result = await API.graphql(
+        let result;
+        result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: { client_id: 'SMSoft', event_id: event, activity_type: type, limit: limit },
           })
         ).catch(error => {
           alert(`Whoops! Something went wrong when fetching activity data: ${JSON.stringify(error.error)}`);
         });
-        setFacts(result.data.getActivityData);
+
+        if (mounted) {
+          setFacts(result.data.getActivityData);
+        } else {
+          API.cancel(result, 'ActivitySection unmounted');
+        }
       }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, [patient, event, type, limit]);
 
   return (

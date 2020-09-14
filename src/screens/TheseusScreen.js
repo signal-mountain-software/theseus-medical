@@ -12,15 +12,26 @@ export default () => {
   const [newFact, setNewFact] = React.useState(null);
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
-      const result = await API.graphql(
+      let result;
+      result = await API.graphql(
         graphqlOperation(getSessionWithPatient, { client_id: 'SMSoft', device_id: 'TESTDEVICE' })
       ).catch(error => {
         alert(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`);
       });
-      setPatient(result.data.getSessionWithPatient.patient);
-      setSession(result.data.getSessionWithPatient.session);
+
+      if (mounted) {
+        setPatient(result.data.getSessionWithPatient.patient);
+        setSession(result.data.getSessionWithPatient.session);
+      } else {
+        API.cancel(result, 'TheseusScreen unmounted');
+      }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (
