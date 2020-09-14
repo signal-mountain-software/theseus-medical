@@ -7,11 +7,12 @@ import Grid from '@material-ui/core/Grid';
 import InputLabel from '@material-ui/core/InputLabel';
 import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
+import TouchRipple from '@material-ui/core/ButtonBase/TouchRipple';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { useMediaQuery } from '@material-ui/core';
 
-import { getEventsByClient } from '../graphql/queries';
+import { getActivityData, getEventsByClient } from '../graphql/queries';
 
 // TODO: Pull from Activity_Types table
 const types = [
@@ -48,12 +49,30 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default () => {
+export default ({ patient }) => {
   const [events, setEvents] = React.useState([]);
+  const [facts, setFacts] = React.useState([]);
   const [event, setEvent] = React.useState('');
-  const [type, setType] = React.useState('');
+  const [type, setType] = React.useState('activity');
+  const [limit, setLimit] = React.useState(7);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
+
+  const onChangeEvent = event => {
+    setType('activity');
+    setLimit(7);
+    setEvent(event.target.value);
+  };
+
+  const onChangeType = event => {
+    setEvent('');
+    setLimit(7);
+    setType(event.target.value);
+  };
+
+  const onShowMore = () => {
+    setLimit(limit + 8);
+  };
 
   React.useEffect(() => {
     (async () => {
@@ -63,6 +82,22 @@ export default () => {
       setEvents(result.data.getEventsByClient.items);
     })();
   }, []);
+
+  React.useEffect(() => {
+    (async () => {
+      if (patient) {
+        const result = await API.graphql(
+          graphqlOperation(getActivityData, {
+            input: { client_id: 'SMSoft', event_id: event, activity_type: type, limit: limit },
+          })
+        ).catch(error => {
+          alert(`Whoops! Something went wrong when fetching activity data: ${JSON.stringify(error.error)}`);
+        });
+        setFacts(result.data.getActivityData);
+        console.log(result.data.getActivityData);
+      }
+    })();
+  }, [patient, event, type, limit]);
 
   return (
     <Paper component={Box} m={2}>
@@ -77,9 +112,7 @@ export default () => {
             {isMobile ? <InputLabel htmlFor='event-label'>Event</InputLabel> : null}
             <NativeSelect
               value={event}
-              onChange={event => {
-                setEvent(event.target.value);
-              }}
+              onChange={onChangeEvent}
               id='event-label'
               name='event'
               inputProps={{ 'aria-label': 'event' }}>
@@ -99,13 +132,10 @@ export default () => {
             {isMobile ? <InputLabel htmlFor='type-label'>Type</InputLabel> : null}
             <NativeSelect
               value={type}
-              onChange={event => {
-                setType(event.target.value);
-              }}
+              onChange={onChangeType}
               id='type-label'
               name='type'
               inputProps={{ 'aria-label': 'type' }}>
-              <option value=''>{isMobile ? '' : 'None'}</option>
               {types.map(type => (
                 <option key={type.activity_type_code} value={type.activity_type_code}>
                   {type.name}
@@ -117,15 +147,22 @@ export default () => {
       </Box>
       <Box p={3} flexGrow={1}>
         <Grid spacing={3} container>
-          {facts.slice(0, 7).map(fact => (
+          {facts.slice(0, limit).map(fact => (
             <Grid key={fact.code} sm={3} xs={6} item>
               <Box py={6} px={2} textAlign='center' clone>
                 <Paper elevation={4} square>
-                  {fact.name}
+                  <Typography noWrap>{fact.name}</Typography>
                 </Paper>
               </Box>
             </Grid>
           ))}
+          <Grid sm={3} xs={6} item>
+            <Box py={6} px={2} textAlign='center' clone>
+              <Paper elevation={4} onClick={onShowMore} square>
+                <Typography>Show more</Typography>
+              </Paper>
+            </Box>
+          </Grid>
         </Grid>
       </Box>
     </Paper>
