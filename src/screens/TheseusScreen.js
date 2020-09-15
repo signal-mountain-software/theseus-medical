@@ -12,7 +12,7 @@ export default () => {
 
   return (
     <Box>
-      <ActivitySection session={session} setNewFact={setNewFact} />
+      <ActivitySection patient={patient} session={session} setNewFact={setNewFact} />
       <FactSection patient={patient} newFact={newFact} />
     </Box>
   );

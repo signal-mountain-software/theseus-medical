@@ -18,6 +18,22 @@ export const getActivityData = /* GraphQL */ `
     }
   }
 `;
+export const getActivityTypes = /* GraphQL */ `
+  query GetActivityTypes($client_id: String!) {
+    getActivityTypes(client_id: $client_id) {
+      client_id
+      activity_type_code
+      default_observation_value
+      description
+      name
+      primary_observation_key
+      qualifiers {
+        qualifier_description
+        qualifier_observation_key
+      }
+    }
+  }
+`;
 export const getEventsByClient = /* GraphQL */ `
   query GetEventsByClient(
     $client_id: String!
