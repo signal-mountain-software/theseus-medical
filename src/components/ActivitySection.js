@@ -4,7 +4,6 @@ import Box from '@material-ui/core/Box';
 import Divider from '@material-ui/core/Divider';
 import FormControl from '@material-ui/core/FormControl';
 import Grid from '@material-ui/core/Grid';
-import InputLabel from '@material-ui/core/InputLabel';
 import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
@@ -13,6 +12,8 @@ import { useMediaQuery } from '@material-ui/core';
 
 import { createPutFact } from '../graphql/mutations';
 import { getActivityData, getEventsByClient } from '../graphql/queries';
+import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
+import useSnackbar from '../hooks/useSnackbar';
 import NewFactDialog from './NewFactDialog';
 
 // TODO: Pull from Activity_Types table
@@ -38,7 +39,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ patient, session, setNewFact }) => {
+export default ({ session, setNewFact }) => {
   const [events, setEvents] = React.useState([]);
   const [facts, setFacts] = React.useState([]);
   const [event, setEvent] = React.useState('');
@@ -48,6 +49,7 @@ export default ({ patient, session, setNewFact }) => {
   const [fact, setFact] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
+  const { dispatch } = useSnackbar();
 
   const onChangeEvent = event => {
     setType('activity');
@@ -73,36 +75,85 @@ export default ({ patient, session, setNewFact }) => {
   const onSaveFact = newFact => {
     (async () => {
       await API.graphql(graphqlOperation(createPutFact, { input: newFact })).catch(error => {
-        alert(`Whoops! Something went wrong when fetching events by client id: ${error.message}`);
+        dispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching events by client id: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
+        });
       });
       setNewFact(newFact);
       setOpen(false);
+      dispatch({
+        type: SHOW_SNACKBAR,
+        payload: {
+          message: `Successfully saved '${fact.name}' fact!`,
+          anchor: { vertical: 'bottom' },
+          direction: 'up',
+        },
+      });
     })();
   };
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
-      const result = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
-        alert(`Whoops! Something went wrong when fetching events by client id: ${error.message}`);
-      });
-      setEvents(result.data.getEventsByClient.items);
-    })();
-  }, []);
-
-  React.useEffect(() => {
-    (async () => {
-      if (patient) {
-        const result = await API.graphql(
-          graphqlOperation(getActivityData, {
-            input: { client_id: 'SMSoft', event_id: event, activity_type: type, limit: limit },
-          })
-        ).catch(error => {
-          alert(`Whoops! Something went wrong when fetching activity data: ${JSON.stringify(error.error)}`);
+      let result;
+      result = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
+        dispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching events by client id: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
         });
-        setFacts(result.data.getActivityData);
+      });
+
+      if (mounted) {
+        setEvents(result.data.getEventsByClient.items);
+      } else {
+        API.cancel(result, 'ActivitySection unmounted');
       }
     })();
-  }, [patient, event, type, limit]);
+
+    return () => {
+      mounted = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      let result;
+      result = await API.graphql(
+        graphqlOperation(getActivityData, {
+          input: { client_id: 'SMSoft', event_id: event, activity_type: type, limit: limit },
+        })
+      ).catch(error => {
+        dispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
+        });
+      });
+
+      if (mounted) {
+        setFacts(result.data.getActivityData);
+      } else {
+        API.cancel(result, 'ActivitySection unmounted');
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [event, type, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
@@ -114,14 +165,13 @@ export default ({ patient, session, setNewFact }) => {
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Event:</Typography>}
           <FormControl className={classes.formControl}>
-            {isMobile ? <InputLabel htmlFor='event-label'>Event</InputLabel> : null}
             <NativeSelect
               value={event}
               onChange={onChangeEvent}
               id='event-label'
               name='event'
               inputProps={{ 'aria-label': 'event' }}>
-              <option value=''>{isMobile ? '' : 'None'}</option>
+              <option value=''>None</option>
               {events.map(event => (
                 <option key={event.event_id} value={event.event_id}>
                   {event.event_id}
@@ -134,7 +184,6 @@ export default ({ patient, session, setNewFact }) => {
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Type:</Typography>}
           <FormControl className={classes.formControl}>
-            {isMobile ? <InputLabel htmlFor='type-label'>Type</InputLabel> : null}
             <NativeSelect
               value={type}
               onChange={onChangeType}

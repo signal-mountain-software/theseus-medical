@@ -9,10 +9,12 @@ import TableContainer from '@material-ui/core/TableContainer';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import Typography from '@material-ui/core/Typography';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { getActivityData } from '../graphql/queries';
+import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
+import useSnackbar from '../hooks/useSnackbar';
+import { useMediaQuery } from '@material-ui/core';
 
 const useStyles = makeStyles({
   container: {
@@ -22,27 +24,46 @@ const useStyles = makeStyles({
 
 export default ({ patient, newFact }) => {
   const [facts, setFacts] = React.useState([]);
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
+  const isTablet = useMediaQuery(theme => theme.breakpoints.down('sm'));
   const classes = useStyles();
+  const { dispatch } = useSnackbar();
 
   React.useEffect(() => {
+    let mounted = true;
     (async () => {
       if (patient) {
-        const result = await API.graphql(
+        let result;
+        result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: { client_id: 'SMSoft', person_id: patient.person_id, fact_data: true },
           })
         ).catch(error => {
-          alert(`Whoops! Something went wrong when fetching activity data: ${JSON.stringify(error)}`);
+          dispatch({
+            type: SHOW_SNACKBAR,
+            payload: {
+              message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
+              anchor: { vertical: 'bottom' },
+              direction: 'up',
+            },
+          });
         });
-        setFacts(result.data.getActivityData);
+
+        if (mounted) {
+          setFacts(result.data.getActivityData);
+        } else {
+          API.cancel(result, 'FactSection unmounted');
+        }
       }
     })();
-  }, [patient, newFact]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [patient, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
-      <Box mt={1} py={isMobile ? 2.25 : 1.25} px={3} borderBottom={2} display='flex' flexDirection='row'>
+      <Box mt={1} py={1.25} px={3} borderBottom={2} display='flex' flexDirection='row'>
         <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
           <Typography variant='subtitle1'>Facts</Typography>
         </Box>
@@ -53,8 +74,12 @@ export default ({ patient, newFact }) => {
             <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Status</TableCell>
+                {isTablet ? null : (
+                  <>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Status</TableCell>
+                  </>
+                )}
                 <TableCell>Observation</TableCell>
               </TableRow>
             </TableHead>
@@ -62,8 +87,12 @@ export default ({ patient, newFact }) => {
               {facts.map(fact => (
                 <TableRow key={fact.code}>
                   <TableCell>{fact.name}</TableCell>
-                  <TableCell>{fact.type}</TableCell>
-                  <TableCell>{fact.observation_status}</TableCell>
+                  {isTablet ? null : (
+                    <>
+                      <TableCell>{fact.type}</TableCell>
+                      <TableCell>{fact.observation_status}</TableCell>
+                    </>
+                  )}
                   <TableCell>{fact.most_recent_observation}</TableCell>
                 </TableRow>
               ))}

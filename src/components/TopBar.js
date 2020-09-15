@@ -3,12 +3,13 @@ import { Auth } from 'aws-amplify';
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
-import IconButton from '@material-ui/core/IconButton';
+import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
-import Typography from '@material-ui/core/Typography';
 import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
+
+import PatientChip from './PatientChip';
 
 const HideOnScroll = ({ children }) => {
   const trigger = useScrollTrigger();
@@ -20,7 +21,7 @@ const HideOnScroll = ({ children }) => {
   );
 };
 
-export default () => {
+export default ({ patient }) => {
   const onSignOut = () => {
     Auth.signOut().then(() => {
       window.location.reload();
@@ -33,11 +34,11 @@ export default () => {
         <AppBar color='inherit'>
           <Toolbar>
             <Box flexGrow={1}>
-              <Typography variant='h6'>Theseus Medical</Typography>
+              <PatientChip patient={patient} />
             </Box>
-            <IconButton onClick={onSignOut}>
-              <ExitToAppIcon />
-            </IconButton>
+            <Button color='secondary' size='small' variant='contained' endIcon={<ExitToAppIcon />} onClick={onSignOut}>
+              Logout
+            </Button>
           </Toolbar>
         </AppBar>
       </HideOnScroll>

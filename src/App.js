@@ -1,5 +1,5 @@
 import React from 'react';
-import Amplify from 'aws-amplify';
+import Amplify, { API, graphqlOperation } from 'aws-amplify';
 import Box from '@material-ui/core/Box';
 import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 import AssignmentIcon from '@material-ui/icons/Assignment';
@@ -7,9 +7,12 @@ import ChatIcon from '@material-ui/icons/Chat';
 
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
+import withAlerts from './hocs/withAlerts';
 import withAuth from './hocs/withAuth';
 import withDarkMode from './hocs/withDarkMode';
 import withRouter from './hocs/withRouter';
+import withSession from './hocs/withSession';
+import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
 import RootNavigation from './navigation/RootNavigation';
 import ChatScreen from './screens/ChatScreen';
@@ -17,8 +20,13 @@ import ProfileScreen from './screens/ProfileScreen';
 import TheseusScreen from './screens/TheseusScreen';
 import hocFactory from './util/hocFactory';
 
-import config from './config/amplify.json';
+import { getSessionWithPatient } from './graphql/queries';
+import { SET_PATIENT, SET_SESSION } from './contexts/Session/actions';
+import { SHOW_SNACKBAR } from './contexts/Snackbar/actions';
+import useSession from './hooks/useSession';
+import useSnackbar from './hooks/useSnackbar';
 
+import config from './config/amplify.json';
 Amplify.configure(config);
 
 const menu = [
@@ -29,14 +37,50 @@ const menu = [
 
 const HOME = '/theseus';
 
-const App = () => (
-  <Box>
-    <TopBar />
-    <Box paddingBottom='50px'>
-      <RootNavigation menu={menu} homePath={HOME} />
-    </Box>
-    <BottomNav menu={menu} homePath={HOME} />
-  </Box>
-);
+const App = () => {
+  const { dispatch: snackDispatch } = useSnackbar();
+  const { state, dispatch: sessionDispatch } = useSession();
+  const { patient } = state;
 
-export default hocFactory(App, [withDarkMode, withTheme, withRouter, withAuth]);
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      let result;
+      result = await API.graphql(
+        graphqlOperation(getSessionWithPatient, { client_id: 'SMSoft', device_id: 'TESTDEVICE' })
+      ).catch(error => {
+        snackDispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching a patient by session: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
+        });
+      });
+
+      if (mounted) {
+        sessionDispatch({ type: SET_PATIENT, payload: result.data.getSessionWithPatient.patient });
+        sessionDispatch({ type: SET_SESSION, payload: result.data.getSessionWithPatient.session });
+      } else {
+        API.cancel(result, 'App unmounted');
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <Box>
+      <TopBar patient={patient} />
+      <Box pb={7}>
+        <RootNavigation menu={menu} homePath={HOME} />
+      </Box>
+      <BottomNav menu={menu} homePath={HOME} />
+    </Box>
+  );
+};
+
+export default hocFactory(App, [withRouter, withDarkMode, withTheme, withSnackbar, withAlerts, withAuth, withSession]);
