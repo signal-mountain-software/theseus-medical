@@ -1,9 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
+import Amplify from 'aws-amplify';
 import 'fontsource-roboto';
 
 import App from './App';
 import * as serviceWorker from './serviceWorker';
+import config from './config/amplify.json';
+Amplify.configure(config);
 
 ReactDOM.render(
   <React.StrictMode>

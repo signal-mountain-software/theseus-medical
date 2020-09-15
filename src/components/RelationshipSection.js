@@ -36,10 +36,10 @@ export default ({ patient }) => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {patient?.relationship.map(item => (
-                <TableRow key={item.person_id}>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.type}</TableCell>
+              {patient?.relationships.map(relationship => (
+                <TableRow key={relationship.person_id}>
+                  <TableCell>{relationship.name}</TableCell>
+                  <TableCell>{relationship.type}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
