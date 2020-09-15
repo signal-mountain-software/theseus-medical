@@ -39,7 +39,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ patient, session, setNewFact }) => {
+export default ({ session, setNewFact }) => {
   const [events, setEvents] = React.useState([]);
   const [facts, setFacts] = React.useState([]);
   const [event, setEvent] = React.useState('');
@@ -127,35 +127,33 @@ export default ({ patient, session, setNewFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      if (patient) {
-        let result;
-        result = await API.graphql(
-          graphqlOperation(getActivityData, {
-            input: { client_id: 'SMSoft', event_id: event, activity_type: type, limit: limit },
-          })
-        ).catch(error => {
-          dispatch({
-            type: SHOW_SNACKBAR,
-            payload: {
-              message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
-              anchor: { vertical: 'bottom' },
-              direction: 'up',
-            },
-          });
+      let result;
+      result = await API.graphql(
+        graphqlOperation(getActivityData, {
+          input: { client_id: 'SMSoft', event_id: event, activity_type: type, limit: limit },
+        })
+      ).catch(error => {
+        dispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
         });
+      });
 
-        if (mounted) {
-          setFacts(result.data.getActivityData);
-        } else {
-          API.cancel(result, 'ActivitySection unmounted');
-        }
+      if (mounted) {
+        setFacts(result.data.getActivityData);
+      } else {
+        API.cancel(result, 'ActivitySection unmounted');
       }
     })();
 
     return () => {
       mounted = false;
     };
-  }, [patient, event, type, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [event, type, limit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>

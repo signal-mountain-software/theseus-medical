@@ -1,6 +1,7 @@
 import React from 'react';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
+import Button from '@material-ui/core/Button';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
 import IconButton from '@material-ui/core/IconButton';
@@ -159,9 +160,6 @@ export default ({ fact, session, open, onClose, onSave }) => {
           <Typography variant='h6' className={classes.title}>
             Adding New '{fact?.name}' Fact
           </Typography>
-          <IconButton color='inherit' onClick={handleSave}>
-            <SaveIcon />
-          </IconButton>
         </Toolbar>
       </AppBar>
       <Box p={3} flexGrow={1}>
@@ -172,6 +170,11 @@ export default ({ fact, session, open, onClose, onSave }) => {
           newFact={newFact}
           setNewFact={setNewFact}
         />
+      </Box>
+      <Box p={2} flexGrow={1} display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+        <Button color='primary' variant='contained' startIcon={<SaveIcon />} onClick={handleSave}>
+          Save
+        </Button>
       </Box>
     </Dialog>
   );
