@@ -1,15 +1,35 @@
 import React from 'react';
+import { Storage } from 'aws-amplify';
+import { useSnackbar } from 'notistack';
 import Avatar from '@material-ui/core/Avatar';
 import Box from '@material-ui/core/Box';
 import Chip from '@material-ui/core/Chip';
 import FaceIcon from '@material-ui/icons/Face';
 
+import PatientDialog from './PatientDialog';
+
 export default ({ patient }) => {
-  const getInitials = () => {
-    const first = patient?.name.first.charAt(0);
-    const last = patient?.name.last.charAt(0);
-    return first + last;
+  const [picture, setPicture] = React.useState('');
+  const [open, setOpen] = React.useState(false);
+  const { enqueueSnackbar } = useSnackbar();
+
+  const onClick = () => {
+    setOpen(true);
   };
+
+  React.useEffect(() => {
+    (async () => {
+      if (patient) {
+        const response = await Storage.get('patients/' + patient.person_id + '.jpg').catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when retrieving public object from s3: ${error.message}`, {
+            variant: 'error',
+          });
+        });
+
+        setPicture(response);
+      }
+    })();
+  }, [patient]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Box>
@@ -18,7 +38,8 @@ export default ({ patient }) => {
           color='primary'
           label={`${patient?.name.last}, ${patient?.name.first}`}
           variant='outlined'
-          avatar={<Avatar>{getInitials()}</Avatar>}
+          avatar={<Avatar src={picture} />}
+          onClick={onClick}
           clickable
         />
       ) : (
@@ -30,6 +51,14 @@ export default ({ patient }) => {
           clickable
         />
       )}
+      <PatientDialog
+        patient={patient}
+        picture={picture}
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+      />
     </Box>
   );
 };

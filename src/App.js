@@ -1,5 +1,6 @@
 import React from 'react';
 import Amplify, { API, graphqlOperation } from 'aws-amplify';
+import { useSnackbar } from 'notistack';
 import Box from '@material-ui/core/Box';
 import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 import AssignmentIcon from '@material-ui/icons/Assignment';
@@ -7,7 +8,6 @@ import ChatIcon from '@material-ui/icons/Chat';
 
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
-import withAlerts from './hocs/withAlerts';
 import withAuth from './hocs/withAuth';
 import withDarkMode from './hocs/withDarkMode';
 import withRouter from './hocs/withRouter';
@@ -22,9 +22,7 @@ import hocFactory from './util/hocFactory';
 
 import { getSessionWithPatient } from './graphql/queries';
 import { SET_PATIENT, SET_SESSION } from './contexts/Session/actions';
-import { SHOW_SNACKBAR } from './contexts/Snackbar/actions';
 import useSession from './hooks/useSession';
-import useSnackbar from './hooks/useSnackbar';
 
 import config from './config/amplify.json';
 Amplify.configure(config);
@@ -38,8 +36,8 @@ const menu = [
 const HOME = '/theseus';
 
 const App = () => {
-  const { dispatch: snackDispatch } = useSnackbar();
-  const { state, dispatch: sessionDispatch } = useSession();
+  const { enqueueSnackbar } = useSnackbar();
+  const { state, dispatch } = useSession();
   const { patient } = state;
 
   React.useEffect(() => {
@@ -49,19 +47,14 @@ const App = () => {
       result = await API.graphql(
         graphqlOperation(getSessionWithPatient, { client_id: 'SMSoft', device_id: 'TESTDEVICE' })
       ).catch(error => {
-        snackDispatch({
-          type: SHOW_SNACKBAR,
-          payload: {
-            message: `Whoops! Something went wrong when fetching a patient by session: ${error.message}`,
-            anchor: { vertical: 'bottom' },
-            direction: 'up',
-          },
+        enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`, {
+          variant: 'error',
         });
       });
 
       if (mounted) {
-        sessionDispatch({ type: SET_PATIENT, payload: result.data.getSessionWithPatient.patient });
-        sessionDispatch({ type: SET_SESSION, payload: result.data.getSessionWithPatient.session });
+        dispatch({ type: SET_PATIENT, payload: result.data.getSessionWithPatient.patient });
+        dispatch({ type: SET_SESSION, payload: result.data.getSessionWithPatient.session });
       } else {
         API.cancel(result, 'App unmounted');
       }
@@ -83,4 +76,4 @@ const App = () => {
   );
 };
 
-export default hocFactory(App, [withRouter, withDarkMode, withTheme, withSnackbar, withAlerts, withAuth, withSession]);
+export default hocFactory(App, [withRouter, withDarkMode, withTheme, withSnackbar, withAuth, withSession]);

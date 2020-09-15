@@ -99,6 +99,7 @@ export const getSessionWithPatient = /* GraphQL */ `
         }
         roles
         relationship {
+          name
           type
           person_id
         }
