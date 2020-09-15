@@ -1,5 +1,6 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
+import { useSnackbar } from 'notistack';
 import Box from '@material-ui/core/Box';
 import Divider from '@material-ui/core/Divider';
 import FormControl from '@material-ui/core/FormControl';
@@ -12,8 +13,6 @@ import { useMediaQuery } from '@material-ui/core';
 
 import { createPutFact } from '../graphql/mutations';
 import { getActivityData, getActivityTypes, getEventsByClient } from '../graphql/queries';
-import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
-import useSnackbar from '../hooks/useSnackbar';
 import NewFactDialog from './NewFactDialog';
 
 const useStyles = makeStyles(theme => ({
@@ -43,9 +42,9 @@ export default ({ patient, session, setNewFact }) => {
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [fact, setFact] = React.useState(null); // stores the new fact which triggers a re-render of activity buttons
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const { enqueueSnackbar } = useSnackbar();
   const classes = useStyles();
-  const { dispatch } = useSnackbar();
 
   const onChangeEvent = event => {
     setType(DEFAULT_TYPE);
@@ -71,25 +70,15 @@ export default ({ patient, session, setNewFact }) => {
   const onSaveFact = newFact => {
     (async () => {
       await API.graphql(graphqlOperation(createPutFact, { input: newFact })).catch(error => {
-        dispatch({
-          type: SHOW_SNACKBAR,
-          payload: {
-            message: `Whoops! Something went wrong when fetching events by client id: ${error.message}`,
-            anchor: { vertical: 'bottom' },
-            direction: 'up',
-          },
+        enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
+          variant: 'error',
         });
       });
       setNewFact(newFact);
       setFact(newFact);
       setOpen(false);
-      dispatch({
-        type: SHOW_SNACKBAR,
-        payload: {
-          message: `Successfully saved '${selected.name}' fact!`,
-          anchor: { vertical: 'bottom' },
-          direction: 'up',
-        },
+      enqueueSnackbar(`Successfully saved '${selected.name}' fact!`, {
+        variant: 'success',
       });
     })();
   };
@@ -100,24 +89,14 @@ export default ({ patient, session, setNewFact }) => {
       let result1;
       let result2;
       result1 = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
-        dispatch({
-          type: SHOW_SNACKBAR,
-          payload: {
-            message: `Whoops! Something went wrong when fetching events by client id: ${error.message}`,
-            anchor: { vertical: 'bottom' },
-            direction: 'up',
-          },
+        enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
+          variant: 'error',
         });
       });
 
       result2 = await API.graphql(graphqlOperation(getActivityTypes, { client_id: 'SMSoft' })).catch(error => {
-        dispatch({
-          type: SHOW_SNACKBAR,
-          payload: {
-            message: `Whoops! Something went wrong when fetching activity types by client id: ${error.message}`,
-            anchor: { vertical: 'bottom' },
-            direction: 'up',
-          },
+        enqueueSnackbar(`Whoops! Something went wrong when fetching activity types by client id: ${error.message}`, {
+          variant: 'error',
         });
       });
 
@@ -151,13 +130,8 @@ export default ({ patient, session, setNewFact }) => {
             },
           })
         ).catch(error => {
-          dispatch({
-            type: SHOW_SNACKBAR,
-            payload: {
-              message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
-              anchor: { vertical: 'bottom' },
-              direction: 'up',
-            },
+          enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.message}`, {
+            variant: 'error',
           });
         });
 

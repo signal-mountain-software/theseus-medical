@@ -1,18 +1,17 @@
 import React from 'react';
 import { Storage } from 'aws-amplify';
+import { useSnackbar } from 'notistack';
 import Avatar from '@material-ui/core/Avatar';
 import Box from '@material-ui/core/Box';
 import Chip from '@material-ui/core/Chip';
 import FaceIcon from '@material-ui/icons/Face';
 
 import PatientDialog from './PatientDialog';
-import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
-import useSnackbar from '../hooks/useSnackbar';
 
 export default ({ patient }) => {
   const [picture, setPicture] = React.useState('');
   const [open, setOpen] = React.useState(false);
-  const { dispatch } = useSnackbar();
+  const { enqueueSnackbar } = useSnackbar();
 
   const onClick = () => {
     setOpen(true);
@@ -22,13 +21,8 @@ export default ({ patient }) => {
     (async () => {
       if (patient) {
         const response = await Storage.get('patients/' + patient.person_id + '.jpg').catch(error => {
-          dispatch({
-            type: SHOW_SNACKBAR,
-            payload: {
-              message: `Whoops! Something went wrong when retrieving public object from s3: ${error.message}`,
-              anchor: { vertical: 'bottom' },
-              direction: 'up',
-            },
+          enqueueSnackbar(`Whoops! Something went wrong when retrieving public object from s3: ${error.message}`, {
+            variant: 'error',
           });
         });
 

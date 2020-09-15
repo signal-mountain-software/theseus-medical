@@ -1,5 +1,6 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
+import { useSnackbar } from 'notistack';
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import Table from '@material-ui/core/Table';
@@ -9,12 +10,10 @@ import TableContainer from '@material-ui/core/TableContainer';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import Typography from '@material-ui/core/Typography';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { getActivityData } from '../graphql/queries';
-import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
-import useSnackbar from '../hooks/useSnackbar';
-import { useMediaQuery } from '@material-ui/core';
 
 const useStyles = makeStyles({
   container: {
@@ -26,7 +25,7 @@ export default ({ patient, newFact }) => {
   const [facts, setFacts] = React.useState([]);
   const isTablet = useMediaQuery(theme => theme.breakpoints.down('sm'));
   const classes = useStyles();
-  const { dispatch } = useSnackbar();
+  const { enqueueSnackbar } = useSnackbar();
 
   React.useEffect(() => {
     let mounted = true;
@@ -38,13 +37,8 @@ export default ({ patient, newFact }) => {
             input: { client_id: 'SMSoft', person_id: patient.person_id, fact_data: true, history_only: true },
           })
         ).catch(error => {
-          dispatch({
-            type: SHOW_SNACKBAR,
-            payload: {
-              message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
-              anchor: { vertical: 'bottom' },
-              direction: 'up',
-            },
+          enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.message}`, {
+            variant: 'error',
           });
         });
 
