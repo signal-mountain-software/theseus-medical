@@ -17,9 +17,6 @@ import ClientsSection from './ClientsSection';
 import RelationshipSection from './RelationshipSection';
 
 const useStyles = makeStyles(theme => ({
-  appBar: {
-    position: 'relative',
-  },
   title: {
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
@@ -41,7 +38,7 @@ export default ({ patient, picture, open, onClose }) => {
 
   return (
     <Dialog open={open} onClose={onClose} TransitionComponent={Transition} fullScreen>
-      <AppBar className={classes.appBar}>
+      <AppBar>
         <Toolbar>
           <IconButton color='inherit' edge='start' onClick={onClose}>
             <CloseIcon />
@@ -51,6 +48,7 @@ export default ({ patient, picture, open, onClose }) => {
           </Typography>
         </Toolbar>
       </AppBar>
+      <Toolbar />
       <Box m={2}>
         <Paper
           component={Box}
