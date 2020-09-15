@@ -14,6 +14,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import { getActivityData } from '../graphql/queries';
 import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
 import useSnackbar from '../hooks/useSnackbar';
+import { useMediaQuery } from '@material-ui/core';
 
 const useStyles = makeStyles({
   container: {
@@ -23,6 +24,7 @@ const useStyles = makeStyles({
 
 export default ({ patient, newFact }) => {
   const [facts, setFacts] = React.useState([]);
+  const isTablet = useMediaQuery(theme => theme.breakpoints.down('sm'));
   const classes = useStyles();
   const { dispatch } = useSnackbar();
 
@@ -72,8 +74,12 @@ export default ({ patient, newFact }) => {
             <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Status</TableCell>
+                {isTablet ? null : (
+                  <>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Status</TableCell>
+                  </>
+                )}
                 <TableCell>Observation</TableCell>
               </TableRow>
             </TableHead>
@@ -81,8 +87,12 @@ export default ({ patient, newFact }) => {
               {facts.map(fact => (
                 <TableRow key={fact.code}>
                   <TableCell>{fact.name}</TableCell>
-                  <TableCell>{fact.type}</TableCell>
-                  <TableCell>{fact.observation_status}</TableCell>
+                  {isTablet ? null : (
+                    <>
+                      <TableCell>{fact.type}</TableCell>
+                      <TableCell>{fact.observation_status}</TableCell>
+                    </>
+                  )}
                   <TableCell>{fact.most_recent_observation}</TableCell>
                 </TableRow>
               ))}
