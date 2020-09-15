@@ -35,14 +35,16 @@ export default ({ patient }) => {
                 <TableCell>Type</TableCell>
               </TableRow>
             </TableHead>
-            <TableBody>
-              {patient?.relationships.map(relationship => (
-                <TableRow key={relationship.person_id}>
-                  <TableCell>{relationship.name}</TableCell>
-                  <TableCell>{relationship.type}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+            {patient?.relationships ? (
+              <TableBody>
+                {patient.relationships.map(relationship => (
+                  <TableRow key={relationship.person_id}>
+                    <TableCell>{relationship.name}</TableCell>
+                    <TableCell>{relationship.type}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            ) : null}
           </Table>
         </TableContainer>
       </Box>

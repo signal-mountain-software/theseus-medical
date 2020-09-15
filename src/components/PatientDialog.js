@@ -62,11 +62,23 @@ export default ({ patient, picture, open, onClose }) => {
             <Avatar src={picture} className={classes.picture} />
           </Box>
           <Box flexGrow={2} display='flex' flexDirection='column'>
-            <Typography variant='h6'>Location: Room {patient?.location}</Typography>
-            <Typography variant='subtitle2'>
-              email: {patient?.messaging.email} | phone: {patient?.messaging.sms}
-            </Typography>
-            <Typography variant='subtitle2'>Preferred contact method: {patient?.preferred_method}</Typography>
+            <Typography variant='h6'>Location: {patient?.location || 'null'}</Typography>
+            {patient?.messaging ? (
+              <>
+                <Typography variant='subtitle2'>
+                  email: {patient.messaging.email ? patient.messaging.email : 'none'} | phone:{' '}
+                  {patient.messaging.sms ? patient.messaging.sms : 'none'}
+                </Typography>
+                <Typography variant='subtitle2'>
+                  Preferred contact method: {patient.preferred_method ? patient.preferred_method : 'none'}
+                </Typography>
+              </>
+            ) : (
+              <>
+                <Typography variant='subtitle2'>email: none | phone: none</Typography>
+                <Typography variant='subtitle2'>Preferred contact method: N/A</Typography>
+              </>
+            )}
             <Box mb={1} />
             <Divider />
             <Box mb={1} />

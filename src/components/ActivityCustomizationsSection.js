@@ -36,15 +36,17 @@ export default ({ patient }) => {
                 <TableCell>Permitted Roles</TableCell>
               </TableRow>
             </TableHead>
-            <TableBody>
-              {patient?.activity_customizations.map(activity => (
-                <TableRow key={activity.activity_key}>
-                  <TableCell>{activity.activity_key}</TableCell>
-                  <TableCell>{activity.baseline}</TableCell>
-                  <TableCell>{activity.permitted_roles ? activity.permitted_roles.join(', ') : 'none'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+            {patient?.activity_customizations ? (
+              <TableBody>
+                {patient.activity_customizations.map(activity => (
+                  <TableRow key={activity.activity_key}>
+                    <TableCell>{activity.activity_key}</TableCell>
+                    <TableCell>{activity.baseline}</TableCell>
+                    <TableCell>{activity.permitted_roles ? activity.permitted_roles.join(', ') : 'none'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            ) : null}
           </Table>
         </TableContainer>
       </Box>

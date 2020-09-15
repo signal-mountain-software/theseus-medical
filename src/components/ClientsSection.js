@@ -35,24 +35,26 @@ export default ({ patient }) => {
                 <TableCell>Groups</TableCell>
               </TableRow>
             </TableHead>
-            <TableBody>
-              {patient?.clients.map(client => (
-                <TableRow key={client.id}>
-                  <TableCell>{client.id}</TableCell>
-                  <TableCell>
-                    {client.groups ? (
-                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                        {client.groups.map(group => (
-                          <Typography key={group}>{group}</Typography>
-                        ))}
-                      </Box>
-                    ) : (
-                      'none'
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
+            {patient?.clients ? (
+              <TableBody>
+                {patient.clients.map(client => (
+                  <TableRow key={client.id}>
+                    <TableCell>{client.id}</TableCell>
+                    <TableCell>
+                      {client.groups ? (
+                        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                          {client.groups.map(group => (
+                            <Typography key={group}>{group}</Typography>
+                          ))}
+                        </Box>
+                      ) : (
+                        'none'
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            ) : null}
           </Table>
         </TableContainer>
       </Box>
