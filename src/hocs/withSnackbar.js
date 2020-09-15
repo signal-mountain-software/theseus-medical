@@ -16,6 +16,10 @@ export default Component => props => {
       ref={notistackRef}
       maxSnack={3}
       dense={isMobile}
+      anchorOrigin={{
+        vertical: 'top',
+        horizontal: 'center',
+      }}
       action={key => (
         <Button color='inherit' onClick={onCLickDismiss(key)}>
           Dismiss
