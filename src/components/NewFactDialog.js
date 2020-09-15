@@ -29,7 +29,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const DynamicForm = ({ type, defaultValue, values, newFact, setNewFact }) => {
+const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observationKey }) => {
   const [value, setValue] = React.useState('');
   const [num1, setNum1] = React.useState(0);
   const [num2, setNum2] = React.useState(0);
@@ -37,36 +37,36 @@ const DynamicForm = ({ type, defaultValue, values, newFact, setNewFact }) => {
 
   const onChangeValue = event => {
     setValue(event.target.value);
-    newFact.value = 'observation.' + event.target.value;
+    newFact.value = observationKey + '.' + event.target.value;
     setNewFact(newFact);
   };
 
   const onChangeNum = event => {
-    newFact.value = 'number.' + event.target.value;
+    newFact.value = observationKey + '.' + event.target.value;
     setNewFact(newFact);
   };
 
   const onChangeNum1 = event => {
     const value = event.target.value;
     setNum1(value);
-    newFact.value = 'number.' + value + '.' + num2;
+    newFact.value = observationKey + '.' + value + '.' + num2;
     setNewFact(newFact);
   };
 
   const onChangeNum2 = event => {
     const value = event.target.value;
     setNum2(value);
-    newFact.value = 'number.' + num1 + '.' + value;
+    newFact.value = observationKey + '.' + num1 + '.' + value;
     setNewFact(newFact);
   };
 
   React.useEffect(() => {
-    if (defaultValue) {
-      newFact.value = 'observation.' + defaultValue;
+    if (defaultValue && observationKey) {
+      newFact.value = observationKey + '.' + defaultValue;
       setNewFact(newFact);
       setValue(defaultValue);
     }
-  }, [defaultValue, newFact, setNewFact]);
+  }, [newFact, setNewFact, defaultValue, observationKey]);
 
   switch (type) {
     case 'characteristic_num':
@@ -164,11 +164,12 @@ export default ({ fact, session, open, onClose, onSave }) => {
       </AppBar>
       <Box p={3} flexGrow={1}>
         <DynamicForm
-          type={fact?.type}
-          defaultValue={fact?.default_value}
-          values={fact?.valid_values_list}
           newFact={newFact}
           setNewFact={setNewFact}
+          type={fact?.type}
+          values={fact?.valid_values_list}
+          defaultValue={fact?.default_value}
+          observationKey={fact?.observation_key}
         />
       </Box>
       <Box p={2} flexGrow={1} display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
