@@ -35,7 +35,7 @@ export default ({ patient, newFact }) => {
         let result;
         result = await API.graphql(
           graphqlOperation(getActivityData, {
-            input: { client_id: 'SMSoft', person_id: patient.person_id, fact_data: true },
+            input: { client_id: 'SMSoft', person_id: patient.person_id, fact_data: true, history_only: true },
           })
         ).catch(error => {
           dispatch({

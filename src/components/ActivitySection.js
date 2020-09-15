@@ -11,23 +11,10 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import { useMediaQuery } from '@material-ui/core';
 
 import { createPutFact } from '../graphql/mutations';
-import { getActivityData, getEventsByClient } from '../graphql/queries';
+import { getActivityData, getActivityTypes, getEventsByClient } from '../graphql/queries';
 import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
 import useSnackbar from '../hooks/useSnackbar';
 import NewFactDialog from './NewFactDialog';
-
-// TODO: Pull from Activity_Types table
-const types = [
-  { activity_type_code: 'activity', name: 'Activity' },
-  { activity_type_code: 'characteristic_level', name: 'Characteristic (level)' },
-  { activity_type_code: 'characteristic_list', name: 'Characteristic' },
-  { activity_type_code: 'characteristic_num', name: 'Characteristic (numeric)' },
-  { activity_type_code: 'characteristic_num2', name: 'Characteristic (two-number)' },
-  { activity_type_code: 'condition', name: 'Condition' },
-  { activity_type_code: 'event', name: 'Event' },
-  { activity_type_code: 'service', name: 'Service' },
-  { activity_type_code: 'state', name: 'State' },
-];
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -39,36 +26,45 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ session, setNewFact }) => {
-  const [events, setEvents] = React.useState([]);
-  const [facts, setFacts] = React.useState([]);
-  const [event, setEvent] = React.useState('');
-  const [type, setType] = React.useState('activity');
-  const [limit, setLimit] = React.useState(7);
-  const [open, setOpen] = React.useState(false);
-  const [fact, setFact] = React.useState(null);
+const DEFAULT_TYPE = 'My_activities';
+const DEFAULT_LIMIT = 7;
+const DEFAULT_LIMIT_INCREMENT = 8;
+
+export default ({ patient, session, setNewFact }) => {
+  const [activities, setActivities] = React.useState([]); // populates the activity buttons
+  const [events, setEvents] = React.useState([]); // populates the events dropdown list
+  const [types, setTypes] = React.useState([]); // populates the types dropdown list
+
+  const [event, setEvent] = React.useState(''); // stores the current selected event filter
+  const [type, setType] = React.useState(DEFAULT_TYPE); // stores the current selected type filter
+  const [limit, setLimit] = React.useState(DEFAULT_LIMIT); // stores the current limit of activity buttons displayed
+
+  const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
+  const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
+  const [fact, setFact] = React.useState(null); // stores the new fact which triggers a re-render of activity buttons
+
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs'));
   const classes = useStyles();
   const { dispatch } = useSnackbar();
 
   const onChangeEvent = event => {
-    setType('activity');
-    setLimit(7);
+    setType(DEFAULT_TYPE);
+    setLimit(DEFAULT_LIMIT);
     setEvent(event.target.value);
   };
 
   const onChangeType = event => {
     setEvent('');
-    setLimit(7);
+    setLimit(DEFAULT_LIMIT);
     setType(event.target.value);
   };
 
   const onShowMore = () => {
-    setLimit(limit + 8);
+    setLimit(limit + DEFAULT_LIMIT_INCREMENT);
   };
 
-  const onChooseFact = fact => {
-    setFact(fact);
+  const onChooseActivity = activity => {
+    setSelected(activity);
     setOpen(true);
   };
 
@@ -85,11 +81,12 @@ export default ({ session, setNewFact }) => {
         });
       });
       setNewFact(newFact);
+      setFact(newFact);
       setOpen(false);
       dispatch({
         type: SHOW_SNACKBAR,
         payload: {
-          message: `Successfully saved '${fact.name}' fact!`,
+          message: `Successfully saved '${selected.name}' fact!`,
           anchor: { vertical: 'bottom' },
           direction: 'up',
         },
@@ -100,8 +97,9 @@ export default ({ session, setNewFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      let result;
-      result = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
+      let result1;
+      let result2;
+      result1 = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
         dispatch({
           type: SHOW_SNACKBAR,
           payload: {
@@ -112,10 +110,23 @@ export default ({ session, setNewFact }) => {
         });
       });
 
+      result2 = await API.graphql(graphqlOperation(getActivityTypes, { client_id: 'SMSoft' })).catch(error => {
+        dispatch({
+          type: SHOW_SNACKBAR,
+          payload: {
+            message: `Whoops! Something went wrong when fetching activity types by client id: ${error.message}`,
+            anchor: { vertical: 'bottom' },
+            direction: 'up',
+          },
+        });
+      });
+
       if (mounted) {
-        setEvents(result.data.getEventsByClient.items);
+        setEvents(result1.data.getEventsByClient.items);
+        setTypes(result2.data.getActivityTypes);
       } else {
-        API.cancel(result, 'ActivitySection unmounted');
+        API.cancel(result1, 'ActivitySection unmounted');
+        API.cancel(result2, 'ActivitySection unmounted');
       }
     })();
 
@@ -127,33 +138,41 @@ export default ({ session, setNewFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      let result;
-      result = await API.graphql(
-        graphqlOperation(getActivityData, {
-          input: { client_id: 'SMSoft', event_id: event, activity_type: type, limit: limit },
-        })
-      ).catch(error => {
-        dispatch({
-          type: SHOW_SNACKBAR,
-          payload: {
-            message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
-            anchor: { vertical: 'bottom' },
-            direction: 'up',
-          },
+      if (patient) {
+        let result;
+        result = await API.graphql(
+          graphqlOperation(getActivityData, {
+            input: {
+              client_id: 'SMSoft',
+              person_id: patient.person_id,
+              event_id: event,
+              activity_type: type,
+              limit: limit,
+            },
+          })
+        ).catch(error => {
+          dispatch({
+            type: SHOW_SNACKBAR,
+            payload: {
+              message: `Whoops! Something went wrong when fetching activity data: ${error.message}`,
+              anchor: { vertical: 'bottom' },
+              direction: 'up',
+            },
+          });
         });
-      });
 
-      if (mounted) {
-        setFacts(result.data.getActivityData);
-      } else {
-        API.cancel(result, 'ActivitySection unmounted');
+        if (mounted) {
+          setActivities(result.data.getActivityData);
+        } else {
+          API.cancel(result, 'ActivitySection unmounted');
+        }
       }
     })();
 
     return () => {
       mounted = false;
     };
-  }, [event, type, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, event, type, limit, fact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
@@ -201,16 +220,16 @@ export default ({ session, setNewFact }) => {
       </Box>
       <Box p={3} flexGrow={1}>
         <Grid spacing={3} container>
-          {facts.slice(0, limit).map(fact => (
-            <Grid key={fact.code} sm={3} xs={6} item>
+          {activities.map(activity => (
+            <Grid key={activity.code} sm={3} xs={6} item>
               <Box py={6} px={2} textAlign='center' clone>
                 <Paper
                   elevation={4}
                   onClick={() => {
-                    onChooseFact(fact);
+                    onChooseActivity(activity);
                   }}
                   square>
-                  <Typography noWrap>{fact.name}</Typography>
+                  <Typography noWrap>{activity.name}</Typography>
                 </Paper>
               </Box>
             </Grid>
@@ -225,7 +244,7 @@ export default ({ session, setNewFact }) => {
         </Grid>
       </Box>
       <NewFactDialog
-        fact={fact}
+        fact={selected}
         session={session}
         open={open}
         onClose={() => {

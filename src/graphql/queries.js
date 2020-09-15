@@ -7,12 +7,30 @@ export const getActivityData = /* GraphQL */ `
       code
       name
       type
+      reason
+      normal_value
+      default_value
       most_recent_observation
       observation_expires
       observation_status
-      normal_value
-      default_value
+      observation_key
       valid_values_list
+    }
+  }
+`;
+export const getActivityTypes = /* GraphQL */ `
+  query GetActivityTypes($client_id: String!) {
+    getActivityTypes(client_id: $client_id) {
+      client_id
+      activity_type_code
+      default_observation_value
+      description
+      name
+      primary_observation_key
+      qualifiers {
+        qualifier_description
+        qualifier_observation_key
+      }
     }
   }
 `;
