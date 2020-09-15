@@ -7,11 +7,13 @@ export const getActivityData = /* GraphQL */ `
       code
       name
       type
+      reason
+      normal_value
+      default_value
       most_recent_observation
       observation_expires
       observation_status
-      normal_value
-      default_value
+      observation_key
       valid_values_list
     }
   }
