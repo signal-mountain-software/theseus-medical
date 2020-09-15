@@ -5,12 +5,18 @@ import Box from '@material-ui/core/Box';
 import Chip from '@material-ui/core/Chip';
 import FaceIcon from '@material-ui/icons/Face';
 
+import PatientDialog from './PatientDialog';
 import { SHOW_SNACKBAR } from '../contexts/Snackbar/actions';
 import useSnackbar from '../hooks/useSnackbar';
 
 export default ({ patient }) => {
   const [picture, setPicture] = React.useState('');
+  const [open, setOpen] = React.useState(false);
   const { dispatch } = useSnackbar();
+
+  const onClick = () => {
+    setOpen(true);
+  };
 
   React.useEffect(() => {
     (async () => {
@@ -39,6 +45,7 @@ export default ({ patient }) => {
           label={`${patient?.name.last}, ${patient?.name.first}`}
           variant='outlined'
           avatar={<Avatar src={picture} />}
+          onClick={onClick}
           clickable
         />
       ) : (
@@ -50,6 +57,14 @@ export default ({ patient }) => {
           clickable
         />
       )}
+      <PatientDialog
+        patient={patient}
+        picture={picture}
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+      />
     </Box>
   );
 };
