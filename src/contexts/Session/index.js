@@ -4,6 +4,7 @@ import reducer from './reducer';
 const initialState = {
   patient: null,
   session: null,
+  user: null,
 };
 
 export const SessionContext = React.createContext(initialState);

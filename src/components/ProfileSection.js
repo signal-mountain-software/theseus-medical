@@ -31,7 +31,6 @@ export default ({ session }) => {
           {getGreeting()}, {session?.user_display_name}!
         </Typography>
         <Typography variant='body1'>Your current patient is {session?.patient_display_name}</Typography>
-        <Typography variant='body1'>Your current role: {session?.user_role}</Typography>
       </Box>
     </Paper>
   );

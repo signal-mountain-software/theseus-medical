@@ -56,64 +56,66 @@ export const getEventsByClient = /* GraphQL */ `
     }
   }
 `;
-export const getSessionWithPatient = /* GraphQL */ `
-  query GetSessionWithPatient($client_id: String!, $device_id: String!) {
-    getSessionWithPatient(client_id: $client_id, device_id: $device_id) {
-      session {
-        client_id
-        device_id
-        method
-        patient_id
-        session_id
-        status
-        current_filter
-        directed_action
-        user_id
-        message
-        user_display_name
-        user_role
-        code_version
-        full_device_id
-        host_session_id
-        host_user_id
-        patient_activity_customizations {
-          activity_key
-        }
-        patient_display_name
-        verbosity
-        current_event
+export const getPerson = /* GraphQL */ `
+  query GetPerson($person_id: String!) {
+    getPerson(person_id: $person_id) {
+      person_id
+      client_id
+      clients {
+        groups
+        id
       }
-      patient {
+      location
+      name {
+        first
+        last
+        mi
+        suffix
+      }
+      roles
+      messaging {
+        email
+        sms
+      }
+      relationships {
         person_id
-        client_id
-        clients {
-          groups
-          id
-        }
-        location
-        name {
-          first
-          last
-          mi
-          suffix
-        }
-        roles
-        relationship {
-          type
-          person_id
-        }
-        messaging {
-          email
-          sms
-        }
-        preferred_method
-        activity_customizations {
-          activity_key
-          baseline
-          permitted_roles
-        }
-        priority_activities
-        favorite_activities
+        name
+        type
+      }
+      preferred_method
+      activity_customizations {
+        activity_key
+        baseline
+        permitted_role
+      }
+      priority_activities
+      favorite_activities
+    }
+  }
+`;
+export const getSession = /* GraphQL */ `
+  query GetSession($session_id: String!) {
+    getSession(session_id: $session_id) {
+      session_id
+      client_id
+      current_event
+      device_id
+      method
+      patient_display_name
+      patient_id
+      status
+      user_display_name
+      user_id
+      directed_action
+      user_roles
+      code_version
+      full_device_id
+      host_session_id
+      host_user_id
+      patient_activity_customizations {
+        activity_key
+        baseline
+        permitted_role
       }
     }
   }

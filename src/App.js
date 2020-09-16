@@ -1,5 +1,6 @@
 import React from 'react';
-import Amplify, { API, graphqlOperation } from 'aws-amplify';
+import { useSnackbar } from 'notistack';
+import { API, Auth, graphqlOperation } from 'aws-amplify';
 import Box from '@material-ui/core/Box';
 import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 import AssignmentIcon from '@material-ui/icons/Assignment';
@@ -7,27 +8,21 @@ import ChatIcon from '@material-ui/icons/Chat';
 
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
-import withAlerts from './hocs/withAlerts';
 import withAuth from './hocs/withAuth';
 import withDarkMode from './hocs/withDarkMode';
 import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
+import useSession from './hooks/useSession';
 import RootNavigation from './navigation/RootNavigation';
 import ChatScreen from './screens/ChatScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import TheseusScreen from './screens/TheseusScreen';
 import hocFactory from './util/hocFactory';
 
-import { getSessionWithPatient } from './graphql/queries';
-import { SET_PATIENT, SET_SESSION } from './contexts/Session/actions';
-import { SHOW_SNACKBAR } from './contexts/Snackbar/actions';
-import useSession from './hooks/useSession';
-import useSnackbar from './hooks/useSnackbar';
-
-import config from './config/amplify.json';
-Amplify.configure(config);
+import { getPerson, getSession } from './graphql/queries';
+import { SET_PATIENT, SET_SESSION, SET_USER } from './contexts/Session/actions';
 
 const menu = [
   { label: 'Profile', path: '/profile', icon: <AccountCircleIcon />, screen: <ProfileScreen /> },
@@ -38,43 +33,60 @@ const menu = [
 const HOME = '/theseus';
 
 const App = () => {
-  const { dispatch: snackDispatch } = useSnackbar();
-  const { state, dispatch: sessionDispatch } = useSession();
-  const { patient } = state;
+  const { enqueueSnackbar } = useSnackbar();
+  const { state, dispatch } = useSession();
+  const { user } = state;
+
+  React.useEffect(() => {
+    (async () => {
+      const user = await Auth.currentAuthenticatedUser().catch(error => {
+        enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message}`, {
+          variant: 'error',
+        });
+      });
+
+      dispatch({ type: SET_USER, payload: user });
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      let result;
-      result = await API.graphql(
-        graphqlOperation(getSessionWithPatient, { client_id: 'SMSoft', device_id: 'TESTDEVICE' })
-      ).catch(error => {
-        snackDispatch({
-          type: SHOW_SNACKBAR,
-          payload: {
-            message: `Whoops! Something went wrong when fetching a patient by session: ${error.message}`,
-            anchor: { vertical: 'bottom' },
-            direction: 'up',
-          },
+      let result1;
+      let result2;
+      if (user) {
+        result1 = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.message}`, {
+            variant: 'error',
+          });
         });
-      });
 
-      if (mounted) {
-        sessionDispatch({ type: SET_PATIENT, payload: result.data.getSessionWithPatient.patient });
-        sessionDispatch({ type: SET_SESSION, payload: result.data.getSessionWithPatient.session });
-      } else {
-        API.cancel(result, 'App unmounted');
+        result2 = await API.graphql(
+          graphqlOperation(getPerson, { person_id: result1.data.getSession.patient_id })
+        ).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`, {
+            variant: 'error',
+          });
+        });
+
+        if (mounted) {
+          dispatch({ type: SET_SESSION, payload: result1.data.getSession });
+          dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
+        } else {
+          API.cancel(result1, 'App unmounted');
+          API.cancel(result2, 'App unmounted');
+        }
       }
     })();
 
     return () => {
       mounted = false;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Box>
-      <TopBar patient={patient} />
+      <TopBar />
       <Box pb={7}>
         <RootNavigation menu={menu} homePath={HOME} />
       </Box>
@@ -83,4 +95,4 @@ const App = () => {
   );
 };
 
-export default hocFactory(App, [withRouter, withDarkMode, withTheme, withSnackbar, withAlerts, withAuth, withSession]);
+export default hocFactory(App, [withRouter, withDarkMode, withTheme, withSnackbar, withSession, withAuth]);

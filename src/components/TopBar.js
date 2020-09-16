@@ -9,6 +9,7 @@ import Toolbar from '@material-ui/core/Toolbar';
 import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 
+import useSession from '../hooks/useSession';
 import PatientChip from './PatientChip';
 
 const HideOnScroll = ({ children }) => {
@@ -21,7 +22,10 @@ const HideOnScroll = ({ children }) => {
   );
 };
 
-export default ({ patient }) => {
+export default () => {
+  const { state } = useSession();
+  const { patient } = state;
+
   const onSignOut = () => {
     Auth.signOut().then(() => {
       window.location.reload();
