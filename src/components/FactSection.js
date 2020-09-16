@@ -21,7 +21,7 @@ const useStyles = makeStyles({
   },
 });
 
-export default ({ patient, newFact }) => {
+export default ({ patient, session, newFact }) => {
   const [facts, setFacts] = React.useState([]);
   const isTablet = useMediaQuery(theme => theme.breakpoints.down('sm'));
   const classes = useStyles();
@@ -30,11 +30,11 @@ export default ({ patient, newFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      if (patient) {
+      if (patient && session) {
         let result;
         result = await API.graphql(
           graphqlOperation(getActivityData, {
-            input: { client_id: 'SMSoft', person_id: patient.person_id, fact_data: true, history_only: true },
+            input: { client_id: session.client_id, person_id: patient.person_id, fact_data: true, history_only: true },
           })
         ).catch(error => {
           enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.message}`, {
@@ -53,7 +53,7 @@ export default ({ patient, newFact }) => {
     return () => {
       mounted = false;
     };
-  }, [patient, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, session, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
