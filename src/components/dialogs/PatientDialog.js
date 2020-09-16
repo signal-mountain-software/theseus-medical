@@ -11,10 +11,11 @@ import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import FaceIcon from '@material-ui/icons/Face';
 
-import ActivityCustomizationsSection from './ActivityCustomizationsSection';
-import ClientsSection from './ClientsSection';
-import RelationshipSection from './RelationshipSection';
+import ActivityCustomizationsSection from '../sections/ActivityCustomizationsSection';
+import ClientsSection from '../sections/ClientsSection';
+import RelationshipSection from '../sections/RelationshipSection';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -44,7 +45,7 @@ export default ({ patient, picture, open, onClose }) => {
             <CloseIcon />
           </IconButton>
           <Typography variant='h6' className={classes.title}>
-            {patient?.name.first} {patient?.name.last}
+            {patient.name.first} {patient.name.last}
           </Typography>
         </Toolbar>
       </AppBar>
@@ -59,18 +60,19 @@ export default ({ patient, picture, open, onClose }) => {
           justifyContent='center'
           alignItems='center'>
           <Box flexGrow={1} mr={3}>
-            <Avatar src={picture} className={classes.picture} />
+            <Avatar src={picture} className={classes.picture}>
+              <FaceIcon />
+            </Avatar>
           </Box>
           <Box flexGrow={2} display='flex' flexDirection='column'>
-            <Typography variant='h6'>Location: {patient?.location || 'null'}</Typography>
-            {patient?.messaging ? (
+            <Typography variant='h6'>Location: {patient.location || 'null'}</Typography>
+            {patient.messaging ? (
               <>
                 <Typography variant='subtitle2'>
-                  email: {patient.messaging.email ? patient.messaging.email : 'none'} | phone:{' '}
-                  {patient.messaging.sms ? patient.messaging.sms : 'none'}
+                  email: {patient.messaging.email || 'none'} | phone: {patient.messaging.sms || 'none'}
                 </Typography>
                 <Typography variant='subtitle2'>
-                  Preferred contact method: {patient.preferred_method ? patient.preferred_method : 'none'}
+                  Preferred contact method: {patient.preferred_method || 'none'}
                 </Typography>
               </>
             ) : (
@@ -83,10 +85,10 @@ export default ({ patient, picture, open, onClose }) => {
             <Divider />
             <Box mb={1} />
             <Typography variant='subtitle1'>
-              Favorite activities: {patient?.favorite_activities ? patient.favorite_activities.join(', ') : 'none'}
+              Favorite activities: {patient.favorite_activities ? patient.favorite_activities.join(', ') : 'none'}
             </Typography>
             <Typography variant='subtitle1'>
-              Priority activities: {patient?.priority_activities ? patient.priority_activities.join(', ') : 'none'}
+              Priority activities: {patient.priority_activities ? patient.priority_activities.join(', ') : 'none'}
             </Typography>
           </Box>
         </Paper>

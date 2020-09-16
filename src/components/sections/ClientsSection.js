@@ -23,7 +23,7 @@ export default ({ patient }) => {
     <Paper component={Box} m={2} variant='outlined'>
       <Box mt={1} py={1.25} px={3} borderBottom={2} display='flex' flexDirection='row'>
         <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
-          <Typography variant='subtitle1'>Activity Customizations</Typography>
+          <Typography variant='subtitle1'>Clients</Typography>
         </Box>
       </Box>
       <Box p={3} flexGrow={1}>
@@ -31,18 +31,26 @@ export default ({ patient }) => {
           <Table size='small' stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell>Activity Key</TableCell>
-                <TableCell>Baseline</TableCell>
-                <TableCell>Permitted Roles</TableCell>
+                <TableCell>Id</TableCell>
+                <TableCell>Groups</TableCell>
               </TableRow>
             </TableHead>
-            {patient?.activity_customizations ? (
+            {patient.clients ? (
               <TableBody>
-                {patient.activity_customizations.map(activity => (
-                  <TableRow key={activity.activity_key}>
-                    <TableCell>{activity.activity_key}</TableCell>
-                    <TableCell>{activity.baseline}</TableCell>
-                    <TableCell>{activity.permitted_roles ? activity.permitted_roles.join(', ') : 'none'}</TableCell>
+                {patient.clients.map(client => (
+                  <TableRow key={client.id}>
+                    <TableCell>{client.id}</TableCell>
+                    <TableCell>
+                      {client.groups ? (
+                        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                          {client.groups.map(group => (
+                            <Typography key={group}>{group}</Typography>
+                          ))}
+                        </Box>
+                      ) : (
+                        'none'
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
