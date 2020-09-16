@@ -4,6 +4,7 @@ import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
+import Divider from '@material-ui/core/Divider';
 import FormControl from '@material-ui/core/FormControl';
 import IconButton from '@material-ui/core/IconButton';
 import InputLabel from '@material-ui/core/InputLabel';
@@ -24,7 +25,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(2),
   },
   formControl: {
-    margin: theme.spacing(1),
     width: '100%',
   },
 }));
@@ -37,11 +37,6 @@ const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observat
 
   const onChangeValue = event => {
     setValue(event.target.value);
-    newFact.value = observationKey + '.' + event.target.value;
-    setNewFact(newFact);
-  };
-
-  const onChangeNum = event => {
     newFact.value = observationKey + '.' + event.target.value;
     setNewFact(newFact);
   };
@@ -75,7 +70,7 @@ const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observat
           label='Number'
           type='number'
           variant='outlined'
-          onChange={onChangeNum}
+          onChange={onChangeValue}
           InputLabelProps={{ shrink: true }}
           fullWidth
         />
@@ -162,7 +157,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
           </Typography>
         </Toolbar>
       </AppBar>
-      <Box p={3} flexGrow={1}>
+      <Box p={3}>
         <DynamicForm
           newFact={newFact}
           setNewFact={setNewFact}
@@ -172,7 +167,8 @@ export default ({ fact, session, open, onClose, onSave }) => {
           observationKey={fact?.observation_key}
         />
       </Box>
-      <Box p={2} flexGrow={1} display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+      <Divider />
+      <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
         <Button color='primary' variant='contained' startIcon={<SaveIcon />} onClick={handleSave}>
           Save
         </Button>
