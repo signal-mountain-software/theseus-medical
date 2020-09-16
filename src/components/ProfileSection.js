@@ -35,7 +35,7 @@ export default ({ session }) => {
         {session?.patient_id ? (
           <Typography variant='body1'>Your current patient is {session?.patient_display_name}</Typography>
         ) : (
-          <Typography variant='body1'>You do not have a current patient</Typography>
+          <Typography variant='body1'>You are currently viewing your own facts</Typography>
         )}
       </Box>
     </Paper>

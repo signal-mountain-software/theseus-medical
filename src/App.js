@@ -61,22 +61,19 @@ const App = () => {
           });
         });
 
-        if (result1.data.getSession.patient_id) {
-          result2 = await API.graphql(
-            graphqlOperation(getPerson, { person_id: result1.data.getSession.patient_id })
-          ).catch(error => {
-            enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`, {
-              variant: 'error',
-            });
+        result2 = await API.graphql(
+          graphqlOperation(getPerson, {
+            person_id: result1.data.getSession.patient_id || result1.data.getSession.user_id,
+          })
+        ).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`, {
+            variant: 'error',
           });
-        }
+        });
 
         if (mounted) {
           dispatch({ type: SET_SESSION, payload: result1.data.getSession });
-
-          if (result2) {
-            dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
-          }
+          dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
         } else {
           API.cancel(result1, 'App unmounted');
           API.cancel(result2, 'App unmounted');
