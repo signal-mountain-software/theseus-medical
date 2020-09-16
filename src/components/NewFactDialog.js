@@ -30,7 +30,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observationKey }) => {
-  const [value, setValue] = React.useState('');
+  const [value, setValue] = React.useState(defaultValue);
   const [num1, setNum1] = React.useState(0);
   const [num2, setNum2] = React.useState(0);
   const classes = useStyles();
@@ -56,11 +56,8 @@ const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observat
   };
 
   React.useEffect(() => {
-    if (defaultValue && observationKey) {
-      newFact.value = observationKey + '.' + defaultValue;
-      setNewFact(newFact);
-      setValue(defaultValue);
-    }
+    newFact.value = observationKey + '.' + defaultValue;
+    setNewFact(newFact);
   }, [newFact, setNewFact, defaultValue, observationKey]);
 
   switch (type) {
@@ -134,7 +131,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
   React.useEffect(() => {
     if (fact && session) {
       setNewFact({
-        patient_id: session.patient_id,
+        patient_id: session.patient_id || session.user_id,
         activity_key: fact.code,
         value: null,
         session: {
@@ -158,14 +155,16 @@ export default ({ fact, session, open, onClose, onSave }) => {
         </Toolbar>
       </AppBar>
       <Box p={3}>
-        <DynamicForm
-          newFact={newFact}
-          setNewFact={setNewFact}
-          type={fact?.type}
-          values={fact?.valid_values_list}
-          defaultValue={fact?.default_value}
-          observationKey={fact?.observation_key}
-        />
+        {fact ? (
+          <DynamicForm
+            newFact={newFact}
+            setNewFact={setNewFact}
+            type={fact.type}
+            values={fact.valid_values_list}
+            defaultValue={fact.default_value}
+            observationKey={fact.observation_key}
+          />
+        ) : null}
       </Box>
       <Divider />
       <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
