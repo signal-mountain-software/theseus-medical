@@ -62,7 +62,9 @@ const App = () => {
         });
 
         result2 = await API.graphql(
-          graphqlOperation(getPerson, { person_id: result1.data.getSession.patient_id })
+          graphqlOperation(getPerson, {
+            person_id: result1.data.getSession.patient_id || result1.data.getSession.user_id,
+          })
         ).catch(error => {
           enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`, {
             variant: 'error',

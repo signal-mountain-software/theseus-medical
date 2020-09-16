@@ -13,6 +13,7 @@ import { useMediaQuery } from '@material-ui/core';
 
 import { createPutFact } from '../graphql/mutations';
 import { getActivityData, getActivityTypes, getEventsByClient } from '../graphql/queries';
+import HtmlTooltip from './HtmlTooltip';
 import NewFactDialog from './NewFactDialog';
 
 const useStyles = makeStyles(theme => ({
@@ -86,43 +87,52 @@ export default ({ patient, session, setNewFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      let result1;
-      let result2;
-      result1 = await API.graphql(graphqlOperation(getEventsByClient, { client_id: 'SMSoft' })).catch(error => {
-        enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
-          variant: 'error',
-        });
-      });
+      if (session) {
+        let result1;
+        let result2;
+        result1 = await API.graphql(graphqlOperation(getEventsByClient, { client_id: session.client_id })).catch(
+          error => {
+            enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
+              variant: 'error',
+            });
+          }
+        );
 
-      result2 = await API.graphql(graphqlOperation(getActivityTypes, { client_id: 'SMSoft' })).catch(error => {
-        enqueueSnackbar(`Whoops! Something went wrong when fetching activity types by client id: ${error.message}`, {
-          variant: 'error',
-        });
-      });
+        result2 = await API.graphql(graphqlOperation(getActivityTypes, { client_id: session.client_id })).catch(
+          error => {
+            enqueueSnackbar(
+              `Whoops! Something went wrong when fetching activity types by client id: ${error.message}`,
+              {
+                variant: 'error',
+              }
+            );
+          }
+        );
 
-      if (mounted) {
-        setEvents(result1.data.getEventsByClient.items);
-        setTypes(result2.data.getActivityTypes);
-      } else {
-        API.cancel(result1, 'ActivitySection unmounted');
-        API.cancel(result2, 'ActivitySection unmounted');
+        if (mounted) {
+          setEvents(result1.data.getEventsByClient.items);
+          setTypes(result2.data.getActivityTypes);
+        } else {
+          API.cancel(result1, 'ActivitySection unmounted');
+          API.cancel(result2, 'ActivitySection unmounted');
+        }
       }
     })();
 
     return () => {
       mounted = false;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      if (patient) {
+      if (patient && session) {
         let result;
         result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: {
-              client_id: 'SMSoft',
+              client_id: session.client_id,
               person_id: patient.person_id,
               event_id: event,
               activity_type: type,
@@ -203,7 +213,11 @@ export default ({ patient, session, setNewFact }) => {
                     onChooseActivity(activity);
                   }}
                   square>
-                  <Typography noWrap>{activity.name}</Typography>
+                  <HtmlTooltip title={activity.name} body={'Reason: ' + activity.reason}>
+                    <Typography variant='h6' noWrap>
+                      {activity.name}
+                    </Typography>
+                  </HtmlTooltip>
                 </Paper>
               </Box>
             </Grid>
@@ -211,7 +225,7 @@ export default ({ patient, session, setNewFact }) => {
           <Grid sm={3} xs={6} item>
             <Box py={6} px={2} textAlign='center' clone>
               <Paper elevation={4} onClick={onShowMore} square>
-                <Typography>Show more</Typography>
+                <Typography variant='h6'>Show more</Typography>
               </Paper>
             </Box>
           </Grid>
