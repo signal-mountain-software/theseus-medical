@@ -9,7 +9,6 @@ import FormControl from '@material-ui/core/FormControl';
 import IconButton from '@material-ui/core/IconButton';
 import InputLabel from '@material-ui/core/InputLabel';
 import NativeSelect from '@material-ui/core/NativeSelect';
-import Slide from '@material-ui/core/Slide';
 import TextField from '@material-ui/core/TextField';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
@@ -118,8 +117,6 @@ const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observat
   }
 };
 
-const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
-
 export default ({ fact, session, open, onClose, onSave }) => {
   const [newFact, setNewFact] = React.useState(null);
   const classes = useStyles();
@@ -143,19 +140,23 @@ export default ({ fact, session, open, onClose, onSave }) => {
   }, [fact, session]);
 
   return (
-    <Dialog open={open} onClose={onClose} TransitionComponent={Transition}>
+    <Dialog open={open} onClose={onClose}>
       <AppBar className={classes.appBar}>
         <Toolbar>
           <IconButton color='inherit' edge='start' onClick={onClose}>
             <CloseIcon />
           </IconButton>
           <Typography variant='h6' className={classes.title}>
-            Adding New '{fact?.name}' Fact
+            Adding New Fact
           </Typography>
         </Toolbar>
       </AppBar>
-      <Box p={3}>
-        {fact ? (
+      {fact ? (
+        <Box p={3} display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+          <Typography variant='subtitle1'>Fact: {fact.name}</Typography>
+          <Typography variant='subtitle1'>Type: {fact.type}</Typography>
+          <Typography variant='subtitle1'>Reason: {fact.reason}</Typography>
+          <Box my={1} />
           <DynamicForm
             newFact={newFact}
             setNewFact={setNewFact}
@@ -164,8 +165,8 @@ export default ({ fact, session, open, onClose, onSave }) => {
             defaultValue={fact.default_value}
             observationKey={fact.observation_key}
           />
-        ) : null}
-      </Box>
+        </Box>
+      ) : null}
       <Divider />
       <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
         <Button color='primary' variant='contained' startIcon={<SaveIcon />} onClick={handleSave}>

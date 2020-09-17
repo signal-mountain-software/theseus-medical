@@ -4,9 +4,11 @@ import { useSnackbar } from 'notistack';
 import Avatar from '@material-ui/core/Avatar';
 import Box from '@material-ui/core/Box';
 import Chip from '@material-ui/core/Chip';
+import Tooltip from '@material-ui/core/Tooltip';
+import Typography from '@material-ui/core/Typography';
 import FaceIcon from '@material-ui/icons/Face';
 
-import PatientDialog from './PatientDialog';
+import PatientDialog from './dialogs/PatientDialog';
 
 export default ({ patient }) => {
   const [picture, setPicture] = React.useState('');
@@ -34,31 +36,42 @@ export default ({ patient }) => {
   return (
     <Box>
       {patient ? (
-        <Chip
-          color='primary'
-          label={`${patient?.name.last}, ${patient?.name.first}`}
-          variant='outlined'
-          avatar={<Avatar src={picture} />}
-          onClick={onClick}
-          clickable
-        />
+        <>
+          <Tooltip title={<Typography variant='subtitle1'>View current patient</Typography>} placement='bottom-start'>
+            <Chip
+              color='primary'
+              label={`${patient.name.last}, ${patient.name.first}`}
+              variant='outlined'
+              avatar={
+                <Avatar src={picture}>
+                  <FaceIcon />
+                </Avatar>
+              }
+              onClick={onClick}
+              clickable
+            />
+          </Tooltip>
+          <PatientDialog
+            patient={patient}
+            picture={picture}
+            open={open}
+            onClose={() => {
+              setOpen(false);
+            }}
+          />
+        </>
       ) : (
         <Chip
           color='primary'
-          label='Choose a patient (not yet implemented)'
+          label='Loading patient...'
           variant='outlined'
-          icon={<FaceIcon />}
-          clickable
+          avatar={
+            <Avatar>
+              <FaceIcon />
+            </Avatar>
+          }
         />
       )}
-      <PatientDialog
-        patient={patient}
-        picture={picture}
-        open={open}
-        onClose={() => {
-          setOpen(false);
-        }}
-      />
     </Box>
   );
 };

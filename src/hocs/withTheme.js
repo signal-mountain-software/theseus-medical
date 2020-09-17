@@ -3,8 +3,8 @@ import CssBaseline from '@material-ui/core/CssBaseline';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { ThemeProvider, unstable_createMuiStrictModeTheme } from '@material-ui/core/styles';
 
-import { SET_MODE } from '../contexts/DarkMode/actions';
 import useDarkMode from '../hooks/useDarkMode';
+import { SET_MODE } from '../contexts/DarkMode/actions';
 
 export default Component => props => {
   const { state, dispatch } = useDarkMode();

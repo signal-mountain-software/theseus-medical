@@ -11,10 +11,10 @@ import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { useMediaQuery } from '@material-ui/core';
 
-import { createPutFact } from '../graphql/mutations';
-import { getActivityData, getActivityTypes, getEventsByClient } from '../graphql/queries';
-import HtmlTooltip from './HtmlTooltip';
-import NewFactDialog from './NewFactDialog';
+import { createPutFact } from '../../graphql/mutations';
+import { getActivityData, getActivityTypes, getEventsByClient } from '../../graphql/queries';
+import NewFactDialog from '../dialogs/NewFactDialog';
+import HtmlTooltip from '../HtmlTooltip';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -225,7 +225,9 @@ export default ({ patient, session, setNewFact }) => {
           <Grid sm={3} xs={6} item>
             <Box py={6} px={2} textAlign='center' clone>
               <Paper elevation={4} onClick={onShowMore} square>
-                <Typography variant='h6'>Show more</Typography>
+                <Typography variant='h6' noWrap>
+                  Show more
+                </Typography>
               </Paper>
             </Box>
           </Grid>

@@ -23,7 +23,7 @@ export default ({ patient }) => {
     <Paper component={Box} m={2} variant='outlined'>
       <Box mt={1} py={1.25} px={3} borderBottom={2} display='flex' flexDirection='row'>
         <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
-          <Typography variant='subtitle1'>Clients</Typography>
+          <Typography variant='subtitle1'>Relationships</Typography>
         </Box>
       </Box>
       <Box p={3} flexGrow={1}>
@@ -31,26 +31,16 @@ export default ({ patient }) => {
           <Table size='small' stickyHeader>
             <TableHead>
               <TableRow>
-                <TableCell>Id</TableCell>
-                <TableCell>Groups</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell>Type</TableCell>
               </TableRow>
             </TableHead>
-            {patient?.clients ? (
+            {patient.relationships ? (
               <TableBody>
-                {patient.clients.map(client => (
-                  <TableRow key={client.id}>
-                    <TableCell>{client.id}</TableCell>
-                    <TableCell>
-                      {client.groups ? (
-                        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                          {client.groups.map(group => (
-                            <Typography key={group}>{group}</Typography>
-                          ))}
-                        </Box>
-                      ) : (
-                        'none'
-                      )}
-                    </TableCell>
+                {patient.relationships.map(relationship => (
+                  <TableRow key={relationship.person_id}>
+                    <TableCell>{relationship.name}</TableCell>
+                    <TableCell>{relationship.type}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
