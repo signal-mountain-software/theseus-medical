@@ -56,6 +56,43 @@ export const getEventsByClient = /* GraphQL */ `
     }
   }
 `;
+export const getPeopleByGroup = /* GraphQL */ `
+  query GetPeopleByGroup($client_group_id: String!, $role: String) {
+    getPeopleByGroup(client_group_id: $client_group_id, role: $role) {
+      person_id
+      client_id
+      clients {
+        groups
+        id
+      }
+      location
+      name {
+        first
+        last
+        mi
+        suffix
+      }
+      roles
+      messaging {
+        email
+        sms
+      }
+      relationships {
+        person_id
+        name
+        type
+      }
+      preferred_method
+      activity_customizations {
+        activity_key
+        baseline
+        permitted_role
+      }
+      priority_activities
+      favorite_activities
+    }
+  }
+`;
 export const getPerson = /* GraphQL */ `
   query GetPerson($person_id: String!) {
     getPerson(person_id: $person_id) {
@@ -107,7 +144,6 @@ export const getSession = /* GraphQL */ `
       user_display_name
       user_id
       directed_action
-      user_roles
       code_version
       full_device_id
       host_session_id

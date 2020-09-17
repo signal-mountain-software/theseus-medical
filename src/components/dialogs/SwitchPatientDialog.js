@@ -31,10 +31,10 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const PATIENT_LIST = [
-  { patient_id: 'rbobby', patient_display_name: 'Ricky Bobby' },
-  { patient_id: 'cbing', patient_display_name: 'Chandler Bing' },
-  { patient_id: 'rsteelesr', patient_display_name: 'Ray Steele Sr' },
+const PEOPLE = [
+  { person_id: 'rbobby', name: { first: 'Ricky', last: 'Bobby' } },
+  { person_id: 'cbing', name: { first: 'Chandler', last: 'Bing' } },
+  { person_id: 'rsteelesr', name: { first: 'Ray', last: 'Steele', suffix: 'Sr' } },
 ];
 
 export default ({ open, onClose }) => {
@@ -43,6 +43,13 @@ export default ({ open, onClose }) => {
   const { state, dispatch } = useSession();
   const { session } = state;
   const classes = useStyles();
+
+  const parsePersonIntoPatient = person => {
+    const patient_id = person.person_id;
+    const { first, last, suffix } = person.name;
+    const patient_display_name = `${first} ${last}${suffix ? ' ' + suffix : ''}`;
+    return { patient_id, patient_display_name };
+  };
 
   const handleClose = () => {
     if (session) {
@@ -103,7 +110,7 @@ export default ({ open, onClose }) => {
           </Typography>
         </Toolbar>
       </AppBar>
-      {PATIENT_LIST ? (
+      {PEOPLE ? (
         <Box p={3}>
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} square>
             <List component='nav'>
@@ -112,12 +119,12 @@ export default ({ open, onClose }) => {
                 selected={selected}
                 onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
               />
-              {PATIENT_LIST.map(patient => (
+              {PEOPLE.map(person => (
                 <PatientListItem
-                  key={patient.patient_id}
-                  patient={patient}
+                  key={person.person_id}
+                  patient={parsePersonIntoPatient(person)}
                   selected={selected}
-                  onClick={handlePatientClick(patient)}
+                  onClick={handlePatientClick(parsePersonIntoPatient(person))}
                 />
               ))}
             </List>

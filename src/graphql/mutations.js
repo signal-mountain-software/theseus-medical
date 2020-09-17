@@ -30,7 +30,6 @@ export const updateSession = /* GraphQL */ `
       user_display_name
       user_id
       directed_action
-      user_roles
       code_version
       full_device_id
       host_session_id
