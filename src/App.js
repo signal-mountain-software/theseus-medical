@@ -6,20 +6,20 @@ import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 import AssignmentIcon from '@material-ui/icons/Assignment';
 import ChatIcon from '@material-ui/icons/Chat';
 
-import BottomNav from './components/BottomNav';
-import TopBar from './components/TopBar';
+import hocFactory from './util/hocFactory';
+import ChatScreen from './screens/ChatScreen';
+import ProfileScreen from './screens/ProfileScreen';
+import TheseusScreen from './screens/TheseusScreen';
+import RootNavigation from './navigation/RootNavigation';
+import useSession from './hooks/useSession';
 import withAuth from './hocs/withAuth';
 import withDarkMode from './hocs/withDarkMode';
 import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
-import useSession from './hooks/useSession';
-import RootNavigation from './navigation/RootNavigation';
-import ChatScreen from './screens/ChatScreen';
-import ProfileScreen from './screens/ProfileScreen';
-import TheseusScreen from './screens/TheseusScreen';
-import hocFactory from './util/hocFactory';
+import BottomNav from './components/BottomNav';
+import TopBar from './components/TopBar';
 
 import { getPerson, getSession } from './graphql/queries';
 import { SET_PATIENT, SET_SESSION, SET_USER } from './contexts/Session/actions';

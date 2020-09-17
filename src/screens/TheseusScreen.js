@@ -1,9 +1,9 @@
 import React from 'react';
 import Box from '@material-ui/core/Box';
 
-import ActivitySection from '../components/ActivitySection';
-import FactSection from '../components/FactSection';
 import useSession from '../hooks/useSession';
+import ActivitySection from '../components/sections/ActivitySection';
+import FactSection from '../components/sections/FactSection';
 
 export default () => {
   const [newFact, setNewFact] = React.useState(null);

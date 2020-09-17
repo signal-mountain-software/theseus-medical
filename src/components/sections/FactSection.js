@@ -13,7 +13,7 @@ import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import { getActivityData } from '../graphql/queries';
+import { getActivityData } from '../../graphql/queries';
 
 const useStyles = makeStyles({
   container: {
