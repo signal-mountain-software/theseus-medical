@@ -16,3 +16,30 @@ export const createPutFact = /* GraphQL */ `
     }
   }
 `;
+export const updateSession = /* GraphQL */ `
+  mutation UpdateSession($input: UpdateSessionInput!) {
+    updateSession(input: $input) {
+      session_id
+      client_id
+      current_event
+      device_id
+      method
+      patient_display_name
+      patient_id
+      status
+      user_display_name
+      user_id
+      directed_action
+      user_roles
+      code_version
+      full_device_id
+      host_session_id
+      host_user_id
+      patient_activity_customizations {
+        activity_key
+        baseline
+        permitted_role
+      }
+    }
+  }
+`;

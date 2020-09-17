@@ -7,14 +7,15 @@ import ListItemAvatar from '@material-ui/core/ListItemAvatar';
 import ListItemText from '@material-ui/core/ListItemText';
 import FaceIcon from '@material-ui/icons/Face';
 
-export default ({ patientId, patientDisplayName, selected, onClick }) => {
+export default ({ patient, selected, onClick }) => {
   const [picture, setPicture] = React.useState('');
   const { enqueueSnackbar } = useSnackbar();
+  const { patient_id, patient_display_name } = patient;
 
   React.useEffect(() => {
     (async () => {
-      if (patientId) {
-        const response = await Storage.get('patients/' + patientId + '.jpg').catch(error => {
+      if (patient_id) {
+        const response = await Storage.get('patients/' + patient_id + '.jpg').catch(error => {
           enqueueSnackbar(`Whoops! Something went wrong when retrieving public object from s3: ${error.message}`, {
             variant: 'error',
           });
@@ -26,19 +27,19 @@ export default ({ patientId, patientDisplayName, selected, onClick }) => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <ListItem selected={selected === patientId} onClick={onClick} button>
+    <ListItem selected={selected.patient_id === patient_id} onClick={onClick} button>
       <ListItemAvatar>
-        {patientId ? (
+        {patient_id ? (
           <Avatar src={picture}>
-            <FaceIcon />
+            <FaceIcon style={{ width: '100%', height: '100%' }} />
           </Avatar>
         ) : (
           <Avatar>
-            <FaceIcon />
+            <FaceIcon style={{ width: '100%', height: '100%' }} />
           </Avatar>
         )}
       </ListItemAvatar>
-      <ListItemText>{patientDisplayName}</ListItemText>
+      <ListItemText>{patient_display_name}</ListItemText>
     </ListItem>
   );
 };

@@ -1,4 +1,6 @@
 import React from 'react';
+import { useSnackbar } from 'notistack';
+import { API, graphqlOperation } from 'aws-amplify';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -13,6 +15,9 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import CheckIcon from '@material-ui/icons/Check';
 import CloseIcon from '@material-ui/icons/Close';
 
+import { updateSession } from '../../graphql/mutations';
+import { getPerson } from '../../graphql/queries';
+import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 import PatientListItem from '../PatientListItem';
 
@@ -32,31 +37,65 @@ const PATIENT_LIST = [
   { patient_id: 'rsteelesr', patient_display_name: 'Ray Steele Sr' },
 ];
 
-export default ({ patient, open, onClose }) => {
+export default ({ open, onClose }) => {
   const [selected, setSelected] = React.useState(null);
-  const { dispatch } = useSession();
+  const { enqueueSnackbar } = useSnackbar();
+  const { state, dispatch } = useSession();
+  const { session } = state;
   const classes = useStyles();
 
-  const handlePatientClick = id => event => {
-    setSelected(id);
-    alert('Clicked id ' + id);
+  const handleClose = () => {
+    if (session) {
+      const { patient_id, patient_display_name } = session;
+      setSelected({ patient_id, patient_display_name });
+    }
+    onClose();
+  };
+
+  const handlePatientClick = newPatient => event => {
+    setSelected(newPatient);
   };
 
   const handleConfirmation = () => {
-    alert('You clicked confirm');
+    (async () => {
+      if (session) {
+        const result1 = await API.graphql(
+          graphqlOperation(updateSession, { input: { session_id: session.session_id, ...selected } })
+        ).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.message}`, {
+            variant: 'error',
+          });
+        });
+
+        const result2 = await API.graphql(
+          graphqlOperation(getPerson, {
+            person_id: result1.data.updateSession.patient_id || result1.data.updateSession.user_id,
+          })
+        ).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`, {
+            variant: 'error',
+          });
+        });
+
+        dispatch({ type: SET_SESSION, payload: result1.data.updateSession });
+        dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
+      }
+      onClose();
+    })();
   };
 
   React.useEffect(() => {
-    if (patient) {
-      setSelected(patient.person_id);
+    if (session) {
+      const { patient_id, patient_display_name } = session;
+      setSelected({ patient_id, patient_display_name });
     }
-  }, [patient]);
+  }, [session]);
 
   return (
-    <Dialog open={open} onClose={onClose}>
+    <Dialog open={open} onClose={handleClose}>
       <AppBar className={classes.appBar}>
         <Toolbar>
-          <IconButton color='inherit' edge='start' onClick={onClose}>
+          <IconButton color='inherit' edge='start' onClick={handleClose}>
             <CloseIcon />
           </IconButton>
           <Typography variant='h6' className={classes.title}>
@@ -69,18 +108,16 @@ export default ({ patient, open, onClose }) => {
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} square>
             <List component='nav'>
               <PatientListItem
-                patientId=''
-                patientDisplayName='No patient'
+                patient={{ patient_id: '', patient_display_name: 'No patient' }}
                 selected={selected}
-                onClick={handlePatientClick('')}
+                onClick={handlePatientClick({ patient_id: '', patient_display_name: '' })}
               />
               {PATIENT_LIST.map(patient => (
                 <PatientListItem
                   key={patient.patient_id}
-                  patientId={patient.patient_id}
-                  patientDisplayName={patient.patient_display_name}
+                  patient={patient}
                   selected={selected}
-                  onClick={handlePatientClick(patient.patient_id)}
+                  onClick={handlePatientClick(patient)}
                 />
               ))}
             </List>
@@ -89,6 +126,10 @@ export default ({ patient, open, onClose }) => {
       ) : null}
       <Divider />
       <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+        <Button color='secondary' variant='contained' endIcon={<CloseIcon />} onClick={handleClose}>
+          Cancel
+        </Button>
+        <Box mr={2} />
         <Button color='primary' variant='contained' endIcon={<CheckIcon />} onClick={handleConfirmation}>
           Confirm
         </Button>

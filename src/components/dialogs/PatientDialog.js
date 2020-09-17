@@ -29,6 +29,10 @@ const useStyles = makeStyles(theme => ({
   picture: {
     width: theme.spacing(16),
     height: theme.spacing(16),
+    [theme.breakpoints.down('xs')]: {
+      width: theme.spacing(8),
+      height: theme.spacing(8),
+    },
   },
 }));
 
@@ -61,7 +65,7 @@ export default ({ patient, picture, open, onClose }) => {
           alignItems='center'>
           <Box flexGrow={1} mr={3}>
             <Avatar src={picture} className={classes.picture}>
-              <FaceIcon />
+              <FaceIcon className={classes.picture} />
             </Avatar>
           </Box>
           <Box flexGrow={2} display='flex' flexDirection='column'>
