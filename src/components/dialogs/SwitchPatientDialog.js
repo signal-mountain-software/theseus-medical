@@ -108,9 +108,9 @@ export default ({ open, onClose }) => {
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} square>
             <List component='nav'>
               <PatientListItem
-                patient={{ patient_id: '', patient_display_name: 'No patient' }}
+                patient={{ patient_id: null, patient_display_name: 'No patient' }}
                 selected={selected}
-                onClick={handlePatientClick({ patient_id: '', patient_display_name: '' })}
+                onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
               />
               {PATIENT_LIST.map(patient => (
                 <PatientListItem
