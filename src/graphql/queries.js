@@ -130,6 +130,11 @@ export const getPerson = /* GraphQL */ `
     }
   }
 `;
+export const getRoles = /* GraphQL */ `
+  query GetRoles($person_id: String!, $client_group_id: String!) {
+    getRoles(person_id: $person_id, client_group_id: $client_group_id)
+  }
+`;
 export const getSession = /* GraphQL */ `
   query GetSession($session_id: String!) {
     getSession(session_id: $session_id) {
@@ -153,6 +158,7 @@ export const getSession = /* GraphQL */ `
         baseline
         permitted_role
       }
+      responsible_for
     }
   }
 `;

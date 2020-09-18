@@ -31,20 +31,14 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const PEOPLE = [
-  { person_id: 'rbobby', name: { first: 'Ricky', last: 'Bobby' } },
-  { person_id: 'cbing', name: { first: 'Chandler', last: 'Bing' } },
-  { person_id: 'rsteelesr', name: { first: 'Ray', last: 'Steele', suffix: 'Sr' } },
-];
-
 export default ({ open, onClose }) => {
   const [selected, setSelected] = React.useState(null);
   const { enqueueSnackbar } = useSnackbar();
   const { state, dispatch } = useSession();
-  const { session } = state;
+  const { patients, session } = state;
   const classes = useStyles();
 
-  const parsePersonIntoPatient = person => {
+  const parsePersonObject = person => {
     const patient_id = person.person_id;
     const { first, last, suffix } = person.name;
     const patient_display_name = `${first} ${last}${suffix ? ' ' + suffix : ''}`;
@@ -110,21 +104,21 @@ export default ({ open, onClose }) => {
           </Typography>
         </Toolbar>
       </AppBar>
-      {PEOPLE ? (
+      {patients ? (
         <Box p={3}>
-          <Paper component={Box} variant='outlined' width='100%' maxHeight={256} square>
+          <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
             <List component='nav'>
               <PatientListItem
                 patient={{ patient_id: null, patient_display_name: 'No patient' }}
                 selected={selected}
                 onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
               />
-              {PEOPLE.map(person => (
+              {patients.map(patient => (
                 <PatientListItem
-                  key={person.person_id}
-                  patient={parsePersonIntoPatient(person)}
+                  key={patient.person_id}
+                  patient={parsePersonObject(patient)}
                   selected={selected}
-                  onClick={handlePatientClick(parsePersonIntoPatient(person))}
+                  onClick={handlePatientClick(parsePersonObject(patient))}
                 />
               ))}
             </List>

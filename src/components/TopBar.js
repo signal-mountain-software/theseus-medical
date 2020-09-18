@@ -36,11 +36,12 @@ const HideOnScroll = ({ children }) => {
 const ITEM_HEIGHT = 48;
 
 export default () => {
+  const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { state } = useSession();
-  const { patient } = state;
+  const { patient, roles } = state;
 
   const handleClick = event => {
     setAnchorEl(event.currentTarget);
@@ -62,6 +63,12 @@ export default () => {
     });
   };
 
+  React.useEffect(() => {
+    if (roles) {
+      setHide(roles.includes('patient'));
+    }
+  }, [roles]);
+
   return (
     <Box flexGrow={1}>
       <HideOnScroll>
@@ -72,21 +79,23 @@ export default () => {
             </Box>
             {!isMobile ? (
               <>
-                <Box mr={2}>
-                  <Tooltip
-                    title={<Typography variant='subtitle1'>Switch current patient</Typography>}
-                    placement='bottom-end'>
-                    <Button
-                      color='primary'
-                      size='small'
-                      variant='contained'
-                      startIcon={<AssignmentIndIcon />}
-                      endIcon={<SwapHorizIcon />}
-                      onClick={onSwitchPatient}>
-                      Patient
-                    </Button>
-                  </Tooltip>
-                </Box>
+                {hide ? null : (
+                  <Box mr={2}>
+                    <Tooltip
+                      title={<Typography variant='subtitle1'>Switch current patient</Typography>}
+                      placement='bottom-end'>
+                      <Button
+                        color='primary'
+                        size='small'
+                        variant='contained'
+                        startIcon={<AssignmentIndIcon />}
+                        endIcon={<SwapHorizIcon />}
+                        onClick={onSwitchPatient}>
+                        Patient
+                      </Button>
+                    </Tooltip>
+                  </Box>
+                )}
                 <Tooltip
                   title={<Typography variant='subtitle1'>Sign out of Theseus Medical</Typography>}
                   placement='bottom-end'>
@@ -116,12 +125,14 @@ export default () => {
                     },
                   }}
                   keepMounted>
-                  <MenuItem onClick={onSwitchPatient}>
-                    <ListItemIcon>
-                      <SwapHorizIcon />
-                    </ListItemIcon>
-                    <ListItemText primary='Switch Patient' />
-                  </MenuItem>
+                  {hide ? null : (
+                    <MenuItem onClick={onSwitchPatient}>
+                      <ListItemIcon>
+                        <SwapHorizIcon />
+                      </ListItemIcon>
+                      <ListItemText primary='Switch Patient' />
+                    </MenuItem>
+                  )}
                   <MenuItem onClick={onSignOut}>
                     <ListItemIcon>
                       <ExitToAppIcon />

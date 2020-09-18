@@ -39,6 +39,7 @@ export const updateSession = /* GraphQL */ `
         baseline
         permitted_role
       }
+      responsible_for
     }
   }
 `;
