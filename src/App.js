@@ -21,8 +21,8 @@ import withTheme from './hocs/withTheme';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
 
-import { getPerson, getSession } from './graphql/queries';
-import { SET_PATIENT, SET_SESSION, SET_USER } from './contexts/Session/actions';
+import { getPeopleByGroup, getPerson, getRoles, getSession } from './graphql/queries';
+import { SET_PATIENT, SET_PATIENTS, SET_ROLES, SET_SESSION, SET_USER } from './contexts/Session/actions';
 
 const menu = [
   { label: 'Profile', path: '/profile', icon: <AccountCircleIcon />, screen: <ProfileScreen /> },
@@ -54,6 +54,8 @@ const App = () => {
     (async () => {
       let result1;
       let result2;
+      let result3;
+      let result4;
       if (user) {
         result1 = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(error => {
           enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.message}`, {
@@ -61,22 +63,46 @@ const App = () => {
           });
         });
 
-        result2 = await API.graphql(
-          graphqlOperation(getPerson, {
-            person_id: result1.data.getSession.patient_id || result1.data.getSession.user_id,
-          })
-        ).catch(error => {
+        const patient_id = result1.data.getSession.patient_id;
+        const user_id = result1.data.getSession.user_id;
+        result2 = await API.graphql(graphqlOperation(getPerson, { person_id: patient_id || user_id })).catch(error => {
           enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`, {
             variant: 'error',
           });
         });
 
+        const client_group_id =
+          result1.data.getSession.client_id +
+          '~' +
+          (result1.data.getSession.responsible_for || result1.data.getSession.assigned_to);
+        if (result1.data.getSession.responsible_for) {
+          result3 = await API.graphql(graphqlOperation(getPeopleByGroup, { client_group_id, role: 'patient' })).catch(
+            error => {
+              enqueueSnackbar(`Whoops! Something went wrong when fetching patients by group: ${error.message}`, {
+                variant: 'error',
+              });
+            }
+          );
+        }
+
+        result4 = await API.graphql(graphqlOperation(getRoles, { person_id: user_id, client_group_id })).catch(
+          error => {
+            enqueueSnackbar(`Whoops! Something went wrong when fetching patients by group: ${error.message}`, {
+              variant: 'error',
+            });
+          }
+        );
+
         if (mounted) {
           dispatch({ type: SET_SESSION, payload: result1.data.getSession });
           dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
+          dispatch({ type: SET_PATIENTS, payload: result3.data.getPeopleByGroup });
+          dispatch({ type: SET_ROLES, payload: result4.data.getRoles });
         } else {
           API.cancel(result1, 'App unmounted');
           API.cancel(result2, 'App unmounted');
+          API.cancel(result3, 'App unmounted');
+          API.cancel(result4, 'App unmounted');
         }
       }
     })();

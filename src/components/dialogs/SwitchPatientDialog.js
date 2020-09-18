@@ -31,18 +31,19 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const PATIENT_LIST = [
-  { patient_id: 'rbobby', patient_display_name: 'Ricky Bobby' },
-  { patient_id: 'cbing', patient_display_name: 'Chandler Bing' },
-  { patient_id: 'rsteelesr', patient_display_name: 'Ray Steele Sr' },
-];
-
 export default ({ open, onClose }) => {
   const [selected, setSelected] = React.useState(null);
   const { enqueueSnackbar } = useSnackbar();
   const { state, dispatch } = useSession();
-  const { session } = state;
+  const { patients, session } = state;
   const classes = useStyles();
+
+  const parsePersonObject = person => {
+    const patient_id = person.person_id;
+    const { first, last, suffix } = person.name;
+    const patient_display_name = `${first} ${last}${suffix ? ' ' + suffix : ''}`;
+    return { patient_id, patient_display_name };
+  };
 
   const handleClose = () => {
     if (session) {
@@ -103,21 +104,21 @@ export default ({ open, onClose }) => {
           </Typography>
         </Toolbar>
       </AppBar>
-      {PATIENT_LIST ? (
+      {patients ? (
         <Box p={3}>
-          <Paper component={Box} variant='outlined' width='100%' maxHeight={256} square>
+          <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
             <List component='nav'>
               <PatientListItem
-                patient={{ patient_id: '', patient_display_name: 'No patient' }}
+                patient={{ patient_id: null, patient_display_name: 'No patient' }}
                 selected={selected}
-                onClick={handlePatientClick({ patient_id: '', patient_display_name: '' })}
+                onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
               />
-              {PATIENT_LIST.map(patient => (
+              {patients.map(patient => (
                 <PatientListItem
-                  key={patient.patient_id}
-                  patient={patient}
+                  key={patient.person_id}
+                  patient={parsePersonObject(patient)}
                   selected={selected}
-                  onClick={handlePatientClick(patient)}
+                  onClick={handlePatientClick(parsePersonObject(patient))}
                 />
               ))}
             </List>
