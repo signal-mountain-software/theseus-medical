@@ -10,7 +10,7 @@ import FaceIcon from '@material-ui/icons/Face';
 
 import PatientDialog from './dialogs/PatientDialog';
 
-export default ({ patient }) => {
+export default ({ patient, session }) => {
   const [picture, setPicture] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const { enqueueSnackbar } = useSnackbar();
@@ -35,9 +35,15 @@ export default ({ patient }) => {
 
   return (
     <Box>
-      {patient ? (
+      {patient && session ? (
         <>
-          <Tooltip title={<Typography variant='subtitle1'>View current patient</Typography>} placement='bottom-start'>
+          <Tooltip
+            title={
+              <Typography variant='subtitle1'>
+                {session.patient_id ? 'View current patient' : 'View your profile'}
+              </Typography>
+            }
+            placement='bottom-start'>
             <Chip
               color='primary'
               label={`${patient.name.last}, ${patient.name.first}`}
