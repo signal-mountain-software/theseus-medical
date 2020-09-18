@@ -3,6 +3,8 @@ import reducer from './reducer';
 
 const initialState = {
   patient: null,
+  patients: null,
+  roles: null,
   session: null,
   user: null,
 };
