@@ -41,7 +41,7 @@ export default () => {
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { state } = useSession();
-  const { patient, roles } = state;
+  const { patient, roles, session } = state;
 
   const handleClick = event => {
     setAnchorEl(event.currentTarget);
@@ -75,7 +75,7 @@ export default () => {
         <AppBar color='inherit'>
           <Toolbar>
             <Box flexGrow={1}>
-              <PatientChip patient={patient} />
+              <PatientChip patient={patient} session={session} />
             </Box>
             {!isMobile ? (
               <>
