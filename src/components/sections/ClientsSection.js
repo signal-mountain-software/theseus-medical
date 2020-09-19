@@ -10,6 +10,8 @@ import TableRow from '@material-ui/core/TableRow';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import Section from '../Section';
+
 const useStyles = makeStyles({
   container: {
     maxHeight: 400,
@@ -20,44 +22,37 @@ export default ({ patient }) => {
   const classes = useStyles();
 
   return (
-    <Paper component={Box} m={2} variant='outlined'>
-      <Box mt={1} py={1.25} px={3} borderBottom={2} display='flex' flexDirection='row'>
-        <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
-          <Typography variant='subtitle1'>Clients</Typography>
-        </Box>
-      </Box>
-      <Box p={3} flexGrow={1}>
-        <TableContainer className={classes.container} component={Paper}>
-          <Table size='small' stickyHeader>
-            <TableHead>
-              <TableRow>
-                <TableCell>Id</TableCell>
-                <TableCell>Groups</TableCell>
-              </TableRow>
-            </TableHead>
-            {patient.clients ? (
-              <TableBody>
-                {patient.clients.map(client => (
-                  <TableRow key={client.id}>
-                    <TableCell>{client.id}</TableCell>
-                    <TableCell>
-                      {client.groups ? (
-                        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                          {client.groups.map(group => (
-                            <Typography key={group}>{group}</Typography>
-                          ))}
-                        </Box>
-                      ) : (
-                        'none'
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            ) : null}
-          </Table>
-        </TableContainer>
-      </Box>
-    </Paper>
+    <Section title='Clients' outlined>
+      <TableContainer className={classes.container} component={Paper}>
+        <Table size='small' stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell>Id</TableCell>
+              <TableCell>Groups</TableCell>
+            </TableRow>
+          </TableHead>
+          {patient.clients ? (
+            <TableBody>
+              {patient.clients.map(client => (
+                <TableRow key={client.id}>
+                  <TableCell>{client.id}</TableCell>
+                  <TableCell>
+                    {client.groups ? (
+                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                        {client.groups.map(group => (
+                          <Typography key={group}>{group}</Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      'none'
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          ) : null}
+        </Table>
+      </TableContainer>
+    </Section>
   );
 };

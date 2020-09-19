@@ -70,51 +70,51 @@ export default ({ patient, session, setNewFact }) => {
 
   const onSaveFact = newFact => {
     (async () => {
-      await API.graphql(graphqlOperation(createPutFact, { input: newFact })).catch(error => {
-        enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
-          variant: 'error',
-        });
-      });
+      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
       setNewFact(newFact);
       setFact(newFact);
       setOpen(false);
       enqueueSnackbar(`Successfully saved '${selected.name}' fact!`, {
         variant: 'success',
       });
-    })();
+    })().catch(error => {
+      setOpen(false);
+      enqueueSnackbar(`Whoops! Something went wrong when creating a new fact: ${error.message}`, {
+        variant: 'error',
+      });
+    });
   };
 
   React.useEffect(() => {
     let mounted = true;
     (async () => {
+      let getEventsResult;
+      let getActivitiesResult;
       if (session) {
-        let result1;
-        let result2;
-        result1 = await API.graphql(graphqlOperation(getEventsByClient, { client_id: session.client_id })).catch(
-          error => {
-            enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
-              variant: 'error',
-            });
-          }
-        );
+        getEventsResult = await API.graphql(
+          graphqlOperation(getEventsByClient, { client_id: session.client_id })
+        ).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
+            variant: 'error',
+          });
+        });
+        const events = getEventsResult.data.getEventsByClient.items;
 
-        result2 = await API.graphql(graphqlOperation(getActivityTypes, { client_id: session.client_id })).catch(
-          error => {
-            enqueueSnackbar(
-              `Whoops! Something went wrong when fetching activity types by client id: ${error.message}`,
-              {
-                variant: 'error',
-              }
-            );
-          }
-        );
+        getActivitiesResult = await API.graphql(
+          graphqlOperation(getActivityTypes, { client_id: session.client_id })
+        ).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching activity types by client id: ${error.message}`, {
+            variant: 'error',
+          });
+        });
+        const types = getActivitiesResult.data.getActivityTypes;
 
         if (mounted) {
-          setEvents(result1.data.getEventsByClient.items);
-          setTypes(result2.data.getActivityTypes);
+          setEvents(events);
+          setTypes(types);
         } else {
-          API.cancel(result1, 'ActivitySection unmounted');
-          API.cancel(result2, 'ActivitySection unmounted');
+          API.cancel(getEventsResult, 'ActivitySection unmounted, cancel getEventsByClient');
+          API.cancel(getActivitiesResult, 'ActivitySection unmounted, cancel getActivityTypes');
         }
       }
     })();
@@ -148,7 +148,7 @@ export default ({ patient, session, setNewFact }) => {
         if (mounted) {
           setActivities(result.data.getActivityData);
         } else {
-          API.cancel(result, 'ActivitySection unmounted');
+          API.cancel(result, 'ActivitySection unmounted, cancel getActivityData');
         }
       }
     })();
@@ -156,13 +156,13 @@ export default ({ patient, session, setNewFact }) => {
     return () => {
       mounted = false;
     };
-  }, [patient, event, type, limit, fact]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, session, event, type, limit, fact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
       <Box mt={1} px={3} borderBottom={2} display='flex' flexDirection='row'>
         <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
-          <Typography variant='subtitle1'>Activities</Typography>
+          <Typography variant='h6'>Activities</Typography>
         </Box>
         <Divider orientation='vertical' variant='middle' flexItem />
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>

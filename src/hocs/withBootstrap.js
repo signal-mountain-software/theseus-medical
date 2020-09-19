@@ -13,14 +13,14 @@ export default Component => props => {
 
   React.useEffect(() => {
     (async () => {
-      const user = await Auth.currentAuthenticatedUser().catch(error => {
-        enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message}`, {
-          variant: 'error',
-        });
-      });
+      const user = await Auth.currentAuthenticatedUser();
 
       dispatch({ type: SET_USER, payload: user });
-    })();
+    })().catch(error => {
+      enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message}`, {
+        variant: 'error',
+      });
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
@@ -32,49 +32,26 @@ export default Component => props => {
       let getRolesResult;
       if (user) {
         // get the session for the current user
-        getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(
-          error => {
-            enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.message}`, {
-              variant: 'error',
-            });
-          }
-        );
+        getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username }));
         const session = getSessionResult.data.getSession;
         const user_id = session.user_id;
 
         // get the roles for the current user
         const client_group_id = session.client_id + '~' + (session.responsible_for || session.assigned_to);
-        getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: user_id, client_group_id })).catch(
-          error => {
-            enqueueSnackbar(`Whoops! Something went wrong when fetching roles: ${error.message}`, {
-              variant: 'error',
-            });
-          }
-        );
+        getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: user_id, client_group_id }));
         const roles = getRolesResult.data.getRoles;
 
         // get the current patient information for a user; if the user is a patient, use the user's id
         const patient_id = session.patient_id;
         const person_id = roles.includes('patient') ? patient_id : user_id;
-        getPersonResult = await API.graphql(graphqlOperation(getPerson, { person_id: person_id })).catch(error => {
-          enqueueSnackbar(
-            `Whoops! Something went wrong when fetching a patient for the current session: ${error.message}`,
-            {
-              variant: 'error',
-            }
-          );
-        });
+        getPersonResult = await API.graphql(graphqlOperation(getPerson, { person_id: person_id }));
         const patient = getPersonResult.data.getPerson;
 
         // get a group of patients a user is responsible for
         if (session.responsible_for) {
           getPeopleByGroupResult = await API.graphql(
             graphqlOperation(getPeopleByGroup, { client_group_id, role: 'patient' })
-          ).catch(error => {
-            enqueueSnackbar(`Whoops! Something went wrong when fetching patients by group: ${error.message}`, {
-              variant: 'error',
-            });
-          });
+          );
         }
         const patients = getPeopleByGroupResult.data.getPeopleByGroup;
 
@@ -90,7 +67,24 @@ export default Component => props => {
           API.cancel(getPeopleByGroupResult, 'App unmounted, getPeopleByGroup');
         }
       }
-    })();
+    })().catch(error => {
+      const errors = [];
+      if (error.hasOwnProperty('errors')) {
+        error.errors.forEach(error => {
+          errors.push(error.message);
+        });
+      } else {
+        errors.push('Error undefined...');
+      }
+
+      if (errors.length === 0) {
+        errors.push('Error undefined...');
+      }
+
+      enqueueSnackbar(`Whoops! Something went wrong: ${errors.join(', ')}`, {
+        variant: 'error',
+      });
+    });
 
     return () => {
       mounted = false;
