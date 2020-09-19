@@ -30,7 +30,7 @@ const DEFAULT_TYPE = 'My_activities';
 const DEFAULT_LIMIT = 7;
 const DEFAULT_LIMIT_INCREMENT = 8;
 
-export default ({ patient, session, setNewFact }) => {
+export default ({ patient, session, newFact, setNewFact }) => {
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
   const [events, setEvents] = React.useState([]); // populates the events dropdown list
   const [types, setTypes] = React.useState([]); // populates the types dropdown list
@@ -41,7 +41,6 @@ export default ({ patient, session, setNewFact }) => {
 
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
-  const [fact, setFact] = React.useState(null); // stores the new fact which triggers a re-render of activity buttons
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar } = useSnackbar();
@@ -70,51 +69,50 @@ export default ({ patient, session, setNewFact }) => {
 
   const onSaveFact = newFact => {
     (async () => {
-      await API.graphql(graphqlOperation(createPutFact, { input: newFact })).catch(error => {
-        enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
-          variant: 'error',
-        });
-      });
+      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
       setNewFact(newFact);
-      setFact(newFact);
       setOpen(false);
       enqueueSnackbar(`Successfully saved '${selected.name}' fact!`, {
         variant: 'success',
       });
-    })();
+    })().catch(error => {
+      setOpen(false);
+      enqueueSnackbar(`Whoops! Something went wrong when creating a new fact: ${error.message}`, {
+        variant: 'error',
+      });
+    });
   };
 
   React.useEffect(() => {
     let mounted = true;
     (async () => {
+      let getEventsResult;
+      let getActivitiesResult;
       if (session) {
-        let result1;
-        let result2;
-        result1 = await API.graphql(graphqlOperation(getEventsByClient, { client_id: session.client_id })).catch(
-          error => {
-            enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
-              variant: 'error',
-            });
-          }
-        );
+        getEventsResult = await API.graphql(
+          graphqlOperation(getEventsByClient, { client_id: session.client_id })
+        ).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
+            variant: 'error',
+          });
+        });
+        const events = getEventsResult.data.getEventsByClient.items;
 
-        result2 = await API.graphql(graphqlOperation(getActivityTypes, { client_id: session.client_id })).catch(
-          error => {
-            enqueueSnackbar(
-              `Whoops! Something went wrong when fetching activity types by client id: ${error.message}`,
-              {
-                variant: 'error',
-              }
-            );
-          }
-        );
+        getActivitiesResult = await API.graphql(
+          graphqlOperation(getActivityTypes, { client_id: session.client_id })
+        ).catch(error => {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching activity types by client id: ${error.message}`, {
+            variant: 'error',
+          });
+        });
+        const types = getActivitiesResult.data.getActivityTypes;
 
         if (mounted) {
-          setEvents(result1.data.getEventsByClient.items);
-          setTypes(result2.data.getActivityTypes);
+          setEvents(events);
+          setTypes(types);
         } else {
-          API.cancel(result1, 'ActivitySection unmounted');
-          API.cancel(result2, 'ActivitySection unmounted');
+          API.cancel(getEventsResult, 'ActivitySection unmounted, cancel getEventsByClient');
+          API.cancel(getActivitiesResult, 'ActivitySection unmounted, cancel getActivityTypes');
         }
       }
     })();
@@ -127,8 +125,8 @@ export default ({ patient, session, setNewFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
+      let result;
       if (patient && session) {
-        let result;
         result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: {
@@ -148,7 +146,7 @@ export default ({ patient, session, setNewFact }) => {
         if (mounted) {
           setActivities(result.data.getActivityData);
         } else {
-          API.cancel(result, 'ActivitySection unmounted');
+          API.cancel(result, 'ActivitySection unmounted, cancel getActivityData');
         }
       }
     })();
@@ -156,24 +154,19 @@ export default ({ patient, session, setNewFact }) => {
     return () => {
       mounted = false;
     };
-  }, [patient, event, type, limit, fact]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, session, event, type, limit, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
       <Box mt={1} px={3} borderBottom={2} display='flex' flexDirection='row'>
         <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
-          <Typography variant='subtitle1'>Activities</Typography>
+          <Typography variant='h6'>Activities</Typography>
         </Box>
         <Divider orientation='vertical' variant='middle' flexItem />
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Event:</Typography>}
           <FormControl className={classes.formControl}>
-            <NativeSelect
-              value={event}
-              onChange={onChangeEvent}
-              id='event-label'
-              name='event'
-              inputProps={{ 'aria-label': 'event' }}>
+            <NativeSelect value={event} onChange={onChangeEvent} name='event' inputProps={{ 'aria-label': 'event' }}>
               <option value=''>None</option>
               {events.map(event => (
                 <option key={event.event_id} value={event.event_id}>
@@ -187,12 +180,7 @@ export default ({ patient, session, setNewFact }) => {
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Type:</Typography>}
           <FormControl className={classes.formControl}>
-            <NativeSelect
-              value={type}
-              onChange={onChangeType}
-              id='type-label'
-              name='type'
-              inputProps={{ 'aria-label': 'type' }}>
+            <NativeSelect value={type} onChange={onChangeType} name='type' inputProps={{ 'aria-label': 'type' }}>
               {types.map(type => (
                 <option key={type.activity_type_code} value={type.activity_type_code}>
                   {type.name}
