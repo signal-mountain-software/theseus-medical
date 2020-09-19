@@ -1,4 +1,5 @@
 import React from 'react';
+import { useHistory } from 'react-router-dom';
 import { Storage } from 'aws-amplify';
 import { useSnackbar } from 'notistack';
 import Avatar from '@material-ui/core/Avatar';
@@ -13,10 +14,15 @@ import PatientDialog from './dialogs/PatientDialog';
 export default ({ patient, session }) => {
   const [picture, setPicture] = React.useState('');
   const [open, setOpen] = React.useState(false);
+  const history = useHistory();
   const { enqueueSnackbar } = useSnackbar();
 
   const onClick = () => {
-    setOpen(true);
+    if (session.patient_id) {
+      setOpen(true);
+    } else {
+      history.push('/profile');
+    }
   };
 
   React.useEffect(() => {

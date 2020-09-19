@@ -1,5 +1,6 @@
 export const SET_PATIENT = 'SET_PATIENT';
 export const SET_PATIENTS = 'SET_PATIENTS';
+export const SET_PROFILE = 'SET_PROFILE';
 export const SET_ROLES = 'SET_ROLES';
 export const SET_SESSION = 'SET_SESSION';
 export const SET_USER = 'SET_USER';

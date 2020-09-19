@@ -126,7 +126,7 @@ export default ({ open, onClose }) => {
         </Box>
       ) : null}
       <Divider />
-      <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+      <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
         <Button color='secondary' variant='contained' endIcon={<CloseIcon />} onClick={handleClose}>
           Cancel
         </Button>

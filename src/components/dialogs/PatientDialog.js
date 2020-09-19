@@ -97,9 +97,9 @@ export default ({ patient, picture, open, onClose }) => {
           </Box>
         </Paper>
       </Box>
-      <RelationshipSection patient={patient} />
-      <ActivityCustomizationsSection patient={patient} />
-      <ClientsSection patient={patient} />
+      <RelationshipSection person={patient} />
+      <ActivityCustomizationsSection person={patient} />
+      <ClientsSection person={patient} />
     </Dialog>
   );
 };
