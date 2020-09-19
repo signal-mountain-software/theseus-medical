@@ -18,7 +18,7 @@ const useStyles = makeStyles({
   },
 });
 
-export default ({ patient }) => {
+export default ({ person }) => {
   const classes = useStyles();
 
   return (
@@ -31,9 +31,9 @@ export default ({ patient }) => {
               <TableCell>Groups</TableCell>
             </TableRow>
           </TableHead>
-          {patient.clients ? (
+          {person && person.clients ? (
             <TableBody>
-              {patient.clients.map(client => (
+              {person.clients.map(client => (
                 <TableRow key={client.id}>
                   <TableCell>{client.id}</TableCell>
                   <TableCell>

@@ -1,5 +1,4 @@
 import React from 'react';
-import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import Table from '@material-ui/core/Table';
 import TableBody from '@material-ui/core/TableBody';
@@ -7,7 +6,6 @@ import TableCell from '@material-ui/core/TableCell';
 import TableContainer from '@material-ui/core/TableContainer';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
-import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Section from '../Section';
@@ -18,7 +16,7 @@ const useStyles = makeStyles({
   },
 });
 
-export default ({ patient }) => {
+export default ({ person }) => {
   const classes = useStyles();
 
   return (
@@ -32,9 +30,9 @@ export default ({ patient }) => {
               <TableCell>Permitted Roles</TableCell>
             </TableRow>
           </TableHead>
-          {patient.activity_customizations ? (
+          {person && person.activity_customizations ? (
             <TableBody>
-              {patient.activity_customizations.map(activity => (
+              {person.activity_customizations.map(activity => (
                 <TableRow key={activity.activity_key}>
                   <TableCell>{activity.activity_key}</TableCell>
                   <TableCell>{activity.baseline}</TableCell>

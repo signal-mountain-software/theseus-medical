@@ -30,7 +30,7 @@ const DEFAULT_TYPE = 'My_activities';
 const DEFAULT_LIMIT = 7;
 const DEFAULT_LIMIT_INCREMENT = 8;
 
-export default ({ patient, session, setNewFact }) => {
+export default ({ patient, session, newFact, setNewFact }) => {
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
   const [events, setEvents] = React.useState([]); // populates the events dropdown list
   const [types, setTypes] = React.useState([]); // populates the types dropdown list
@@ -41,7 +41,6 @@ export default ({ patient, session, setNewFact }) => {
 
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
-  const [fact, setFact] = React.useState(null); // stores the new fact which triggers a re-render of activity buttons
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar } = useSnackbar();
@@ -72,7 +71,6 @@ export default ({ patient, session, setNewFact }) => {
     (async () => {
       await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
       setNewFact(newFact);
-      setFact(newFact);
       setOpen(false);
       enqueueSnackbar(`Successfully saved '${selected.name}' fact!`, {
         variant: 'success',
@@ -127,8 +125,8 @@ export default ({ patient, session, setNewFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
+      let result;
       if (patient && session) {
-        let result;
         result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: {
@@ -156,7 +154,7 @@ export default ({ patient, session, setNewFact }) => {
     return () => {
       mounted = false;
     };
-  }, [patient, session, event, type, limit, fact]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, session, event, type, limit, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
@@ -168,12 +166,7 @@ export default ({ patient, session, setNewFact }) => {
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Event:</Typography>}
           <FormControl className={classes.formControl}>
-            <NativeSelect
-              value={event}
-              onChange={onChangeEvent}
-              id='event-label'
-              name='event'
-              inputProps={{ 'aria-label': 'event' }}>
+            <NativeSelect value={event} onChange={onChangeEvent} name='event' inputProps={{ 'aria-label': 'event' }}>
               <option value=''>None</option>
               {events.map(event => (
                 <option key={event.event_id} value={event.event_id}>
@@ -187,12 +180,7 @@ export default ({ patient, session, setNewFact }) => {
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Type:</Typography>}
           <FormControl className={classes.formControl}>
-            <NativeSelect
-              value={type}
-              onChange={onChangeType}
-              id='type-label'
-              name='type'
-              inputProps={{ 'aria-label': 'type' }}>
+            <NativeSelect value={type} onChange={onChangeType} name='type' inputProps={{ 'aria-label': 'type' }}>
               {types.map(type => (
                 <option key={type.activity_type_code} value={type.activity_type_code}>
                   {type.name}

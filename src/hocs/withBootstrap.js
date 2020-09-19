@@ -4,7 +4,7 @@ import { API, Auth, graphqlOperation } from 'aws-amplify';
 
 import useSession from '../hooks/useSession';
 import { getPeopleByGroup, getPerson, getRoles, getSession } from '../graphql/queries';
-import { SET_PATIENT, SET_PATIENTS, SET_ROLES, SET_SESSION, SET_USER } from '../contexts/Session/actions';
+import { SET_PATIENT, SET_PATIENTS, SET_PROFILE, SET_ROLES, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 
 export default Component => props => {
   const { enqueueSnackbar } = useSnackbar();
@@ -27,7 +27,8 @@ export default Component => props => {
     let mounted = true;
     (async () => {
       let getSessionResult;
-      let getPersonResult;
+      let getProfileResult;
+      let getPatientResult;
       let getPeopleByGroupResult;
       let getRolesResult;
       if (user) {
@@ -41,29 +42,36 @@ export default Component => props => {
         getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: user_id, client_group_id }));
         const roles = getRolesResult.data.getRoles;
 
-        // get the current patient information for a user; if the user is a patient, use the user's id
+        // get the current profile information for a user
+        getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: user_id }));
+        const profile = getProfileResult.data.getPerson;
+
+        // get the current patient information for a user; if the user does not have a current patient, use the user's id
         const patient_id = session.patient_id;
-        const person_id = roles.includes('patient') ? patient_id : user_id;
-        getPersonResult = await API.graphql(graphqlOperation(getPerson, { person_id: person_id }));
-        const patient = getPersonResult.data.getPerson;
+        const person_id = patient_id || user_id;
+        getPatientResult = await API.graphql(graphqlOperation(getPerson, { person_id: person_id }));
+        const patient = getPatientResult.data.getPerson;
 
         // get a group of patients a user is responsible for
+        let patients = null;
         if (session.responsible_for) {
           getPeopleByGroupResult = await API.graphql(
             graphqlOperation(getPeopleByGroup, { client_group_id, role: 'patient' })
           );
+          patients = getPeopleByGroupResult.data.getPeopleByGroup;
         }
-        const patients = getPeopleByGroupResult.data.getPeopleByGroup;
 
         if (mounted) {
           dispatch({ type: SET_SESSION, payload: session });
           dispatch({ type: SET_ROLES, payload: roles });
+          dispatch({ type: SET_PROFILE, payload: profile });
           dispatch({ type: SET_PATIENT, payload: patient });
           dispatch({ type: SET_PATIENTS, payload: patients });
         } else {
           API.cancel(getSessionResult, 'App unmounted, cancel getSession');
           API.cancel(getRolesResult, 'App unmounted, cancel getRoles');
-          API.cancel(getPersonResult, 'App unmounted, cancel getPerson');
+          API.cancel(getProfileResult, 'App unmounted, cancel getPerson');
+          API.cancel(getPatientResult, 'App unmounted, cancel getPerson');
           API.cancel(getPeopleByGroupResult, 'App unmounted, getPeopleByGroup');
         }
       }
@@ -74,7 +82,11 @@ export default Component => props => {
           errors.push(error.message);
         });
       } else {
-        errors.push('Error undefined...');
+        if (error.hasOwnProperty('message')) {
+          errors.push(error.message);
+        } else {
+          errors.push('Error undefined...');
+        }
       }
 
       if (errors.length === 0) {

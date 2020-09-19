@@ -1,12 +1,8 @@
 import React from 'react';
 import Typography from '@material-ui/core/Typography';
-import useSession from '../../hooks/useSession';
 import Section from '../Section';
 
-export default () => {
-  const { state } = useSession();
-  const { session } = state;
-
+export default ({ session }) => {
   const getGreeting = () => {
     const date = new Date();
     const hours = date.getHours();
@@ -26,14 +22,18 @@ export default () => {
 
   return (
     <Section title='Profile'>
-      <Typography variant='h5' gutterBottom>
-        {getGreeting()}, {session?.user_display_name}!
-      </Typography>
-      {session?.patient_id ? (
-        <Typography variant='body1'>Your current patient is {session?.patient_display_name}</Typography>
-      ) : (
-        <Typography variant='body1'>You are currently viewing your own facts</Typography>
-      )}
+      {session ? (
+        <>
+          <Typography variant='h5' gutterBottom>
+            {getGreeting()}, {session.user_display_name}!
+          </Typography>
+          {session.patient_id ? (
+            <Typography variant='body1'>Your current patient is {session.patient_display_name}</Typography>
+          ) : (
+            <Typography variant='body1'>You are currently viewing your own facts</Typography>
+          )}
+        </>
+      ) : null}
     </Section>
   );
 };
