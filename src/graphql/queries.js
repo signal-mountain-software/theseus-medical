@@ -159,6 +159,7 @@ export const getSession = /* GraphQL */ `
         permitted_role
       }
       responsible_for
+      assigned_to
     }
   }
 `;
