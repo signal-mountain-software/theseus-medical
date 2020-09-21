@@ -63,6 +63,7 @@ const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observat
     case 'characteristic_num':
       return (
         <TextField
+          value={value || 0}
           label='Number'
           type='number'
           variant='outlined'
@@ -76,6 +77,7 @@ const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observat
         <Box display='flex' flexDirection='column'>
           <Box width='100%' my={1}>
             <TextField
+              value={num1}
               label='1st Number'
               type='number'
               variant='outlined'
@@ -86,6 +88,7 @@ const DynamicForm = ({ newFact, setNewFact, type, values, defaultValue, observat
           </Box>
           <Box width='100%' my={1}>
             <TextField
+              value={num2}
               label='2nd Number'
               type='number'
               variant='outlined'
