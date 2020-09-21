@@ -40,6 +40,7 @@ export const updateSession = /* GraphQL */ `
         permitted_role
       }
       responsible_for
+      assigned_to
     }
   }
 `;
