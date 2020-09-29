@@ -16,7 +16,7 @@ export default ({ label, value, onChange, onError }) => {
 
   return (
     <TextField
-      value={value}
+      value={value || '0'}
       label={label}
       helperText={error ? 'Incorrect entry.' : null}
       type='number'

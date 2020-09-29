@@ -1,12 +1,11 @@
 import React from 'react';
-import Box from '@material-ui/core/Box';
 import FormControl from '@material-ui/core/FormControl';
 import InputLabel from '@material-ui/core/InputLabel';
 import NativeSelect from '@material-ui/core/NativeSelect';
-import TextField from '@material-ui/core/TextField';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import NumberForm from './NumberForm';
+import Number2Form from './Number2Form';
 
 const useStyles = makeStyles({
   formControl: {
@@ -15,9 +14,8 @@ const useStyles = makeStyles({
 });
 
 export default ({ newFact, setNewFact, type, values, defaultValue, observationKey, onError }) => {
-  const [value, setValue] = React.useState(defaultValue || '0');
-  const [num1, setNum1] = React.useState('0');
-  const [num2, setNum2] = React.useState('0');
+  const [value, setValue] = React.useState(defaultValue);
+  const [nums, setNums] = React.useState(['0', '0']);
   const classes = useStyles();
 
   const onChangeValue = event => {
@@ -26,17 +24,11 @@ export default ({ newFact, setNewFact, type, values, defaultValue, observationKe
     setNewFact(newFact);
   };
 
-  const onChangeNum1 = event => {
-    const value = event.target.value;
-    setNum1(value);
-    newFact.value = observationKey + '.' + value + '.' + num2;
-    setNewFact(newFact);
-  };
-
-  const onChangeNum2 = event => {
-    const value = event.target.value;
-    setNum2(value);
-    newFact.value = observationKey + '.' + num1 + '.' + value;
+  const onChangeNums = index => event => {
+    const newNums = [...nums];
+    newNums[index] = event.target.value;
+    setNums(newNums);
+    newFact.value = observationKey + '.' + newNums.join('.');
     setNewFact(newFact);
   };
 
@@ -50,30 +42,13 @@ export default ({ newFact, setNewFact, type, values, defaultValue, observationKe
       return <NumberForm label='Number' value={value} onChange={onChangeValue} onError={onError} />;
     case 'characteristic_num2':
       return (
-        <Box display='flex' flexDirection='column'>
-          <Box width='100%' my={1}>
-            <TextField
-              value={num1}
-              label='1st Number'
-              type='number'
-              variant='outlined'
-              onChange={onChangeNum1}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-            />
-          </Box>
-          <Box width='100%' my={1}>
-            <TextField
-              value={num2}
-              label='2nd Number'
-              type='number'
-              variant='outlined'
-              onChange={onChangeNum2}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-            />
-          </Box>
-        </Box>
+        <Number2Form
+          labelOne='1st Number'
+          labelTwo='2nd Number'
+          value={nums}
+          onChange={onChangeNums}
+          onError={onError}
+        />
       );
     default:
       return (
