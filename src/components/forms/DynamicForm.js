@@ -14,7 +14,7 @@ const useStyles = makeStyles({
 });
 
 export default ({ newFact, setNewFact, type, values, defaultValue, observationKey, onError }) => {
-  const [value, setValue] = React.useState(defaultValue);
+  const [value, setValue] = React.useState(defaultValue || type === 'characteristic_num' ? '0' : '');
   const [nums, setNums] = React.useState(['0', '0']);
   const classes = useStyles();
 

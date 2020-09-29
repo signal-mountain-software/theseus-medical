@@ -5,7 +5,7 @@ export default ({ label, value, onChange, onError }) => {
   const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
-    if (value && (value === '' || (value.length > 1 && value.startsWith('0')))) {
+    if (value === '' || (value.length > 1 && value.startsWith('0'))) {
       onError(true);
       setError(true);
     } else {
@@ -16,7 +16,7 @@ export default ({ label, value, onChange, onError }) => {
 
   return (
     <TextField
-      value={value || '0'}
+      value={value}
       label={label}
       helperText={error ? 'Incorrect entry.' : null}
       type='number'
