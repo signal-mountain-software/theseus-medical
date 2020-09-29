@@ -135,6 +135,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               event_id: event,
               activity_type: type,
               limit: limit,
+              fact_data: true,
             },
           })
         ).catch(error => {
