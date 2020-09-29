@@ -8,8 +8,11 @@ export const getActivityData = /* GraphQL */ `
       name
       type
       reason
-      normal_value
+      baseline_value
       default_value
+      normal_value
+      numeric_minimum
+      numeric_maximum
       most_recent_observation
       observation_expires
       observation_status
