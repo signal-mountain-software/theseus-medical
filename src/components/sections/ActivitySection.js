@@ -83,6 +83,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     });
   };
 
+  // build the event and activity lists for drop downs
   React.useEffect(() => {
     let mounted = true;
     (async () => {
@@ -122,6 +123,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     };
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // retrieve the activities for the main part of the screen
   React.useEffect(() => {
     let mounted = true;
     (async () => {

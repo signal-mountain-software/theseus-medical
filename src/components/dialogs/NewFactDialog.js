@@ -26,10 +26,35 @@ const useStyles = makeStyles(theme => ({
 export default ({ fact, session, open, onClose, onSave }) => {
   const [newFact, setNewFact] = React.useState(null);
   const [disable, setDisable] = React.useState(false);
+  const [message, setMessage] = React.useState('enter a value');
   const classes = useStyles();
 
+  let fValS, fVal;
+
   const handleSave = () => {
-    onSave(newFact);
+    let badData = false;
+    if (fact.numeric_minimum || fact.numeric_maximum) {
+      [, fValS] = newFact.value.replace('.', '~').split('~');
+      fVal = parseFloat(fValS);
+      if (
+        (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
+        (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
+      ) {
+        badData = true;
+      }
+    }
+    if (!badData) {
+      setMessage('');
+      onSave(newFact);
+    } else if (fact.numeric_minimum) {
+      if (fact.numeric_maximum) {
+        setMessage(`enter a number between ${fact.numeric_minimum} and ${fact.numeric_maximum}`);
+      } else {
+        setMessage(`enter a number greater than ${fact.numeric_minimum}`);
+      }
+    } else {
+      setMessage(`enter a number less than ${fact.numeric_maximum}`);
+    }
   };
 
   const disableSave = value => {
@@ -70,6 +95,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
             newFact={newFact}
             setNewFact={setNewFact}
             type={fact.type}
+            message={message}
             values={fact.valid_values_list}
             defaultValue={fact.default_value}
             observationKey={fact.observation_key}

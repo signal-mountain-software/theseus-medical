@@ -13,9 +13,10 @@ const useStyles = makeStyles({
   },
 });
 
-export default ({ newFact, setNewFact, type, values, defaultValue, observationKey, onError }) => {
-  const [value, setValue] = React.useState(defaultValue || type === 'characteristic_num' ? '0' : '');
+export default ({ newFact, setNewFact, type, message, values, defaultValue, observationKey, onError }) => {
+  const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['0', '0']);
+  const [mOut, setMout] = React.useState(message || 'enter something here');
   const classes = useStyles();
 
   const onChangeValue = event => {
@@ -35,11 +36,12 @@ export default ({ newFact, setNewFact, type, values, defaultValue, observationKe
   React.useEffect(() => {
     newFact.value = observationKey + '.' + defaultValue;
     setNewFact(newFact);
-  }, [newFact, setNewFact, defaultValue, observationKey]);
+    setMout(message);
+  }, [newFact, setNewFact, defaultValue, observationKey, message]);
 
   switch (type) {
     case 'characteristic_num':
-      return <NumberForm label='Number' value={value} onChange={onChangeValue} onError={onError} />;
+      return <NumberForm label='Number' value={value} message={mOut} onChange={onChangeValue} onError={onError} />;
     case 'characteristic_num2':
       return (
         <Number2Form
