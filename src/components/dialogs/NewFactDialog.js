@@ -35,7 +35,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
     let fValS, fVal;
     let badData = false;
     if (fact.numeric_minimum || fact.numeric_maximum) {
-      [, fValS] = newFact.value.replace('.', '~').split('~');
+      fValS = newFact.value.replace('.', '~').split('~')[1];
       fVal = parseFloat(fValS);
       if (
         (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
