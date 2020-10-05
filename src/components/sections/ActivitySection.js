@@ -2,9 +2,13 @@ import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { useSnackbar } from 'notistack';
 import Box from '@material-ui/core/Box';
+import Button from '@material-ui/core/Button';
+import CircularProgress from '@material-ui/core/CircularProgress';
 import Divider from '@material-ui/core/Divider';
 import FormControl from '@material-ui/core/FormControl';
 import Grid from '@material-ui/core/Grid';
+import GridList from '@material-ui/core/GridList';
+import GridListTile from '@material-ui/core/GridListTile';
 import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
@@ -14,7 +18,6 @@ import { useMediaQuery } from '@material-ui/core';
 import { createPutFact } from '../../graphql/mutations';
 import { getActivityData, getActivityTypes, getEventsByClient } from '../../graphql/queries';
 import NewFactDialog from '../dialogs/NewFactDialog';
-import HtmlTooltip from '../HtmlTooltip';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -23,6 +26,9 @@ const useStyles = makeStyles(theme => ({
       width: '100%',
       minWidth: 64,
     },
+  },
+  gridList: {
+    height: 400,
   },
 }));
 
@@ -39,6 +45,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [type, setType] = React.useState(DEFAULT_TYPE); // stores the current selected type filter
   const [limit, setLimit] = React.useState(DEFAULT_LIMIT); // stores the current limit of activity buttons displayed
 
+  const [loading, setLoading] = React.useState(false); // a flag that shows/hides loading spinner
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
 
@@ -83,6 +90,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     });
   };
 
+  // build the event and activity lists for drop downs
   React.useEffect(() => {
     let mounted = true;
     (async () => {
@@ -122,7 +130,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
     };
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // retrieve the activities for the main part of the screen
   React.useEffect(() => {
+    setLoading(true);
     let mounted = true;
     (async () => {
       let result;
@@ -139,20 +149,24 @@ export default ({ patient, session, newFact, setNewFact }) => {
             },
           })
         ).catch(error => {
+          setLoading(false);
           enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.message}`, {
             variant: 'error',
           });
         });
 
         if (mounted) {
+          setLoading(false);
           setActivities(result.data.getActivityData);
         } else {
+          setLoading(false);
           API.cancel(result, 'ActivitySection unmounted, cancel getActivityData');
         }
       }
     })();
 
     return () => {
+      setLoading(false);
       mounted = false;
     };
   }, [patient, session, event, type, limit, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -192,35 +206,76 @@ export default ({ patient, session, newFact, setNewFact }) => {
         </Box>
       </Box>
       <Box p={3} flexGrow={1}>
-        <Grid spacing={3} container>
-          {activities.map(activity => (
-            <Grid key={activity.code} sm={3} xs={6} item>
-              <Box py={6} px={2} textAlign='center' clone>
-                <Paper
-                  elevation={4}
-                  onClick={() => {
-                    onChooseActivity(activity);
-                  }}
-                  square>
-                  <HtmlTooltip title={activity.name} body={'Reason: ' + activity.reason}>
-                    <Typography variant='h6' noWrap>
-                      {activity.name}
-                    </Typography>
-                  </HtmlTooltip>
-                </Paper>
-              </Box>
-            </Grid>
-          ))}
-          <Grid sm={3} xs={6} item>
-            <Box py={6} px={2} textAlign='center' clone>
-              <Paper elevation={4} onClick={onShowMore} square>
-                <Typography variant='h6' noWrap>
-                  Show more
-                </Typography>
-              </Paper>
-            </Box>
+        <Grid container>
+          <Grid sm={6} xs={12} item>
+            {loading ? (
+              <CircularProgress />
+            ) : (
+              <GridList className={classes.gridList} cellHeight='auto' cols={1}>
+                {activities.map(activity => (
+                  <GridListTile key={activity.code} cols={1}>
+                    <Box py={2} px={2} textAlign='left' clone>
+                      <Paper
+                        variant='outlined'
+                        onClick={() => {
+                          onChooseActivity(activity);
+                        }}
+                        square>
+                        <Typography variant='h5' noWrap>
+                          {activity.name}
+                        </Typography>
+                        <Typography variant='body1' noWrap>
+                          Recent: {activity.most_recent_observation}
+                        </Typography>
+                        <Typography variant='body2' noWrap>
+                          {activity.observation_status}
+                        </Typography>
+                      </Paper>
+                    </Box>
+                  </GridListTile>
+                ))}
+                <Button variant='outlined' onClick={onShowMore}>
+                  Show More
+                </Button>
+              </GridList>
+            )}
           </Grid>
         </Grid>
+        {/*<Grid spacing={3} container>*/}
+        {/*  <Grid sm={6} xs={12}>*/}
+        {/*    {activities.map(activity => (*/}
+        {/*      <Grid key={activity.code} item>*/}
+        {/*        <Box py={2} px={2} textAlign='left' clone>*/}
+        {/*          <Paper*/}
+        {/*            variant='outlined'*/}
+        {/*            onClick={() => {*/}
+        {/*              onChooseActivity(activity);*/}
+        {/*            }}*/}
+        {/*            square>*/}
+        {/*            <Typography variant='h5' noWrap>*/}
+        {/*              {activity.name}*/}
+        {/*            </Typography>*/}
+        {/*            <Typography variant='body1' noWrap>*/}
+        {/*              Recent value: {activity.most_recent_observation}*/}
+        {/*            </Typography>*/}
+        {/*            <Typography variant='body2' noWrap>*/}
+        {/*              Status: {activity.observation_status}*/}
+        {/*            </Typography>*/}
+        {/*          </Paper>*/}
+        {/*        </Box>*/}
+        {/*      </Grid>*/}
+        {/*    ))}*/}
+        {/*    <Grid item>*/}
+        {/*      <Box py={2} px={2} textAlign='center' clone>*/}
+        {/*        <Paper variant='outlined' onClick={onShowMore} square>*/}
+        {/*          <Typography variant='h4' noWrap>*/}
+        {/*            Show more*/}
+        {/*          </Typography>*/}
+        {/*        </Paper>*/}
+        {/*      </Box>*/}
+        {/*    </Grid>*/}
+        {/*  </Grid>*/}
+        {/*</Grid>*/}
       </Box>
       <NewFactDialog
         fact={selected}

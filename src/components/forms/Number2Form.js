@@ -2,9 +2,17 @@ import React from 'react';
 import Grid from '@material-ui/core/Grid';
 import TextField from '@material-ui/core/TextField';
 
-export default ({ labelOne, labelTwo, value, onChange, onError }) => {
+export default ({ open, labelOne, labelTwo, value, onChange, onError }) => {
   const [errorOne, setErrorOne] = React.useState(false);
   const [errorTwo, setErrorTwo] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) {
+      setErrorOne(false);
+      setErrorTwo(false);
+      onError(false);
+    }
+  }, [open, onError]);
 
   React.useEffect(() => {
     if (value[0] === '' || (value[0].length > 1 && value[0].startsWith('0'))) {

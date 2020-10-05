@@ -2,13 +2,13 @@ import React from 'react';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
-import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
 import Divider from '@material-ui/core/Divider';
-import IconButton from '@material-ui/core/IconButton';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import CloseIcon from '@material-ui/icons/Close';
+import HistoryIcon from '@material-ui/icons/History';
 import SaveIcon from '@material-ui/icons/Save';
 
 import DynamicForm from '../forms/DynamicForm';
@@ -16,6 +16,8 @@ import DynamicForm from '../forms/DynamicForm';
 const useStyles = makeStyles(theme => ({
   appBar: {
     position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     marginLeft: theme.spacing(2),
@@ -26,15 +28,51 @@ const useStyles = makeStyles(theme => ({
 export default ({ fact, session, open, onClose, onSave }) => {
   const [newFact, setNewFact] = React.useState(null);
   const [disable, setDisable] = React.useState(false);
+  const [message, setMessage] = React.useState('enter a value');
   const classes = useStyles();
 
   const handleSave = () => {
-    onSave(newFact);
+    let fValS, fVal;
+    let badData = false;
+    if (fact.numeric_minimum || fact.numeric_maximum) {
+      [, fValS] = newFact.value.replace('.', '~').split('~');
+      fVal = parseFloat(fValS);
+      if (
+        (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
+        (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
+      ) {
+        badData = true;
+      }
+    }
+    if (!badData) {
+      setMessage('');
+      onSave(newFact);
+    } else if (fact.numeric_minimum) {
+      if (fact.numeric_maximum) {
+        setMessage(`enter a number between ${fact.numeric_minimum} and ${fact.numeric_maximum}`);
+      } else {
+        setMessage(`enter a number greater than ${fact.numeric_minimum}`);
+      }
+    } else {
+      setMessage(`enter a number less than ${fact.numeric_maximum}`);
+    }
+  };
+
+  const handleHistory = () => {
+    setMessage('History will be available soon!');
   };
 
   const disableSave = value => {
     setDisable(value);
   };
+
+  // Reset to default state if dialog is closed
+  React.useEffect(() => {
+    if (!open) {
+      setDisable(false);
+      setMessage('enter a value');
+    }
+  }, [open]);
 
   React.useEffect(() => {
     if (fact && session) {
@@ -54,22 +92,20 @@ export default ({ fact, session, open, onClose, onSave }) => {
     <Dialog open={open} onClose={onClose}>
       <AppBar className={classes.appBar}>
         <Toolbar>
-          <IconButton color='inherit' edge='start' onClick={onClose}>
-            <CloseIcon />
-          </IconButton>
           <Typography variant='h6' className={classes.title}>
-            Adding New Fact - {fact?.name}
+            {fact?.name}
           </Typography>
         </Toolbar>
       </AppBar>
       {fact ? (
         <Box p={3} display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-          <Typography variant='subtitle1'>Most Recent Observation: {fact.most_recent_observation}</Typography>
           <Box my={1} />
           <DynamicForm
+            open={open}
             newFact={newFact}
             setNewFact={setNewFact}
             type={fact.type}
+            message={message}
             values={fact.valid_values_list}
             defaultValue={fact.default_value}
             observationKey={fact.observation_key}
@@ -81,6 +117,10 @@ export default ({ fact, session, open, onClose, onSave }) => {
       <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
         <Button color='secondary' variant='contained' endIcon={<CloseIcon />} onClick={onClose}>
           Cancel
+        </Button>
+        <Box mr={2} />
+        <Button color='default' variant='contained' endIcon={<HistoryIcon />} onClick={handleHistory}>
+          History
         </Button>
         <Box mr={2} />
         <Button color='primary' variant='contained' startIcon={<SaveIcon />} onClick={handleSave} disabled={disable}>
