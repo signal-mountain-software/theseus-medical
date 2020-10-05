@@ -14,7 +14,7 @@ import { useMediaQuery } from '@material-ui/core';
 import { createPutFact } from '../../graphql/mutations';
 import { getActivityData, getActivityTypes, getEventsByClient } from '../../graphql/queries';
 import NewFactDialog from '../dialogs/NewFactDialog';
-import HtmlTooltip from '../HtmlTooltip';
+// import HtmlTooltip from '../HtmlTooltip';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -194,21 +194,21 @@ export default ({ patient, session, newFact, setNewFact }) => {
         </Box>
       </Box>
       <Box p={3} flexGrow={1}>
-        <Grid spacing={3} container>
+        <Grid spacing={3} direction='column' justify='flex-start' alignItems='flex-start' container>
           {activities.map(activity => (
             <Grid key={activity.code} sm={3} xs={6} item>
-              <Box py={6} px={2} textAlign='center' clone>
+              <Box textAlign='left' width={750} clone>
                 <Paper
-                  elevation={4}
                   onClick={() => {
                     onChooseActivity(activity);
                   }}
                   square>
-                  <HtmlTooltip title={activity.name} body={'Reason: ' + activity.reason}>
-                    <Typography variant='h6' noWrap>
-                      {activity.name}
-                    </Typography>
-                  </HtmlTooltip>
+                  <Typography variant='h4' noWrap>
+                    {activity.name}
+                  </Typography>
+                  <Typography variant='body1' noWrap>
+                    {activity.most_recent_observation} - {activity.observation_status}
+                  </Typography>
                 </Paper>
               </Box>
             </Grid>
