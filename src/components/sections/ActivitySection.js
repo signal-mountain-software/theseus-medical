@@ -2,7 +2,6 @@ import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { useSnackbar } from 'notistack';
 import Box from '@material-ui/core/Box';
-import Button from '@material-ui/core/Button';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Divider from '@material-ui/core/Divider';
 import FormControl from '@material-ui/core/FormControl';
@@ -28,7 +27,7 @@ const useStyles = makeStyles(theme => ({
     },
   },
   gridList: {
-    height: 400,
+    maxHeight: 400,
   },
 }));
 
@@ -208,74 +207,39 @@ export default ({ patient, session, newFact, setNewFact }) => {
       <Box p={3} flexGrow={1}>
         <Grid container>
           <Grid sm={6} xs={12} item>
-            {loading ? (
-              <CircularProgress />
-            ) : (
-              <GridList className={classes.gridList} cellHeight='auto' cols={1}>
-                {activities.map(activity => (
-                  <GridListTile key={activity.code} cols={1}>
-                    <Box py={2} px={2} textAlign='left' clone>
-                      <Paper
-                        variant='outlined'
-                        onClick={() => {
-                          onChooseActivity(activity);
-                        }}
-                        square>
-                        <Typography variant='h5' noWrap>
-                          {activity.name}
-                        </Typography>
-                        <Typography variant='body1' noWrap>
-                          Recent: {activity.most_recent_observation}
-                        </Typography>
-                        <Typography variant='body2' noWrap>
-                          {activity.observation_status}
-                        </Typography>
-                      </Paper>
-                    </Box>
-                  </GridListTile>
-                ))}
-                <Button variant='outlined' onClick={onShowMore}>
-                  Show More
-                </Button>
-              </GridList>
-            )}
+            <GridList className={classes.gridList} cellHeight='auto' cols={1}>
+              {activities.map(activity => (
+                <GridListTile key={activity.code} cols={1}>
+                  <Paper
+                    component={Box}
+                    py={2}
+                    px={2}
+                    variant='outlined'
+                    textAlign='left'
+                    onClick={() => {
+                      onChooseActivity(activity);
+                    }}
+                    square>
+                    <Typography variant='h5' noWrap>
+                      {activity.name}
+                    </Typography>
+                    <Typography variant='body1' noWrap>
+                      Recent: {activity.most_recent_observation}
+                    </Typography>
+                    <Typography variant='body2' noWrap>
+                      {activity.observation_status}
+                    </Typography>
+                  </Paper>
+                </GridListTile>
+              ))}
+              <GridListTile cols={1}>
+                <Paper component={Box} py={2} px={2} textAlign='center' variant='outlined' onClick={onShowMore} square>
+                  {loading ? <CircularProgress /> : <Typography variant='h4'>Show More</Typography>}
+                </Paper>
+              </GridListTile>
+            </GridList>
           </Grid>
         </Grid>
-        {/*<Grid spacing={3} container>*/}
-        {/*  <Grid sm={6} xs={12}>*/}
-        {/*    {activities.map(activity => (*/}
-        {/*      <Grid key={activity.code} item>*/}
-        {/*        <Box py={2} px={2} textAlign='left' clone>*/}
-        {/*          <Paper*/}
-        {/*            variant='outlined'*/}
-        {/*            onClick={() => {*/}
-        {/*              onChooseActivity(activity);*/}
-        {/*            }}*/}
-        {/*            square>*/}
-        {/*            <Typography variant='h5' noWrap>*/}
-        {/*              {activity.name}*/}
-        {/*            </Typography>*/}
-        {/*            <Typography variant='body1' noWrap>*/}
-        {/*              Recent value: {activity.most_recent_observation}*/}
-        {/*            </Typography>*/}
-        {/*            <Typography variant='body2' noWrap>*/}
-        {/*              Status: {activity.observation_status}*/}
-        {/*            </Typography>*/}
-        {/*          </Paper>*/}
-        {/*        </Box>*/}
-        {/*      </Grid>*/}
-        {/*    ))}*/}
-        {/*    <Grid item>*/}
-        {/*      <Box py={2} px={2} textAlign='center' clone>*/}
-        {/*        <Paper variant='outlined' onClick={onShowMore} square>*/}
-        {/*          <Typography variant='h4' noWrap>*/}
-        {/*            Show more*/}
-        {/*          </Typography>*/}
-        {/*        </Paper>*/}
-        {/*      </Box>*/}
-        {/*    </Grid>*/}
-        {/*  </Grid>*/}
-        {/*</Grid>*/}
       </Box>
       <NewFactDialog
         fact={selected}
