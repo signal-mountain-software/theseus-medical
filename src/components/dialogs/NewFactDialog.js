@@ -5,7 +5,7 @@ import Button from '@material-ui/core/Button';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
 import Divider from '@material-ui/core/Divider';
-import IconButton from '@material-ui/core/IconButton';
+import HistoryIcon from '@material-ui/icons/History';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -16,6 +16,8 @@ import DynamicForm from '../forms/DynamicForm';
 const useStyles = makeStyles(theme => ({
   appBar: {
     position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     marginLeft: theme.spacing(2),
@@ -57,6 +59,10 @@ export default ({ fact, session, open, onClose, onSave }) => {
     }
   };
 
+  const handleHistory = () => {
+    setMessage(`History will be available soon!`);
+  };
+
   const disableSave = value => {
     setDisable(value);
   };
@@ -79,17 +85,13 @@ export default ({ fact, session, open, onClose, onSave }) => {
     <Dialog open={open} onClose={onClose}>
       <AppBar className={classes.appBar}>
         <Toolbar>
-          <IconButton color='inherit' edge='start' onClick={onClose}>
-            <CloseIcon />
-          </IconButton>
           <Typography variant='h6' className={classes.title}>
-            Adding New Fact - {fact?.name}
+            {fact?.name}
           </Typography>
         </Toolbar>
       </AppBar>
       {fact ? (
         <Box p={3} display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-          <Typography variant='subtitle1'>Most Recent Observation: {fact.most_recent_observation}</Typography>
           <Box my={1} />
           <DynamicForm
             newFact={newFact}
@@ -107,6 +109,10 @@ export default ({ fact, session, open, onClose, onSave }) => {
       <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
         <Button color='secondary' variant='contained' endIcon={<CloseIcon />} onClick={onClose}>
           Cancel
+        </Button>
+        <Box mr={2} />
+        <Button color='info' variant='contained' endIcon={<HistoryIcon />} onClick={handleHistory}>
+          History
         </Button>
         <Box mr={2} />
         <Button color='primary' variant='contained' startIcon={<SaveIcon />} onClick={handleSave} disabled={disable}>

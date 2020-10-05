@@ -5,13 +5,13 @@ export default ({ label, value, message, onChange, onError }) => {
   const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
-    //    if (numMin && value < numMin) {
-    //    onError(true);
-    //  setError(true);
-    //  } else {
-    onError(false);
-    setError(false);
-    //   }
+    if (!value || value === '') {
+      onError(true);
+      setError(true);
+    } else {
+      onError(false);
+      setError(false);
+    }
   }, [value, onError]);
 
   return (
