@@ -75,7 +75,7 @@ export default ({ patient, session }) => {
       ) : (
         <Chip
           color='primary'
-          label='Loading patient...'
+          label='Loading profile...'
           variant='outlined'
           avatar={
             <Avatar>

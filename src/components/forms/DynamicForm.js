@@ -13,10 +13,10 @@ const useStyles = makeStyles({
   },
 });
 
-export default ({ newFact, setNewFact, type, message, values, defaultValue, observationKey, onError }) => {
+export default ({ open, newFact, setNewFact, type, message, values, defaultValue, observationKey, onError }) => {
   const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['0', '0']);
-  const [mOut, setMout] = React.useState(message || 'enter something here');
+  const [mOut, setMOut] = React.useState(message || 'enter something here');
   const classes = useStyles();
 
   const onChangeValue = event => {
@@ -34,17 +34,33 @@ export default ({ newFact, setNewFact, type, message, values, defaultValue, obse
   };
 
   React.useEffect(() => {
-    newFact.value = observationKey + '.' + defaultValue;
-    setNewFact(newFact);
-    setMout(message);
-  }, [newFact, setNewFact, defaultValue, observationKey, message]);
+    if (open) {
+      newFact.value = observationKey + '.' + defaultValue;
+      setNewFact(newFact);
+      setMOut(message);
+    } else {
+      setValue(defaultValue || '');
+      setNums(['0', '0']);
+      setMOut(message || 'enter something here');
+    }
+  }, [open, newFact, setNewFact, defaultValue, observationKey, message]);
 
   switch (type) {
     case 'characteristic_num':
-      return <NumberForm label='Number' value={value} message={mOut} onChange={onChangeValue} onError={onError} />;
+      return (
+        <NumberForm
+          open={open}
+          label='Number'
+          value={value}
+          message={mOut}
+          onChange={onChangeValue}
+          onError={onError}
+        />
+      );
     case 'characteristic_num2':
       return (
         <Number2Form
+          open={open}
           labelOne='1st Number'
           labelTwo='2nd Number'
           value={nums}

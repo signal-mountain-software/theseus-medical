@@ -1,8 +1,15 @@
 import React from 'react';
 import TextField from '@material-ui/core/TextField';
 
-export default ({ label, value, message, onChange, onError }) => {
+export default ({ open, label, value, message, onChange, onError }) => {
   const [error, setError] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) {
+      setError(false);
+      onError(false);
+    }
+  }, [open, onError]);
 
   React.useEffect(() => {
     if (!value || value === '') {

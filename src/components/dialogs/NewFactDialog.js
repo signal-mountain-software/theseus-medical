@@ -2,13 +2,13 @@ import React from 'react';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
-import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
 import Divider from '@material-ui/core/Divider';
-import HistoryIcon from '@material-ui/icons/History';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import CloseIcon from '@material-ui/icons/Close';
+import HistoryIcon from '@material-ui/icons/History';
 import SaveIcon from '@material-ui/icons/Save';
 
 import DynamicForm from '../forms/DynamicForm';
@@ -31,9 +31,8 @@ export default ({ fact, session, open, onClose, onSave }) => {
   const [message, setMessage] = React.useState('enter a value');
   const classes = useStyles();
 
-  let fValS, fVal;
-
   const handleSave = () => {
+    let fValS, fVal;
     let badData = false;
     if (fact.numeric_minimum || fact.numeric_maximum) {
       [, fValS] = newFact.value.replace('.', '~').split('~');
@@ -60,12 +59,20 @@ export default ({ fact, session, open, onClose, onSave }) => {
   };
 
   const handleHistory = () => {
-    setMessage(`History will be available soon!`);
+    setMessage('History will be available soon!');
   };
 
   const disableSave = value => {
     setDisable(value);
   };
+
+  // Reset to default state if dialog is closed
+  React.useEffect(() => {
+    if (!open) {
+      setDisable(false);
+      setMessage('enter a value');
+    }
+  }, [open]);
 
   React.useEffect(() => {
     if (fact && session) {
@@ -94,6 +101,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
         <Box p={3} display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
           <Box my={1} />
           <DynamicForm
+            open={open}
             newFact={newFact}
             setNewFact={setNewFact}
             type={fact.type}
@@ -111,7 +119,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
           Cancel
         </Button>
         <Box mr={2} />
-        <Button color='info' variant='contained' endIcon={<HistoryIcon />} onClick={handleHistory}>
+        <Button color='default' variant='contained' endIcon={<HistoryIcon />} onClick={handleHistory}>
           History
         </Button>
         <Box mr={2} />
