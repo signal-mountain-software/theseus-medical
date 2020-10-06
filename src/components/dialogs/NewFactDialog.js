@@ -27,34 +27,25 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ fact, session, open, onClose, onSave }) => {
   const [newFact, setNewFact] = React.useState(null);
-  const [disable, setDisable] = React.useState(false);
-  const [message, setMessage] = React.useState('enter a value');
+  // const [disable, setDisable] = React.useState(false);
+  const [message, setMessage] = React.useState('enter an initial value');
   const classes = useStyles();
 
   const handleSave = () => {
-    let fValS, fVal;
+    let fVal = parseFloat(newFact.value.replace('.', '~').split('~')[1]);
     let badData = false;
-    if (fact.numeric_minimum || fact.numeric_maximum) {
-      fValS = newFact.value.replace('.', '~').split('~')[1];
-      fVal = parseFloat(fValS);
-      if (
-        (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
-        (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
-      ) {
-        badData = true;
-      }
+    if (
+      !fVal ||
+      fVal === '' ||
+      fVal < 0 ||
+      (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
+      (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
+    ) {
+      badData = true;
     }
     if (!badData) {
       setMessage('');
       onSave(newFact);
-    } else if (fact.numeric_minimum) {
-      if (fact.numeric_maximum) {
-        setMessage(`enter a number between ${fact.numeric_minimum} and ${fact.numeric_maximum}`);
-      } else {
-        setMessage(`enter a number greater than ${fact.numeric_minimum}`);
-      }
-    } else {
-      setMessage(`enter a number less than ${fact.numeric_maximum}`);
     }
   };
 
@@ -63,16 +54,17 @@ export default ({ fact, session, open, onClose, onSave }) => {
   };
 
   const disableSave = value => {
-    setDisable(value);
+    //   setDisable(value);
   };
 
-  // Reset to default state if dialog is closed
+  /* Reset to default state if dialog is closed
   React.useEffect(() => {
     if (!open) {
-      setDisable(false);
+      // setDisable(false);
       setMessage('enter a value');
     }
   }, [open]);
+  */
 
   React.useEffect(() => {
     if (fact && session) {
@@ -85,6 +77,19 @@ export default ({ fact, session, open, onClose, onSave }) => {
           session_id: session.session_id,
         },
       });
+      let eString = 'Enter a number, ';
+      if (fact.numeric_minimum) {
+        if (fact.numeric_maximum) {
+          eString = 'Enter a number between ' + fact.numeric_minimum + ' and ' + fact.numeric_maximum;
+        } else {
+          eString += 'no less than ' + fact.numeric_minimum;
+        }
+      } else {
+        if (fact.numeric_maximum) {
+          eString += 'no greater than ' + fact.numeric_maximum;
+        }
+      }
+      setMessage(eString);
     }
   }, [fact, session]);
 
@@ -123,7 +128,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
           History
         </Button>
         <Box mr={2} />
-        <Button color='primary' variant='contained' startIcon={<SaveIcon />} onClick={handleSave} disabled={disable}>
+        <Button color='primary' variant='contained' startIcon={<SaveIcon />} onClick={handleSave}>
           Save
         </Button>
       </Box>
