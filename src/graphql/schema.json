@@ -503,6 +503,15 @@
             "ofType" : null
           },
           "defaultValue" : null
+        }, {
+          "name": "use_short_date",
+          "description": null,
+          "type": {
+            "kind": "SCALAR",
+            "name": "Boolean",
+            "ofType": null
+          },
+          "defaultValue": null
         } ],
         "interfaces" : null,
         "enumValues" : null,

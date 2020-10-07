@@ -145,6 +145,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               activity_type: type,
               limit: limit,
               fact_data: true,
+              // use_short_date: isMobile,
             },
           })
         ).catch(error => {
@@ -223,12 +224,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     <Typography variant='h5' noWrap>
                       {activity.name}
                     </Typography>
-                    <Typography variant='body1' noWrap>
-                      Recent: {activity.most_recent_observation}
-                    </Typography>
-                    <Typography variant='body2' noWrap>
-                      {activity.observation_status}
-                    </Typography>
+                    <Box textOverflow='ellipsis' display={activity.most_recent_observation ? 'block' : 'none'}>
+                      <Typography variant='body2' noWrap>
+                        {activity.most_recent_observation} - {activity.observation_status}
+                      </Typography>
+                    </Box>
                   </Paper>
                 </GridListTile>
               ))}
