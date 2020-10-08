@@ -32,16 +32,18 @@ export default ({ fact, session, open, onClose, onSave }) => {
   const classes = useStyles();
 
   const handleSave = () => {
-    let fVal = parseFloat(newFact.value.replace('.', '~').split('~')[1]);
     let badData = false;
-    if (
-      !fVal ||
-      fVal === '' ||
-      fVal < 0 ||
-      (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
-      (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
-    ) {
-      badData = true;
+    if (fact.numeric_minimum || fact.numeric_maximum) {
+      let fVal = parseFloat(newFact.value.replace('.', '~').split('~')[1]);
+      if (
+        !fVal ||
+        fVal === '' ||
+        fVal < 0 ||
+        (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
+        (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
+      ) {
+        badData = true;
+      }
     }
     if (!badData) {
       setMessage('');

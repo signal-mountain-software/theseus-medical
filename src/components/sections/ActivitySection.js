@@ -14,6 +14,10 @@ import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { useMediaQuery } from '@material-ui/core';
 
+import Button from '@material-ui/core/Button';
+import HomeIcon from '@material-ui/icons/Home';
+import CheckCircle from '@material-ui/icons/CheckCircle';
+
 import { createPutFact } from '../../graphql/mutations';
 import { getActivityData, getActivityTypes, getEventsByClient } from '../../graphql/queries';
 import NewFactDialog from '../dialogs/NewFactDialog';
@@ -52,10 +56,18 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const { enqueueSnackbar } = useSnackbar();
   const classes = useStyles();
 
+  var priorReason = '';
+
   const onChangeEvent = event => {
     setType(DEFAULT_TYPE);
     setLimit(DEFAULT_LIMIT);
     setEvent(event.target.value);
+  };
+
+  const returnToHome = () => {
+    setType(DEFAULT_TYPE);
+    setLimit(DEFAULT_LIMIT);
+    setEvent('');
   };
 
   const onChangeType = event => {
@@ -69,8 +81,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onChooseActivity = activity => {
-    setSelected(activity);
-    setOpen(true);
+    if (activity.code.startsWith('event')) {
+      setType(DEFAULT_TYPE);
+      setLimit(DEFAULT_LIMIT);
+      setEvent(activity.code.split('.')[1]);
+    } else {
+      setSelected(activity);
+      setOpen(true);
+    }
   };
 
   const onSaveFact = newFact => {
@@ -145,6 +163,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               activity_type: type,
               limit: limit,
               fact_data: true,
+              // includeEvents: true,
               // use_short_date: isMobile,
             },
           })
@@ -178,6 +197,16 @@ export default ({ patient, session, newFact, setNewFact }) => {
           <Typography variant='h6'>Activities</Typography>
         </Box>
         <Divider orientation='vertical' variant='middle' flexItem />
+        <Box
+          flexGrow={1}
+          display={event === '' && type === DEFAULT_TYPE ? 'none' : 'flex'}
+          flexDirection='row'
+          alignItems='center'>
+          <Button color='primary' size='small' variant='contained' startIcon={<HomeIcon />} onClick={returnToHome}>
+            Home
+          </Button>
+          <Divider orientation='vertical' variant='middle' flexItem />
+        </Box>
         <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {isMobile ? null : <Typography variant='subtitle1'>Event:</Typography>}
           <FormControl className={classes.formControl}>
@@ -211,6 +240,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
             <GridList className={classes.gridList} cellHeight='auto' cols={1}>
               {activities.map(activity => (
                 <GridListTile key={activity.code} cols={1}>
+                  <Box display={activity.reason === priorReason ? 'none' : 'block'}>
+                    <Typography variant='body1' noWrap>
+                      {(priorReason = activity.reason)}
+                    </Typography>
+                  </Box>
                   <Paper
                     component={Box}
                     py={2}
@@ -221,18 +255,43 @@ export default ({ patient, session, newFact, setNewFact }) => {
                       onChooseActivity(activity);
                     }}
                     square>
-                    <Typography variant='h5' noWrap>
-                      {activity.name}
-                    </Typography>
-                    <Box textOverflow='ellipsis' display={activity.most_recent_observation ? 'block' : 'none'}>
-                      <Typography variant='body2' noWrap>
-                        {activity.most_recent_observation} - {activity.observation_status}
-                      </Typography>
+                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                      <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
+                        <Box>
+                          <Typography variant='h5' noWrap>
+                            {activity.name}
+                          </Typography>
+                        </Box>
+                        <Box display={activity.most_recent_observation ? 'block' : 'none'}>
+                          <Typography variant='body2' noWrap>
+                            {activity.most_recent_observation} - {activity.observation_status}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      <Box
+                        alignSelf='flex-end'
+                        flexDirection='row'
+                        alignItems='center'
+                        backgroundColor='purple'
+                        display={
+                          activity.hasOwnProperty('observation_status') &&
+                            activity.observation_status !== null &&
+                            !activity.observation_status.includes('expired')
+                            ? 'flex'
+                            : 'none'
+                        }>
+                        <CheckCircle style={{ color: 'green' }}></CheckCircle>
+                      </Box>
                     </Box>
                   </Paper>
                 </GridListTile>
               ))}
               <GridListTile cols={1}>
+                <Box>
+                  <Typography variant='body1' noWrap>
+                    More items...
+                  </Typography>
+                </Box>
                 <Paper component={Box} py={2} px={2} textAlign='center' variant='outlined' onClick={onShowMore} square>
                   {loading ? <CircularProgress /> : <Typography variant='h4'>Show More</Typography>}
                 </Paper>
