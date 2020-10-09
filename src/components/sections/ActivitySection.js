@@ -1,6 +1,8 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { useSnackbar } from 'notistack';
+
+import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Divider from '@material-ui/core/Divider';
@@ -8,10 +10,14 @@ import FormControl from '@material-ui/core/FormControl';
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
+import InputBase from '@material-ui/core/InputBase';
 import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
+import SearchIcon from '@material-ui/icons/Search';
 import Typography from '@material-ui/core/Typography';
-import makeStyles from '@material-ui/core/styles/makeStyles';
+
+// import makeStyles from '@material-ui/core/styles/makeStyles';
+import { fade, makeStyles } from '@material-ui/core/styles';
 import { useMediaQuery } from '@material-ui/core';
 
 import Button from '@material-ui/core/Button';
@@ -30,8 +36,53 @@ const useStyles = makeStyles(theme => ({
       minWidth: 64,
     },
   },
+  appBar: {
+    position: 'relative',
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
   gridList: {
     maxHeight: 400,
+  },
+  search: {
+    position: 'absolute',
+    right: 1,
+    borderRadius: 50,
+    alignSelf: 'center',
+    backgroundColor: fade(theme.palette.common.white, 0.15),
+    '&:hover': {
+      backgroundColor: fade(theme.palette.common.white, 0.25),
+    },
+    marginRight: theme.spacing(2),
+    marginLeft: 0,
+    width: '100%',
+    [theme.breakpoints.up('sm')]: {
+      marginLeft: theme.spacing(3),
+      width: 'auto',
+    },
+  },
+  searchIcon: {
+    padding: theme.spacing(0, 2),
+    height: '100%',
+    position: 'absolute',
+    pointerEvents: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputRoot: {
+    color: 'inherit',
+  },
+  inputInput: {
+    padding: theme.spacing(1, 1, 1, 0),
+    // vertical padding + font size from searchIcon
+    paddingLeft: `calc(1em + ${theme.spacing(4)}px)`,
+    transition: theme.transitions.create('width'),
+    width: '100%',
+    [theme.breakpoints.up('md')]: {
+      width: '20ch',
+    },
   },
 }));
 
@@ -51,6 +102,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [loading, setLoading] = React.useState(false); // a flag that shows/hides loading spinner
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
+  const [clearSearch, setClearSearch] = React.useState(true);
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar } = useSnackbar();
@@ -78,6 +130,17 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onShowMore = () => {
     setLimit(limit + DEFAULT_LIMIT_INCREMENT);
+  };
+
+  const onSearch = event => {
+    if (event.key === 'Enter') {
+      setClearSearch(true);
+      setEvent('');
+      setLimit(DEFAULT_LIMIT);
+      setType('%' + event.target.value);
+    } else {
+      setClearSearch(false);
+    }
   };
 
   const onChooseActivity = activity => {
@@ -163,8 +226,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
               activity_type: type,
               limit: limit,
               fact_data: true,
-              // includeEvents: true,
-              // use_short_date: isMobile,
+              includeEvents: true,
+              use_short_date: isMobile,
             },
           })
         ).catch(error => {
@@ -192,48 +255,67 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   return (
     <Paper component={Box} m={2}>
-      <Box mt={1} px={3} borderBottom={2} display='flex' flexDirection='row'>
-        <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
-          <Typography variant='h6'>Activities</Typography>
-        </Box>
-        <Divider orientation='vertical' variant='middle' flexItem />
-        <Box
-          flexGrow={1}
-          display={event === '' && type === DEFAULT_TYPE ? 'none' : 'flex'}
-          flexDirection='row'
-          alignItems='center'>
-          <Button color='primary' size='small' variant='contained' startIcon={<HomeIcon />} onClick={returnToHome}>
-            Home
-          </Button>
+      <AppBar className={classes.appBar}>
+        <Box px={3} display='flex' flexDirection='row' mt={1} mb={1} justifyContent='flex-start'>
+          <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
+            <Typography variant='h6' className={classes.title}>
+              Activities
+            </Typography>
+          </Box>
           <Divider orientation='vertical' variant='middle' flexItem />
+          <Box
+            flexGrow={1}
+            display={event === '' && type === DEFAULT_TYPE ? 'none' : 'flex'}
+            flexDirection='row'
+            alignItems='center'>
+            <Button color='secondary' size='small' variant='contained' startIcon={<HomeIcon />} onClick={returnToHome}>
+              Home
+            </Button>
+            <Divider orientation='vertical' variant='middle' flexItem />
+          </Box>
+          <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+            {isMobile ? null : <Typography variant='subtitle1'>Event:</Typography>}
+            <FormControl className={classes.formControl}>
+              <NativeSelect value={event} onChange={onChangeEvent} name='event' inputProps={{ 'aria-label': 'event' }}>
+                <option value=''>None</option>
+                {events.map(event => (
+                  <option key={event.event_id} value={event.event_id}>
+                    {event.event_id}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormControl>
+          </Box>
+          <Divider orientation='vertical' variant='middle' flexItem />
+          <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+            {isMobile ? null : <Typography variant='subtitle1'>Type:</Typography>}
+            <FormControl className={classes.formControl}>
+              <NativeSelect value={type} onChange={onChangeType} name='type' inputProps={{ 'aria-label': 'type' }}>
+                {types.map(type => (
+                  <option key={type.activity_type_code} value={type.activity_type_code}>
+                    {type.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </FormControl>
+          </Box>
+          <div className={classes.search}>
+            <div className={classes.searchIcon}>
+              <SearchIcon />
+            </div>
+            <InputBase
+              placeholder='Search…'
+              onKeyPress={onSearch}
+              value={clearSearch ? '' : null}
+              classes={{
+                root: classes.inputRoot,
+                input: classes.inputInput,
+              }}
+              inputProps={{ 'aria-label': 'search' }}
+            />
+          </div>
         </Box>
-        <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-          {isMobile ? null : <Typography variant='subtitle1'>Event:</Typography>}
-          <FormControl className={classes.formControl}>
-            <NativeSelect value={event} onChange={onChangeEvent} name='event' inputProps={{ 'aria-label': 'event' }}>
-              <option value=''>None</option>
-              {events.map(event => (
-                <option key={event.event_id} value={event.event_id}>
-                  {event.event_id}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormControl>
-        </Box>
-        <Divider orientation='vertical' variant='middle' flexItem />
-        <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-          {isMobile ? null : <Typography variant='subtitle1'>Type:</Typography>}
-          <FormControl className={classes.formControl}>
-            <NativeSelect value={type} onChange={onChangeType} name='type' inputProps={{ 'aria-label': 'type' }}>
-              {types.map(type => (
-                <option key={type.activity_type_code} value={type.activity_type_code}>
-                  {type.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </FormControl>
-        </Box>
-      </Box>
+      </AppBar>
       <Box p={3} flexGrow={1}>
         <Grid container>
           <Grid sm={6} xs={12} item>
@@ -272,11 +354,10 @@ export default ({ patient, session, newFact, setNewFact }) => {
                         alignSelf='flex-end'
                         flexDirection='row'
                         alignItems='center'
-                        backgroundColor='purple'
                         display={
                           activity.hasOwnProperty('observation_status') &&
-                            activity.observation_status !== null &&
-                            !activity.observation_status.includes('expired')
+                          activity.observation_status !== null &&
+                          !activity.observation_status.includes('expired')
                             ? 'flex'
                             : 'none'
                         }>

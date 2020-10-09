@@ -79,16 +79,16 @@ export default ({ fact, session, open, onClose, onSave }) => {
           session_id: session.session_id,
         },
       });
-      let eString = 'Enter a number, ';
+      let eString = 'Enter a number ';
       if (fact.numeric_minimum) {
         if (fact.numeric_maximum) {
           eString = 'Enter a number between ' + fact.numeric_minimum + ' and ' + fact.numeric_maximum;
         } else {
-          eString += 'no less than ' + fact.numeric_minimum;
+          eString += ', no less than ' + fact.numeric_minimum;
         }
       } else {
         if (fact.numeric_maximum) {
-          eString += 'no greater than ' + fact.numeric_maximum;
+          eString += ', no greater than ' + fact.numeric_maximum;
         }
       }
       setMessage(eString);

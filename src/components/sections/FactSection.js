@@ -1,6 +1,8 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { useSnackbar } from 'notistack';
+
+import AppBar from '@material-ui/core/AppBar';
 import Paper from '@material-ui/core/Paper';
 import Table from '@material-ui/core/Table';
 import TableBody from '@material-ui/core/TableBody';
@@ -17,6 +19,12 @@ import Section from '../Section';
 const useStyles = makeStyles({
   container: {
     maxHeight: 400,
+  },
+  appBar: {
+    position: 'relative',
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
   },
 });
 
