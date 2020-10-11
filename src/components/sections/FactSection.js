@@ -83,16 +83,10 @@ export default ({ patient, session, newFact }) => {
           justifyContent='flex-start'
           alignItems='center'>
           <AssignmentOutlinedIcon />
-          <Box
-            flexDirection='row'
-            pl={1}
-            nowrap
-            grow={1}
-            justifyContent='flex-start'
-            alignItems='center'>
+          <Box flexDirection='row' pl={1} nowrap grow={1} justifyContent='flex-start' alignItems='center'>
             <Typography variant='h6' className={classes.title}>
               Facts
-          </Typography>
+            </Typography>
           </Box>
         </Box>
       </AppBar>
