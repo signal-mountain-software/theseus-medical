@@ -79,7 +79,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
           session_id: session.session_id,
         },
       });
-      let eString = 'Enter a number ';
+      let eString = 'Enter a number';
       if (fact.numeric_minimum) {
         if (fact.numeric_maximum) {
           eString = 'Enter a number between ' + fact.numeric_minimum + ' and ' + fact.numeric_maximum;
@@ -116,6 +116,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
             values={fact.valid_values_list}
             defaultValue={fact.default_value}
             observationKey={fact.observation_key}
+            onEnter={handleSave}
             onError={disableSave}
           />
         </Box>

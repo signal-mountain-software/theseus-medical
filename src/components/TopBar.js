@@ -8,12 +8,12 @@ import ListItemIcon from '@material-ui/core/ListItemIcon';
 import ListItemText from '@material-ui/core/ListItemText';
 import Menu from '@material-ui/core/Menu';
 import MenuItem from '@material-ui/core/MenuItem';
-import Slide from '@material-ui/core/Slide';
+//import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
 import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
-import useScrollTrigger from '@material-ui/core/useScrollTrigger';
+//import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import AssignmentIndIcon from '@material-ui/icons/AssignmentInd';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
@@ -23,6 +23,7 @@ import useSession from '../hooks/useSession';
 import SwitchPatientDialog from './dialogs/SwitchPatientDialog';
 import PatientChip from './PatientChip';
 
+/*
 const HideOnScroll = ({ children }) => {
   const trigger = useScrollTrigger();
 
@@ -32,6 +33,7 @@ const HideOnScroll = ({ children }) => {
     </Slide>
   );
 };
+*/
 
 const ITEM_HEIGHT = 48;
 
@@ -71,80 +73,78 @@ export default () => {
 
   return (
     <Box flexGrow={1}>
-      <HideOnScroll>
-        <AppBar color='inherit'>
-          <Toolbar>
-            <Box flexGrow={1}>
-              <PatientChip patient={patient} session={session} />
-            </Box>
-            {!isMobile ? (
-              <>
+      <AppBar color='inherit'>
+        <Toolbar>
+          <Box flexGrow={1}>
+            <PatientChip patient={patient} session={session} />
+          </Box>
+          {!isMobile ? (
+            <>
+              {hide ? null : (
+                <Box mr={2}>
+                  <Tooltip
+                    title={<Typography variant='subtitle1'>Switch current patient</Typography>}
+                    placement='bottom-end'>
+                    <Button
+                      color='primary'
+                      size='small'
+                      variant='contained'
+                      startIcon={<AssignmentIndIcon />}
+                      endIcon={<SwapHorizIcon />}
+                      onClick={onSwitchPatient}>
+                      Patient
+                    </Button>
+                  </Tooltip>
+                </Box>
+              )}
+              <Tooltip
+                title={<Typography variant='subtitle1'>Sign out of Theseus Medical</Typography>}
+                placement='bottom-end'>
+                <Button
+                  color='secondary'
+                  size='small'
+                  variant='contained'
+                  endIcon={<ExitToAppIcon />}
+                  onClick={onSignOut}>
+                  Sign Out
+                </Button>
+              </Tooltip>
+            </>
+          ) : (
+            <>
+              <IconButton aria-controls='hidden-menu' aria-haspopup='true' onClick={handleClick}>
+                <MoreVertIcon />
+              </IconButton>
+              <Menu
+                id='hidden-menu'
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={handleClose}
+                PaperProps={{
+                  style: {
+                    maxHeight: ITEM_HEIGHT * 4.5,
+                  },
+                }}
+                keepMounted>
                 {hide ? null : (
-                  <Box mr={2}>
-                    <Tooltip
-                      title={<Typography variant='subtitle1'>Switch current patient</Typography>}
-                      placement='bottom-end'>
-                      <Button
-                        color='primary'
-                        size='small'
-                        variant='contained'
-                        startIcon={<AssignmentIndIcon />}
-                        endIcon={<SwapHorizIcon />}
-                        onClick={onSwitchPatient}>
-                        Patient
-                      </Button>
-                    </Tooltip>
-                  </Box>
-                )}
-                <Tooltip
-                  title={<Typography variant='subtitle1'>Sign out of Theseus Medical</Typography>}
-                  placement='bottom-end'>
-                  <Button
-                    color='secondary'
-                    size='small'
-                    variant='contained'
-                    endIcon={<ExitToAppIcon />}
-                    onClick={onSignOut}>
-                    Sign Out
-                  </Button>
-                </Tooltip>
-              </>
-            ) : (
-              <>
-                <IconButton aria-controls='hidden-menu' aria-haspopup='true' onClick={handleClick}>
-                  <MoreVertIcon />
-                </IconButton>
-                <Menu
-                  id='hidden-menu'
-                  anchorEl={anchorEl}
-                  open={Boolean(anchorEl)}
-                  onClose={handleClose}
-                  PaperProps={{
-                    style: {
-                      maxHeight: ITEM_HEIGHT * 4.5,
-                    },
-                  }}
-                  keepMounted>
-                  {hide ? null : (
-                    <MenuItem onClick={onSwitchPatient}>
-                      <ListItemIcon>
-                        <SwapHorizIcon />
-                      </ListItemIcon>
-                      <ListItemText primary='Switch Patient' />
-                    </MenuItem>
-                  )}
-                  <MenuItem onClick={onSignOut}>
+                  <MenuItem onClick={onSwitchPatient}>
                     <ListItemIcon>
-                      <ExitToAppIcon />
+                      <SwapHorizIcon />
                     </ListItemIcon>
-                    <ListItemText primary='Sign Out' />
+                    <ListItemText primary='Switch Patient' />
                   </MenuItem>
-                </Menu>
-              </>
-            )}
-          </Toolbar>
-        </AppBar>
-      </HideOnScroll>
+                )}
+                <MenuItem onClick={onSignOut}>
+                  <ListItemIcon>
+                    <ExitToAppIcon />
+                  </ListItemIcon>
+                  <ListItemText primary='Sign Out' />
+                </MenuItem>
+              </Menu>
+            </>
+          )}
+        </Toolbar>
+      </AppBar>
       <Toolbar />
       <SwitchPatientDialog
         open={open}

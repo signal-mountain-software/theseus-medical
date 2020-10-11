@@ -5,13 +5,14 @@ import { useSnackbar } from 'notistack';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import CircularProgress from '@material-ui/core/CircularProgress';
-import Divider from '@material-ui/core/Divider';
-import FormControl from '@material-ui/core/FormControl';
+//import Divider from '@material-ui/core/Divider';
+//import FormControl from '@material-ui/core/FormControl';
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
+//import IconButton from '@material-ui/core/InputBase';
 import InputBase from '@material-ui/core/InputBase';
-import NativeSelect from '@material-ui/core/NativeSelect';
+//import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
 import SearchIcon from '@material-ui/icons/Search';
 import Typography from '@material-ui/core/Typography';
@@ -25,7 +26,8 @@ import HomeIcon from '@material-ui/icons/Home';
 import CheckCircle from '@material-ui/icons/CheckCircle';
 
 import { createPutFact } from '../../graphql/mutations';
-import { getActivityData, getActivityTypes, getEventsByClient } from '../../graphql/queries';
+//import { getActivityData, getActivityTypes, getEventsByClient } from '../../graphql/queries';
+import { getActivityData } from '../../graphql/queries';
 import NewFactDialog from '../dialogs/NewFactDialog';
 
 const useStyles = makeStyles(theme => ({
@@ -41,45 +43,37 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'flex-start',
+    zIndex: 1,
   },
   gridList: {
     maxHeight: 400,
   },
   search: {
-    position: 'absolute',
-    right: 1,
-    borderRadius: 50,
-    alignSelf: 'center',
     backgroundColor: fade(theme.palette.common.white, 0.15),
     '&:hover': {
       backgroundColor: fade(theme.palette.common.white, 0.25),
     },
-    marginRight: theme.spacing(2),
-    marginLeft: 0,
-    width: '100%',
-    [theme.breakpoints.up('sm')]: {
-      marginLeft: theme.spacing(3),
-      width: 'auto',
-    },
+    position: 'absolute',
+    right: 15,
+    borderRadius: 50,
+    px: 4,
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   searchIcon: {
     padding: theme.spacing(0, 2),
     height: '100%',
-    position: 'absolute',
-    pointerEvents: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+    pointerEvents: 'auto',
   },
   inputRoot: {
     color: 'inherit',
   },
   inputInput: {
     padding: theme.spacing(1, 1, 1, 0),
-    // vertical padding + font size from searchIcon
-    paddingLeft: `calc(1em + ${theme.spacing(4)}px)`,
+    paddingLeft: 3,
     transition: theme.transitions.create('width'),
-    width: '100%',
     [theme.breakpoints.up('md')]: {
       width: '20ch',
     },
@@ -103,6 +97,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [clearSearch, setClearSearch] = React.useState(true);
+  const [searchString, setSearchString] = React.useState('ate');
+
+  //const [title, setTitle] = React.useState('Activities');
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar } = useSnackbar();
@@ -110,37 +107,50 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   var priorReason = '';
 
+  /*
   const onChangeEvent = event => {
     setType(DEFAULT_TYPE);
     setLimit(DEFAULT_LIMIT);
     setEvent(event.target.value);
   };
+*/
 
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
     setLimit(DEFAULT_LIMIT);
     setEvent('');
+    setSearchString('');
   };
 
+  /*
   const onChangeType = event => {
     setEvent('');
     setLimit(DEFAULT_LIMIT);
     setType(event.target.value);
   };
+*/
 
   const onShowMore = () => {
     setLimit(limit + DEFAULT_LIMIT_INCREMENT);
   };
 
-  const onSearch = event => {
+  const onTap = event => {
+    setClearSearch(true);
+    setEvent('');
+    setLimit(DEFAULT_LIMIT);
+    setType('%' + searchString);
+    setSearchString('');
+  };
+
+  const checkEnter = event => {
     if (event.key === 'Enter') {
-      setClearSearch(true);
-      setEvent('');
-      setLimit(DEFAULT_LIMIT);
-      setType('%' + event.target.value);
-    } else {
-      setClearSearch(false);
+      onTap(event);
     }
+  };
+
+  const onSearch = event => {
+    setSearchString(event.target.value);
+    setClearSearch(false);
   };
 
   const onChooseActivity = activity => {
@@ -177,24 +187,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
       let getEventsResult;
       let getActivitiesResult;
       if (session) {
-        getEventsResult = await API.graphql(
-          graphqlOperation(getEventsByClient, { client_id: session.client_id })
-        ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching events by client id: ${error.message}`, {
-            variant: 'error',
-          });
-        });
-        const events = getEventsResult.data.getEventsByClient.items;
-
-        getActivitiesResult = await API.graphql(
-          graphqlOperation(getActivityTypes, { client_id: session.client_id })
-        ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching activity types by client id: ${error.message}`, {
-            variant: 'error',
-          });
-        });
-        const types = getActivitiesResult.data.getActivityTypes;
-
         if (mounted) {
           setEvents(events);
           setTypes(types);
@@ -256,64 +248,43 @@ export default ({ patient, session, newFact, setNewFact }) => {
   return (
     <Paper component={Box} m={2}>
       <AppBar className={classes.appBar}>
-        <Box px={3} display='flex' flexDirection='row' mt={1} mb={1} justifyContent='flex-start'>
-          <Box flexGrow={1} display='flex' flexDirection='row' alignItems='center'>
+        <Box
+          px={3}
+          display='flex'
+          flexDirection='row'
+          minHeight={40}
+          width='100%'
+          alignItems='center'
+          mt={1}
+          mb={1}
+          justifyContent='flex-start'>
+          <Box display={isMobile ? 'none' : 'flex'}>
             <Typography variant='h6' className={classes.title}>
               Activities
             </Typography>
           </Box>
-          <Divider orientation='vertical' variant='middle' flexItem />
-          <Box
-            flexGrow={1}
-            display={event === '' && type === DEFAULT_TYPE ? 'none' : 'flex'}
-            flexDirection='row'
-            alignItems='center'>
+          <Box px={5} display={event === '' && type === DEFAULT_TYPE ? 'none' : 'flex'}>
             <Button color='secondary' size='small' variant='contained' startIcon={<HomeIcon />} onClick={returnToHome}>
               Home
             </Button>
-            <Divider orientation='vertical' variant='middle' flexItem />
           </Box>
-          <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-            {isMobile ? null : <Typography variant='subtitle1'>Event:</Typography>}
-            <FormControl className={classes.formControl}>
-              <NativeSelect value={event} onChange={onChangeEvent} name='event' inputProps={{ 'aria-label': 'event' }}>
-                <option value=''>None</option>
-                {events.map(event => (
-                  <option key={event.event_id} value={event.event_id}>
-                    {event.event_id}
-                  </option>
-                ))}
-              </NativeSelect>
-            </FormControl>
-          </Box>
-          <Divider orientation='vertical' variant='middle' flexItem />
-          <Box flexGrow={1} display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-            {isMobile ? null : <Typography variant='subtitle1'>Type:</Typography>}
-            <FormControl className={classes.formControl}>
-              <NativeSelect value={type} onChange={onChangeType} name='type' inputProps={{ 'aria-label': 'type' }}>
-                {types.map(type => (
-                  <option key={type.activity_type_code} value={type.activity_type_code}>
-                    {type.name}
-                  </option>
-                ))}
-              </NativeSelect>
-            </FormControl>
-          </Box>
-          <div className={classes.search}>
-            <div className={classes.searchIcon}>
-              <SearchIcon />
-            </div>
+          <Box className={classes.search}>
+            <Button type='submit' startIcon={<SearchIcon />} onTouchEnd={onTap} onClick={onTap} pointerEvents='auto' />
             <InputBase
-              placeholder='Search…'
-              onKeyPress={onSearch}
+              type='text'
+              position='absolute'
+              left={7}
               value={clearSearch ? '' : null}
+              placeholder='Search…'
+              onChange={onSearch}
+              onKeyPress={checkEnter}
               classes={{
                 root: classes.inputRoot,
                 input: classes.inputInput,
               }}
               inputProps={{ 'aria-label': 'search' }}
             />
-          </div>
+          </Box>
         </Box>
       </AppBar>
       <Box p={3} flexGrow={1}>
