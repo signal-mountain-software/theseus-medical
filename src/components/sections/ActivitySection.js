@@ -342,8 +342,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     More items...
                   </Typography>
                 </Box>
-                <Paper component={Box} py={2} px={2} textAlign='center' variant='outlined' onClick={onShowMore} square>
-                  {loading ? <CircularProgress /> : <Typography variant='h4'>Show More</Typography>}
+                <Paper component={Box} py={2} px={2} textAlign='start' variant='outlined' onClick={onShowMore} square>
+                  {loading ? (
+                    <CircularProgress />
+                  ) : activities.length < limit ? (
+                    <Typography variant='h5'>No more Activities</Typography>
+                  ) : (
+                    <Typography variant='h5'>Click for more</Typography>
+                  )}
                 </Paper>
               </GridListTile>
             </GridList>
