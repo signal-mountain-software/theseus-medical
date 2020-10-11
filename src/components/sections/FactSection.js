@@ -3,6 +3,7 @@ import { API, graphqlOperation } from 'aws-amplify';
 import { useSnackbar } from 'notistack';
 
 import AppBar from '@material-ui/core/AppBar';
+import AssignmentOutlinedIcon from '@material-ui/icons/AssignmentOutlined';
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import Table from '@material-ui/core/Table';
@@ -70,7 +71,6 @@ export default ({ patient, session, newFact }) => {
   }, [patient, session, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    // <Section title='These are the Facts' color='red'>
     <Paper component={Box} m={2}>
       <AppBar className={classes.appBar}>
         <Box
@@ -82,9 +82,18 @@ export default ({ patient, session, newFact }) => {
           mb={1}
           justifyContent='flex-start'
           alignItems='center'>
-          <Typography variant='h6' className={classes.title}>
-            Facts
+          <AssignmentOutlinedIcon />
+          <Box
+            flexDirection='row'
+            pl={1}
+            nowrap
+            grow={1}
+            justifyContent='flex-start'
+            alignItems='center'>
+            <Typography variant='h6' className={classes.title}>
+              Facts
           </Typography>
+          </Box>
         </Box>
       </AppBar>
       <TableContainer className={classes.container} component={Paper}>

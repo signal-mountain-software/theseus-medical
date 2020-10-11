@@ -21,7 +21,9 @@ export const getActivityData = /* GraphQL */ `
     }
   }
 `;
-export const getActivityTypes = /* GraphQL */ `
+
+/*
+export const getActivityTypes = 
   query GetActivityTypes($client_id: String!) {
     getActivityTypes(client_id: $client_id) {
       client_id
@@ -37,7 +39,7 @@ export const getActivityTypes = /* GraphQL */ `
     }
   }
 `;
-export const getEventsByClient = /* GraphQL */ `
+export const getEventsByClient =  `
   query GetEventsByClient(
     $client_id: String!
     $filter: TableEventsFilterInput
@@ -59,6 +61,7 @@ export const getEventsByClient = /* GraphQL */ `
     }
   }
 `;
+*/
 export const getPeopleByGroup = /* GraphQL */ `
   query GetPeopleByGroup($client_group_id: String!, $role: String) {
     getPeopleByGroup(client_group_id: $client_group_id, role: $role) {

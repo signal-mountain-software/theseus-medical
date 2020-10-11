@@ -5,17 +5,17 @@ import { useSnackbar } from 'notistack';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import CircularProgress from '@material-ui/core/CircularProgress';
-//import Divider from '@material-ui/core/Divider';
+
 //import FormControl from '@material-ui/core/FormControl';
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
-//import IconButton from '@material-ui/core/InputBase';
 import InputBase from '@material-ui/core/InputBase';
-//import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
 import SearchIcon from '@material-ui/icons/Search';
 import Typography from '@material-ui/core/Typography';
+
+import BusinessCenterOutlinedIcon from '@material-ui/icons/BusinessCenterOutlined';
 
 // import makeStyles from '@material-ui/core/styles/makeStyles';
 import { fade, makeStyles } from '@material-ui/core/styles';
@@ -97,7 +97,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [clearSearch, setClearSearch] = React.useState(true);
-  const [searchString, setSearchString] = React.useState('ate');
+  const [searchString, setSearchString] = React.useState('');
+  const [homeState, setHomeState] = React.useState(true);
 
   //const [title, setTitle] = React.useState('Activities');
 
@@ -107,28 +108,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   var priorReason = '';
 
-  /*
-  const onChangeEvent = event => {
-    setType(DEFAULT_TYPE);
-    setLimit(DEFAULT_LIMIT);
-    setEvent(event.target.value);
-  };
-*/
-
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
     setLimit(DEFAULT_LIMIT);
     setEvent('');
     setSearchString('');
   };
-
-  /*
-  const onChangeType = event => {
-    setEvent('');
-    setLimit(DEFAULT_LIMIT);
-    setType(event.target.value);
-  };
-*/
 
   const onShowMore = () => {
     setLimit(limit + DEFAULT_LIMIT_INCREMENT);
@@ -184,15 +169,15 @@ export default ({ patient, session, newFact, setNewFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      let getEventsResult;
-      let getActivitiesResult;
+      //      let getEventsResult;
+      //      let getActivitiesResult;
       if (session) {
         if (mounted) {
           setEvents(events);
           setTypes(types);
         } else {
-          API.cancel(getEventsResult, 'ActivitySection unmounted, cancel getEventsByClient');
-          API.cancel(getActivitiesResult, 'ActivitySection unmounted, cancel getActivityTypes');
+          //          API.cancel(getEventsResult, 'ActivitySection unmounted, cancel getEventsByClient');
+          //          API.cancel(getActivitiesResult, 'ActivitySection unmounted, cancel getActivityTypes');
         }
       }
     })();
@@ -232,6 +217,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
         if (mounted) {
           setLoading(false);
           setActivities(result.data.getActivityData);
+          if (event === '' && type === DEFAULT_TYPE) {
+            setHomeState(true);
+          } else {
+            setHomeState(false);
+          }
         } else {
           setLoading(false);
           API.cancel(result, 'ActivitySection unmounted, cancel getActivityData');
@@ -258,12 +248,20 @@ export default ({ patient, session, newFact, setNewFact }) => {
           mt={1}
           mb={1}
           justifyContent='flex-start'>
-          <Box display={isMobile ? 'none' : 'flex'}>
+          <BusinessCenterOutlinedIcon />
+          <Box
+            flexDirection='row'
+            pl={1}
+            display={isMobile && !homeState ? 'none' : 'flex'}
+            nowrap
+            grow={1}
+            justifyContent='flex-start'
+            alignItems='center'>
             <Typography variant='h6' className={classes.title}>
               Activities
             </Typography>
           </Box>
-          <Box px={5} display={event === '' && type === DEFAULT_TYPE ? 'none' : 'flex'}>
+          <Box pl={5} display={homeState ? 'none' : 'flex'}>
             <Button color='secondary' size='small' variant='contained' startIcon={<HomeIcon />} onClick={returnToHome}>
               Home
             </Button>
