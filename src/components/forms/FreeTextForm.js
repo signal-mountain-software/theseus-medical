@@ -1,7 +1,7 @@
 import React from 'react';
 import TextField from '@material-ui/core/TextField';
 
-export default ({ open, label, value, message, onChange, onError }) => {
+export default ({ open, label, value, message, onChange, onKeyPress, onError }) => {
   const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
@@ -30,6 +30,7 @@ export default ({ open, label, value, message, onChange, onError }) => {
       variant='outlined'
       error={error}
       onChange={onChange}
+      onKeyPress={onKeyPress}
       InputLabelProps={{ shrink: true }}
       fullWidth
     />

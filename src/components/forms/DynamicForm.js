@@ -14,7 +14,18 @@ const useStyles = makeStyles({
   },
 });
 
-export default ({ open, newFact, setNewFact, type, message, values, defaultValue, observationKey, onError }) => {
+export default ({
+  open,
+  newFact,
+  setNewFact,
+  type,
+  message,
+  values,
+  defaultValue,
+  observationKey,
+  onError,
+  onSave,
+}) => {
   const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['0', '0']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
@@ -30,6 +41,13 @@ export default ({ open, newFact, setNewFact, type, message, values, defaultValue
     setValue(event.target.value);
     newFact.value = observationKey + '.' + event.target.value;
     setNewFact(newFact);
+  };
+
+  const checkEnter = event => {
+    if (event.key === 'Enter') {
+      onChangeValue(event);
+      onSave();
+    }
   };
 
   const onChangeNums = index => event => {
@@ -83,6 +101,7 @@ export default ({ open, newFact, setNewFact, type, message, values, defaultValue
           value={value}
           message={mOut}
           onChange={onChangeMessage}
+          onKeyPress={checkEnter}
           onError={onError}
         />
       );

@@ -111,8 +111,8 @@ export default ({ fact, session, open, onClose, onSave }) => {
             values={fact.valid_values_list}
             defaultValue={fact.default_value}
             observationKey={fact.observation_key}
-            onEnter={handleSave}
             onError={disableSave}
+            onSave={handleSave}
           />
         </Box>
       ) : null}
