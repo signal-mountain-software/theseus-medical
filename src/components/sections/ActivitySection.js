@@ -3,6 +3,7 @@ import { API, graphqlOperation } from 'aws-amplify';
 import { useSnackbar } from 'notistack';
 
 import AppBar from '@material-ui/core/AppBar';
+import AssignmentOutlinedIcon from '@material-ui/icons/AssignmentOutlined';
 import Box from '@material-ui/core/Box';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
@@ -62,6 +63,16 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
+  defaultButton: {
+    borderRadius: 50,
+    marginLeft: 0,
+    paddingLeft: 13,
+    paddingRight: 10,
+    variant: 'body2',
+    fontSize: theme.typography.fontSize * 0.8,
+    color: theme.palette.info[theme.palette.type],
+    height: theme.typography.fontSize * 1.8,
+  },
   searchIcon: {
     padding: theme.spacing(0, 2),
     height: '100%',
@@ -99,14 +110,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [clearSearch, setClearSearch] = React.useState(true);
   const [searchString, setSearchString] = React.useState('');
   const [homeState, setHomeState] = React.useState(true);
-
-  //const [title, setTitle] = React.useState('Activities');
+  //const [defaultRequested, setDefaultRequested] = React.useState(false);
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar } = useSnackbar();
   const classes = useStyles();
 
   var priorReason = '';
+  var defaultRequested = false;
 
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
@@ -138,11 +149,31 @@ export default ({ patient, session, newFact, setNewFact }) => {
     setClearSearch(false);
   };
 
+  const onChooseDefault = () => {
+    //setDefaultRequested(true);
+    defaultRequested = true;
+  };
+
   const onChooseActivity = activity => {
     if (activity.code.startsWith('event')) {
       setType(DEFAULT_TYPE);
       setLimit(DEFAULT_LIMIT);
       setEvent(activity.code.split('.')[1]);
+    } else if (defaultRequested) {
+      //setDefaultRequested(false);
+      defaultRequested = false;
+      newFact = {
+        patient_id: session.patient_id || session.user_id,
+        activity_key: activity.code,
+        value: activity.observation_key + '.' + activity.default_value,
+        session: {
+          user_id: session.user_id,
+          session_id: session.session_id,
+        },
+      };
+      setSelected(activity);
+      setNewFact(newFact);
+      onSaveFact(newFact);
     } else {
       setSelected(activity);
       setOpen(true);
@@ -154,7 +185,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
       setNewFact(newFact);
       setOpen(false);
-      enqueueSnackbar(`Successfully saved '${selected.name}' fact!`, {
+      enqueueSnackbar(`Successfully saved!`, {
         variant: 'success',
       });
     })().catch(error => {
@@ -292,9 +323,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               {activities.map(activity => (
                 <GridListTile key={activity.code} cols={1}>
                   <Box display={activity.reason === priorReason ? 'none' : 'block'}>
-                    <Typography variant='body1' noWrap>
-                      {(priorReason = activity.reason)}
-                    </Typography>
+                    {(priorReason = activity.reason)}
                   </Box>
                   <Paper
                     component={Box}
@@ -308,10 +337,24 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     square>
                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                       <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
-                        <Box>
+                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                           <Typography variant='h5' noWrap>
                             {activity.name}
                           </Typography>
+                          <Box
+                            pl={7}
+                            display={
+                              activity.hasOwnProperty('default_value') && activity.default_value ? 'flex' : 'none'
+                            }>
+                            <Button
+                              onClick={onChooseDefault}
+                              className={classes.defaultButton}
+                              startIcon={<AssignmentOutlinedIcon />}>
+                              <Typography noWrap>
+                                {activity.code.startsWith('event.') ? 'update all' : activity.default_value}
+                              </Typography>
+                            </Button>
+                          </Box>
                         </Box>
                         <Box display={activity.most_recent_observation ? 'block' : 'none'}>
                           <Typography variant='body2' noWrap>
@@ -322,7 +365,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
                       <Box
                         alignSelf='flex-end'
                         flexDirection='row'
-                        alignItems='center'
                         display={
                           activity.hasOwnProperty('observation_status') &&
                           activity.observation_status !== null &&
