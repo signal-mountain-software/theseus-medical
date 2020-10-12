@@ -6,6 +6,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
+import FreeTextForm from './FreeTextForm';
 
 const useStyles = makeStyles({
   formControl: {
@@ -20,6 +21,12 @@ export default ({ open, newFact, setNewFact, type, message, values, defaultValue
   const classes = useStyles();
 
   const onChangeValue = event => {
+    setValue(event.target.value);
+    newFact.value = observationKey + '.' + event.target.value;
+    setNewFact(newFact);
+  };
+
+  const onChangeMessage = event => {
     setValue(event.target.value);
     newFact.value = observationKey + '.' + event.target.value;
     setNewFact(newFact);
@@ -65,6 +72,17 @@ export default ({ open, newFact, setNewFact, type, message, values, defaultValue
           labelTwo='2nd Number'
           value={nums}
           onChange={onChangeNums}
+          onError={onError}
+        />
+      );
+    case 'message':
+      return (
+        <FreeTextForm
+          open={open}
+          label='Message'
+          value={value}
+          message={mOut}
+          onChange={onChangeMessage}
           onError={onError}
         />
       );

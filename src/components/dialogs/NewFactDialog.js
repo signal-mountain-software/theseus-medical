@@ -59,15 +59,6 @@ export default ({ fact, session, open, onClose, onSave }) => {
     //   setDisable(value);
   };
 
-  /* Reset to default state if dialog is closed
-  React.useEffect(() => {
-    if (!open) {
-      // setDisable(false);
-      setMessage('enter a value');
-    }
-  }, [open]);
-  */
-
   React.useEffect(() => {
     if (fact && session) {
       setNewFact({
@@ -89,6 +80,10 @@ export default ({ fact, session, open, onClose, onSave }) => {
       } else {
         if (fact.numeric_maximum) {
           eString += ', no greater than ' + fact.numeric_maximum;
+        }
+        if (fact.type === 'message') {
+          eString = 'Enter a message';
+          fact.default_value = '';
         }
       }
       setMessage(eString);
