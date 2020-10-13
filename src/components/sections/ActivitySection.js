@@ -1,33 +1,26 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { useSnackbar } from 'notistack';
-
 import AppBar from '@material-ui/core/AppBar';
-import AssignmentOutlinedIcon from '@material-ui/icons/AssignmentOutlined';
 import Box from '@material-ui/core/Box';
+import Button from '@material-ui/core/Button';
 import CircularProgress from '@material-ui/core/CircularProgress';
-
-//import FormControl from '@material-ui/core/FormControl';
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
 import InputBase from '@material-ui/core/InputBase';
 import Paper from '@material-ui/core/Paper';
-import SearchIcon from '@material-ui/icons/Search';
 import Typography from '@material-ui/core/Typography';
-
+import useMediaQuery from '@material-ui/core/useMediaQuery';
+import { fade } from '@material-ui/core/styles/colorManipulator';
+import makeStyles from '@material-ui/core/styles/makeStyles';
+import AssignmentOutlinedIcon from '@material-ui/icons/AssignmentOutlined';
 import BusinessCenterOutlinedIcon from '@material-ui/icons/BusinessCenterOutlined';
-
-// import makeStyles from '@material-ui/core/styles/makeStyles';
-import { fade, makeStyles } from '@material-ui/core/styles';
-import { useMediaQuery } from '@material-ui/core';
-
-import Button from '@material-ui/core/Button';
-import HomeIcon from '@material-ui/icons/Home';
 import CheckCircle from '@material-ui/icons/CheckCircle';
+import HomeIcon from '@material-ui/icons/Home';
+import SearchIcon from '@material-ui/icons/Search';
 
 import { createPutFact } from '../../graphql/mutations';
-//import { getActivityData, getActivityTypes, getEventsByClient } from '../../graphql/queries';
 import { getActivityData } from '../../graphql/queries';
 import NewFactDialog from '../dialogs/NewFactDialog';
 
@@ -92,8 +85,8 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const DEFAULT_TYPE = 'My_activities';
-const DEFAULT_LIMIT = 7;
-const DEFAULT_LIMIT_INCREMENT = 8;
+const DEFAULT_LIMIT = 5;
+const DEFAULT_LIMIT_INCREMENT = 5;
 
 export default ({ patient, session, newFact, setNewFact }) => {
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
@@ -318,7 +311,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       </AppBar>
       <Box p={3} flexGrow={1}>
         <Grid container>
-          <Grid sm={6} xs={12} item>
+          <Grid md={6} sm={7} xs={12} item>
             <GridList className={classes.gridList} cellHeight='auto' cols={1}>
               {activities.map(activity => (
                 <GridListTile key={activity.code} cols={1}>
@@ -327,8 +320,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                   </Box>
                   <Paper
                     component={Box}
-                    py={2}
-                    px={2}
+                    p={2}
                     variant='outlined'
                     textAlign='left'
                     onClick={() => {
