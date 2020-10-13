@@ -12,7 +12,7 @@ import NativeSelect from '@material-ui/core/NativeSelect';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import { useMediaQuery } from '@material-ui/core';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { createPutFact } from '../../graphql/mutations';
 import { getActivityData, getActivityTypes, getEventsByClient } from '../../graphql/queries';
@@ -32,8 +32,8 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const DEFAULT_TYPE = 'My_activities';
-const DEFAULT_LIMIT = 7;
-const DEFAULT_LIMIT_INCREMENT = 8;
+const DEFAULT_LIMIT = 5;
+const DEFAULT_LIMIT_INCREMENT = 5;
 
 export default ({ patient, session, newFact, setNewFact }) => {
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
@@ -206,14 +206,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
       </Box>
       <Box p={3} flexGrow={1}>
         <Grid container>
-          <Grid sm={6} xs={12} item>
+          <Grid md={6} sm={7} xs={12} item>
             <GridList className={classes.gridList} cellHeight='auto' cols={1}>
               {activities.map(activity => (
                 <GridListTile key={activity.code} cols={1}>
                   <Paper
                     component={Box}
-                    py={2}
-                    px={2}
+                    p={2}
                     variant='outlined'
                     textAlign='left'
                     onClick={() => {
@@ -223,17 +222,21 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     <Typography variant='h5' noWrap>
                       {activity.name}
                     </Typography>
-                    <Typography variant='body1' noWrap>
-                      Recent: {activity.most_recent_observation}
-                    </Typography>
-                    <Typography variant='body2' noWrap>
-                      {activity.observation_status}
-                    </Typography>
+                    {activity.most_recent_observation ? (
+                      <Typography variant='body1' noWrap>
+                        Recent: {activity.most_recent_observation}
+                      </Typography>
+                    ) : null}
+                    {activity.observation_status ? (
+                      <Typography variant='body2' noWrap>
+                        {activity.observation_status}
+                      </Typography>
+                    ) : null}
                   </Paper>
                 </GridListTile>
               ))}
               <GridListTile cols={1}>
-                <Paper component={Box} py={2} px={2} textAlign='center' variant='outlined' onClick={onShowMore} square>
+                <Paper component={Box} p={2} textAlign='center' variant='outlined' onClick={onShowMore} square>
                   {loading ? <CircularProgress /> : <Typography variant='h4'>Show More</Typography>}
                 </Paper>
               </GridListTile>
