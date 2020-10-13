@@ -100,7 +100,7 @@ export default ({ open, onClose }) => {
             <CloseIcon />
           </IconButton>
           <Typography variant='h6' className={classes.title}>
-            Switch Patients
+            Switch Residents
           </Typography>
         </Toolbar>
       </AppBar>

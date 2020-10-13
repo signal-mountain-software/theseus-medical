@@ -83,7 +83,7 @@ export default () => {
               {hide ? null : (
                 <Box mr={2}>
                   <Tooltip
-                    title={<Typography variant='subtitle1'>Switch current patient</Typography>}
+                    title={<Typography variant='subtitle1'>Switch current resident</Typography>}
                     placement='bottom-end'>
                     <Button
                       color='primary'
@@ -92,7 +92,7 @@ export default () => {
                       startIcon={<AssignmentIndIcon />}
                       endIcon={<SwapHorizIcon />}
                       onClick={onSwitchPatient}>
-                      Patient
+                      Resident
                     </Button>
                   </Tooltip>
                 </Box>
@@ -129,7 +129,7 @@ export default () => {
                     <ListItemIcon>
                       <SwapHorizIcon />
                     </ListItemIcon>
-                    <ListItemText primary='Switch Patient' />
+                    <ListItemText primary='Switch Resident' />
                   </MenuItem>
                 )}
                 <MenuItem onClick={onSignOut}>
