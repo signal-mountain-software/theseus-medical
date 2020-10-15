@@ -50,7 +50,8 @@ const useStyles = makeStyles(theme => ({
     position: 'absolute',
     right: 15,
     borderRadius: 50,
-    px: 4,
+    width: 150,
+    flexShrink: 2,
     display: 'flex',
     flexDirection: 'row',
     alignItems: 'center',
@@ -61,7 +62,7 @@ const useStyles = makeStyles(theme => ({
     marginLeft: 0,
     paddingLeft: 13,
     paddingRight: 10,
-    variant: 'body2',
+    variant: 'outlined',
     fontSize: theme.typography.fontSize * 0.8,
     color: theme.palette.info[theme.palette.type],
     height: theme.typography.fontSize * 1.8,
@@ -125,9 +126,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onTap = event => {
     setClearSearch(true);
-    setEvent('');
-    setLimit(DEFAULT_LIMIT);
-    setType('%' + searchString);
+    if (searchString !== '') {
+      setEvent('');
+      setLimit(DEFAULT_LIMIT);
+      setType('%' + searchString);
+    }
     setSearchString('');
   };
 
@@ -294,8 +297,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
             <Button type='submit' startIcon={<SearchIcon />} onTouchEnd={onTap} onClick={onTap} pointerEvents='auto' />
             <InputBase
               type='text'
-              position='absolute'
-              left={7}
               value={clearSearch ? '' : null}
               placeholder='Search…'
               onChange={onSearch}
@@ -316,7 +317,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
               {activities.map(activity => (
                 <GridListTile key={activity.code} cols={1}>
                   <Box display={activity.reason === priorReason ? 'none' : 'block'}>
-                    {(priorReason = activity.reason)}
+                    <Typography variant='body1' noWrap>
+                      {(priorReason = activity.reason)}
+                    </Typography>
                   </Box>
                   <Paper
                     component={Box}
@@ -335,6 +338,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
                           </Typography>
                           <Box
                             pl={7}
+                            position='absolute'
+                            right={15}
                             display={
                               activity.hasOwnProperty('default_value') && activity.default_value ? 'flex' : 'none'
                             }>
@@ -342,9 +347,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                               onClick={onChooseDefault}
                               className={classes.defaultButton}
                               startIcon={<AssignmentOutlinedIcon />}>
-                              <Typography noWrap>
-                                {activity.code.startsWith('event.') ? 'update all' : activity.default_value}
-                              </Typography>
+                              <Typography noWrap>{activity.default_value}</Typography>
                             </Button>
                           </Box>
                         </Box>
@@ -357,6 +360,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                       <Box
                         alignSelf='flex-end'
                         flexDirection='row'
+                        color='white'
                         display={
                           activity.hasOwnProperty('observation_status') &&
                           activity.observation_status !== null &&
@@ -364,7 +368,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                             ? 'flex'
                             : 'none'
                         }>
-                        <CheckCircle style={{ color: 'green' }}></CheckCircle>
+                        <CheckCircle style={{ color: 'orange' }}></CheckCircle>
                       </Box>
                     </Box>
                   </Paper>
@@ -373,17 +377,19 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='body1' noWrap>
-                    More items...
+                    {activities.length < limit ? 'No more items' : 'More items...'}
                   </Typography>
                 </Box>
-                <Paper component={Box} py={2} px={2} textAlign='start' variant='outlined' onClick={onShowMore} square>
-                  {loading ? (
-                    <CircularProgress />
-                  ) : activities.length < limit ? (
-                    <Typography variant='h5'>No more Activities</Typography>
-                  ) : (
-                    <Typography variant='h5'>Click for more</Typography>
-                  )}
+                <Paper
+                  display={activities.length < limit ? 'none' : 'block'}
+                  component={Box}
+                  py={2}
+                  px={2}
+                  textAlign='start'
+                  variant='outlined'
+                  onClick={onShowMore}
+                  square>
+                  {loading ? <CircularProgress /> : <Typography variant='h5'>Click for more</Typography>}
                 </Paper>
               </GridListTile>
             </GridList>

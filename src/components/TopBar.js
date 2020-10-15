@@ -85,7 +85,7 @@ export default () => {
                   <Tooltip
                     title={
                       <Typography variant='subtitle1'>
-                        {roles.includes('patient_with_partner') ? 'Switch current partner' : 'Switch current patient'}
+                        {roles.includes('patient_with_partner') ? 'Switch current partner' : 'Switch current resident'}
                       </Typography>
                     }
                     placement='bottom-end'>
@@ -96,7 +96,7 @@ export default () => {
                       startIcon={<AssignmentIndIcon />}
                       endIcon={<SwapHorizIcon />}
                       onClick={onSwitchPatient}>
-                      {roles.includes('patient_with_partner') ? 'Partner' : 'Patient'}
+                      {roles.includes('patient_with_partner') ? 'Partner' : 'Resident'}
                     </Button>
                   </Tooltip>
                 </Box>
@@ -134,7 +134,7 @@ export default () => {
                       <SwapHorizIcon />
                     </ListItemIcon>
                     <ListItemText
-                      primary={roles.includes('patient_with_partner') ? 'Switch Partner' : 'Switch Patient'}
+                      primary={roles.includes('patient_with_partner') ? 'Switch Partner' : 'Switch Resident'}
                     />
                   </MenuItem>
                 )}
