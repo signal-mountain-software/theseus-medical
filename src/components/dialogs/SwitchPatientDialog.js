@@ -31,7 +31,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ open, onClose }) => {
+export default ({ open, roles, onClose }) => {
   const [selected, setSelected] = React.useState(null);
   const { enqueueSnackbar } = useSnackbar();
   const { state, dispatch } = useSession();
@@ -100,16 +100,19 @@ export default ({ open, onClose }) => {
             <CloseIcon />
           </IconButton>
           <Typography variant='h6' className={classes.title}>
-            Switch Patients
+            {roles && roles.includes('patient_with_partner') ? 'Switch Partners' : 'Switch Patients'}
           </Typography>
         </Toolbar>
       </AppBar>
-      {patients ? (
+      {patients && roles ? (
         <Box p={3}>
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
             <List component='nav'>
               <PatientListItem
-                patient={{ patient_id: null, patient_display_name: 'No patient' }}
+                patient={{
+                  patient_id: null,
+                  patient_display_name: roles.includes('patient_with_partner') ? 'No partner' : 'No patient',
+                }}
                 selected={selected}
                 onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
               />
