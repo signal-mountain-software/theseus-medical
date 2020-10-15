@@ -67,7 +67,7 @@ export default () => {
 
   React.useEffect(() => {
     if (roles) {
-      setHide(roles.includes('patient'));
+      setHide(roles.includes('patient') && !roles.includes('patient_with_partner'));
     }
   }, [roles]);
 
@@ -76,14 +76,18 @@ export default () => {
       <AppBar color='inherit'>
         <Toolbar>
           <Box flexGrow={1}>
-            <PatientChip patient={patient} session={session} />
+            <PatientChip patient={patient} roles={roles} session={session} />
           </Box>
           {!isMobile ? (
             <>
               {hide ? null : (
                 <Box mr={2}>
                   <Tooltip
-                    title={<Typography variant='subtitle1'>Switch current patient</Typography>}
+                    title={
+                      <Typography variant='subtitle1'>
+                        {roles.includes('patient_with_partner') ? 'Switch current partner' : 'Switch current patient'}
+                      </Typography>
+                    }
                     placement='bottom-end'>
                     <Button
                       color='primary'
@@ -92,7 +96,7 @@ export default () => {
                       startIcon={<AssignmentIndIcon />}
                       endIcon={<SwapHorizIcon />}
                       onClick={onSwitchPatient}>
-                      Patient
+                      {roles.includes('patient_with_partner') ? 'Partner' : 'Patient'}
                     </Button>
                   </Tooltip>
                 </Box>
@@ -129,7 +133,9 @@ export default () => {
                     <ListItemIcon>
                       <SwapHorizIcon />
                     </ListItemIcon>
-                    <ListItemText primary='Switch Patient' />
+                    <ListItemText
+                      primary={roles.includes('patient_with_partner') ? 'Switch Partner' : 'Switch Patient'}
+                    />
                   </MenuItem>
                 )}
                 <MenuItem onClick={onSignOut}>
@@ -146,6 +152,7 @@ export default () => {
       <Toolbar />
       <SwitchPatientDialog
         open={open}
+        roles={roles}
         onClose={() => {
           setOpen(false);
         }}
