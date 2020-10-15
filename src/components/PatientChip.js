@@ -11,7 +11,7 @@ import FaceIcon from '@material-ui/icons/Face';
 
 import PatientDialog from './dialogs/PatientDialog';
 
-export default ({ patient, session }) => {
+export default ({ patient, roles, session }) => {
   const [picture, setPicture] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const history = useHistory();
@@ -41,12 +41,16 @@ export default ({ patient, session }) => {
 
   return (
     <Box>
-      {patient && session ? (
+      {patient && roles && session ? (
         <>
           <Tooltip
             title={
               <Typography variant='subtitle1'>
-                {session.patient_id ? 'View current patient' : 'View your profile'}
+                {session.patient_id
+                  ? roles.includes('patient_with_partner')
+                    ? 'View current partner'
+                    : 'View current patient'
+                  : 'View your profile'}
               </Typography>
             }
             placement='bottom-start'>
