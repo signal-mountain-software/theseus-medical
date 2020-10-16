@@ -106,6 +106,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [homeState, setHomeState] = React.useState(true);
   //const [defaultRequested, setDefaultRequested] = React.useState(false);
 
+  const [activePatient, setActivePatient] = React.useState(null);
+
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar } = useSnackbar();
   const classes = useStyles();
@@ -255,6 +257,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
         }
       }
     })();
+
+    if (patient !== activePatient) {
+      returnToHome();
+      setActivePatient(patient);
+    }
 
     return () => {
       setLoading(false);
