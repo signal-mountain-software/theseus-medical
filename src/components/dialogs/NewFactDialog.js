@@ -44,6 +44,8 @@ export default ({ fact, session, open, onClose, onSave }) => {
       ) {
         badData = true;
       }
+    } else if (fact.type === 'characteristic_num2' && !newFact.value.includes('over')) {
+      badData = true;
     }
     if (!badData) {
       setMessage('');
@@ -71,7 +73,9 @@ export default ({ fact, session, open, onClose, onSave }) => {
         },
       });
       let eString = 'Enter a number';
-      if (fact.numeric_minimum) {
+      if (fact.type === 'characteristic_num2') {
+        eString = 'Enter numbers in both boxes';
+      } else if (fact.numeric_minimum) {
         if (fact.numeric_maximum) {
           eString = 'Enter a number between ' + fact.numeric_minimum + ' and ' + fact.numeric_maximum;
         } else {

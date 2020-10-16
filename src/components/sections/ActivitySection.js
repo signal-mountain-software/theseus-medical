@@ -280,7 +280,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
             flexDirection='row'
             pl={1}
             display={isMobile && !homeState ? 'none' : 'flex'}
-            nowrap
             grow={1}
             justifyContent='flex-start'
             alignItems='center'>

@@ -2,7 +2,7 @@ import React from 'react';
 import Grid from '@material-ui/core/Grid';
 import TextField from '@material-ui/core/TextField';
 
-export default ({ open, labelOne, labelTwo, value, onChange, onError }) => {
+export default ({ open, labelOne, labelTwo, value, message, onChange, onError }) => {
   const [errorOne, setErrorOne] = React.useState(false);
   const [errorTwo, setErrorTwo] = React.useState(false);
 
@@ -15,18 +15,13 @@ export default ({ open, labelOne, labelTwo, value, onChange, onError }) => {
   }, [open, onError]);
 
   React.useEffect(() => {
-    if (value[0] === '' || (value[0].length > 1 && value[0].startsWith('0'))) {
+    if (!value || value[0] === '' || value[1] === '') {
       onError(true);
       setErrorOne(true);
+      setErrorTwo(true);
     } else {
       onError(errorTwo);
       setErrorOne(false);
-    }
-
-    if (value[1] === '' || (value[1].length > 1 && value[1].startsWith('0'))) {
-      onError(true);
-      setErrorTwo(true);
-    } else {
       onError(errorOne);
       setErrorTwo(false);
     }
@@ -38,7 +33,7 @@ export default ({ open, labelOne, labelTwo, value, onChange, onError }) => {
         <TextField
           value={value[0]}
           label={labelOne}
-          helperText={errorOne ? 'Incorrect entry.' : null}
+          helperText={message}
           type='number'
           variant='outlined'
           error={errorOne}
@@ -51,7 +46,7 @@ export default ({ open, labelOne, labelTwo, value, onChange, onError }) => {
         <TextField
           value={value[1]}
           label={labelTwo}
-          helperText={errorTwo ? 'Incorrect entry.' : null}
+          helperText={null}
           type='number'
           variant='outlined'
           error={errorTwo}

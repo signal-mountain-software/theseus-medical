@@ -27,7 +27,7 @@ export default ({
   onSave,
 }) => {
   const [value, setValue] = React.useState(defaultValue || '');
-  const [nums, setNums] = React.useState(['0', '0']);
+  const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
   const classes = useStyles();
 
@@ -54,7 +54,11 @@ export default ({
     const newNums = [...nums];
     newNums[index] = event.target.value;
     setNums(newNums);
-    newFact.value = observationKey + '.' + newNums.join('.');
+    if (newNums[0] && newNums[1]) {
+      newFact.value = observationKey + '.' + newNums.join(' over ');
+    } else {
+      newFact.value = 'number.partial';
+    }
     setNewFact(newFact);
   };
 
@@ -65,7 +69,7 @@ export default ({
       setMOut(message);
     } else {
       setValue(defaultValue || '');
-      setNums(['0', '0']);
+      setNums(['', '']);
       setMOut(message || 'enter something here');
     }
   }, [open, newFact, setNewFact, defaultValue, observationKey, message]);
@@ -86,9 +90,10 @@ export default ({
       return (
         <Number2Form
           open={open}
-          labelOne='1st Number'
-          labelTwo='2nd Number'
+          labelOne='Systolic'
+          labelTwo='Diastolic'
           value={nums}
+          message={mOut}
           onChange={onChangeNums}
           onError={onError}
         />
