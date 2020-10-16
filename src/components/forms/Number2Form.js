@@ -17,8 +17,24 @@ export default ({ open, labelOne, labelTwo, value, message, onChange, onError })
   React.useEffect(() => {
     if (!value || value[0] === '' || value[1] === '') {
       onError(true);
-      setErrorOne(true);
-      setErrorTwo(true);
+      switch (value[0]) {
+        case '': {
+          setErrorOne(true);
+          break;
+        }
+        default: {
+          setErrorOne(false);
+        }
+      }
+      switch (value[1]) {
+        case '': {
+          setErrorTwo(true);
+          break;
+        }
+        default: {
+          setErrorTwo(false);
+        }
+      }
     } else {
       onError(errorTwo);
       setErrorOne(false);
