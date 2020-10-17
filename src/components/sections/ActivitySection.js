@@ -180,10 +180,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onSaveFact = newFact => {
     (async () => {
+      let [, sVal] = newFact.value.replace('.', '~').split('~');
       await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
       setNewFact(newFact);
+      setLimit(limit + 1);
       setOpen(false);
-      enqueueSnackbar(`Successfully saved!`, {
+      enqueueSnackbar(`We saved: ${sVal}`, {
         variant: 'success',
       });
     })().catch(error => {
