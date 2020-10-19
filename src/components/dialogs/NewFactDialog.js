@@ -33,8 +33,11 @@ export default ({ fact, session, open, onClose, onSave }) => {
 
   const handleSave = () => {
     let badData = false;
-    if (fact.numeric_minimum || fact.numeric_maximum) {
-      let fVal = parseFloat(newFact.value.replace('.', '~').split('~')[1]);
+    let xVal = newFact.value.replace('.', '~').split('~')[1];
+    if (xVal === 'null' || xVal === '') {
+      badData = true;
+    } else if (fact.numeric_minimum || fact.numeric_maximum) {
+      let fVal = parseFloat(xVal);
       if (
         !fVal ||
         fVal === '' ||
@@ -44,7 +47,7 @@ export default ({ fact, session, open, onClose, onSave }) => {
       ) {
         badData = true;
       }
-    } else if (fact.type === 'characteristic_num2' && !newFact.value.includes('over')) {
+    } else if (fact.type === 'characteristic_num2' && !xVal.includes('over')) {
       badData = true;
     }
     if (!badData) {
