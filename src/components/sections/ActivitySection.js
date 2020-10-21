@@ -153,25 +153,37 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onChooseActivity = activity => {
-    if (activity.code.startsWith('event')) {
-      setType(DEFAULT_TYPE);
-      setLimit(DEFAULT_LIMIT);
-      setEvent(activity.code.split('.')[1]);
-    } else if (defaultRequested) {
+    if (defaultRequested) {
       //setDefaultRequested(false);
       defaultRequested = false;
-      newFact = {
-        patient_id: session.patient_id || session.user_id,
-        activity_key: activity.code,
-        value: activity.observation_key + '.' + activity.default_value,
-        session: {
-          user_id: session.user_id,
-          session_id: session.session_id,
-        },
-      };
+      if (activity.code.startsWith('event')) {
+        newFact = {
+          patient_id: session.patient_id || session.user_id,
+          activity_key: 'defaults.' + activity.code,
+          value: 'action.set_defaults',
+          session: {
+            user_id: session.user_id,
+            session_id: session.session_id,
+          },
+        };
+      } else {
+        newFact = {
+          patient_id: session.patient_id || session.user_id,
+          activity_key: activity.code,
+          value: activity.observation_key + '.' + activity.default_value,
+          session: {
+            user_id: session.user_id,
+            session_id: session.session_id,
+          },
+        };
+      }
       setSelected(activity);
       setNewFact(newFact);
       onSaveFact(newFact);
+    } else if (activity.code.startsWith('event')) {
+      setType(DEFAULT_TYPE);
+      setLimit(DEFAULT_LIMIT);
+      setEvent(activity.code.split('.')[1]);
     } else {
       setSelected(activity);
       setOpen(true);
