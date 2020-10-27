@@ -1,7 +1,12 @@
 import React from 'react';
 import FormControl from '@material-ui/core/FormControl';
-import InputLabel from '@material-ui/core/InputLabel';
-import NativeSelect from '@material-ui/core/NativeSelect';
+import FormControlLabel from '@material-ui/core/FormControlLabel';
+import FormLabel from '@material-ui/core/FormLabel';
+import Input from '@material-ui/core/Input';
+
+//import NativeSelect from '@material-ui/core/NativeSelect';
+import RadioGroup from '@material-ui/core/RadioGroup';
+import Radio from '@material-ui/core/Radio';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import NumberForm from './NumberForm';
@@ -25,13 +30,23 @@ export default ({
   observationKey,
   onError,
   onSave,
+  onNext,
 }) => {
   const [value, setValue] = React.useState(defaultValue || '');
+  const [freeText, setFreeText] = React.useState('');
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
+  const [inputAllowed, setInputAllowed] = React.useState(false);
   const classes = useStyles();
 
   const onChangeValue = event => {
+    setValue(event.target.value);
+    newFact.value = observationKey + '.' + event.target.value;
+    setNewFact(newFact);
+  };
+
+  const onInputChange = event => {
+    setFreeText(event.target.value);
     setValue(event.target.value);
     newFact.value = observationKey + '.' + event.target.value;
     setNewFact(newFact);
@@ -64,6 +79,11 @@ export default ({
 
   React.useEffect(() => {
     if (open) {
+      if (values && values.includes('~other~')) {
+        setInputAllowed(true);
+      } else {
+        setInputAllowed(false);
+      }
       newFact.value = observationKey + '.' + defaultValue;
       setNewFact(newFact);
       setMOut(message);
@@ -72,7 +92,7 @@ export default ({
       setNums(['', '']);
       setMOut(message || 'enter something here');
     }
-  }, [open, newFact, setNewFact, defaultValue, observationKey, message]);
+  }, [open, newFact, setNewFact, defaultValue, observationKey, message, values]);
 
   switch (type) {
     case 'characteristic_num':
@@ -113,19 +133,36 @@ export default ({
     default:
       return (
         <FormControl className={classes.formControl}>
-          <InputLabel htmlFor='value-label'>Value</InputLabel>
-          <NativeSelect
+          <FormLabel htmlFor='value-label'>{mOut}</FormLabel>
+          <RadioGroup
             value={value}
             id='value-label'
             name='value'
             onChange={onChangeValue}
             inputProps={{ 'aria-label': 'value' }}>
-            {values.map(value => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </NativeSelect>
+            {values.map(value =>
+              value === '~other~' ? null : (
+                <FormControlLabel label={value} key={value} value={value} control={<Radio />} />
+              )
+            )}
+            {inputAllowed ? (
+              <FormControlLabel
+                label={
+                  <Input
+                    autoFocus={true}
+                    placeholder='other (specify)'
+                    onChange={onInputChange}
+                    name={'radio-input'}
+                    value={freeText}
+                  />
+                }
+                key={freeText}
+                name='freetext'
+                value={freeText}
+                control={<Radio />}
+              />
+            ) : null}
+          </RadioGroup>
         </FormControl>
       );
   }

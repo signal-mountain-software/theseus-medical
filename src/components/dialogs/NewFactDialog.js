@@ -2,12 +2,13 @@ import React from 'react';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
+import IconButton from '@material-ui/core/IconButton';
 import Dialog from '@material-ui/core/Dialog';
 import Divider from '@material-ui/core/Divider';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import CloseIcon from '@material-ui/icons/Close';
+import CancelIcon from '@material-ui/icons/Cancel';
 import HistoryIcon from '@material-ui/icons/History';
 import SaveIcon from '@material-ui/icons/Save';
 
@@ -25,13 +26,25 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ fact, session, open, onClose, onSave }) => {
+export default ({ fact, session, open, onClose, onSave, onNext }) => {
   const [newFact, setNewFact] = React.useState(null);
   // const [disable, setDisable] = React.useState(false);
   const [message, setMessage] = React.useState('enter an initial value');
   const classes = useStyles();
 
+  var withNext;
+
+  const handleNext = () => {
+    withNext = true;
+    handleExit();
+  };
+
   const handleSave = () => {
+    withNext = false;
+    handleExit();
+  };
+
+  const handleExit = () => {
     let badData = false;
     let xVal = newFact.value.replace('.', '~').split('~')[1];
     if (xVal === 'null' || xVal === '') {
@@ -52,8 +65,13 @@ export default ({ fact, session, open, onClose, onSave }) => {
     }
     if (!badData) {
       setMessage('');
-      onSave(newFact);
+      if (withNext) {
+        onNext(newFact);
+      } else {
+        onSave(newFact);
+      }
     }
+    return badData;
   };
 
   const handleHistory = () => {
@@ -75,22 +93,34 @@ export default ({ fact, session, open, onClose, onSave }) => {
           session_id: session.session_id,
         },
       });
-      let eString = 'Enter a number';
-      if (fact.type === 'characteristic_num2') {
-        eString = 'Enter numbers in both boxes';
-      } else if (fact.numeric_minimum) {
-        if (fact.numeric_maximum) {
-          eString = 'Enter a number between ' + fact.numeric_minimum + ' and ' + fact.numeric_maximum;
-        } else {
-          eString += ', no less than ' + fact.numeric_minimum;
+      let eString;
+      switch (fact.type) {
+        case 'characteristic_num2': {
+          eString = 'Enter numbers in both boxes';
+          break;
         }
-      } else {
-        if (fact.numeric_maximum) {
-          eString += ', no greater than ' + fact.numeric_maximum;
+        case 'characteristic_num': {
+          eString = 'Enter a number';
+          if (fact.numeric_minimum) {
+            if (fact.numeric_maximum) {
+              eString += ' between ' + fact.numeric_minimum + ' and ' + fact.numeric_maximum;
+            } else {
+              eString += ', no less than ' + fact.numeric_minimum;
+            }
+          } else {
+            if (fact.numeric_maximum) {
+              eString += ', no greater than ' + fact.numeric_maximum;
+            }
+          }
+          break;
         }
-        if (fact.type === 'message') {
+        case 'message': {
           eString = 'Enter a message';
           fact.default_value = '';
+          break;
+        }
+        default: {
+          eString = 'Select one';
         }
       }
       setMessage(eString);
@@ -120,22 +150,34 @@ export default ({ fact, session, open, onClose, onSave }) => {
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}
+            onNext={handleNext}
           />
         </Box>
       ) : null}
       <Divider />
       <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-        <Button color='secondary' variant='contained' endIcon={<CloseIcon />} onClick={onClose}>
+        <Button color='secondary' size='small' variant='contained' startIcon={<CancelIcon />} onClick={onClose}>
           Cancel
         </Button>
-        <Box mr={2} />
-        <Button color='default' variant='contained' endIcon={<HistoryIcon />} onClick={handleHistory}>
+        <Box mr={1} />
+        <Button color='default' size='small' variant='contained' endIcon={<HistoryIcon />} onClick={handleHistory}>
           History
         </Button>
-        <Box mr={2} />
-        <Button color='primary' variant='contained' startIcon={<SaveIcon />} onClick={handleSave}>
+        <Box mr={1} />
+        <Button
+          variant='contained'
+          color='primary'
+          size='small'
+          className={classes.button}
+          startIcon={<SaveIcon />}
+          onClick={handleSave}>
           Save
         </Button>
+        <Box mr={1} />
+        <IconButton aria-label='save-and-return' color='primary' onClick={handleNext}>
+          <SaveIcon />
+          ...
+        </IconButton>
       </Box>
     </Dialog>
   );

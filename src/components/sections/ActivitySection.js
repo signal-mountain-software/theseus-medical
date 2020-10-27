@@ -114,6 +114,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   var priorReason = '';
   var defaultRequested = false;
+  var selectedActivityName = '';
 
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
@@ -148,7 +149,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onChooseDefault = () => {
-    //setDefaultRequested(true);
     defaultRequested = true;
   };
 
@@ -156,6 +156,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
     if (defaultRequested) {
       //setDefaultRequested(false);
       defaultRequested = false;
+      selectedActivityName = activity.name;
+
       if (activity.code.startsWith('event')) {
         newFact = {
           patient_id: session.patient_id || session.user_id,
@@ -190,22 +192,43 @@ export default ({ patient, session, newFact, setNewFact }) => {
     }
   };
 
-  const onSaveFact = newFact => {
-    (async () => {
-      let [, sVal] = newFact.value.replace('.', '~').split('~');
-      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
-      setNewFact(newFact);
-      setLimit(limit + 1);
-      setOpen(false);
-      enqueueSnackbar(`We saved: ${sVal}`, {
+  const onSaveFact = async newFact => {
+    //   (async () => {
+    let [, sVal] = newFact.value.replace('.', '~').split('~');
+    await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+    setNewFact(newFact);
+    setLimit(limit);
+    setOpen(false);
+    enqueueSnackbar(
+      `"${sVal === 'set_defaults' ? 'Default values' : sVal}" recorded for ${
+        selectedActivityName ? selectedActivityName : selected.name
+      }`,
+      {
         variant: 'success',
-      });
-    })().catch(error => {
-      setOpen(false);
-      enqueueSnackbar(`Whoops! Something went wrong when creating a new fact: ${error.message}`, {
-        variant: 'error',
-      });
-    });
+      }
+    );
+    selectedActivityName = '';
+    //    })().catch(error => {
+    //     setOpen(false);
+    //     enqueueSnackbar(`Whoops! Something went wrong when creating a new fact: ${error.message}`, {
+    //       variant: 'error',
+    //     });
+    //   });
+  };
+
+  const onNextFact = async newFact => {
+    await onSaveFact(newFact);
+    let aL = activities.length;
+    let a = 0;
+    for (a; a < aL; a++) {
+      if (activities[a].code === selected.code) {
+        break;
+      }
+    }
+    a++;
+    if (a < aL) {
+      onChooseActivity(activities[a]);
+    }
   };
 
   // build the event and activity lists for drop downs
@@ -424,6 +447,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           setOpen(false);
         }}
         onSave={onSaveFact}
+        onNext={onNextFact}
       />
     </Paper>
   );
