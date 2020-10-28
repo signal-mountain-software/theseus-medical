@@ -194,13 +194,40 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onSaveFact = async newFact => {
     //   (async () => {
-    let [, sVal] = newFact.value.replace('.', '~').split('~');
-    await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+    let sVal = '';
+    let mVal = '';
+    if (typeof newFact.value === 'object') {
+      let factObject = newFact.value;
+      let selectCount = 0;
+      for (mVal in factObject) {
+        if (factObject[mVal] === true) {
+          newFact.value = 'selection.' + mVal;
+          await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+          selectCount++;
+        }
+      }
+      switch (selectCount) {
+        case 0: {
+          sVal = 'No selections';
+          break;
+        }
+        case 1: {
+          sVal = mVal;
+          break;
+        }
+        default: {
+          sVal = selectCount.toString() + ' selections';
+        }
+      }
+    } else {
+      [, sVal] = newFact.value.replace('.', '~').split('~');
+      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+    }
     setNewFact(newFact);
     setLimit(limit);
     setOpen(false);
     enqueueSnackbar(
-      `"${sVal === 'set_defaults' ? 'Default values' : sVal}" recorded for ${
+      `${sVal === 'set_defaults' ? 'Default values' : sVal} recorded for ${
         selectedActivityName ? selectedActivityName : selected.name
       }`,
       {

@@ -46,22 +46,24 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
 
   const handleExit = () => {
     let badData = false;
-    let xVal = newFact.value.replace('.', '~').split('~')[1];
-    if (xVal === 'null' || xVal === '') {
-      badData = true;
-    } else if (fact.numeric_minimum || fact.numeric_maximum) {
-      let fVal = parseFloat(xVal);
-      if (
-        !fVal ||
-        fVal === '' ||
-        fVal < 0 ||
-        (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
-        (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
-      ) {
+    if (typeof newFact.value !== 'object') {
+      let xVal = newFact.value.replace('.', '~').split('~')[1];
+      if (xVal === 'null' || xVal === '') {
+        badData = true;
+      } else if (fact.numeric_minimum || fact.numeric_maximum) {
+        let fVal = parseFloat(xVal);
+        if (
+          !fVal ||
+          fVal === '' ||
+          fVal < 0 ||
+          (fact.numeric_minimum && fVal < parseFloat(fact.numeric_minimum)) ||
+          (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
+        ) {
+          badData = true;
+        }
+      } else if (fact.type === 'characteristic_num2' && !xVal.includes('over')) {
         badData = true;
       }
-    } else if (fact.type === 'characteristic_num2' && !xVal.includes('over')) {
-      badData = true;
     }
     if (!badData) {
       setMessage('');
