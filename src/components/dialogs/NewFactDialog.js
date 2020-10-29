@@ -121,6 +121,10 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
           fact.default_value = '';
           break;
         }
+        case 'list_multiple': {
+          eString = 'Select all that apply';
+          break;
+        }
         default: {
           eString = 'Select one';
         }

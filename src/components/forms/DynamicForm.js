@@ -43,9 +43,6 @@ export default ({
 
   const [boxState, setBoxState] = React.useState({});
 
-  var boxLabel0 = 'boxZero';
-  var boxLabel1 = 'boxOne';
-
   const classes = useStyles();
 
   const onChangeValue = event => {

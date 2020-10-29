@@ -423,7 +423,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                         </Box>
                         <Box display={activity.most_recent_observation ? 'block' : 'none'}>
                           <Typography variant='body2' noWrap>
-                            {activity.most_recent_observation} - updated {activity.observation_status}
+                            {activity.most_recent_observation} - {activity.observation_status}
                           </Typography>
                         </Box>
                       </Box>
