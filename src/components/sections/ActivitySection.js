@@ -434,9 +434,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
                         display={
                           activity.hasOwnProperty('observation_status') &&
                           activity.observation_status !== null &&
-                          !activity.observation_status.includes('expired')
-                            ? 'flex'
-                            : 'none'
+                          activity.observation_status.includes('(exp)')
+                            ? 'none'
+                            : 'flex'
                         }>
                         <CheckCircle style={{ color: 'orange' }}></CheckCircle>
                       </Box>
