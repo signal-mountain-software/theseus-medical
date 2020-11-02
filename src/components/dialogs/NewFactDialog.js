@@ -11,6 +11,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import CancelIcon from '@material-ui/icons/Cancel';
 import HistoryIcon from '@material-ui/icons/History';
 import SaveIcon from '@material-ui/icons/Save';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import DynamicForm from '../forms/DynamicForm';
 
@@ -31,6 +32,8 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
   // const [disable, setDisable] = React.useState(false);
   const [message, setMessage] = React.useState('enter an initial value');
   const classes = useStyles();
+
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   var withNext;
 
@@ -162,28 +165,21 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
       ) : null}
       <Divider />
       <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-        <Button color='secondary' size='small' variant='contained' startIcon={<CancelIcon />} onClick={onClose}>
-          Cancel
+        <Button color='secondary' size='small' variant='contained' onClick={onClose}>
+          {isMobile ? 'Can' : 'Cancel'}
         </Button>
         <Box mr={1} />
-        <Button color='default' size='small' variant='contained' endIcon={<HistoryIcon />} onClick={handleHistory}>
-          History
+        <Button color='info' size='small' variant='contained' onClick={handleHistory}>
+          {isMobile ? 'Hist' : 'History'}
         </Button>
         <Box mr={1} />
-        <Button
-          variant='contained'
-          color='primary'
-          size='small'
-          className={classes.button}
-          startIcon={<SaveIcon />}
-          onClick={handleSave}>
+        <Button variant='contained' color='primary' size='small' onClick={handleSave}>
           Save
         </Button>
         <Box mr={1} />
-        <IconButton aria-label='save-and-return' color='primary' onClick={handleNext}>
-          <SaveIcon />
-          ...
-        </IconButton>
+        <Button backgroundColor='green' size='small' variant='contained' onClick={handleNext}>
+          {isMobile ? 'Save +' : 'Save & Next'}
+        </Button>
       </Box>
     </Dialog>
   );

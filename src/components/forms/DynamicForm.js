@@ -4,6 +4,7 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormLabel from '@material-ui/core/FormLabel';
 import FormGroup from '@material-ui/core/FormGroup';
 import Input from '@material-ui/core/Input';
+import Box from '@material-ui/core/Box';
 
 //import NativeSelect from '@material-ui/core/NativeSelect';
 import RadioGroup from '@material-ui/core/RadioGroup';
@@ -166,13 +167,24 @@ export default ({
             onChange={onChangeCheckForm}
             inputProps={{ 'aria-label': 'value' }}>
             {values.map(value =>
-              value === '~other~' ? null : (
+              value.startsWith('~~') ? (
+                <Box pt={5} display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                  <FormLabel htmlFor='value-label'>{value.substr(2)}</FormLabel>
+                </Box>
+              ) : value === '~other~' ? null : (
                 <FormControlLabel
                   label={value}
                   key={value}
                   name={value}
-                  value={value}
-                  control={<Checkbox checked={boxState[value]} name={value} onChange={checkBoxChange} />}
+                  value={value.startsWith('~~') ? value.substr(3) : value}
+                  control={
+                    <Checkbox
+                      checked={boxState[value]}
+                      hidden={value.startsWith('~~')}
+                      name={value}
+                      onChange={checkBoxChange}
+                    />
+                  }
                 />
               )
             )}
@@ -201,13 +213,17 @@ export default ({
         <FormControl className={classes.formControl}>
           <FormLabel htmlFor='value-label'>{mOut}</FormLabel>
           <RadioGroup
-            value={value}
+            value={value.startsWith('~~') ? value.substr(2) : value}
             id='value-label'
             name='value'
             onChange={onChangeValue}
             inputProps={{ 'aria-label': 'value' }}>
             {values.map(value =>
-              value === '~other~' ? null : (
+              value.startsWith('~~') ? (
+                <Box pt={5} display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                  <FormLabel htmlFor='value-label'>{value.substr(2)}</FormLabel>
+                </Box>
+              ) : value === '~other~' ? null : (
                 <FormControlLabel label={value} key={value} value={value} control={<Radio />} />
               )
             )}
