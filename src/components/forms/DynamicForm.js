@@ -47,27 +47,27 @@ export default ({
   const classes = useStyles();
 
   const onChangeValue = event => {
-    if (event.target.value) {
-      setValue(event.target.value);
-      newFact.value = observationKey + '.' + event.target.value;
-    }
+    //    if (event.target.value) {
+    setValue(event.target.value);
+    newFact.value = observationKey + '.' + event.target.value;
+    //    }
     setNewFact(newFact);
   };
 
   const onInputChange = event => {
-    if (event.target.value) {
-      setFreeText(event.target.value);
-      setValue(event.target.value);
-      newFact.value = observationKey + '.' + event.target.value;
-    }
-    setNewFact(newFact);
+    //    if (event.target.value) {
+    setFreeText(event.target.value);
+    setValue(event.target.value);
+    newFact.value = observationKey + '.' + event.target.value;
   };
+  setNewFact(newFact);
+  //  };
 
   const onChangeMessage = event => {
-    if (event.target.value) {
-      setValue(event.target.value);
-      newFact.value = observationKey + '.' + event.target.value;
-    }
+    //    if (event.target.value) {
+    setValue(event.target.value);
+    newFact.value = observationKey + '.' + event.target.value;
+    //    }
     setNewFact(newFact);
   };
 
@@ -90,16 +90,16 @@ export default ({
   };
 
   const onChangeNums = index => event => {
-    if (event.target.value) {
-      const newNums = [...nums];
-      newNums[index] = event.target.value;
-      setNums(newNums);
-      if (newNums[0] && newNums[1]) {
-        newFact.value = observationKey + '.' + newNums.join(' over ');
-      } else {
-        newFact.value = 'number.partial';
-      }
+    //    if (event.target.value) {
+    const newNums = [...nums];
+    newNums[index] = event.target.value;
+    setNums(newNums);
+    if (newNums[0] && newNums[1]) {
+      newFact.value = observationKey + '.' + newNums.join(' over ');
+    } else {
+      newFact.value = 'number.partial';
     }
+    //    }
     setNewFact(newFact);
   };
 

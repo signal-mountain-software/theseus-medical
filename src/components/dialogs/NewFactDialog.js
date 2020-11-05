@@ -2,15 +2,11 @@ import React from 'react';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
-import IconButton from '@material-ui/core/IconButton';
 import Dialog from '@material-ui/core/Dialog';
 import Divider from '@material-ui/core/Divider';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import CancelIcon from '@material-ui/icons/Cancel';
-import HistoryIcon from '@material-ui/icons/History';
-import SaveIcon from '@material-ui/icons/Save';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import DynamicForm from '../forms/DynamicForm';

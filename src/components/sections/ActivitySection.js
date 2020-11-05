@@ -262,15 +262,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
   React.useEffect(() => {
     let mounted = true;
     (async () => {
-      //      let getEventsResult;
-      //      let getActivitiesResult;
       if (session) {
         if (mounted) {
           setEvents(events);
           setTypes(types);
         } else {
-          //          API.cancel(getEventsResult, 'ActivitySection unmounted, cancel getEventsByClient');
-          //          API.cancel(getActivitiesResult, 'ActivitySection unmounted, cancel getActivityTypes');
         }
       }
     })();
