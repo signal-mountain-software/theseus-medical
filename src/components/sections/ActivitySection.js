@@ -363,8 +363,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
               Home
             </Button>
           </Box>
-          <Box className={classes.search}>
-            <Button type='submit' startIcon={<SearchIcon />} onTouchEnd={onTap} onClick={onTap} pointerEvents='auto' />
+          <Box paddingLeft={1} className={classes.search}>
+            <SearchIcon />
             <InputBase
               type='text'
               value={clearSearch ? '' : null}
@@ -427,17 +427,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                           </Typography>
                         </Box>
                       </Box>
-                      <Box
-                        alignSelf='flex-end'
-                        flexDirection='row'
-                        color='white'
-                        display={
-                          activity.hasOwnProperty('observation_status') &&
-                          activity.observation_status !== null &&
-                          activity.observation_status.includes('(exp)')
-                            ? 'none'
-                            : 'flex'
-                        }>
+                      <Box alignSelf='flex-end' flexDirection='row' color='white' display={'none'}>
                         <CheckCircle style={{ color: 'orange' }}></CheckCircle>
                       </Box>
                     </Box>
