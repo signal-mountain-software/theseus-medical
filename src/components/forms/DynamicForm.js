@@ -59,8 +59,8 @@ export default ({
     setFreeText(event.target.value);
     setValue(event.target.value);
     newFact.value = observationKey + '.' + event.target.value;
+    setNewFact(newFact);
   };
-  setNewFact(newFact);
   //  };
 
   const onChangeMessage = event => {
