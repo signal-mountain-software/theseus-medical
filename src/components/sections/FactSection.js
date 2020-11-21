@@ -52,7 +52,7 @@ export default ({ patient, session, newFact }) => {
             input: { client_id: session.client_id, person_id: patient.person_id, fact_data: true, history_only: true },
           })
         ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching facts: ${error.message}`, {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching facts: ${error.errors[0].message}`, {
             variant: 'error',
           });
         });
@@ -83,7 +83,7 @@ export default ({ patient, session, newFact }) => {
           justifyContent='flex-start'
           alignItems='center'>
           <AssignmentOutlinedIcon />
-          <Box flexDirection='row' pl={1} nowrap grow={1} justifyContent='flex-start' alignItems='center'>
+          <Box flexDirection='row' pl={1} nowrap='true' grow={1} justifyContent='flex-start' alignItems='center'>
             <Typography variant='h6' className={classes.title}>
               Facts
             </Typography>

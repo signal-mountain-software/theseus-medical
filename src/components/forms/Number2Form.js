@@ -49,10 +49,8 @@ export default ({ open, labelOne, labelTwo, value, message, onChange, onError })
         <TextField
           value={value[0]}
           label={labelOne}
-          helperText={message}
           type='number'
           variant='outlined'
-          error={errorOne}
           onChange={onChange(0)}
           InputLabelProps={{ shrink: true }}
           fullWidth
@@ -62,7 +60,6 @@ export default ({ open, labelOne, labelTwo, value, message, onChange, onError })
         <TextField
           value={value[1]}
           label={labelTwo}
-          helperText={null}
           type='number'
           variant='outlined'
           error={errorTwo}

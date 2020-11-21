@@ -14,11 +14,18 @@ import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { fade } from '@material-ui/core/styles/colorManipulator';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import AssignmentOutlinedIcon from '@material-ui/icons/AssignmentOutlined';
+//import AssignmentOutlinedIcon from '@material-ui/icons/AssignmentOutlined';
 import BusinessCenterOutlinedIcon from '@material-ui/icons/BusinessCenterOutlined';
 import CheckCircle from '@material-ui/icons/CheckCircle';
-import HomeIcon from '@material-ui/icons/Home';
+// import HomeIcon from '@material-ui/icons/Home';
+import AssignmentTurnedInOutlinedIcon from '@material-ui/icons/AssignmentTurnedInOutlined';
 import SearchIcon from '@material-ui/icons/Search';
+
+import Dialog from '@material-ui/core/Dialog';
+import DialogTitle from '@material-ui/core/DialogTitle';
+import DialogActions from '@material-ui/core/DialogActions';
+import DialogContent from '@material-ui/core/DialogContent';
+import DialogContentText from '@material-ui/core/DialogContentText';
 
 import { createPutFact } from '../../graphql/mutations';
 import { getActivityData } from '../../graphql/queries';
@@ -62,10 +69,17 @@ const useStyles = makeStyles(theme => ({
     marginLeft: 0,
     paddingLeft: 13,
     paddingRight: 10,
+    backgroundColor: fade(theme.palette.info[theme.palette.type], 0.05),
     variant: 'outlined',
-    fontSize: theme.typography.fontSize * 0.8,
+    fontSize: theme.typography.fontSize * 0.6,
     color: theme.palette.info[theme.palette.type],
     height: theme.typography.fontSize * 1.8,
+  },
+  confirm: {
+    backgroundColor: theme.palette.confirm[theme.palette.type],
+  },
+  reject: {
+    backgroundColor: theme.palette.reject[theme.palette.type],
   },
   searchIcon: {
     padding: theme.spacing(0, 2),
@@ -82,6 +96,10 @@ const useStyles = makeStyles(theme => ({
     [theme.breakpoints.up('md')]: {
       width: '20ch',
     },
+  },
+  descriptionText: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
   },
 }));
 
@@ -108,6 +126,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const [activePatient, setActivePatient] = React.useState(null);
 
+  const [showSummary, setSummary] = React.useState(false);
+  var timeNow = new Date().getTime();
+
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar } = useSnackbar();
   const classes = useStyles();
@@ -115,6 +136,41 @@ export default ({ patient, session, newFact, setNewFact }) => {
   var priorReason = '';
   var defaultRequested = false;
   var selectedActivityName = '';
+
+  const doneWithEvent = () => {
+    if (activities[0].reason.startsWith('Search')) {
+      setSummary(false);
+      returnToHome();
+    } else {
+      setSummary(true);
+    }
+  };
+
+  const handleSummarySubmit = () => {
+    setSummary(false);
+    newFact = {
+      patient_id: session.patient_id || session.user_id,
+      activity_key: 'confirmation.' + event,
+      value: 'action.confirmed',
+      session: {
+        user_id: session.user_id,
+        session_id: session.session_id,
+      },
+    };
+    selectedActivityName = activities[0].reason.substr(0, activities[0].reason.length - 6);
+    setNewFact(newFact);
+    onSaveFact(newFact);
+    returnToHome();
+  };
+
+  const handleSummaryBack = () => {
+    setSummary(false);
+  };
+
+  const handleSummaryExit = () => {
+    setSummary(false);
+    returnToHome();
+  };
 
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
@@ -188,6 +244,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setEvent(activity.code.split('.')[1]);
     } else {
       setSelected(activity);
+      selectedActivityName = activity.name;
       setOpen(true);
     }
   };
@@ -226,14 +283,17 @@ export default ({ patient, session, newFact, setNewFact }) => {
     setNewFact(newFact);
     setLimit(limit);
     setOpen(false);
-    enqueueSnackbar(
-      `${sVal === 'set_defaults' ? 'Default values' : sVal} recorded for ${
-        selectedActivityName ? selectedActivityName : selected.name
-      }`,
-      {
-        variant: 'success',
-      }
-    );
+    if (!selectedActivityName && selected.hasOwnProperty('name')) {
+      selectedActivityName = selected.name;
+    }
+    if (selectedActivityName) {
+      enqueueSnackbar(
+        `${selectedActivityName} ${sVal === 'set_defaults' ? 'items set to their default values' : 'is ' + sVal}`,
+        {
+          variant: 'success',
+        }
+      );
+    }
     selectedActivityName = '';
     //    })().catch(error => {
     //     setOpen(false);
@@ -355,8 +415,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
             </Typography>
           </Box>
           <Box pl={5} display={homeState ? 'none' : 'flex'}>
-            <Button color='secondary' size='small' variant='contained' startIcon={<HomeIcon />} onClick={returnToHome}>
-              Home
+            <Button
+              color='secondary'
+              size='small'
+              variant='contained'
+              startIcon={<AssignmentTurnedInOutlinedIcon />}
+              onClick={doneWithEvent}>
+              Done
             </Button>
           </Box>
           <Box paddingLeft={1} className={classes.search}>
@@ -371,7 +436,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 root: classes.inputRoot,
                 input: classes.inputInput,
               }}
-              inputProps={{ 'aria-label': 'search' }}
             />
           </Box>
         </Box>
@@ -409,10 +473,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                             display={
                               activity.hasOwnProperty('default_value') && activity.default_value ? 'flex' : 'none'
                             }>
-                            <Button
-                              onClick={onChooseDefault}
-                              className={classes.defaultButton}
-                              startIcon={<AssignmentOutlinedIcon />}>
+                            <Button onClick={onChooseDefault} className={classes.defaultButton}>
                               <Typography noWrap>{activity.default_value}</Typography>
                             </Button>
                           </Box>
@@ -452,16 +513,58 @@ export default ({ patient, session, newFact, setNewFact }) => {
           </Grid>
         </Grid>
       </Box>
-      <NewFactDialog
-        fact={selected}
-        session={session}
-        open={open}
-        onClose={() => {
-          setOpen(false);
-        }}
-        onSave={onSaveFact}
-        onNext={onNextFact}
-      />
+      {open ? (
+        <NewFactDialog
+          fact={selected}
+          session={session}
+          open={open}
+          onClose={() => {
+            setOpen(false);
+          }}
+          onSave={onSaveFact}
+          onNext={onNextFact}
+        />
+      ) : null}
+      <Dialog
+        open={showSummary}
+        onClose={handleSummaryBack}
+        scroll='paper'
+        fullWidth={true}
+        aria-labelledby='scroll-dialog-title'
+        aria-describedby='scroll-dialog-description'>
+        <DialogTitle id='scroll-dialog-title' className={classes.descriptionText}>
+          {activities[0] && activities[0].reason
+            ? activities[0].reason.substr(0, activities[0].reason.length - 6)
+            : null}
+        </DialogTitle>
+        <DialogContent dividers={true} className={classes.descriptionText}>
+          <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
+            {activities.map(activity =>
+              activity.observation_expires < timeNow ? null : (
+                <Typography key={activity.name}>
+                  <Box key={activity.name + '.name'} pt={2}>
+                    {activity.name + ': '}
+                  </Box>
+                  <Box key={activity.name + '.value'} fontWeight='fontWeightBold'>
+                    {activity.most_recent_observation}
+                  </Box>
+                </Typography>
+              )
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button className={classes.reject} size='small' variant='contained' onClick={handleSummaryBack}>
+            Back
+          </Button>
+          <Button color='secondary' size='small' variant='contained' onClick={handleSummaryExit}>
+            Exit
+          </Button>
+          <Button variant='contained' className={classes.confirm} size='small' onClick={handleSummarySubmit}>
+            Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 };

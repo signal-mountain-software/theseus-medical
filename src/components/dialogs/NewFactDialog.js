@@ -1,13 +1,17 @@
 import React from 'react';
-import AppBar from '@material-ui/core/AppBar';
-import Box from '@material-ui/core/Box';
+//import AppBar from '@material-ui/core/AppBar';
+//import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
-import Dialog from '@material-ui/core/Dialog';
-import Divider from '@material-ui/core/Divider';
-import Toolbar from '@material-ui/core/Toolbar';
-import Typography from '@material-ui/core/Typography';
+//import Divider from '@material-ui/core/Divider';
+//import Toolbar from '@material-ui/core/Toolbar';
+//import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
+
+import Dialog from '@material-ui/core/Dialog';
+import DialogActions from '@material-ui/core/DialogActions';
+import DialogContent from '@material-ui/core/DialogContent';
+import DialogContentText from '@material-ui/core/DialogContentText';
 
 import DynamicForm from '../forms/DynamicForm';
 
@@ -18,8 +22,27 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
   },
   title: {
+    marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '1.3rem',
+    fontWeight: 'bold',
+  },
+  formControl: {
+    marginLeft: theme.spacing(3),
+  },
+  confirm: {
+    backgroundColor: theme.palette.confirm[theme.palette.type],
+  },
+  reject: {
+    backgroundColor: theme.palette.reject[theme.palette.type],
+  },
+  descriptionText: {
+    marginLeft: theme.spacing(3),
+    marginRight: theme.spacing(1),
+    marginTop: 0,
+    fontSize: '0.8rem',
   },
 }));
 
@@ -97,26 +120,38 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
       let eString;
       switch (fact.type) {
         case 'characteristic_num2': {
-          eString = 'Enter numbers in both boxes';
+          if (fact.prompt) {
+            eString = fact.prompt;
+          } else {
+            eString = 'Enter numbers in both boxes';
+          }
           break;
         }
         case 'characteristic_num': {
-          eString = 'Enter a number';
-          if (fact.numeric_minimum) {
-            if (fact.numeric_maximum) {
-              eString += ' between ' + fact.numeric_minimum + ' and ' + fact.numeric_maximum;
-            } else {
-              eString += ', no less than ' + fact.numeric_minimum;
-            }
+          if (fact.prompt) {
+            eString = fact.prompt;
           } else {
-            if (fact.numeric_maximum) {
-              eString += ', no greater than ' + fact.numeric_maximum;
+            eString = 'Enter a number';
+            if (fact.numeric_minimum) {
+              if (fact.numeric_maximum) {
+                eString += ' between ' + fact.numeric_minimum + ' and ' + fact.numeric_maximum;
+              } else {
+                eString += ', no less than ' + fact.numeric_minimum;
+              }
+            } else {
+              if (fact.numeric_maximum) {
+                eString += ', no greater than ' + fact.numeric_maximum;
+              }
             }
           }
           break;
         }
         case 'message': {
-          eString = 'Enter a message';
+          if (fact.prompt) {
+            eString = fact.prompt;
+          } else {
+            eString = 'Enter a message';
+          }
           fact.default_value = '';
           break;
         }
@@ -125,7 +160,11 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
           break;
         }
         default: {
-          eString = 'Select one';
+          if (fact.prompt) {
+            eString = fact.prompt;
+          } else {
+            eString = 'Select one';
+          }
         }
       }
       setMessage(eString);
@@ -134,16 +173,12 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
 
   return (
     <Dialog open={open} onClose={onClose}>
-      <AppBar className={classes.appBar}>
-        <Toolbar>
-          <Typography variant='h6' className={classes.title}>
-            {fact?.name}
-          </Typography>
-        </Toolbar>
-      </AppBar>
-      {fact ? (
-        <Box p={3} display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-          <Box my={1} />
+      <DialogContentText className={classes.title} id='scroll-dialog-title'>
+        {fact?.name}
+      </DialogContentText>
+      <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
+      <DialogContent dividers={true}>
+        {fact ? (
           <DynamicForm
             open={open}
             newFact={newFact}
@@ -151,32 +186,29 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
             type={fact.type}
             message={message}
             values={fact.valid_values_list}
+            valueQualifiers={fact.value_qualifiers}
             defaultValue={fact.default_value}
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}
             onNext={handleNext}
           />
-        </Box>
-      ) : null}
-      <Divider />
-      <Box py={2} px={3} display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-        <Button color='secondary' size='small' variant='contained' onClick={onClose}>
+        ) : null}
+      </DialogContent>
+      <DialogActions style={{ justifyContent: 'center' }}>
+        <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
           {isMobile ? 'Can' : 'Cancel'}
         </Button>
-        <Box mr={1} />
-        <Button color='info' size='small' variant='contained' onClick={handleHistory}>
+        <Button color='inherit' size='small' variant='contained' onClick={handleHistory}>
           {isMobile ? 'Hist' : 'History'}
         </Button>
-        <Box mr={1} />
         <Button variant='contained' color='primary' size='small' onClick={handleSave}>
           Save
         </Button>
-        <Box mr={1} />
-        <Button backgroundColor='green' size='small' variant='contained' onClick={handleNext}>
+        <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
           {isMobile ? 'Save +' : 'Save & Next'}
         </Button>
-      </Box>
+      </DialogActions>
     </Dialog>
   );
 };

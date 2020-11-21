@@ -17,7 +17,16 @@ export const getActivityData = /* GraphQL */ `
       observation_expires
       observation_status
       observation_key
+      prompt
       valid_values_list
+      value_qualifiers {
+        value
+        description
+        image_url
+        minimum_required
+        maximum_allowed
+        qualifiers
+      }
     }
   }
 `;
