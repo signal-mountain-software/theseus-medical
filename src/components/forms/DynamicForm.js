@@ -492,14 +492,12 @@ export default ({
                 ) : value === '~other~' ? null : (
                   <FormControlLabel
                     label={
-                      <div>
-                        <Typography onClick={onClickedWord} value={value} className={classes.valueLine}>
+                      <div onClick={onClickedWord}>
+                        <Typography value={value} className={classes.valueLine}>
                           {value}
                         </Typography>
                         {allSelections_qualValueText[value] ? (
-                          <Typography onClick={onClickedWord} className={classes.qualLine}>
-                            {allSelections_qualValueText[value]}
-                          </Typography>
+                          <Typography className={classes.qualLine}>{allSelections_qualValueText[value]}</Typography>
                         ) : null}
                       </div>
                     }
@@ -507,21 +505,12 @@ export default ({
                     name={value}
                     value={value.startsWith('~~') ? value.substr(3) : value}
                     control={
-                      type === 'list_multiple' ? (
-                        <Checkbox
-                          checked={boxState[value]}
-                          hidden={value.startsWith('~~')}
-                          name={value}
-                          onChange={checkBoxChange}
-                        />
-                      ) : (
-                        <Radio
-                          checked={boxState[value]}
-                          hidden={value.startsWith('~~')}
-                          name={value}
-                          onChange={checkBoxChange}
-                        />
-                      )
+                      <Checkbox
+                        checked={boxState[value]}
+                        hidden={value.startsWith('~~')}
+                        name={value}
+                        onChange={checkBoxChange}
+                      />
                     }
                   />
                 )
@@ -540,13 +529,7 @@ export default ({
                   key={freeText}
                   name='freetext'
                   value={freeText}
-                  control={
-                    type === 'list_multiple' ? (
-                      <Checkbox checked={boxState.freeText} name='freeText' onChange={checkBoxChange} />
-                    ) : (
-                      <Radio checked={boxState.freeText} name='freeText' onChange={checkBoxChange} />
-                    )
-                  }
+                  control={<Checkbox checked={boxState.freeText} name='freeText' onChange={checkBoxChange} />}
                 />
               ) : null}
             </FormGroup>
