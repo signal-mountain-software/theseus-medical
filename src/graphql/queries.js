@@ -27,12 +27,21 @@ export const getActivityData = /* GraphQL */ `
         maximum_allowed
         qualifiers
       }
+      fact_history {
+        person_id
+        activity_key
+        value
+        qualifier
+        status
+        user_id
+        session_id
+        method
+        posted_time
+      }
     }
   }
 `;
-
-/*
-export const getActivityTypes = 
+export const getActivityTypes = /* GraphQL */ `
   query GetActivityTypes($client_id: String!) {
     getActivityTypes(client_id: $client_id) {
       client_id
@@ -48,7 +57,7 @@ export const getActivityTypes =
     }
   }
 `;
-export const getEventsByClient =  `
+export const getEventsByClient = /* GraphQL */ `
   query GetEventsByClient(
     $client_id: String!
     $filter: TableEventsFilterInput
@@ -70,7 +79,6 @@ export const getEventsByClient =  `
     }
   }
 `;
-*/
 export const getPeopleByGroup = /* GraphQL */ `
   query GetPeopleByGroup($client_group_id: String!, $role: String) {
     getPeopleByGroup(client_group_id: $client_group_id, role: $role) {
@@ -155,26 +163,19 @@ export const getSession = /* GraphQL */ `
     getSession(session_id: $session_id) {
       session_id
       client_id
-      current_event
       device_id
       method
-      patient_display_name
-      patient_id
       status
       user_display_name
       user_id
-      directed_action
-      code_version
-      full_device_id
-      host_session_id
-      host_user_id
-      patient_activity_customizations {
-        activity_key
-        baseline
-        permitted_role
-      }
-      responsible_for
+      patient_display_name
+      patient_id
       assigned_to
+      responsible_for
+      current_event
+      description
+      event_description
+      kiosk_mode
     }
   }
 `;
