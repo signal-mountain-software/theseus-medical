@@ -98,10 +98,6 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
     return badData;
   };
 
-  const handleHistory = () => {
-    setMessage('History will be available soon!');
-  };
-
   const disableSave = value => {
     //   setDisable(value);
   };
@@ -198,9 +194,6 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
           {isMobile ? 'Can' : 'Cancel'}
-        </Button>
-        <Button color='inherit' size='small' variant='contained' onClick={handleHistory}>
-          {isMobile ? 'Hist' : 'History'}
         </Button>
         <Button variant='contained' color='primary' size='small' onClick={handleSave}>
           Save

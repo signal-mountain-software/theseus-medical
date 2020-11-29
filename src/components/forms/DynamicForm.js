@@ -381,8 +381,12 @@ export default ({
   };
 
   async function getImage(image_name) {
-    const response = await Storage.get('observation_images/' + image_name);
-    setDialogImage(response);
+    if (image_name) {
+      const response = await Storage.get('observation_images/' + image_name);
+      setDialogImage(response);
+    } else {
+      setDialogImage(null);
+    }
   }
 
   React.useEffect(() => {
