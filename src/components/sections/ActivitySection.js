@@ -254,32 +254,31 @@ export default ({ patient, session, newFact, setNewFact }) => {
     let sVal = '';
     let mVal = '';
     if (typeof newFact.value === 'object') {
-      let factObject = newFact.value;
+      let factObject = newFact.value.selected;
+      let qualObject = newFact.value.qualifiers;
+      let separator = 'selection.';
+      let constructedValue = '';
+      let constructedQualifier = [];
       let selectCount = 0;
       for (mVal in factObject) {
         if (factObject[mVal] === true) {
-          newFact.value = 'selection.' + mVal;
-          await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+          constructedValue += separator + mVal;
+          separator = ' & ';
+          if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
+            constructedQualifier = constructedQualifier.concat(qualObject[mVal]);
+          }
           selectCount++;
         }
       }
-      switch (selectCount) {
-        case 0: {
-          sVal = 'No selections';
-          break;
-        }
-        case 1: {
-          sVal = mVal;
-          break;
-        }
-        default: {
-          sVal = selectCount.toString() + ' selections';
-        }
-      }
-    } else {
-      [, sVal] = newFact.value.replace('.', '~').split('~');
-      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+      newFact.value = constructedValue;
+      newFact.qualifier = constructedQualifier;
+      //      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+      //      [, sVal] = newFact.value.replace('.', '~').split('~');
+      //    } else {
     }
+    [, sVal] = newFact.value.replace('.', '~').split('~');
+    await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+    //    }
     setNewFact(newFact);
     setLimit(limit);
     setOpen(false);

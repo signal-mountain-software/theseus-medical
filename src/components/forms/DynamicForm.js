@@ -155,7 +155,8 @@ export default ({
     setBoxState(boxState);
     set_allSelections_qualValueText(allSelections_qualValueText);
     setQualifierTable(qualifierTable);
-    newFact.value = observationKey + '.' + defaultValue;
+    // newFact.value = observationKey + '.' + defaultValue;
+    newFact.value = { selected: boxState };
     setNewFact(newFact);
   }
 
@@ -186,11 +187,12 @@ export default ({
     }
     console.log('checkBoxChange', event.target.name, event.target.checked);
     setSelection(event.target.name);
-    if (boxState[event.target.name]) {
-      newFact.value = observationKey + '.' + event.target.value;
-    } else {
-      newFact.value = null;
-    }
+    //  if (boxState[event.target.name]) {
+    //    newFact.value = observationKey + '.' + event.target.value;
+    //  } else {
+    //    newFact.value = null;
+    //  }
+    newFact.value = { selected: boxState };
     setBoxState(boxState);
     console.log(boxState[event.target.name], qualifierTable[event.target.name]);
     if ((event.target.checked || clickedWord) && qualifierTable[event.target.name]) {
@@ -305,6 +307,11 @@ export default ({
         }
       }
       boxState[selection] = true;
+      //      newFact.value = observationKey + '.' + selection;
+      newFact.value = {
+        selected: boxState,
+        qualifiers: allSelections_qualValueText,
+      };
       setBoxState(boxState);
       setNewFact(newFact);
       console.log('reset state', boxState, allSelections_qualValueText[selection]);
