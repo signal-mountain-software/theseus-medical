@@ -138,7 +138,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
   var selectedActivityName = '';
 
   const doneWithEvent = () => {
-    if (activities[0].reason.startsWith('Search')) {
+    if (
+      activities[0].reason.startsWith('Search') ||
+      activities.every(aObj => {
+        return aObj.type === 'event' || aObj.observation_expires === null || aObj.observation_expires < timeNow;
+      })
+    ) {
       setSummary(false);
       returnToHome();
     } else {
@@ -256,6 +261,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
     if (typeof newFact.value === 'object') {
       let factObject = newFact.value.selected;
       let qualObject = newFact.value.qualifiers;
+      let associationsObject = newFact.value.associations;
+      let masterKey = newFact.activity_key;
       let separator = 'selection.';
       let constructedValue = '';
       let constructedQualifier = [];
@@ -263,13 +270,21 @@ export default ({ patient, session, newFact, setNewFact }) => {
       for (mVal in factObject) {
         if (factObject[mVal] === true) {
           constructedValue += separator + mVal;
-          separator = ' & ';
+          separator = ' ~ ';
+          newFact.qualifier = '';
           if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
             constructedQualifier = constructedQualifier.concat(qualObject[mVal]);
+            newFact.qualifier = qualObject[mVal];
+          }
+          if (associationsObject && associationsObject.hasOwnProperty(mVal)) {
+            newFact.value = 'association.' + mVal;
+            newFact.activity_key = associationsObject[mVal];
+            await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
           }
           selectCount++;
         }
       }
+      newFact.activity_key = masterKey;
       newFact.value = constructedValue;
       newFact.qualifier = constructedQualifier;
       //      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
@@ -352,6 +367,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               limit: limit,
               fact_data: true,
               includeEvents: true,
+              history_only: false,
               use_short_date: isMobile,
             },
           })
@@ -517,6 +533,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           fact={selected}
           session={session}
           open={open}
+          fromHome={homeState}
           onClose={() => {
             setOpen(false);
           }}
@@ -539,10 +556,16 @@ export default ({ patient, session, newFact, setNewFact }) => {
         <DialogContent dividers={true} className={classes.descriptionText}>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
             {activities.map(activity =>
-              activity.observation_expires < timeNow ? null : (
+              activity.observation_expires < timeNow ? (
                 <Typography key={activity.name}>
                   <Box key={activity.name + '.name'} pt={2}>
-                    {activity.name + ': '}
+                    {activity.name + ':  (no data)'}
+                  </Box>
+                </Typography>
+              ) : (
+                <Typography key={activity.name}>
+                  <Box key={activity.name + '.name'} pt={2}>
+                    {activity.name + ':'}
                   </Box>
                   <Box key={activity.name + '.value'} fontWeight='fontWeightBold'>
                     {activity.most_recent_observation}
