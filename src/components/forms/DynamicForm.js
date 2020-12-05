@@ -118,6 +118,7 @@ export default ({
   const [allSelections_qualValueText, set_allSelections_qualValueText] = React.useState({});
   const [allSelections_qualBoxStates, set_allSelections_qualBoxStates] = React.useState({});
   const [qualifierTable, setQualifierTable] = React.useState({});
+  const [associationsTable, setAssociationsTable] = React.useState({});
   const [qualifiers, setQualifiers] = React.useState([]);
   const [activeDialog_qualBoxState, set_activeDialog_qualBoxState] = React.useState({});
   const [allSelections_qualFreeText, set_allSelections_qualFreeText] = React.useState({});
@@ -142,12 +143,19 @@ export default ({
   if (Object.keys(boxState).length === 0 && values) {
     console.log('initializing');
     values.forEach(value => {
-      boxState[value] = false;
+      if (value === defaultValue) {
+        boxState[value] = true;
+      } else {
+        boxState[value] = false;
+      }
       allSelections_qualValueText[value] = '';
     });
     if (valueQualifiers && valueQualifiers.length > 0) {
       valueQualifiers.forEach(vQual => {
         qualifierTable[vQual.value] = vQual;
+        if (vQual.associated_activity) {
+          associationsTable[vQual.value] = vQual.associated_activity;
+        }
       });
     }
     boxState.freeText = false;
@@ -155,7 +163,12 @@ export default ({
     setBoxState(boxState);
     set_allSelections_qualValueText(allSelections_qualValueText);
     setQualifierTable(qualifierTable);
-    newFact.value = observationKey + '.' + defaultValue;
+    setAssociationsTable(associationsTable);
+    // newFact.value = observationKey + '.' + defaultValue;
+    newFact.value = {
+      selected: boxState,
+      associations: associationsTable,
+    };
     setNewFact(newFact);
   }
 
@@ -186,11 +199,15 @@ export default ({
     }
     console.log('checkBoxChange', event.target.name, event.target.checked);
     setSelection(event.target.name);
-    if (boxState[event.target.name]) {
-      newFact.value = observationKey + '.' + event.target.value;
-    } else {
-      newFact.value = null;
-    }
+    //  if (boxState[event.target.name]) {
+    //    newFact.value = observationKey + '.' + event.target.value;
+    //  } else {
+    //    newFact.value = null;
+    //  }
+    newFact.value = {
+      selected: boxState,
+      associations: associationsTable,
+    };
     setBoxState(boxState);
     console.log(boxState[event.target.name], qualifierTable[event.target.name]);
     if ((event.target.checked || clickedWord) && qualifierTable[event.target.name]) {
@@ -305,6 +322,12 @@ export default ({
         }
       }
       boxState[selection] = true;
+      //      newFact.value = observationKey + '.' + selection;
+      newFact.value = {
+        selected: boxState,
+        associations: associationsTable,
+        qualifiers: allSelections_qualValueText,
+      };
       setBoxState(boxState);
       setNewFact(newFact);
       console.log('reset state', boxState, allSelections_qualValueText[selection]);
@@ -381,8 +404,12 @@ export default ({
   };
 
   async function getImage(image_name) {
-    const response = await Storage.get('observation_images/' + image_name);
-    setDialogImage(response);
+    if (image_name) {
+      const response = await Storage.get('observation_images/' + image_name);
+      setDialogImage(response);
+    } else {
+      setDialogImage(null);
+    }
   }
 
   React.useEffect(() => {

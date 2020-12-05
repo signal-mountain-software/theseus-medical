@@ -20,6 +20,7 @@ export const getActivityData = /* GraphQL */ `
       prompt
       valid_values_list
       value_qualifiers {
+        associated_activity
         value
         description
         image_url

@@ -46,7 +46,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ fact, session, open, onClose, onSave, onNext }) => {
+export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   const [newFact, setNewFact] = React.useState(null);
   // const [disable, setDisable] = React.useState(false);
   const [message, setMessage] = React.useState('enter an initial value');
@@ -96,10 +96,6 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
       }
     }
     return badData;
-  };
-
-  const handleHistory = () => {
-    setMessage('History will be available soon!');
   };
 
   const disableSave = value => {
@@ -187,7 +183,13 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
             message={message}
             values={fact.valid_values_list}
             valueQualifiers={fact.value_qualifiers}
-            defaultValue={fact.default_value}
+            defaultValue={
+              fact.most_recent_observation &&
+              fact.most_recent_observation.split(' (')[0] &&
+              !fact.observation_status.includes('(exp)')
+                ? fact.most_recent_observation.split(' (')[0]
+                : fact.default_value
+            }
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}
@@ -199,15 +201,14 @@ export default ({ fact, session, open, onClose, onSave, onNext }) => {
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
           {isMobile ? 'Can' : 'Cancel'}
         </Button>
-        <Button color='inherit' size='small' variant='contained' onClick={handleHistory}>
-          {isMobile ? 'Hist' : 'History'}
-        </Button>
         <Button variant='contained' color='primary' size='small' onClick={handleSave}>
           Save
         </Button>
-        <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
-          {isMobile ? 'Save +' : 'Save & Next'}
-        </Button>
+        {fromHome ? null : (
+          <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
+            {isMobile ? 'Save +' : 'Save & Next'}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
