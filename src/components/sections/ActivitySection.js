@@ -121,7 +121,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [clearSearch, setClearSearch] = React.useState(true);
   const [searchString, setSearchString] = React.useState('');
-  const [homeState, setHomeState] = React.useState(true);
+  const [homeState, setHomeState] = React.useState('home');
   //const [defaultRequested, setDefaultRequested] = React.useState(false);
 
   const [activePatient, setActivePatient] = React.useState(null);
@@ -139,7 +139,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const doneWithEvent = () => {
     if (
-      activities[0].reason.startsWith('Search') ||
+      homeState === 'Search' ||
       activities.every(aObj => {
         return aObj.type === 'event' || aObj.observation_expires === null || aObj.observation_expires < timeNow;
       })
@@ -382,9 +382,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
           setLoading(false);
           setActivities(result.data.getActivityData);
           if (event === '' && type === DEFAULT_TYPE) {
-            setHomeState(true);
+            setHomeState('home');
           } else {
-            setHomeState(false);
+            if (type.includes('%')) {
+              setHomeState('search');
+            } else {
+              setHomeState('event');
+            }
           }
         } else {
           setLoading(false);
@@ -421,7 +425,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           <Box
             flexDirection='row'
             pl={1}
-            display={isMobile && !homeState ? 'none' : 'flex'}
+            display={isMobile && homeState !== 'home' ? 'none' : 'flex'}
             grow={1}
             justifyContent='flex-start'
             alignItems='center'>
@@ -429,7 +433,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               Activities
             </Typography>
           </Box>
-          <Box pl={5} display={homeState ? 'none' : 'flex'}>
+          <Box pl={5} display={homeState === 'event' ? 'flex' : 'none'}>
             <Button
               color='secondary'
               size='small'
@@ -437,6 +441,16 @@ export default ({ patient, session, newFact, setNewFact }) => {
               startIcon={<AssignmentTurnedInOutlinedIcon />}
               onClick={doneWithEvent}>
               Done
+            </Button>
+          </Box>
+          <Box pl={5} display={homeState === 'search' ? 'flex' : 'none'}>
+            <Button
+              color='secondary'
+              size='small'
+              variant='contained'
+              startIcon={<AssignmentTurnedInOutlinedIcon />}
+              onClick={doneWithEvent}>
+              Home
             </Button>
           </Box>
           <Box paddingLeft={1} className={classes.search}>

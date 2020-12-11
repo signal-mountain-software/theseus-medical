@@ -204,11 +204,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         <Button variant='contained' color='primary' size='small' onClick={handleSave}>
           Save
         </Button>
-        {fromHome ? null : (
+        {fromHome === 'event' ? (
           <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
             {isMobile ? 'Save +' : 'Save & Next'}
           </Button>
-        )}
+        ) : null}
       </DialogActions>
     </Dialog>
   );
