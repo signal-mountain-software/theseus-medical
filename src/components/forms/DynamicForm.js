@@ -608,7 +608,7 @@ export default ({
                     <FormControlLabel
                       label={
                         <Input
-                          placeholder='special request (specify)'
+                          placeholder='other (specify)'
                           autoFocus={focusHere}
                           onChange={onQualInputChange}
                           name={qualText}

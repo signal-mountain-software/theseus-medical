@@ -44,6 +44,7 @@ export default ({ patient, session, newFact }) => {
 
   React.useEffect(() => {
     let mounted = true;
+    /* removing Fact section (temporary?)    
     (async () => {
       let result;
       if (patient && session) {
@@ -64,7 +65,7 @@ export default ({ patient, session, newFact }) => {
         }
       }
     })();
-
+*/
     return () => {
       mounted = false;
     };

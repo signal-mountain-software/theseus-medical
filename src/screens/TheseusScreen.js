@@ -13,7 +13,7 @@ export default () => {
   return (
     <Box>
       <ActivitySection patient={patient} session={session} newFact={newFact} setNewFact={setNewFact} />
-      {true ? <FactSection patient={patient} session={session} newFact={newFact} /> : null}
+      {false ? <FactSection patient={patient} session={session} newFact={newFact} /> : null}
     </Box>
   );
 };

@@ -139,7 +139,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const doneWithEvent = () => {
     if (
-      homeState === 'Search' ||
+      homeState === 'search' ||
       activities.every(aObj => {
         return aObj.type === 'event' || aObj.observation_expires === null || aObj.observation_expires < timeNow;
       })
