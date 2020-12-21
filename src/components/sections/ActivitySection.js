@@ -258,42 +258,55 @@ export default ({ patient, session, newFact, setNewFact }) => {
     //   (async () => {
     let sVal = '';
     let mVal = '';
-    if (typeof newFact.value === 'object') {
-      let factObject = newFact.value.selected;
-      let qualObject = newFact.value.qualifiers;
-      let associationsObject = newFact.value.associations;
-      let masterKey = newFact.activity_key;
-      let separator = 'selection.';
-      let constructedValue = '';
-      let constructedQualifier = [];
-      let selectCount = 0;
-      for (mVal in factObject) {
-        if (factObject[mVal] === true) {
-          constructedValue += separator + mVal;
-          separator = ' ~ ';
-          newFact.qualifier = '';
-          if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
-            constructedQualifier = constructedQualifier.concat(qualObject[mVal]);
-            newFact.qualifier = qualObject[mVal];
+    let constructedValue = '';
+    let dataType = typeof newFact.value;
+    if (dataType === 'string') {
+      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+      [, constructedValue] = newFact.value.replace('.', '^').split('^');
+    } else {
+      if (newFact.hasOwnProperty('value') && newFact.value) {
+        if (!newFact.value.hasOwnProperty('selected')) {
+          let newFactArray = newFact.value;
+          newFact.value = '';
+          if (newFactArray.length > 0) {
+            newFact.value = 'selection.' + newFactArray.join(' ~ ');
           }
-          if (associationsObject && associationsObject.hasOwnProperty(mVal)) {
-            newFact.value = 'association.' + mVal;
-            newFact.activity_key = associationsObject[mVal];
+        } else {
+          let factObject = newFact.value.selected;
+          let qualObject = newFact.value.qualifiers;
+          let associationsObject = newFact.value.associations;
+          let masterKey = newFact.activity_key;
+          let separator = '';
+          let fOL = factObject.length;
+          for (let f = 0; f < fOL; f++) {
+            mVal = factObject[f];
+            constructedValue += separator + mVal;
+            separator = ' ~ ';
+            if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
+              newFact.qualifier = qualObject[mVal];
+            } else {
+              if (newFact.hasOwnProperty('qualifier')) {
+                delete newFact.qualifier;
+              }
+            }
+            newFact.activity_key = masterKey;
+            newFact.value = 'selection.' + mVal;
             await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+            if (associationsObject && associationsObject.hasOwnProperty(mVal)) {
+              newFact.value = 'association.' + mVal;
+              newFact.activity_key = associationsObject[mVal];
+              await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+            }
           }
-          selectCount++;
         }
       }
-      newFact.activity_key = masterKey;
-      newFact.value = constructedValue;
-      newFact.qualifier = constructedQualifier;
-      //      await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
-      //      [, sVal] = newFact.value.replace('.', '~').split('~');
-      //    } else {
     }
-    [, sVal] = newFact.value.replace('.', '~').split('~');
-    await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
-    //    }
+    if (constructedValue) {
+      sVal = constructedValue;
+    } else {
+      sVal = '~~ no selection ~~';
+    }
+
     setNewFact(newFact);
     setLimit(limit);
     setOpen(false);
@@ -309,12 +322,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
       );
     }
     selectedActivityName = '';
-    //    })().catch(error => {
-    //     setOpen(false);
-    //     enqueueSnackbar(`Whoops! Something went wrong when creating a new fact: ${error.message}`, {
-    //       variant: 'error',
-    //     });
-    //   });
   };
 
   const onNextFact = async newFact => {

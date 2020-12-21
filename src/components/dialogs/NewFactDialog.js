@@ -1,11 +1,6 @@
 import React from 'react';
-//import AppBar from '@material-ui/core/AppBar';
-//import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
-//import Divider from '@material-ui/core/Divider';
-//import Toolbar from '@material-ui/core/Toolbar';
-//import Typography from '@material-ui/core/Typography';
-import makeStyles from '@material-ui/core/styles/makeStyles';
+import { fade, withStyles, makeStyles } from '@material-ui/core/styles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import Dialog from '@material-ui/core/Dialog';
@@ -13,13 +8,39 @@ import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
 
+import InputBase from '@material-ui/core/InputBase';
+import FormControl from '@material-ui/core/FormControl';
+
 import DynamicForm from '../forms/DynamicForm';
+
+const BootstrapInput = withStyles(theme => ({
+  root: {
+    marginTop: '0',
+  },
+  input: {
+    borderRadius: 4,
+    marginLeft: theme.spacing(2),
+    marginTop: '0',
+    marginBottom: '0',
+    border: '1px solid #ced4da',
+    fontSize: '0.8rem',
+    width: 'auto',
+    padding: '5px 6px',
+    '&:focus': {
+      boxShadow: `${fade(theme.palette.primary.main, 0.25)} 0 0 0 0.2rem`,
+      borderColor: theme.palette.primary.main,
+    },
+  },
+}))(InputBase);
 
 const useStyles = makeStyles(theme => ({
   appBar: {
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  margin: {
+    margin: theme.spacing(1),
   },
   title: {
     marginTop: theme.spacing(3),
@@ -29,8 +50,14 @@ const useStyles = makeStyles(theme => ({
     fontSize: '1.3rem',
     fontWeight: 'bold',
   },
+  dialogBox: {
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    minWidth: '100%',
+  },
   formControl: {
     marginLeft: theme.spacing(3),
+    minWidth: '100%',
   },
   confirm: {
     backgroundColor: theme.palette.confirm[theme.palette.type],
@@ -40,8 +67,27 @@ const useStyles = makeStyles(theme => ({
   },
   descriptionText: {
     marginLeft: theme.spacing(3),
-    marginRight: theme.spacing(1),
     marginTop: 0,
+    marginBottom: theme.spacing(1),
+    marginRight: theme.spacing(5),
+    fontSize: '0.8rem',
+  },
+  searchLine: {
+    marginLeft: theme.spacing(3),
+    marginRight: theme.spacing(4),
+    marginTop: 0,
+    marginBottom: theme.spacing(1),
+    padding: 0,
+    minWidth: '100%',
+    fontSize: '0.8rem',
+  },
+  searchBox: {
+    marginLeft: theme.spacing(3),
+    marginRight: theme.spacing(4),
+    marginTop: 0,
+    marginBottom: theme.spacing(1),
+    padding: 0,
+    minWidth: '100%',
     fontSize: '0.8rem',
   },
 }));
@@ -51,6 +97,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   // const [disable, setDisable] = React.useState(false);
   const [message, setMessage] = React.useState('enter an initial value');
   const classes = useStyles();
+
+  const [searchText, setSearchText] = React.useState('');
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
@@ -64,6 +112,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   const handleSave = () => {
     withNext = false;
     handleExit();
+  };
+
+  const onSearchInput = event => {
+    setSearchText(event.target.value.toLowerCase());
   };
 
   const handleExit = () => {
@@ -152,7 +204,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
           break;
         }
         case 'list_multiple': {
-          eString = 'Select all that apply';
+          if (fact.prompt) {
+            eString = fact.prompt;
+          } else {
+            eString = 'Select from this list';
+          }
           break;
         }
         default: {
@@ -168,12 +224,28 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   }, [fact, session]);
 
   return (
-    <Dialog open={open} onClose={onClose}>
+    <Dialog
+      open={open}
+      fullWidth={true}
+      classes={{
+        input: classes.searchBox,
+      }}
+      onClose={onClose}>
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
       </DialogContentText>
       <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
-      <DialogContent dividers={true}>
+      {fact.type === 'list_multiple' ? (
+        <FormControl className={classes.margin}>
+          <BootstrapInput
+            placeholder='Search/Filter'
+            onChange={onSearchInput}
+            value={searchText}
+            id='bootstrap-input'
+          />
+        </FormControl>
+      ) : null}
+      <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
         {fact ? (
           <DynamicForm
             open={open}
@@ -190,6 +262,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
                 ? fact.most_recent_observation.split(' (')[0]
                 : fact.default_value
             }
+            searchText={searchText}
+            setMessage={setMessage}
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}

@@ -5,12 +5,10 @@ import FormControl from '@material-ui/core/FormControl';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormLabel from '@material-ui/core/FormLabel';
 import FormGroup from '@material-ui/core/FormGroup';
-import Input from '@material-ui/core/Input';
-import Box from '@material-ui/core/Box';
 
-//import NativeSelect from '@material-ui/core/NativeSelect';
-import RadioGroup from '@material-ui/core/RadioGroup';
-import Radio from '@material-ui/core/Radio';
+import Input from '@material-ui/core/Input';
+import TextField from '@material-ui/core/TextField';
+
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Checkbox from '@material-ui/core/Checkbox';
@@ -21,49 +19,75 @@ import FreeTextForm from './FreeTextForm';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
+
 import DialogContent from '@material-ui/core/DialogContent';
+
+import Typography from '@material-ui/core/Typography';
+import Button from '@material-ui/core/Button';
+
+import List from '@material-ui/core/List';
+import ListItem from '@material-ui/core/ListItem';
+import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
+import ListItemText from '@material-ui/core/ListItemText';
+import IconButton from '@material-ui/core/IconButton';
+import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
+
+// import QualifierForm from '../forms/QualifierForm';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import DialogTitle from '@material-ui/core/DialogTitle';
 
+import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
 import FaceIcon from '@material-ui/icons/Face';
-
-import Button from '@material-ui/core/Button';
-import Typography from '@material-ui/core/Typography';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
     marginLeft: theme.spacing(3),
     width: '100%',
+    minWidth: '100%',
   },
   subHeader: {
-    marginTop: theme.spacing(2),
-    paddingBottom: 0,
+    fontWeight: 'bold',
+    minWidth: '100%',
+  },
+  defaultButton: {
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 1,
+    variant: 'outlined',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.6,
+    height: theme.typography.fontSize * 2.8,
+  },
+  qLine: {
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 1,
+    verticalAlign: 'middle',
   },
   valueLine: {
     marginBottom: 0,
+    marginTop: 0,
     paddingBottom: 0,
     lineHeight: 1,
+    minWidth: '100%',
+    height: theme.typography.fontSize * 25,
   },
+  qualDialog: {},
   qualTitle: {
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     marginBottom: 0,
-    paddingBottom: 0,
-    paddingTop: 0,
-    paddingLeft: 0,
-    fontSize: '1.3rem',
-    lineHeight: 1,
+    fontSize: '1.0rem',
+    fontWeight: 'bold',
   },
   qualDescription: {
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
+    marginLeft: theme.spacing(4),
     marginTop: 0,
-    paddingTop: 0,
-    paddingLeft: 0,
+    marginBottom: 0,
+    marginRight: theme.spacing(5),
     fontSize: '0.8rem',
-    lineHeight: 1,
   },
   qualLine: {
     marginLeft: 15,
@@ -98,47 +122,46 @@ export default ({
   values,
   valueQualifiers,
   defaultValue,
+  searchText,
+  setMessage,
   observationKey,
   onError,
   onSave,
   onNext,
 }) => {
   const [value, setValue] = React.useState(defaultValue || '');
-  const [freeText, setFreeText] = React.useState('');
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
-  const [inputAllowed, setInputAllowed] = React.useState(false);
-  const [focusHere, setFocusHere] = React.useState(false);
 
   const [boxState, setBoxState] = React.useState({});
   const [formState, setFormState] = React.useState(1);
-  const [formOpen, setFormOpen] = React.useState(1);
 
-  const [qualText, setQualText] = React.useState('');
   const [allSelections_qualValueText, set_allSelections_qualValueText] = React.useState({});
-  const [allSelections_qualBoxStates, set_allSelections_qualBoxStates] = React.useState({});
   const [qualifierTable, setQualifierTable] = React.useState({});
   const [associationsTable, setAssociationsTable] = React.useState({});
   const [qualifiers, setQualifiers] = React.useState([]);
-  const [activeDialog_qualBoxState, set_activeDialog_qualBoxState] = React.useState({});
-  const [allSelections_qualFreeText, set_allSelections_qualFreeText] = React.useState({});
+  const [selectedFact, setSelectedFact] = React.useState('');
 
-  const [OGState, setOGState] = React.useState([]);
-  const [OGValue, setOGValue] = React.useState('');
-  const [OGFreeText, setOGFreeText] = React.useState('');
-  const [OGnewFact, setOGnewFact] = React.useState({});
+  const [qualifierImage, setDialogImage] = React.useState('');
+  const [checked, setChecked] = React.useState([]);
+  const [qualifierOpen, setQualifierOpen] = React.useState(false);
+  const [qualifierData, setQualifierData] = React.useState({});
+  const [OGmessage, setOGmessage] = React.useState('');
 
-  // const [dialogText, setDialogText] = React.useState('');
-  const [dialogTitle, setDialogTitle] = React.useState('');
-  const [dialogBody, setDialogBody] = React.useState('');
-  const [dialogImage, setDialogImage] = React.useState('');
-  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [qualChecked, setQualChecked] = React.useState({});
+  const [qualMessage, setQualMessage] = React.useState('');
+  const [OGqualifiers, setOGQualifiers] = React.useState([]);
 
-  const [selection, setSelection] = React.useState('');
+  const [freeText, setFreeText] = React.useState('');
 
-  var clickedWord = false;
+  // const [searchText, setSearchText] = React.useState('');
+  var noToggle = false;
 
   const classes = useStyles();
+
+  if (OGmessage === '') {
+    setOGmessage(message);
+  }
 
   if (Object.keys(boxState).length === 0 && values) {
     console.log('initializing');
@@ -152,9 +175,11 @@ export default ({
     });
     if (valueQualifiers && valueQualifiers.length > 0) {
       valueQualifiers.forEach(vQual => {
-        qualifierTable[vQual.value] = vQual;
-        if (vQual.associated_activity) {
-          associationsTable[vQual.value] = vQual.associated_activity;
+        if (vQual && Object.keys(vQual).length > 0) {
+          qualifierTable[vQual.value] = vQual;
+          if (vQual.associated_activity) {
+            associationsTable[vQual.value] = vQual.associated_activity;
+          }
         }
       });
     }
@@ -164,190 +189,97 @@ export default ({
     set_allSelections_qualValueText(allSelections_qualValueText);
     setQualifierTable(qualifierTable);
     setAssociationsTable(associationsTable);
-    // newFact.value = observationKey + '.' + defaultValue;
     newFact.value = {
-      selected: boxState,
+      selected: [],
       associations: associationsTable,
     };
     setNewFact(newFact);
   }
 
-  const qualCheckBoxChange = event => {
-    console.log('in qualCheckBox', event.target.name, event.target.checked);
-    activeDialog_qualBoxState[event.target.name] = event.target.checked;
-    set_activeDialog_qualBoxState(activeDialog_qualBoxState);
-    let xForm = formOpen + 1;
-    setFormOpen(xForm);
-    console.log(OGState);
-  };
+  const handleToggle = value => () => {
+    if (!noToggle) {
+      const currentIndex = checked.indexOf(value);
+      const newChecked = [...checked];
 
-  const onClickedWord = event => {
-    clickedWord = true;
-  };
-
-  const checkBoxChange = event => {
-    if (clickedWord && !qualifierTable[event.target.name]) {
-      clickedWord = false;
-    }
-    if (!clickedWord) {
-      if (type !== 'list_multiple' && event.target.checked) {
-        for (const key in boxState) {
-          boxState[key] = false;
-        }
-      }
-      boxState[event.target.name] = event.target.checked;
-    }
-    console.log('checkBoxChange', event.target.name, event.target.checked);
-    setSelection(event.target.name);
-    //  if (boxState[event.target.name]) {
-    //    newFact.value = observationKey + '.' + event.target.value;
-    //  } else {
-    //    newFact.value = null;
-    //  }
-    newFact.value = {
-      selected: boxState,
-      associations: associationsTable,
-    };
-    setBoxState(boxState);
-    console.log(boxState[event.target.name], qualifierTable[event.target.name]);
-    if ((event.target.checked || clickedWord) && qualifierTable[event.target.name]) {
-      //      if (qualValue[event.target.name]) { setDialogText(qualValue[event.target.name]); }
-      //      else { setDialogText(''); }
-      setDialogTitle(event.target.name);
-      setDialogBody(qualifierTable[event.target.name].description);
-
-      if (qualifierTable[event.target.name].hasOwnProperty('image_url')) {
-        getImage(qualifierTable[event.target.name].image_url);
+      if (currentIndex === -1) {
+        newChecked.push(value);
       } else {
-        setDialogImage(null);
+        newChecked.splice(currentIndex, 1);
       }
-
-      setQualifiers(qualifierTable[event.target.name].qualifiers);
-
-      if (
-        !allSelections_qualBoxStates.hasOwnProperty(event.target.name) &&
-        qualifierTable[event.target.name].qualifiers
-      ) {
-        allSelections_qualBoxStates[event.target.name] = {};
-        qualifierTable[event.target.name].qualifiers.forEach(qWord => {
-          allSelections_qualBoxStates[event.target.name][qWord] = false;
-        });
-        allSelections_qualBoxStates[event.target.name].qualText = false;
+      setChecked(newChecked);
+      if (newChecked.length === 0) {
+        setMessage(OGmessage);
+      } else {
+        setMessage('You selected: ' + newChecked.join(' ~ '));
       }
-      set_activeDialog_qualBoxState(allSelections_qualBoxStates[event.target.name]);
-      setQualText(allSelections_qualFreeText[event.target.name]);
-      console.log('ready for dialog', allSelections_qualBoxStates, qualText);
-      setDialogOpen(true);
-    } else {
-      if (!event.target.checked) {
-        allSelections_qualValueText[event.target.name] = '';
-        set_allSelections_qualValueText(allSelections_qualValueText);
-        console.log('changing allSelections_qualValueText', allSelections_qualValueText);
+      if (!newFact.value.hasOwnProperty('selected')) {
+        newFact.value.selected = {};
       }
-      setDialogOpen(false);
-      var resetter = formState + 1;
-      setFormState(resetter); // force re-render
-    }
-    var OGStateArray = [];
-    for (const key in allSelections_qualBoxStates[event.target.name]) {
-      if (allSelections_qualBoxStates[event.target.name][key]) {
-        OGStateArray.push(key);
-      }
-    }
-    setOGState(OGStateArray);
-    setOGValue(allSelections_qualValueText[event.target.name]);
-    setOGFreeText(allSelections_qualFreeText[event.target.name]);
-    setOGnewFact(newFact);
-    setNewFact(newFact);
-  };
-
-  const handleDialogRemoveAllSelections = event => {
-    allSelections_qualBoxStates[selection] = {};
-    qualifierTable[selection].qualifiers.forEach(qWord => {
-      allSelections_qualBoxStates[selection][qWord] = false;
-    });
-    allSelections_qualBoxStates[selection].qualText = false;
-    allSelections_qualFreeText[selection] = '';
-    allSelections_qualValueText[selection] = '';
-    set_activeDialog_qualBoxState(allSelections_qualBoxStates[selection]);
-    set_allSelections_qualFreeText(allSelections_qualFreeText);
-    set_allSelections_qualValueText(allSelections_qualValueText);
-    set_allSelections_qualBoxStates(allSelections_qualBoxStates);
-    if (newFact.hasOwnProperty('qualifier')) {
-      delete newFact.qualifier;
+      newFact.value.selected = newChecked;
       setNewFact(newFact);
-    }
-    let xForm = formOpen + 1;
-    setFormOpen(xForm);
-  };
-
-  const handleDialogBack = event => {
-    setDialogOpen(false);
-    for (const key in allSelections_qualBoxStates[selection]) {
-      allSelections_qualBoxStates[selection][key] = OGState.includes(key);
-    }
-    allSelections_qualFreeText[selection] = OGFreeText;
-    allSelections_qualValueText[selection] = OGValue;
-    set_allSelections_qualFreeText(allSelections_qualFreeText);
-    set_allSelections_qualValueText(allSelections_qualValueText);
-    set_allSelections_qualBoxStates(allSelections_qualBoxStates);
-    newFact = OGnewFact;
-    setNewFact(newFact);
-  };
-
-  const handleClose = event => {
-    allSelections_qualBoxStates[selection] = activeDialog_qualBoxState;
-    let comma = '';
-    allSelections_qualValueText[selection] = '';
-    allSelections_qualFreeText[selection] = '';
-    newFact.qualifier = [];
-    for (const key in activeDialog_qualBoxState) {
-      if (activeDialog_qualBoxState[key]) {
-        if (key === 'qualText') {
-          allSelections_qualValueText[selection] += comma + qualText;
-          allSelections_qualFreeText[selection] = qualText;
-          newFact.qualifier.push(qualText);
-        } else {
-          allSelections_qualValueText[selection] += comma + key;
-          newFact.qualifier.push(key);
-        }
-        comma = ', ';
-      }
-    }
-    console.log('back from dialog', boxState, allSelections_qualValueText[selection]);
-    if (allSelections_qualValueText[selection] !== '') {
-      if (type !== 'list_multiple') {
-        for (const key in boxState) {
-          boxState[key] = false;
-        }
-      }
-      boxState[selection] = true;
-      //      newFact.value = observationKey + '.' + selection;
-      newFact.value = {
-        selected: boxState,
-        associations: associationsTable,
-        qualifiers: allSelections_qualValueText,
-      };
-      setBoxState(boxState);
-      setNewFact(newFact);
-      console.log('reset state', boxState, allSelections_qualValueText[selection]);
     } else {
-      delete newFact.qualifier;
+      noToggle = false;
     }
-    set_allSelections_qualFreeText(allSelections_qualFreeText);
-    set_allSelections_qualValueText(allSelections_qualValueText);
-    set_allSelections_qualBoxStates(allSelections_qualBoxStates);
-    setDialogOpen(false);
   };
 
-  const onQualInputChange = event => {
-    //    if (event.target.value) {
-    setQualText(event.target.value);
-    setValue(event.target.value);
-    activeDialog_qualBoxState.qualText = true;
-    set_activeDialog_qualBoxState(activeDialog_qualBoxState);
-    //  setNewFact(newFact);
-    setFocusHere(true);
+  const onChangeFreeText = event => {
+    setFreeText(event.target.value);
+  };
+
+  const handleQClose = event => {
+    setQualChecked(OGqualifiers);
+    setOGQualifiers('');
+    setQualifierOpen(false);
+  };
+
+  const handleQSave = () => {
+    if (!newFact.value.hasOwnProperty('qualifiers')) {
+      newFact.value.qualifiers = {};
+    }
+    newFact.value.qualifiers = qualChecked;
+    if (qualChecked.hasOwnProperty(selectedFact) && qualChecked[selectedFact].length > 0) {
+      if (!newFact.value.selected.includes(selectedFact)) {
+        newFact.value.selected.push(selectedFact);
+      }
+    }
+    setNewFact(newFact);
+    setChecked(newFact.value.selected);
+    setOGQualifiers('');
+    setQualifierOpen(false);
+  };
+
+  const handleQualSelected = value => () => {
+    setQualifierOpen(true);
+    setQualifierData(qualifierTable[value]);
+    setQualifiers(qualifierTable[value].qualifiers);
+    setSelectedFact(value);
+    if (!qualChecked.hasOwnProperty(value)) {
+      /* no selections previously made? */
+      qualChecked[value] = [];
+      setQualChecked(qualChecked);
+    }
+    setOGQualifiers(qualChecked);
+    getImage(qualifierTable[value].image_url);
+    var resetter = formState + 1;
+    setFormState(resetter);
+    noToggle = true;
+  };
+
+  const handleToggleQual = value => () => {
+    const currentIndex = qualChecked[selectedFact].indexOf(value);
+    const newChecked = [...qualChecked[selectedFact]];
+    if (currentIndex === -1) {
+      newChecked.push(value);
+    } else {
+      newChecked.splice(currentIndex, 1);
+    }
+    qualChecked[selectedFact] = newChecked;
+    setQualChecked(qualChecked);
+    if (newChecked.length === 0) {
+      setQualMessage('');
+    } else {
+      setQualMessage('Options: ' + newChecked.join(' ~ '));
+    }
   };
 
   const onChangeValue = event => {
@@ -357,22 +289,13 @@ export default ({
     //    }
     setNewFact(newFact);
   };
-
-  const onInputChange = event => {
-    //    if (event.target.value) {
-    setFreeText(event.target.value);
-    setValue(event.target.value);
-    newFact.value = observationKey + '.' + event.target.value;
-    if (type !== 'list_multiple') {
-      for (const key in boxState) {
-        boxState[key] = false;
-      }
-    }
-    boxState[event.target.value] = true;
-    setBoxState(boxState);
-    setNewFact(newFact);
-    setFocusHere(true);
+  /*
+  const onSearchInput = event => {
+    setSearchText(event.target.value.toLowerCase());
+    var resetter = formState + 1;
+    setFormState(resetter); // force re-render
   };
+*/
 
   const onChangeMessage = event => {
     //    if (event.target.value) {
@@ -414,13 +337,6 @@ export default ({
 
   React.useEffect(() => {
     if (open) {
-      if (values && values.includes('~other~')) {
-        setInputAllowed(true);
-      } else {
-        setInputAllowed(false);
-      }
-      // newFact.value = observationKey + '.' + defaultValue;
-      // setNewFact(newFact);
       setMOut(message);
     } else {
       setValue(defaultValue || '');
@@ -466,196 +382,166 @@ export default ({
           onError={onError}
         />
       );
-    case 'dont use me':
-      return (
-        <FormControl>
-          <RadioGroup
-            value={value.startsWith('~~') ? value.substr(2) : value}
-            id='value-label'
-            name='value'
-            onChange={onChangeValue}>
-            {values.map(value =>
-              value.startsWith('~~') ? (
-                <FormLabel htmlFor='value-label' key={value + 'Label'} className={classes.subHeader}>
-                  {value.substr(2)}
-                </FormLabel>
-              ) : value === '~other~' ? null : (
-                <FormControlLabel label={value} key={value} value={value} control={<Radio />} />
-              )
-            )}
-            {inputAllowed ? (
-              <FormControlLabel
-                label={
-                  <Input
-                    placeholder='other (specify)'
-                    autoFocus={focusHere}
-                    onChange={onInputChange}
-                    name={'radio-input'}
-                    value={freeText}
-                  />
-                }
-                key={freeText}
-                name='freetext'
-                value={freeText}
-                control={<Radio />}
-              />
-            ) : null}
-          </RadioGroup>
-        </FormControl>
-      );
     default:
       return (
-        <div>
-          <FormControl>
+        <React.Fragment key={`selection-panel`}>
+          <FormControl fullWidth>
             <FormGroup value={value} id='value-label' name='value' open={formState > 0}>
-              {console.log('rendering', boxState)}
-              {values.map(value =>
-                boxState[value] === undefined ? (
-                  (boxState[value] = false)
-                ) : value.startsWith('~~') ? (
-                  <FormLabel htmlFor='value-label' key={value + 'Label'} className={classes.subHeader}>
-                    {value.substr(2)}
-                  </FormLabel>
-                ) : value === '~other~' ? null : (
-                  <FormControlLabel
-                    label={
-                      <div onClick={onClickedWord}>
-                        <Typography value={value} className={classes.valueLine}>
-                          {value}
-                        </Typography>
-                        {allSelections_qualValueText[value] ? (
-                          <Typography className={classes.qualLine}>{allSelections_qualValueText[value]}</Typography>
-                        ) : null}
-                      </div>
-                    }
-                    key={value}
-                    name={value}
-                    value={value.startsWith('~~') ? value.substr(3) : value}
-                    control={
-                      <Checkbox
-                        checked={boxState[value]}
-                        hidden={value.startsWith('~~')}
-                        name={value}
-                        onChange={checkBoxChange}
+              <List className={classes.valueLine}>
+                {values.map(value => {
+                  const labelId = `checkbox-list-label-${value}`;
+                  return value.startsWith('~~') ? (
+                    <ListItem key={value} role={undefined} className={classes.defaultButton} dense>
+                      <ListItemText
+                        id={'subhead' + value}
+                        classes={{ primary: classes.subHeader }}
+                        primary={value.substr(2)}
                       />
-                    }
-                  />
-                )
-              )}
-              {inputAllowed ? (
-                <FormControlLabel
-                  label={
-                    <Input
-                      placeholder='other (specify)'
-                      autoFocus={focusHere}
-                      onChange={onInputChange}
-                      name={freeText}
-                      value={freeText}
-                    />
-                  }
-                  key={freeText}
-                  name='freetext'
-                  value={freeText}
-                  control={<Checkbox checked={boxState.freeText} name='freeText' onChange={checkBoxChange} />}
-                />
-              ) : null}
+                    </ListItem>
+                  ) : searchText === '' || value.toLowerCase().includes(searchText) ? (
+                    <ListItem
+                      key={value}
+                      role={undefined}
+                      dense
+                      button
+                      className={classes.defaultButton}
+                      onClick={handleToggle(value)}>
+                      <React.Fragment key={`fragment-${value}`}>
+                        <Checkbox
+                          edge='start'
+                          checked={checked.indexOf(value) !== -1}
+                          disableRipple
+                          inputProps={{ 'aria-labelledby': labelId }}
+                        />
+                        {value !== '~other~' ? (
+                          <ListItemText
+                            id={labelId}
+                            fullWidth
+                            primary={<Typography noWrap={true}>{value}</Typography>}
+                            secondary={
+                              newFact.value.qualifiers && newFact.value.qualifiers[value]
+                                ? newFact.value.qualifiers[value].join(' ~ ')
+                                : null
+                            }
+                          />
+                        ) : (
+                          <TextField
+                            value={freeText}
+                            label={labelId}
+                            onChange={onChangeFreeText}
+                            InputLabelProps={{ shrink: true }}
+                            fullWidth
+                          />
+                        )}
+                        {qualifierTable.hasOwnProperty(value) ? (
+                          <ListItemSecondaryAction>
+                            <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
+                              <InfoOutlinedIcon />
+                            </IconButton>
+                          </ListItemSecondaryAction>
+                        ) : null}
+                      </React.Fragment>
+                    </ListItem>
+                  ) : null;
+                })}
+              </List>
             </FormGroup>
           </FormControl>
-          <Dialog open={dialogOpen} onClose={handleClose} aria-labelledby='form-dialog-title'>
+          <Dialog
+            open={qualifierOpen}
+            className={classes.qualDialog}
+            fullWidth
+            onClose={handleQClose}
+            aria-labelledby='qualifier-dialog'>
             <Box display='flex' flexDirection='row' width='95%'>
               <Box display='flex' flexDirection='column' width='95%'>
-                <DialogTitle pb={0} className={classes.qualTitle} id='form-dialog-title'>
-                  {dialogTitle}
-                </DialogTitle>
-                <DialogContentText className={classes.qualDescription}>{dialogBody}</DialogContentText>
+                <Typography className={classes.qualTitle} noWrap={true}>
+                  {qualifierData.value}
+                </Typography>
+                {qualifierData.description ? (
+                  <DialogContentText className={classes.qualDescription}>{qualifierData.description}</DialogContentText>
+                ) : null}
+                {qualChecked.hasOwnProperty(selectedFact) && qualChecked[selectedFact].length > 0 ? (
+                  <DialogContentText className={classes.qualDescription}>
+                    {qualChecked[selectedFact].join(' ~ ')}
+                  </DialogContentText>
+                ) : null}
               </Box>
-              {dialogImage ? (
-                <Avatar src={dialogImage} className={classes.picture}>
+              {qualifierData.image_url ? (
+                <Avatar src={qualifierImage} className={classes.picture}>
                   <FaceIcon className={classes.picture} />
                 </Avatar>
               ) : null}
             </Box>
-            {qualifiers ? (
+            {qualifierOpen ? (
               <DialogContent pt={0}>
                 <FormControl>
-                  <FormGroup value={value} id='value-label' name='value' open={formOpen > 0}>
-                    {qualifiers.map(qualifier =>
-                      qualifier.startsWith('~~') ? (
-                        <FormLabel htmlFor='value-label' className={classes.subHeader}>
-                          {qualifier.substr(2)}
-                        </FormLabel>
-                      ) : qualifier === '~other~' ? null : (
-                        <FormControlLabel
-                          label={
-                            <div>
-                              <Typography className={classes.valueLine}>{qualifier}</Typography>
-                            </div>
-                          }
-                          key={qualifier}
-                          name={qualifier}
-                          value={qualifier.startsWith('~~') ? qualifier.substr(3) : qualifier}
-                          control={
-                            <Checkbox
-                              hidden={qualifier.startsWith('~~')}
-                              checked={activeDialog_qualBoxState[qualifier]}
-                              name={qualifier}
-                              onChange={qualCheckBoxChange}
-                            />
-                          }
-                        />
-                      )
-                    )}
-                    <FormControlLabel
-                      label={
-                        <Input
-                          placeholder='other (specify)'
-                          autoFocus={focusHere}
-                          onChange={onQualInputChange}
-                          name={qualText}
-                          value={qualText}
-                        />
-                      }
-                      key={qualText}
-                      name='qualtextControl'
-                      value={qualText}
-                      control={
-                        <Checkbox
-                          checked={activeDialog_qualBoxState.qualText}
-                          name='qualText'
-                          onChange={qualCheckBoxChange}
-                        />
-                      }
-                    />
+                  <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
+                    {qualifiers
+                      ? qualifiers.map(qualifier =>
+                          qualifier.startsWith('~~') ? (
+                            <ListItem key={value} role={undefined} className={classes.defaultButton} dense>
+                              <ListItemText
+                                id={'qhead' + value}
+                                classes={{ primary: classes.subHeader }}
+                                primary={qualifier.substr(2)}
+                              />
+                            </ListItem>
+                          ) : (
+                            <ListItem
+                              key={qualifier}
+                              role={undefined}
+                              dense
+                              button
+                              className={classes.defaultButton}
+                              onClick={handleToggleQual(qualifier)}>
+                              <React.Fragment key={`qfragment-${qualifier}`}>
+                                <Checkbox
+                                  edge='start'
+                                  checked={qualChecked[selectedFact].indexOf(qualifier) !== -1}
+                                  name={qualifier}
+                                  disableRipple
+                                  inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
+                                />
+                                {value !== '~other~' ? (
+                                  <ListItemText
+                                    id={`qlabelid-${qualifier}`}
+                                    fullWidth
+                                    primary={<Typography noWrap={true}>{qualifier}</Typography>}
+                                  />
+                                ) : (
+                                  <TextField
+                                    value={freeText}
+                                    label={`qlabeltext-${qualifier}`}
+                                    onChange={onChangeFreeText}
+                                    InputLabelProps={{ shrink: true }}
+                                    fullWidth
+                                  />
+                                )}
+                              </React.Fragment>
+                            </ListItem>
+                          )
+                        )
+                      : null}
                   </FormGroup>
                 </FormControl>
               </DialogContent>
             ) : null}
             <DialogActions>
-              <Button onClick={handleDialogBack} color='inherit' size='small' variant='contained'>
+              <Button onClick={handleQClose} color='inherit' size='small' variant='contained'>
                 Back
               </Button>
-              {qualifiers ? (
-                <Button
-                  onClick={handleDialogRemoveAllSelections}
-                  className={classes.reject}
-                  size='small'
-                  variant='contained'>
-                  Remove
-                </Button>
-              ) : null}
-              {qualifiers ? (
-                <Button
-                  onClick={handleClose}
-                  className={classes.confirm}
-                  variant='contained'
-                  color='primary'
-                  size='small'>
-                  Save
-                </Button>
-              ) : null}
+              <Button
+                onClick={handleQSave}
+                className={classes.confirm}
+                variant='contained'
+                color='primary'
+                size='small'>
+                Save
+              </Button>
             </DialogActions>
           </Dialog>
-        </div>
+        </React.Fragment>
       );
   }
 };
