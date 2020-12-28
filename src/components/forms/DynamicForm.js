@@ -59,12 +59,6 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.6,
     height: theme.typography.fontSize * 2.8,
   },
-  qLine: {
-    marginLeft: 0,
-    paddingLeft: 0,
-    paddingRight: 1,
-    verticalAlign: 'middle',
-  },
   valueLine: {
     marginBottom: 0,
     marginTop: 0,
@@ -88,13 +82,6 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0,
     marginRight: theme.spacing(5),
     fontSize: '0.8rem',
-  },
-  qualLine: {
-    marginLeft: 15,
-    marginTop: 0,
-    paddingTop: 2,
-    lineHeight: 1,
-    fontSize: theme.typography.fontSize * 0.8,
   },
   picture: {
     marginTop: theme.spacing(3),
@@ -133,10 +120,9 @@ export default ({
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
 
-  const [boxState, setBoxState] = React.useState({});
   const [formState, setFormState] = React.useState(1);
+  const [firstTime, setFirstTime] = React.useState(true);
 
-  const [allSelections_qualValueText, set_allSelections_qualValueText] = React.useState({});
   const [qualifierTable, setQualifierTable] = React.useState({});
   const [associationsTable, setAssociationsTable] = React.useState({});
   const [qualifiers, setQualifiers] = React.useState([]);
@@ -163,16 +149,8 @@ export default ({
     setOGmessage(message);
   }
 
-  if (Object.keys(boxState).length === 0 && values) {
+  if (firstTime) {
     console.log('initializing');
-    values.forEach(value => {
-      if (value === defaultValue) {
-        boxState[value] = true;
-      } else {
-        boxState[value] = false;
-      }
-      allSelections_qualValueText[value] = '';
-    });
     if (valueQualifiers && valueQualifiers.length > 0) {
       valueQualifiers.forEach(vQual => {
         if (vQual && Object.keys(vQual).length > 0) {
@@ -183,10 +161,6 @@ export default ({
         }
       });
     }
-    boxState.freeText = false;
-    allSelections_qualValueText.freeText = false;
-    setBoxState(boxState);
-    set_allSelections_qualValueText(allSelections_qualValueText);
     setQualifierTable(qualifierTable);
     setAssociationsTable(associationsTable);
     newFact.value = {
@@ -194,6 +168,7 @@ export default ({
       associations: associationsTable,
     };
     setNewFact(newFact);
+    setFirstTime(false);
   }
 
   const handleToggle = value => () => {
@@ -289,13 +264,6 @@ export default ({
     //    }
     setNewFact(newFact);
   };
-  /*
-  const onSearchInput = event => {
-    setSearchText(event.target.value.toLowerCase());
-    var resetter = formState + 1;
-    setFormState(resetter); // force re-render
-  };
-*/
 
   const onChangeMessage = event => {
     //    if (event.target.value) {

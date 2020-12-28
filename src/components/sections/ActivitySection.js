@@ -255,7 +255,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onSaveFact = async newFact => {
-    //   (async () => {
     let sVal = '';
     let mVal = '';
     let constructedValue = '';
@@ -304,7 +303,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     if (constructedValue) {
       sVal = constructedValue;
     } else {
-      sVal = '~~ no selection ~~';
+      sVal = '~~ no value ~~';
     }
 
     setNewFact(newFact);

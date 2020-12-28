@@ -94,7 +94,6 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   const [newFact, setNewFact] = React.useState(null);
-  // const [disable, setDisable] = React.useState(false);
   const [message, setMessage] = React.useState('enter an initial value');
   const classes = useStyles();
 
