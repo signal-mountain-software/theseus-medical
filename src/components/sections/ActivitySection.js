@@ -127,6 +127,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [activePatient, setActivePatient] = React.useState(null);
 
   const [showSummary, setSummary] = React.useState(false);
+  const [showConfirmation, setConfirmation] = React.useState(false);
+  const [showQualifiers, setQualifiers] = React.useState({});
+
   var timeNow = new Date().getTime();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
@@ -145,6 +148,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       })
     ) {
       setSummary(false);
+      setConfirmation(false);
       returnToHome();
     } else {
       setSummary(true);
@@ -153,16 +157,26 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const handleSummarySubmit = () => {
     setSummary(false);
+    setConfirmation(false);
+    let confirmedData = [newFact.value];
+    if (newFact.qualifier) {
+      confirmedData.push(newFact.qualifier);
+    }
     newFact = {
       patient_id: session.patient_id || session.user_id,
-      activity_key: 'confirmation.' + event,
+      activity_key: 'confirmation.' + (event ? event : selected.code),
       value: 'action.confirmed',
+      qualifier: confirmedData,
       session: {
         user_id: session.user_id,
         session_id: session.session_id,
       },
     };
-    selectedActivityName = activities[0].reason.substr(0, activities[0].reason.length - 6);
+    if (event) {
+      selectedActivityName = activities[0].reason.substr(0, activities[0].reason.length - 6);
+    } else {
+      selectedActivityName = selected.name;
+    }
     setNewFact(newFact);
     onSaveFact(newFact);
     returnToHome();
@@ -170,10 +184,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const handleSummaryBack = () => {
     setSummary(false);
+    setConfirmation(false);
   };
 
   const handleSummaryExit = () => {
     setSummary(false);
+    setConfirmation(false);
     returnToHome();
   };
 
@@ -215,7 +231,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onChooseActivity = activity => {
     if (defaultRequested) {
-      //setDefaultRequested(false);
       defaultRequested = false;
       selectedActivityName = activity.name;
 
@@ -258,43 +273,67 @@ export default ({ patient, session, newFact, setNewFact }) => {
     let sVal = '';
     let mVal = '';
     let constructedValue = '';
+    let constructedQualifier = '';
     let dataType = typeof newFact.value;
     if (dataType === 'string') {
       await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
       [, constructedValue] = newFact.value.replace('.', '^').split('^');
     } else {
       if (newFact.hasOwnProperty('value') && newFact.value) {
-        if (!newFact.value.hasOwnProperty('selected')) {
-          let newFactArray = newFact.value;
-          newFact.value = '';
-          if (newFactArray.length > 0) {
-            newFact.value = 'selection.' + newFactArray.join(' ~ ');
-          }
-        } else {
-          let factObject = newFact.value.selected;
+        if (newFact.value.hasOwnProperty('selected')) {
+          let valueSelectedObject = newFact.value.selected;
           let qualObject = newFact.value.qualifiers;
+          setQualifiers(qualObject);
+          let freeTextObject = newFact.value.freeText;
           let associationsObject = newFact.value.associations;
           let masterKey = newFact.activity_key;
           let separator = '';
-          let fOL = factObject.length;
-          for (let f = 0; f < fOL; f++) {
-            mVal = factObject[f];
-            constructedValue += separator + mVal;
-            separator = ' ~ ';
-            if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
-              newFact.qualifier = qualObject[mVal];
+          let qualSeparator = '';
+          let fOL = valueSelectedObject.length;
+          if (newFact.activity_key.startsWith('form.')) {
+            for (let f = 0; f < fOL; f++) {
+              mVal = valueSelectedObject[f];
+              constructedValue += separator + mVal;
+              separator = ' ~ ';
+              if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
+                constructedQualifier += qualSeparator + mVal + ': ' + qualObject[mVal].join(' ~ ');
+                qualSeparator = ' / ';
+              }
+            }
+            for (const [key, value] of Object.entries(freeTextObject)) {
+              constructedValue += separator + key + ' = ' + value;
+              separator = ' ~ ';
+            }
+            newFact.activity_key = masterKey;
+            newFact.value = 'form_selections.' + constructedValue;
+            if (qualSeparator !== '') {
+              newFact.qualifier = constructedQualifier;
             } else {
               if (newFact.hasOwnProperty('qualifier')) {
                 delete newFact.qualifier;
               }
             }
-            newFact.activity_key = masterKey;
-            newFact.value = 'selection.' + mVal;
             await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
-            if (associationsObject && associationsObject.hasOwnProperty(mVal)) {
-              newFact.value = 'association.' + mVal;
-              newFact.activity_key = associationsObject[mVal];
+          } else {
+            for (let f = 0; f < fOL; f++) {
+              mVal = valueSelectedObject[f];
+              constructedValue += separator + mVal;
+              separator = ' ~ ';
+              if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
+                newFact.qualifier = qualObject[mVal];
+              } else {
+                if (newFact.hasOwnProperty('qualifier')) {
+                  delete newFact.qualifier;
+                }
+              }
+              newFact.activity_key = masterKey;
+              newFact.value = 'selection.' + mVal;
               await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+              if (associationsObject && associationsObject.hasOwnProperty(mVal)) {
+                newFact.value = 'association.' + mVal;
+                newFact.activity_key = associationsObject[mVal];
+                await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+              }
             }
           }
         }
@@ -309,16 +348,22 @@ export default ({ patient, session, newFact, setNewFact }) => {
     setNewFact(newFact);
     setLimit(limit);
     setOpen(false);
-    if (!selectedActivityName && selected.hasOwnProperty('name')) {
-      selectedActivityName = selected.name;
-    }
-    if (selectedActivityName) {
-      enqueueSnackbar(
-        `${selectedActivityName} ${sVal === 'set_defaults' ? 'items set to their default values' : 'is ' + sVal}`,
-        {
-          variant: 'success',
-        }
-      );
+
+    if (newFact.activity_key.startsWith('form.')) {
+      setConfirmation(true);
+    } else {
+      setConfirmation(false);
+      if (!selectedActivityName && selected.hasOwnProperty('name')) {
+        selectedActivityName = selected.name;
+      }
+      if (selectedActivityName) {
+        enqueueSnackbar(
+          `${selectedActivityName} ${sVal === 'set_defaults' ? 'items set to their default values' : 'is ' + sVal}`,
+          {
+            variant: 'success',
+          }
+        );
+      }
     }
     selectedActivityName = '';
   };
@@ -604,6 +649,46 @@ export default ({ patient, session, newFact, setNewFact }) => {
           </Button>
           <Button variant='contained' className={classes.confirm} size='small' onClick={handleSummarySubmit}>
             Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog
+        open={showConfirmation}
+        onClose={handleSummaryBack}
+        scroll='paper'
+        fullWidth={true}
+        aria-labelledby='scroll-dialog-title'
+        aria-describedby='scroll-dialog-description'>
+        <DialogTitle id='scroll-dialog-title' className={classes.descriptionText}>
+          {selected ? selected.name : null}
+        </DialogTitle>
+        <DialogContent dividers={true} className={classes.descriptionText}>
+          <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
+            {newFact && newFact.value
+              ? newFact.value
+                  .split('.')[1]
+                  .split(' ~ ')
+                  .map(selectedValue => (
+                    <Typography key={selectedValue}>
+                      <Box key={selectedValue + '.value'} pt={2} fontWeight='fontWeightBold'>
+                        {selectedValue}
+                      </Box>
+                      {showQualifiers && showQualifiers.hasOwnProperty(selectedValue) ? (
+                        <Box key={selectedValue + '.qualifier'} pl={2} fontSize='0.8rem'>
+                          {showQualifiers[selectedValue].join(' ~ ')}
+                        </Box>
+                      ) : null}
+                    </Typography>
+                  ))
+              : null}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button className={classes.reject} size='small' variant='contained' onClick={handleSummaryBack}>
+            Back
+          </Button>
+          <Button variant='contained' className={classes.confirm} size='small' onClick={handleSummarySubmit}>
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

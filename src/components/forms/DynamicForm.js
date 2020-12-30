@@ -9,6 +9,8 @@ import FormGroup from '@material-ui/core/FormGroup';
 import Input from '@material-ui/core/Input';
 import TextField from '@material-ui/core/TextField';
 
+import Grid from '@material-ui/core/Grid';
+
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Checkbox from '@material-ui/core/Checkbox';
@@ -31,6 +33,8 @@ import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
 import ListItemText from '@material-ui/core/ListItemText';
 import IconButton from '@material-ui/core/IconButton';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
+
+import InputAdornment from '@material-ui/core/InputAdornment';
 
 // import QualifierForm from '../forms/QualifierForm';
 import DialogContentText from '@material-ui/core/DialogContentText';
@@ -76,9 +80,22 @@ const useStyles = makeStyles(theme => ({
     fontSize: '1.0rem',
     fontWeight: 'bold',
   },
+  factTitle: {
+    fontSize: '1.2rem',
+    marginLeft: 0,
+    paddingLeft: 0,
+    fontWeight: 'fontWeightBold',
+  },
   qualDescription: {
     marginLeft: theme.spacing(4),
     marginTop: 0,
+    marginBottom: 0,
+    marginRight: theme.spacing(5),
+    fontSize: '0.8rem',
+  },
+  qualSubDescription: {
+    marginLeft: theme.spacing(4),
+    marginTop: theme.spacing(1),
     marginBottom: 0,
     marginRight: theme.spacing(5),
     fontSize: '0.8rem',
@@ -166,12 +183,14 @@ export default ({
     newFact.value = {
       selected: [],
       associations: associationsTable,
+      freeText: {},
     };
     setNewFact(newFact);
     setFirstTime(false);
   }
 
   const handleToggle = value => () => {
+    // noToggle ignores the whole function code (used when handleToggle is fired by the OS)
     if (!noToggle) {
       const currentIndex = checked.indexOf(value);
       const newChecked = [...checked];
@@ -179,7 +198,7 @@ export default ({
       if (currentIndex === -1) {
         newChecked.push(value);
       } else {
-        newChecked.splice(currentIndex, 1);
+        newChecked.splice(currentIndex, 1); /* this removes the check mark */
       }
       setChecked(newChecked);
       if (newChecked.length === 0) {
@@ -198,6 +217,13 @@ export default ({
   };
 
   const onChangeFreeText = event => {
+    newFact.value.freeText[event.target.id] = event.target.value;
+    setNewFact(newFact);
+    var resetter = formState + 1;
+    setFormState(resetter);
+  };
+
+  const onChangeQualText = event => {
     setFreeText(event.target.value);
   };
 
@@ -211,6 +237,11 @@ export default ({
     if (!newFact.value.hasOwnProperty('qualifiers')) {
       newFact.value.qualifiers = {};
     }
+    qualChecked[selectedFact].forEach((key, index) => {
+      if (key.startsWith('~other')) {
+        qualChecked[selectedFact][index] = freeText;
+      }
+    });
     newFact.value.qualifiers = qualChecked;
     if (qualChecked.hasOwnProperty(selectedFact) && qualChecked[selectedFact].length > 0) {
       if (!newFact.value.selected.includes(selectedFact)) {
@@ -309,7 +340,7 @@ export default ({
     } else {
       setValue(defaultValue || '');
       setNums(['', '']);
-      setMOut(message || 'enter something here');
+      setMOut(message || 'Enter something here');
     }
     // }, [open, newFact, setNewFact, defaultValue, observationKey, message, values]);
   }, [open, defaultValue, observationKey, message, values]);
@@ -358,58 +389,84 @@ export default ({
               <List className={classes.valueLine}>
                 {values.map(value => {
                   const labelId = `checkbox-list-label-${value}`;
-                  return value.startsWith('~~') ? (
-                    <ListItem key={value} role={undefined} className={classes.defaultButton} dense>
-                      <ListItemText
-                        id={'subhead' + value}
-                        classes={{ primary: classes.subHeader }}
-                        primary={value.substr(2)}
-                      />
-                    </ListItem>
-                  ) : searchText === '' || value.toLowerCase().includes(searchText) ? (
-                    <ListItem
-                      key={value}
-                      role={undefined}
-                      dense
-                      button
-                      className={classes.defaultButton}
-                      onClick={handleToggle(value)}>
-                      <React.Fragment key={`fragment-${value}`}>
-                        <Checkbox
-                          edge='start'
-                          checked={checked.indexOf(value) !== -1}
-                          disableRipple
-                          inputProps={{ 'aria-labelledby': labelId }}
+                  return searchText === '' || value.toLowerCase().includes(searchText) ? (
+                    value.startsWith('~~') ? (
+                      <ListItem key={value} role={undefined} dense className={classes.factTitle}>
+                        <ListItemText
+                          id={'subhead' + value}
+                          classes={{ primary: classes.factTitle }}
+                          primary={
+                            <Typography noWrap={true} className={classes.factTitle}>
+                              {value.substr(2)}
+                            </Typography>
+                          }
                         />
-                        {value !== '~other~' ? (
-                          <ListItemText
-                            id={labelId}
-                            fullWidth
-                            primary={<Typography noWrap={true}>{value}</Typography>}
-                            secondary={
-                              newFact.value.qualifiers && newFact.value.qualifiers[value]
-                                ? newFact.value.qualifiers[value].join(' ~ ')
-                                : null
-                            }
-                          />
-                        ) : (
-                          <TextField
-                            value={freeText}
-                            label={labelId}
-                            onChange={onChangeFreeText}
-                            InputLabelProps={{ shrink: true }}
-                            fullWidth
-                          />
-                        )}
-                        {qualifierTable.hasOwnProperty(value) ? (
-                          <ListItemSecondaryAction>
-                            <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
-                              <InfoOutlinedIcon />
-                            </IconButton>
-                          </ListItemSecondaryAction>
-                        ) : null}
-                      </React.Fragment>
-                    </ListItem>
+                      </ListItem>
+                    ) : (
+                      <ListItem key={value} role={undefined} dense button className={classes.defaultButton}>
+                        <React.Fragment key={`fragment-${value}`}>
+                          {!value.startsWith('~other') ? (
+                            <React.Fragment key={`fragment-${value}`}>
+                              <Checkbox
+                                edge='start'
+                                checked={checked.indexOf(value) !== -1}
+                                disableRipple
+                                onClick={handleToggle(value)}
+                                inputProps={{ 'aria-labelledby': labelId }}
+                              />
+                              <ListItemText
+                                id={labelId}
+                                onClick={handleToggle(value)}
+                                primary={<Typography noWrap={true}>{value}</Typography>}
+                                secondary={
+                                  newFact.value.qualifiers && newFact.value.qualifiers[value]
+                                    ? newFact.value.qualifiers[value].join(' ~ ')
+                                    : null
+                                }
+                              />
+                            </React.Fragment>
+                          ) : (
+                            <FormControl>
+                              <Grid
+                                container
+                                alignItems='center'
+                                justifyContent='space-between'
+                                className={classes.defaultButton}>
+                                <Grid item>
+                                  <Typography noWrap={true}>{value.split(':')[1] + ':'}</Typography>
+                                </Grid>
+                                <Grid item>
+                                  <Typography>
+                                    <span>&nbsp;&nbsp;</span>
+                                  </Typography>
+                                </Grid>
+                                <Grid item>
+                                  <Input
+                                    id={value.split(':')[1]}
+                                    value={
+                                      newFact.value &&
+                                      newFact.value.freeText &&
+                                      newFact.value.freeText[value.split(':')[1]]
+                                        ? newFact.value.freeText[value.split(':')[1] + ' ']
+                                        : ''
+                                    }
+                                    marginLeft={2}
+                                    onChange={onChangeFreeText}
+                                  />
+                                </Grid>
+                              </Grid>
+                            </FormControl>
+                          )}
+                          {qualifierTable.hasOwnProperty(value) ? (
+                            <ListItemSecondaryAction>
+                              <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
+                                <InfoOutlinedIcon />
+                              </IconButton>
+                            </ListItemSecondaryAction>
+                          ) : null}
+                        </React.Fragment>
+                      </ListItem>
+                    )
                   ) : null;
                 })}
               </List>
@@ -430,8 +487,8 @@ export default ({
                   <DialogContentText className={classes.qualDescription}>{qualifierData.description}</DialogContentText>
                 ) : null}
                 {qualChecked.hasOwnProperty(selectedFact) && qualChecked[selectedFact].length > 0 ? (
-                  <DialogContentText className={classes.qualDescription}>
-                    {qualChecked[selectedFact].join(' ~ ')}
+                  <DialogContentText className={classes.qualSubDescription}>
+                    You selected: {qualChecked[selectedFact].join(' ~ ').replace('~other:', '')}
                   </DialogContentText>
                 ) : null}
               </Box>
@@ -471,20 +528,40 @@ export default ({
                                   disableRipple
                                   inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
                                 />
-                                {value !== '~other~' ? (
+                                {!qualifier.startsWith('~other') ? (
                                   <ListItemText
                                     id={`qlabelid-${qualifier}`}
                                     fullWidth
                                     primary={<Typography noWrap={true}>{qualifier}</Typography>}
                                   />
                                 ) : (
-                                  <TextField
-                                    value={freeText}
-                                    label={`qlabeltext-${qualifier}`}
-                                    onChange={onChangeFreeText}
-                                    InputLabelProps={{ shrink: true }}
-                                    fullWidth
-                                  />
+                                  <FormControl fullWidth>
+                                    <Grid
+                                      container
+                                      alignItems='center'
+                                      justifyContent='flex-start'
+                                      className={classes.defaultButton}>
+                                      <Grid item marginRight={1} paddingRight={2}>
+                                        <Typography noWrap={true} marginRight={1}>
+                                          {qualifier.split(':')[1] + ':'}
+                                        </Typography>
+                                      </Grid>
+                                      <Grid item>
+                                        <Typography>
+                                          <span>&nbsp;&nbsp;</span>
+                                        </Typography>
+                                      </Grid>
+                                      <Grid item>
+                                        <TextField
+                                          value={freeText}
+                                          onChange={onChangeQualText}
+                                          InputLabelProps={{ shrink: true }}
+                                          InputProps={{ marginLeft: '2' }}
+                                          fullWidth
+                                        />
+                                      </Grid>
+                                    </Grid>
+                                  </FormControl>
                                 )}
                               </React.Fragment>
                             </ListItem>

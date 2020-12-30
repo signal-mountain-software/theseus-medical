@@ -101,7 +101,7 @@ export default () => {
                   </Tooltip>
                 </Box>
               )}
-              <Tooltip title={<Typography variant='subtitle1'>Sign out of Theseus</Typography>} placement='bottom-end'>
+              <Tooltip title={<Typography variant='subtitle1'>Sign out of cHubbie</Typography>} placement='bottom-end'>
                 <Button
                   color='secondary'
                   size='small'
