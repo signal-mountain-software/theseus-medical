@@ -123,11 +123,14 @@ export default ({
   setNewFact,
   type,
   message,
+  statusMessage,
   values,
   valueQualifiers,
   defaultValue,
+  lastQualifier,
   searchText,
   setMessage,
+  setStatusMessage,
   observationKey,
   onError,
   onSave,
@@ -157,7 +160,6 @@ export default ({
 
   const [freeText, setFreeText] = React.useState('');
 
-  // const [searchText, setSearchText] = React.useState('');
   var noToggle = false;
 
   const classes = useStyles();
@@ -180,11 +182,39 @@ export default ({
     }
     setQualifierTable(qualifierTable);
     setAssociationsTable(associationsTable);
+
     newFact.value = {
       selected: [],
       associations: associationsTable,
       freeText: {},
     };
+
+    setQualChecked({});
+
+    if (defaultValue) {
+      let [, dValues] = defaultValue.split('.');
+      let defaultSelections = dValues.split(' ~ ');
+      if (defaultSelections.length > 0) {
+        setValue(defaultSelections); /* this line handles numeric & text defaults */
+        setNums(defaultSelections[0].split(' over '));
+        /* the rest handles selection screen defaults */
+        defaultSelections.forEach(nfValue => {
+          let [value, freeText] = nfValue.split(': ');
+          newFact.value.selected.push(value);
+          if (freeText) newFact.value.freeText[value] = freeText;
+        });
+      }
+      if (lastQualifier.length > 0) {
+        newFact.value.qualifiers = {};
+        lastQualifier.forEach(qStr => {
+          let [value, qArr] = qStr.split(':');
+          newFact.value.qualifiers[value] = [...qArr.split(',')];
+        });
+        setQualChecked(newFact.value.qualifiers);
+      }
+    }
+
+    setChecked(newFact.value.selected);
     setNewFact(newFact);
     setFirstTime(false);
   }
@@ -201,11 +231,7 @@ export default ({
         newChecked.splice(currentIndex, 1); /* this removes the check mark */
       }
       setChecked(newChecked);
-      if (newChecked.length === 0) {
-        setMessage(OGmessage);
-      } else {
-        setMessage('You selected: ' + newChecked.join(' ~ '));
-      }
+
       if (!newFact.value.hasOwnProperty('selected')) {
         newFact.value.selected = {};
       }
@@ -289,18 +315,14 @@ export default ({
   };
 
   const onChangeValue = event => {
-    //    if (event.target.value) {
     setValue(event.target.value);
     newFact.value = observationKey + '.' + event.target.value;
-    //    }
     setNewFact(newFact);
   };
 
   const onChangeMessage = event => {
-    //    if (event.target.value) {
     setValue(event.target.value);
     newFact.value = observationKey + '.' + event.target.value;
-    //    }
     setNewFact(newFact);
   };
 
@@ -312,7 +334,6 @@ export default ({
   };
 
   const onChangeNums = index => event => {
-    //    if (event.target.value) {
     const newNums = [...nums];
     newNums[index] = event.target.value;
     setNums(newNums);
@@ -321,7 +342,6 @@ export default ({
     } else {
       newFact.value = 'number.partial';
     }
-    //    }
     setNewFact(newFact);
   };
 
@@ -342,7 +362,6 @@ export default ({
       setNums(['', '']);
       setMOut(message || 'Enter something here');
     }
-    // }, [open, newFact, setNewFact, defaultValue, observationKey, message, values]);
   }, [open, defaultValue, observationKey, message, values]);
 
   switch (type) {
@@ -382,6 +401,11 @@ export default ({
         />
       );
     default:
+      if (checked.length === 0) {
+        setStatusMessage('');
+      } else {
+        setStatusMessage('You selected: ' + checked.join(' ~ '));
+      }
       return (
         <React.Fragment key={`selection-panel`}>
           <FormControl fullWidth>
@@ -389,7 +413,9 @@ export default ({
               <List className={classes.valueLine}>
                 {values.map(value => {
                   const labelId = `checkbox-list-label-${value}`;
-                  return searchText === '' || value.toLowerCase().includes(searchText) ? (
+                  return searchText === '' ||
+                    value.toLowerCase().includes(searchText) ||
+                    (searchText === 'selected' && checked.indexOf(value) !== -1) ? (
                     value.startsWith('~~') ? (
                       <ListItem key={value} role={undefined} dense className={classes.factTitle}>
                         <ListItemText
@@ -486,7 +512,7 @@ export default ({
                 {qualifierData.description ? (
                   <DialogContentText className={classes.qualDescription}>{qualifierData.description}</DialogContentText>
                 ) : null}
-                {qualChecked.hasOwnProperty(selectedFact) && qualChecked[selectedFact].length > 0 ? (
+                {qualChecked && qualChecked.hasOwnProperty(selectedFact) && qualChecked[selectedFact].length > 0 ? (
                   <DialogContentText className={classes.qualSubDescription}>
                     You selected: {qualChecked[selectedFact].join(' ~ ').replace('~other:', '')}
                   </DialogContentText>
@@ -523,7 +549,7 @@ export default ({
                               <React.Fragment key={`qfragment-${qualifier}`}>
                                 <Checkbox
                                   edge='start'
-                                  checked={qualChecked[selectedFact].indexOf(qualifier) !== -1}
+                                  checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
                                   name={qualifier}
                                   disableRipple
                                   inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}

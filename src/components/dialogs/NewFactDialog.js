@@ -72,6 +72,14 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(5),
     fontSize: '0.8rem',
   },
+  subDescriptionText: {
+    marginLeft: theme.spacing(3),
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    marginRight: theme.spacing(5),
+    fontColor: 'red',
+    fontSize: '0.8rem',
+  },
   searchLine: {
     marginLeft: theme.spacing(3),
     marginRight: theme.spacing(4),
@@ -95,6 +103,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   const [newFact, setNewFact] = React.useState(null);
   const [message, setMessage] = React.useState('enter an initial value');
+  const [statusMessage, setStatusMessage] = React.useState('');
   const classes = useStyles();
 
   const [searchText, setSearchText] = React.useState('');
@@ -133,13 +142,16 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
           (fact.numeric_maximum && fVal > parseFloat(fact.numeric_maximum))
         ) {
           badData = true;
+          setStatusMessage(`${fVal} is not an allowed value`);
         }
       } else if (fact.type === 'characteristic_num2' && !xVal.includes('over')) {
         badData = true;
+        setStatusMessage(`We expected two numbers here`);
       }
     }
     if (!badData) {
       setMessage('');
+      setStatusMessage('');
       if (withNext) {
         onNext(newFact);
       } else {
@@ -234,6 +246,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         {fact?.name}
       </DialogContentText>
       <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
+      {statusMessage ? (
+        <DialogContentText className={classes.subDescriptionText}>{statusMessage}</DialogContentText>
+      ) : null}
       {fact.type === 'list_multiple' ? (
         <FormControl className={classes.margin}>
           <BootstrapInput
@@ -252,17 +267,22 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
             setNewFact={setNewFact}
             type={fact.type}
             message={message}
+            statusMessage={statusMessage}
             values={fact.valid_values_list}
             valueQualifiers={fact.value_qualifiers}
             defaultValue={
-              fact.most_recent_observation &&
-              fact.most_recent_observation.split(' (')[0] &&
-              !fact.observation_status.includes('(exp)')
-                ? fact.most_recent_observation.split(' (')[0]
+              fact.fact_history[0].value && !fact.observation_status.includes('(exp)')
+                ? fact.fact_history[0].value
                 : fact.default_value
+            }
+            lastQualifier={
+              fact.fact_history[0].qualifier && fact.fact_history[0].qualifier.length > 0
+                ? fact.fact_history[0].qualifier
+                : []
             }
             searchText={searchText}
             setMessage={setMessage}
+            setStatusMessage={setStatusMessage}
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}
