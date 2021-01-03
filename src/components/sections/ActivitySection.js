@@ -346,10 +346,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
             if (newFact.status && newFact.status === 'confirmed') {
               for (let f = 0; f < fOL; f++) {
                 mVal = valueSelectedObject[f];
-                constructedValue += separator + mVal;
-                separator = ' ~ ';
-                if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
-                  constructedQualifier.push(mVal + ':' + qualObject[mVal]);
+                if (!freeTextObject.hasOwnProperty(mVal)) {
+                  constructedValue += separator + mVal;
+                  separator = ' ~ ';
+                  if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
+                    constructedQualifier.push(mVal + ':' + qualObject[mVal]);
+                  }
                 }
               }
               for (const [key, value] of Object.entries(freeTextObject)) {
@@ -752,10 +754,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
             {newFact && newFact.value && newFact.value.selected
               ? newFact.value.selected.map(selectedValue => (
                   <Typography key={selectedValue}>
-                    <Box key={selectedValue + '.value'} pt={2} fontWeight='fontWeightBold'>
-                      {selectedValue}
-                    </Box>
-                    {newFact.value.qualifiers && newFact.value.qualifiers.hasOwnProperty(selectedValue) ? (
+                    {newFact.value.freeText[selectedValue] ? null : (
+                      <Box key={selectedValue + '.value'} pt={2} fontWeight='fontWeightBold'>
+                        {selectedValue}
+                      </Box>
+                    )}
+                    {newFact.value.qualifiers &&
+                    !newFact.value.freeText[selectedValue] &&
+                    newFact.value.qualifiers.hasOwnProperty(selectedValue) ? (
                       <Box key={selectedValue + '.qualifier'} pl={2} fontSize='0.8rem'>
                         {newFact.value.qualifiers[selectedValue].join(' ~ ')}
                       </Box>

@@ -161,6 +161,7 @@ export default ({
   const [freeText, setFreeText] = React.useState('');
 
   var noToggle = false;
+  var tVal = '';
 
   const classes = useStyles();
 
@@ -199,7 +200,7 @@ export default ({
         setNums(defaultSelections[0].split(' over '));
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
-          let [value, freeText] = nfValue.split(': ');
+          let [value, freeText] = nfValue.split(' = ');
           newFact.value.selected.push(value);
           if (freeText) newFact.value.freeText[value] = freeText;
         });
@@ -467,16 +468,17 @@ export default ({
                                   </Typography>
                                 </Grid>
                                 <Grid item>
-                                  <Input
+                                  <TextField
                                     id={value.split(':')[1]}
                                     value={
                                       newFact.value &&
                                       newFact.value.freeText &&
                                       newFact.value.freeText[value.split(':')[1]]
-                                        ? newFact.value.freeText[value.split(':')[1] + ' ']
+                                        ? newFact.value.freeText[value.split(':')[1]]
                                         : ''
                                     }
-                                    marginLeft={2}
+                                    InputLabelProps={{ shrink: true }}
+                                    InputProps={{ marginLeft: '2' }}
                                     onChange={onChangeFreeText}
                                   />
                                 </Grid>
