@@ -193,8 +193,13 @@ export default ({
     setQualChecked({});
 
     if (defaultValue) {
-      let [, dValues] = defaultValue.split('.');
-      let defaultSelections = dValues.split(' ~ ');
+      let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
+      let defaultSelections;
+      if (!dValues) {
+        defaultSelections = [dBase];
+      } else {
+        defaultSelections = dValues.split(' ~ ');
+      }
       if (defaultSelections.length > 0) {
         setValue(defaultSelections); /* this line handles numeric & text defaults */
         setNums(defaultSelections[0].split(' over '));
