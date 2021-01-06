@@ -641,11 +641,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
                         </Box>
                         <Box display={activity.most_recent_observation ? 'block' : 'none'}>
                           {activity.observation_status && activity.observation_status.includes('(exp)') ? (
-                            <Typography variant='body2' noWrap>
+                            <Typography variant='body2'>
                               No current data - Last {activity.observation_status.replace('(exp)', '')}
                             </Typography>
                           ) : (
-                            <Typography variant='body2' noWrap>
+                            <Typography variant='body2'>
                               {activity.most_recent_observation} - {activity.observation_status}
                             </Typography>
                           )}

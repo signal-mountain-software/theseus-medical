@@ -50,6 +50,9 @@ const useStyles = makeStyles(theme => ({
     width: '100%',
     minWidth: '100%',
   },
+  inputText: {
+    paddingRight: '45px',
+  },
   subHeader: {
     fontWeight: 'bold',
     minWidth: '100%',
@@ -61,6 +64,15 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.6,
+    // height: theme.typography.fontSize * 2.8,
+  },
+  freeInput: {
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 15,
+    width: '85%',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
     height: theme.typography.fontSize * 2.8,
   },
   valueLine: {
@@ -68,7 +80,7 @@ const useStyles = makeStyles(theme => ({
     marginTop: 0,
     paddingBottom: 0,
     lineHeight: 1,
-    minWidth: '100%',
+    minWidth: '50%',
     height: theme.typography.fontSize * 25,
   },
   qualDialog: {},
@@ -435,69 +447,56 @@ export default ({
                         />
                       </ListItem>
                     ) : (
-                      <ListItem key={value} role={undefined} dense button className={classes.defaultButton}>
-                        <React.Fragment key={`fragment-${value}`}>
-                          {!value.startsWith('~other') ? (
-                            <React.Fragment key={`fragment-${value}`}>
-                              <Checkbox
-                                edge='start'
-                                checked={checked.indexOf(value) !== -1}
-                                disableRipple
-                                onClick={handleToggle(value)}
-                                inputProps={{ 'aria-labelledby': labelId }}
-                              />
-                              <ListItemText
-                                id={labelId}
-                                onClick={handleToggle(value)}
-                                primary={<Typography noWrap={true}>{value}</Typography>}
-                                secondary={
-                                  newFact.value.qualifiers && newFact.value.qualifiers[value]
-                                    ? newFact.value.qualifiers[value].join(' ~ ')
-                                    : null
-                                }
-                              />
-                            </React.Fragment>
-                          ) : (
-                            <FormControl>
-                              <Grid
-                                container
-                                alignItems='center'
-                                justifyContent='space-between'
-                                className={classes.defaultButton}>
-                                <Grid item>
-                                  <Typography noWrap={true}>{value.split(':')[1] + ':'}</Typography>
-                                </Grid>
-                                <Grid item>
-                                  <Typography>
-                                    <span>&nbsp;&nbsp;</span>
-                                  </Typography>
-                                </Grid>
-                                <Grid item>
-                                  <TextField
-                                    id={value.split(':')[1]}
-                                    value={
-                                      newFact.value &&
-                                      newFact.value.freeText &&
-                                      newFact.value.freeText[value.split(':')[1]]
-                                        ? newFact.value.freeText[value.split(':')[1]]
-                                        : ''
-                                    }
-                                    InputLabelProps={{ shrink: true }}
-                                    InputProps={{ marginLeft: '2' }}
-                                    onChange={onChangeFreeText}
-                                  />
-                                </Grid>
-                              </Grid>
-                            </FormControl>
-                          )}
-                          {qualifierTable.hasOwnProperty(value) ? (
-                            <ListItemSecondaryAction>
-                              <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
-                                <InfoOutlinedIcon />
-                              </IconButton>
-                            </ListItemSecondaryAction>
-                          ) : null}
-                        </React.Fragment>
+                      <ListItem
+                        id={'blockhead' + value}
+                        key={value}
+                        role={undefined}
+                        dense
+                        className={classes.defaultButton}>
+                        {!value.startsWith('~other') ? (
+                          <React.Fragment key={`fragment-${value}`}>
+                            <Checkbox
+                              edge='start'
+                              checked={checked.indexOf(value) !== -1}
+                              disableRipple
+                              onClick={handleToggle(value)}
+                              inputProps={{ 'aria-labelledby': labelId }}
+                            />
+                            {qualifierTable.hasOwnProperty(value) ? (
+                              <ListItemSecondaryAction>
+                                <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
+                                  <InfoOutlinedIcon />
+                                </IconButton>
+                              </ListItemSecondaryAction>
+                            ) : null}
+                            <ListItemText
+                              id={labelId}
+                              onClick={handleToggle(value)}
+                              classes={{ root: classes.inputText }}
+                              primary={value}
+                              secondary={
+                                newFact.value.qualifiers && newFact.value.qualifiers[value]
+                                  ? newFact.value.qualifiers[value].join(' ~ ')
+                                  : null
+                              }
+                            />
+                          </React.Fragment>
+                        ) : (
+                          <FormControl className={classes.freeInput}>
+                            <TextField
+                              id={value.split(':')[1]}
+                              placeholder={value.split(':')[1]}
+                              value={
+                                newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
+                                  ? newFact.value.freeText[value.split(':')[1]]
+                                  : ''
+                              }
+                              InputLabelProps={{ shrink: true }}
+                              InputProps={{ noWrap: true }}
+                              onChange={onChangeFreeText}
+                            />
+                          </FormControl>
+                        )}
                       </ListItem>
                     )
                   ) : null;
