@@ -340,7 +340,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           let associationsObject = newFact.value.associations;
           let masterKey = newFact.activity_key;
           let separator = '';
-          let qualSeparator = '';
+          //          let qualSeparator = '';
           let fOL = valueSelectedObject.length;
           if (newFact.activity_key.startsWith('form.')) {
             if (newFact.status && newFact.status === 'confirmed') {
@@ -503,7 +503,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               if (checkObj.code !== findAKey) {
                 return false;
               }
-              result.data.getActivityData[aIndex].fact_history[0] = lastWrittenFact;
+              result.data.getActivityData[aIndex].fact_history = [lastWrittenFact];
               result.data.getActivityData[aIndex].observation_status = 'Updated moments ago';
               [, result.data.getActivityData[aIndex].most_recent_observation] = lastWrittenFact.value
                 .replace('.', '^')

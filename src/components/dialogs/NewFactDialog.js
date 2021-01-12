@@ -271,12 +271,20 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
             values={fact.valid_values_list}
             valueQualifiers={fact.value_qualifiers}
             defaultValue={
-              fact.fact_history && fact.fact_history[0].value && !fact.observation_status.includes('(exp)')
+              fact.fact_history &&
+              fact.fact_history[0].value &&
+              !fact.observation_status.includes('(exp)') &&
+              newFact &&
+              !newFact.activity_key.startsWith('form.')
                 ? fact.fact_history[0].value
                 : fact.default_value
             }
             lastQualifier={
-              fact.fact_history && fact.fact_history[0].qualifier && fact.fact_history[0].qualifier.length > 0
+              fact.fact_history &&
+              fact.fact_history[0].qualifier &&
+              fact.fact_history[0].qualifier.length > 0 &&
+              newFact &&
+              !newFact.activity_key.startsWith('form.')
                 ? fact.fact_history[0].qualifier
                 : []
             }

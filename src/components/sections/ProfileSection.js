@@ -1,8 +1,111 @@
 import React from 'react';
+import { API, graphqlOperation } from 'aws-amplify';
+
 import Typography from '@material-ui/core/Typography';
+import TextField from '@material-ui/core/TextField';
+import Button from '@material-ui/core/Button';
+
+import makeStyles from '@material-ui/core/styles/makeStyles';
+
+import { createPutFact } from '../../graphql/mutations';
+
 import Section from '../Section';
 
-export default ({ session }) => {
+const useStyles = makeStyles(theme => ({
+  formControl: {
+    marginLeft: theme.spacing(3),
+    marginTop: theme.spacing(2),
+    marginRight: theme.spacing(1),
+    paddingRight: theme.spacing(1),
+    width: '100%',
+    minWidth: '100%',
+  },
+  root: {
+    '& .MuiTextField-root': {
+      margin: theme.spacing(1),
+      //      width: '25ch',
+    },
+  },
+  inputText: {
+    paddingRight: '45px',
+  },
+  subHeader: {
+    fontWeight: 'bold',
+    minWidth: '100%',
+  },
+  defaultButton: {
+    marginTop: 8,
+    marginLeft: 5,
+    paddingLeft: 10,
+    paddingRight: 10,
+    variant: 'outlined',
+    verticalAlign: 'middle',
+    backgroundColor: theme.palette.confirm[theme.palette.type],
+  },
+  freeInput: {
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 15,
+    width: '85%',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
+    height: theme.typography.fontSize * 2.8,
+  },
+  valueLine: {
+    marginBottom: 0,
+    marginTop: 0,
+    paddingBottom: 0,
+    lineHeight: 1,
+    minWidth: '50%',
+    height: theme.typography.fontSize * 25,
+  },
+  qualDialog: {},
+  qualTitle: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '1.0rem',
+    fontWeight: 'bold',
+  },
+  factTitle: {
+    fontSize: '1.2rem',
+    marginLeft: 0,
+    paddingLeft: 0,
+    fontWeight: 'fontWeightBold',
+  },
+  qualDescription: {
+    marginLeft: theme.spacing(4),
+    marginTop: 0,
+    marginBottom: 0,
+    marginRight: theme.spacing(5),
+    fontSize: '0.8rem',
+  },
+  qualSubDescription: {
+    marginLeft: theme.spacing(4),
+    marginTop: theme.spacing(1),
+    marginBottom: 0,
+    marginRight: theme.spacing(5),
+    fontSize: '0.8rem',
+  },
+  picture: {
+    marginTop: theme.spacing(3),
+    width: theme.spacing(16),
+    height: theme.spacing(16),
+    [theme.breakpoints.down('xs')]: {
+      width: theme.spacing(8),
+      height: theme.spacing(8),
+    },
+  },
+  confirm: {
+    backgroundColor: theme.palette.confirm[theme.palette.type],
+  },
+  reject: {
+    backgroundColor: theme.palette.reject[theme.palette.type],
+  },
+}));
+
+export default ({ session, profile, loginID }) => {
   const getGreeting = () => {
     const date = new Date();
     const hours = date.getHours();
@@ -20,18 +123,172 @@ export default ({ session }) => {
     return greeting;
   };
 
+  const classes = useStyles();
+
+  const [firstName, setFirstName] = React.useState();
+  const [lastName, setLastName] = React.useState();
+  const [email, setEmail] = React.useState();
+  const [cell, setCell] = React.useState();
+  const [voice, setVoice] = React.useState();
+  const [location, setLocation] = React.useState();
+
+  const [newFact, setNewFact] = React.useState({});
+
+  React.useEffect(() => {
+    if (profile && profile.person_id === loginID) {
+      setFirstName(profile.name.first);
+      setLastName(profile.name.last);
+      setEmail(profile.messaging.email);
+      setCell(profile.messaging.sms);
+      setVoice(profile.messaging.voice);
+      setLocation(profile.location);
+    }
+  }, [loginID, profile]);
+
+  const handleNew = async () => {
+    let updatePerson = {
+      person_id: loginID,
+      first: firstName,
+      last: lastName,
+      email: email,
+      sms: cell,
+      voice: voice,
+      location: location,
+    };
+    let updateString = 'newData.' + JSON.stringify(updatePerson);
+    console.log(updatePerson);
+    let newFactData = {
+      patient_id: session.user_id,
+      activity_key: 'action.createUser',
+      value: updateString,
+      qualifier: null,
+      status: 'requested',
+      session: {
+        user_id: loginID,
+        session_id: session.session_id,
+      },
+    };
+    setNewFact(newFactData);
+    await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
+      console.log(error);
+    });
+  };
+
+  const handleUpdate = async () => {
+    let updatePerson = {
+      person_id: loginID,
+      first: firstName,
+      last: lastName,
+      email: email,
+      sms: cell,
+      voice: voice,
+      location: location,
+    };
+    let updateString = 'newData.' + JSON.stringify(updatePerson);
+    console.log(updatePerson);
+    let newFactData = {
+      patient_id: session.user_id,
+      activity_key: 'action.updateUser',
+      value: updateString,
+      qualifier: null,
+      status: 'requested',
+      session: {
+        user_id: loginID,
+        session_id: session.session_id,
+      },
+    };
+    setNewFact(newFactData);
+    await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
+      console.log(error);
+    });
+  };
+
+  const handleChangeFirstName = event => {
+    setFirstName(event.target.value);
+  };
+
+  const handleChangeLastName = event => {
+    setLastName(event.target.value);
+  };
+
+  const handleChangeEmail = event => {
+    setEmail(event.target.value);
+  };
+
+  const handleChangeCell = event => {
+    setCell(event.target.value);
+  };
+
+  const handleChangeVoice = event => {
+    setVoice(event.target.value);
+  };
+
+  const handleChangeLocation = event => {
+    setLocation(event.target.value);
+  };
+
   return (
     <Section title='Profile'>
       {session ? (
         <>
           <Typography variant='h5' gutterBottom>
-            {getGreeting()}, {session.user_display_name}!
+            {getGreeting()}, {firstName && lastName ? firstName + ' ' + lastName : session.user_display_name}!
           </Typography>
-          {session.patient_id ? (
-            <Typography variant='body1'>Your current patient is {session.patient_display_name}</Typography>
-          ) : (
-            <Typography variant='body1'>You are currently viewing your own facts</Typography>
-          )}
+          {session.user_id !== session.patient_id ? (
+            <Typography variant='body1'>
+              You are currently working on behalf of {session.patient_display_name}
+            </Typography>
+          ) : null}
+          {profile ? (
+            <form className={classes.root} noValidate autoComplete='off'>
+              <div>
+                <TextField
+                  id='FirstName'
+                  label='Name'
+                  value={firstName}
+                  onChange={handleChangeFirstName}
+                  helperText='First'
+                  marginRight={10}
+                />
+                <TextField id='LastName' label=' ' onChange={handleChangeLastName} value={lastName} helperText='Last' />
+              </div>
+              <div>
+                <TextField
+                  id='eMail'
+                  label='Contact Info'
+                  value={email}
+                  onChange={handleChangeEmail}
+                  helperText='e-Mail'
+                  marginRight={10}
+                />
+                <TextField id='cell' label=' ' value={cell} onChange={handleChangeCell} helperText='cell phone' />
+                <TextField id='cell' label=' ' value={voice} onChange={handleChangeVoice} helperText='home phone' />
+              </div>
+              <div>
+                <TextField
+                  id='eMail'
+                  label='Address'
+                  value={location}
+                  onChange={handleChangeLocation}
+                  helperText='Apartment location'
+                  marginRight={10}
+                />
+              </div>
+              {loginID === session.user_id ? (
+                <Button onClick={handleUpdate} className={classes.defaultButton} variant='contained'>
+                  Update my Info
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleNew}
+                  disabled={!firstName || !lastName || !(email || cell || voice) || !location}
+                  className={classes.defaultButton}
+                  variant='contained'>
+                  Complete setup
+                </Button>
+              )}
+            </form>
+          ) : null}
         </>
       ) : null}
     </Section>

@@ -100,6 +100,7 @@ export const getPeopleByGroup = /* GraphQL */ `
       messaging {
         email
         sms
+        voice
       }
       relationships {
         person_id
@@ -137,6 +138,7 @@ export const getPerson = /* GraphQL */ `
       messaging {
         email
         sms
+        voice
       }
       relationships {
         person_id
