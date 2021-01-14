@@ -135,13 +135,15 @@ export default ({ session, profile, loginID }) => {
   const [newFact, setNewFact] = React.useState({});
 
   React.useEffect(() => {
-    if (profile && profile.person_id === loginID) {
-      setFirstName(profile.name.first);
-      setLastName(profile.name.last);
+    if (profile) {
       setEmail(profile.messaging.email);
       setCell(profile.messaging.sms);
       setVoice(profile.messaging.voice);
-      setLocation(profile.location);
+      if (profile.person_id === loginID) {
+        setFirstName(profile.name.first);
+        setLastName(profile.name.last);
+        setLocation(profile.location);
+      }
     }
   }, [loginID, profile]);
 
@@ -274,7 +276,7 @@ export default ({ session, profile, loginID }) => {
                   marginRight={10}
                 />
               </div>
-              {loginID === session.user_id ? (
+              {profile.person_id === loginID ? (
                 <Button onClick={handleUpdate} className={classes.defaultButton} variant='contained'>
                   Update my Info
                 </Button>

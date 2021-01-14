@@ -38,18 +38,28 @@ export default Component => props => {
 
       if (!getProfileResult) {
         getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: 'SMSoft~default' }));
+        getProfileResult.data.getPerson.messaging.email = user.attributes.email || null;
+        getProfileResult.data.getPerson.messaging.sms = user.attributes.phone_number || null;
+        getProfileResult.data.getPerson.messaging.voice = null;
+        getProfileResult.data.getPerson.messaging.location = null;
+        getProfileResult.data.getPerson.name.first = user.username;
+        getProfileResult.data.getPerson.name.last = 'Username';
       }
       let profile = getProfileResult.data.getPerson;
-      var user_id = user.username;
+      var user_id = profile.person_id;
 
       // get the session for the current user
-      getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: profile.person_id }));
-      var session = getSessionResult.data.getSession;
-      if (!session) {
+      getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(error => {
+        console.log('nothing to see here either...');
+      });
+      var session;
+      if (!getSessionResult) {
         getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: 'SMSoft~default' }));
         session = getSessionResult.data.getSession;
+        session.user_id = user.username;
+        session.user_display_name = 'Username ' + user.username;
       } else {
-        user_id = session.user_id;
+        session = getSessionResult.data.getSession;
       }
 
       // get the roles for the current user
@@ -89,12 +99,12 @@ export default Component => props => {
   }
 
   React.useEffect(() => {
-    let mounted;
+    // let mounted;
     if (user) {
       onValidUser(user);
     }
     return () => {
-      let mounted = false;
+      // let mounted = false;
     };
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
