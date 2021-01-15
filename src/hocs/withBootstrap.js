@@ -29,7 +29,7 @@ export default Component => props => {
       let getSessionResult;
       var getProfileResult;
       let getPatientResult;
-      let getPeopleByGroupResult;
+      var getPeopleByGroupResult;
       let getRolesResult;
 
       getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: user.username })).catch(error => {
@@ -76,10 +76,25 @@ export default Component => props => {
       // get a group of patients a user is responsible for
       let patients = null;
       if (session.responsible_for) {
-        getPeopleByGroupResult = await API.graphql(
-          graphqlOperation(getPeopleByGroup, { client_group_id, role: 'patient' })
+        getPeopleByGroupResult = await API.graphql(graphqlOperation(getPeopleByGroup, { client_group_id })).catch(
+          error => {
+            console.log(error);
+          }
         );
-        patients = getPeopleByGroupResult.data.getPeopleByGroup;
+        if (getPeopleByGroupResult) {
+          patients = getPeopleByGroupResult.data.getPeopleByGroup;
+          if (patients.length > 49) {
+            let fakeName = {
+              first: '** Stopped after 50 entries **',
+              last: '',
+            };
+            let extraRecord = {
+              person_id: null,
+              name: fakeName,
+            };
+            patients.push(extraRecord);
+          }
+        }
       }
 
       if (mounted) {

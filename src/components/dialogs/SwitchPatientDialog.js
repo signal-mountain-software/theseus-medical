@@ -108,14 +108,16 @@ export default ({ open, roles, onClose }) => {
         <Box p={3}>
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
             <List component='nav'>
-              <PatientListItem
-                patient={{
-                  patient_id: null,
-                  patient_display_name: roles.includes('patient_with_partner') ? 'No partner' : 'No patient',
-                }}
-                selected={selected}
-                onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
-              />
+              {patients.length === 0 ? (
+                <PatientListItem
+                  patient={{
+                    patient_id: null,
+                    patient_display_name: roles.includes('patient_with_partner') ? 'No partner' : 'No patient',
+                  }}
+                  selected={selected}
+                  onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
+                />
+              ) : null}
               {patients.map(patient => (
                 <PatientListItem
                   key={patient.person_id}
