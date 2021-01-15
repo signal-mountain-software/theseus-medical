@@ -214,7 +214,7 @@ export default ({
       }
       if (defaultSelections.length > 0) {
         setValue(defaultSelections); /* this line handles numeric & text defaults */
-        setNums(defaultSelections[0].split(' over '));
+        setNums(defaultSelections[0].split(' over ')); /* two numbers */
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
           let [value, freeText] = nfValue.split(' = ');

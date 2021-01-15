@@ -278,7 +278,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     defaultRequested = true;
   };
 
-  const onChooseActivity = activity => {
+  const onChooseActivity = async activity => {
     if (defaultRequested) {
       defaultRequested = false;
       selectedActivityName = activity.name;
@@ -312,7 +312,26 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setLimit(DEFAULT_LIMIT);
       setEvent(activity.code.split('.')[1]);
     } else {
-      setSelected(activity);
+      let result = await API.graphql(
+        graphqlOperation(getActivityData, {
+          input: {
+            client_id: session.client_id,
+            person_id: patient.person_id,
+            event_id: event,
+            activity_type: '$$' + activity.code,
+            limit: limit,
+            fact_data: false,
+            includeEvents: true,
+            history_only: false,
+            use_short_date: isMobile,
+          },
+        })
+      ).catch(error => {
+        enqueueSnackbar(`We had a problem getting current information: ${error}`, {
+          variant: 'error',
+        });
+      });
+      setSelected(result.data.getActivityData[0]);
       selectedActivityName = activity.name;
       setOpen(true);
     }
@@ -474,7 +493,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 event_id: event,
                 activity_type: type,
                 limit: limit,
-                fact_data: true,
+                fact_data: false,
                 includeEvents: true,
                 history_only: false,
                 use_short_date: isMobile,
@@ -632,7 +651,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
                             position='absolute'
                             right={15}
                             display={
-                              activity.hasOwnProperty('default_value') && activity.default_value ? 'flex' : 'none'
+                              activity.hasOwnProperty('default_value') &&
+                              activity.default_value &&
+                              !activity.default_value.includes('.')
+                                ? 'flex'
+                                : 'none'
                             }>
                             <Button onClick={onChooseDefault} className={classes.defaultButton}>
                               <Typography noWrap>{activity.default_value}</Typography>
