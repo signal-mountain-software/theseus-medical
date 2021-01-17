@@ -317,7 +317,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           input: {
             client_id: session.client_id,
             person_id: patient.person_id,
-            event_id: event,
+            event_id: '',
             activity_type: '$$' + activity.code,
             limit: limit,
             fact_data: false,
