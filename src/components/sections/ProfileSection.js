@@ -182,8 +182,8 @@ export default ({ session, profile, loginID }) => {
       first: firstName,
       last: lastName,
       email: email,
-      sms: cell ? '+1' + cell : null,
-      voice: voice,
+      sms: cell ? '+1' + cell.replace(/\D/g, '') : null,
+      voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
       location: location,
     };
     let updateString = 'newData.' + JSON.stringify(updatePerson);
@@ -211,8 +211,8 @@ export default ({ session, profile, loginID }) => {
       first: firstName,
       last: lastName,
       email: email,
-      sms: cell ? '+1' + cell : null,
-      voice: voice,
+      sms: cell ? '+1' + cell.replace(/\D/g, '') : null,
+      voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
       location: location,
     };
     let updateString = 'newData.' + JSON.stringify(updatePerson);
