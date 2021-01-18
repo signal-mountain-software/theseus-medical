@@ -132,6 +132,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const [showSummary, setSummary] = React.useState(false);
   const [showConfirmation, setConfirmation] = React.useState(false);
+  // eslint-disable-next-line
   const [showFreeText, setFreeText] = React.useState({});
 
   const [lastWrittenFact, setLastWrittenFact] = React.useState({});
@@ -216,6 +217,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       let qualSeparator = '';
       let fOL = valueSelectedObject.length;
       let constructedValue = '';
+      // eslint-disable-next-line
       let constructedQualifier = '';
       let mVal;
       for (let f = 0; f < fOL; f++) {

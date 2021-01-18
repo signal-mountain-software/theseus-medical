@@ -2,11 +2,8 @@ import React from 'react';
 import { Storage } from 'aws-amplify';
 
 import FormControl from '@material-ui/core/FormControl';
-import FormControlLabel from '@material-ui/core/FormControlLabel';
-import FormLabel from '@material-ui/core/FormLabel';
 import FormGroup from '@material-ui/core/FormGroup';
 
-import Input from '@material-ui/core/Input';
 import TextField from '@material-ui/core/TextField';
 
 import Grid from '@material-ui/core/Grid';
@@ -34,11 +31,8 @@ import ListItemText from '@material-ui/core/ListItemText';
 import IconButton from '@material-ui/core/IconButton';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 
-import InputAdornment from '@material-ui/core/InputAdornment';
-
 // import QualifierForm from '../forms/QualifierForm';
 import DialogContentText from '@material-ui/core/DialogContentText';
-import DialogTitle from '@material-ui/core/DialogTitle';
 
 import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
@@ -167,13 +161,12 @@ export default ({
   const [OGmessage, setOGmessage] = React.useState('');
 
   const [qualChecked, setQualChecked] = React.useState({});
-  const [qualMessage, setQualMessage] = React.useState('');
+  // const [qualMessage, setQualMessage] = React.useState('');
   const [OGqualifiers, setOGQualifiers] = React.useState([]);
 
   const [freeText, setFreeText] = React.useState('');
 
   var noToggle = false;
-  var tVal = '';
 
   const classes = useStyles();
 
@@ -325,11 +318,11 @@ export default ({
     }
     qualChecked[selectedFact] = newChecked;
     setQualChecked(qualChecked);
-    if (newChecked.length === 0) {
-      setQualMessage('');
-    } else {
-      setQualMessage('Options: ' + newChecked.join(' ~ '));
-    }
+    // if (newChecked.length === 0) {
+    //   setQualMessage('');
+    // } else {
+    //   setQualMessage('Options: ' + newChecked.join(' ~ '));
+    // }
   };
 
   const onChangeValue = event => {

@@ -132,18 +132,47 @@ export default ({ session, profile, loginID }) => {
   const [voice, setVoice] = React.useState();
   const [location, setLocation] = React.useState();
 
-  const [newFact, setNewFact] = React.useState({});
+  const [changes, setChanges] = React.useState(false);
+
+  // const [newFact, setNewFact] = React.useState({});
 
   React.useEffect(() => {
     if (profile) {
       setEmail(profile.messaging.email);
-      setCell(profile.messaging.sms);
-      setVoice(profile.messaging.voice);
+
+      var match = '' + profile.messaging.sms.replace(/\D/g, '').substr(-10);
+      let newCell = '';
+      if (match.length > 0) {
+        newCell += '(' + match.substr(0, 3);
+      }
+      if (match.length > 3) {
+        newCell += ') ' + match.substr(3, 3);
+      }
+      if (match.length > 6) {
+        newCell += '-' + match.substr(6, 4);
+      }
+      setCell(newCell);
+
+      match = '' + profile.messaging.voice.replace(/\D/g, '').substr(-10);
+      let newVoice = '';
+      if (match.length > 0) {
+        newVoice += '(' + match.substr(0, 3);
+      }
+      if (match.length > 3) {
+        newVoice += ') ' + match.substr(3, 3);
+      }
+      if (match.length > 6) {
+        newVoice += '-' + match.substr(6, 4);
+      }
+      setVoice(newVoice);
+
       if (profile.person_id === loginID) {
         setFirstName(profile.name.first);
         setLastName(profile.name.last);
         setLocation(profile.location);
       }
+
+      setChanges(false);
     }
   }, [loginID, profile]);
 
@@ -153,7 +182,7 @@ export default ({ session, profile, loginID }) => {
       first: firstName,
       last: lastName,
       email: email,
-      sms: cell,
+      sms: cell ? '+1' + cell : null,
       voice: voice,
       location: location,
     };
@@ -170,7 +199,7 @@ export default ({ session, profile, loginID }) => {
         session_id: session.session_id,
       },
     };
-    setNewFact(newFactData);
+    // setNewFact(newFactData);
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
       console.log(error);
     });
@@ -182,7 +211,7 @@ export default ({ session, profile, loginID }) => {
       first: firstName,
       last: lastName,
       email: email,
-      sms: cell,
+      sms: cell ? '+1' + cell : null,
       voice: voice,
       location: location,
     };
@@ -199,7 +228,7 @@ export default ({ session, profile, loginID }) => {
         session_id: session.session_id,
       },
     };
-    setNewFact(newFactData);
+    // setNewFact(newFactData);
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
       console.log(error);
     });
@@ -207,26 +236,54 @@ export default ({ session, profile, loginID }) => {
 
   const handleChangeFirstName = event => {
     setFirstName(event.target.value);
+    setChanges(true);
   };
 
   const handleChangeLastName = event => {
     setLastName(event.target.value);
+    setChanges(true);
   };
 
   const handleChangeEmail = event => {
     setEmail(event.target.value);
+    setChanges(true);
   };
 
   const handleChangeCell = event => {
-    setCell(event.target.value);
+    var match = '' + event.target.value.replace(/\D/g, '');
+    let newCell = '';
+    if (match.length > 0) {
+      newCell += '(' + match.substr(0, 3);
+    }
+    if (match.length > 3) {
+      newCell += ') ' + match.substr(3, 3);
+    }
+    if (match.length > 6) {
+      newCell += '-' + match.substr(6, 4);
+    }
+    setCell(newCell);
+    setChanges(true);
   };
 
   const handleChangeVoice = event => {
-    setVoice(event.target.value);
+    var match = '' + event.target.value.replace(/\D/g, '');
+    let newVoice = '';
+    if (match.length > 0) {
+      newVoice += '(' + match.substr(0, 3);
+    }
+    if (match.length > 3) {
+      newVoice += ') ' + match.substr(3, 3);
+    }
+    if (match.length > 6) {
+      newVoice += '-' + match.substr(6, 4);
+    }
+    setVoice(newVoice);
+    setChanges(true);
   };
 
   const handleChangeLocation = event => {
     setLocation(event.target.value);
+    setChanges(true);
   };
 
   return (
@@ -277,7 +334,11 @@ export default ({ session, profile, loginID }) => {
                 />
               </div>
               {profile.person_id === loginID ? (
-                <Button onClick={handleUpdate} className={classes.defaultButton} variant='contained'>
+                <Button
+                  onClick={handleUpdate}
+                  disabled={!changes}
+                  className={classes.defaultButton}
+                  variant='contained'>
                   Update my Info
                 </Button>
               ) : (

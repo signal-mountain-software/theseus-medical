@@ -1,6 +1,4 @@
 import React from 'react';
-import { API, graphqlOperation } from 'aws-amplify';
-import { useSnackbar } from 'notistack';
 
 import AppBar from '@material-ui/core/AppBar';
 import AssignmentOutlinedIcon from '@material-ui/icons/AssignmentOutlined';
@@ -16,7 +14,6 @@ import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import { getActivityData } from '../../graphql/queries';
 //import Section from '../Section';
 
 const useStyles = makeStyles(theme => ({
@@ -37,13 +34,13 @@ const useStyles = makeStyles(theme => ({
 }));
 
 export default ({ patient, session, newFact }) => {
-  const [facts, setFacts] = React.useState([]);
+  // const [facts, setFacts] = React.useState([]);
+  const facts = [];
   const isTablet = useMediaQuery(theme => theme.breakpoints.down('sm'));
-  const { enqueueSnackbar } = useSnackbar();
   const classes = useStyles();
 
   React.useEffect(() => {
-    let mounted = true;
+  //  let mounted = true;
     /* removing Fact section (temporary?)    
     (async () => {
       let result;
@@ -67,7 +64,7 @@ export default ({ patient, session, newFact }) => {
     })();
 */
     return () => {
-      mounted = false;
+//      mounted = false;
     };
   }, [patient, session, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
 
