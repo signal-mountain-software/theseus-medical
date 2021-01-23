@@ -2,11 +2,8 @@ import React from 'react';
 import TextField from '@material-ui/core/TextField';
 
 export default ({ open, label, value, message, onChange, onKeyPress, onError }) => {
-  const [error, setError] = React.useState(false);
-
   React.useEffect(() => {
     if (!open) {
-      setError(false);
       onError(false);
     }
   }, [open, onError]);
@@ -14,21 +11,19 @@ export default ({ open, label, value, message, onChange, onKeyPress, onError }) 
   React.useEffect(() => {
     if (!value || value === '') {
       onError(true);
-      setError(true);
     } else {
       onError(false);
-      setError(false);
     }
   }, [value, onError]);
 
   return (
     <TextField
+      pt={13}
       value={value}
+      multiline
       label={label}
-      helperText={message}
       type='message'
       variant='outlined'
-      error={error}
       onChange={onChange}
       onKeyPress={onKeyPress}
       InputLabelProps={{ shrink: true }}

@@ -28,7 +28,11 @@ import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
 import ListItemText from '@material-ui/core/ListItemText';
+
+import Input from '@material-ui/core/Input';
+import InputAdornment from '@material-ui/core/InputAdornment';
 import IconButton from '@material-ui/core/IconButton';
+import SearchIcon from '@material-ui/icons/Search';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 
 // import QualifierForm from '../forms/QualifierForm';
@@ -60,11 +64,21 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.6,
     // height: theme.typography.fontSize * 2.8,
   },
+  messageInput: {
+    marginLeft: 0,
+    marginBottom: theme.spacing(10),
+    paddingLeft: 0,
+    paddingRight: 15,
+    width: '95%',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
+    height: theme.typography.fontSize * 2.8,
+  },
   freeInput: {
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 15,
-    width: '85%',
+    width: '95%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
     height: theme.typography.fontSize * 2.8,
@@ -160,11 +174,15 @@ export default ({
   const [qualifierData, setQualifierData] = React.useState({});
   const [OGmessage, setOGmessage] = React.useState('');
 
+  const [listValues, setListValues] = React.useState([]);
+
   const [qualChecked, setQualChecked] = React.useState({});
   // const [qualMessage, setQualMessage] = React.useState('');
   const [OGqualifiers, setOGQualifiers] = React.useState([]);
 
   const [freeText, setFreeText] = React.useState('');
+  const [filterText, setFilterText] = React.useState('');
+  const [messageField, setMessageField] = React.useState('');
 
   var noToggle = false;
 
@@ -189,6 +207,19 @@ export default ({
     setQualifierTable(qualifierTable);
     setAssociationsTable(associationsTable);
 
+    var mF = '';
+    let vL = Array.isArray(values) ? values.length : 0;
+    if (vL > 0) {
+      let v = 0;
+      do {
+        if (values[v].includes('~^')) {
+          [, mF] = values[v].split(':');
+        }
+        v++;
+      } while (v < vL && !mF);
+    }
+    setMessageField(mF);
+
     newFact.value = {
       selected: [],
       associations: associationsTable,
@@ -211,8 +242,18 @@ export default ({
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
           let [value, freeText] = nfValue.split(' = ');
-          newFact.value.selected.push(value);
-          if (freeText) newFact.value.freeText[value] = freeText;
+          if (freeText) {
+            newFact.value.freeText[value] = freeText;
+            if (value === mF) {
+              setMessage(freeText);
+            } else {
+              if (value === '%filter%') {
+                setFilterText(freeText);
+              }
+            }
+          } else {
+            newFact.value.selected.push(value);
+          }
         });
       }
       if (lastQualifier.length > 0) {
@@ -255,6 +296,22 @@ export default ({
 
   const onChangeFreeText = event => {
     newFact.value.freeText[event.target.id] = event.target.value;
+    setNewFact(newFact);
+    if (event.target.id === messageField) {
+      setMessage(event.target.value);
+    }
+    var resetter = formState + 1;
+    setFormState(resetter);
+  };
+
+  const onChangeFilterText = event => {
+    setFilterText(event.target.value);
+    var resetter = formState + 1;
+    setFormState(resetter);
+  };
+
+  const handleFilterText = () => {
+    newFact.value.freeText['%filter%'] = filterText;
     setNewFact(newFact);
     var resetter = formState + 1;
     setFormState(resetter);
@@ -337,13 +394,6 @@ export default ({
     setNewFact(newFact);
   };
 
-  const checkEnter = event => {
-    if (event.key === 'Enter') {
-      onChangeValue(event);
-      onSave();
-    }
-  };
-
   const onChangeNums = index => event => {
     const newNums = [...nums];
     newNums[index] = event.target.value;
@@ -374,6 +424,33 @@ export default ({
       setMOut(message || 'Enter something here');
     }
   }, [open, defaultValue, observationKey, message, values]);
+
+  React.useEffect(() => {
+    if (values) {
+      let filtering = false;
+      let search1 = null;
+      if (newFact && newFact.value && newFact.value.freeText && newFact.value.freeText['%filter%']) {
+        search1 = newFact.value.freeText['%filter%'].toLowerCase();
+      }
+      let search2 = searchText.toLowerCase();
+      let listDisplay;
+
+      listDisplay = values.filter(word => {
+        if (!filtering && word.includes('~%')) {
+          filtering = true;
+          return true;
+        }
+        return (
+          ((!search2 || word.toLowerCase().includes(search2)) &&
+            (!filtering || (search1 && word.toLowerCase().includes(search1)))) ||
+          word.includes('~!') ||
+          checked.includes(word)
+        );
+      });
+
+      setListValues(listDisplay);
+    }
+  }, [checked, formState, newFact, searchText, values]);
 
   switch (type) {
     case 'characteristic_num':
@@ -407,7 +484,6 @@ export default ({
           value={value}
           message={mOut}
           onChange={onChangeMessage}
-          onKeyPress={checkEnter}
           onError={onError}
         />
       );
@@ -422,77 +498,113 @@ export default ({
           <FormControl fullWidth>
             <FormGroup value={value} id='value-label' name='value' open={formState > 0}>
               <List className={classes.valueLine}>
-                {values.map(value => {
+                {listValues.map(value => {
                   const labelId = `checkbox-list-label-${value}`;
-                  return searchText === '' ||
-                    value.toLowerCase().includes(searchText) ||
-                    (searchText === 'selected' && checked.indexOf(value) !== -1) ? (
-                    value.startsWith('~~') ? (
-                      <ListItem key={value} role={undefined} dense className={classes.factTitle}>
-                        <ListItemText
-                          id={'subhead' + value}
-                          classes={{ primary: classes.factTitle }}
-                          primary={
-                            <Typography noWrap={true} className={classes.factTitle}>
-                              {value.substr(2)}
-                            </Typography>
-                          }
-                        />
-                      </ListItem>
-                    ) : (
-                      <ListItem
-                        id={'blockhead' + value}
-                        key={value}
-                        role={undefined}
-                        dense
-                        className={classes.defaultButton}>
-                        {!value.startsWith('~other') ? (
-                          <React.Fragment key={`fragment-${value}`}>
-                            <Checkbox
-                              edge='start'
-                              checked={checked.indexOf(value) !== -1}
-                              disableRipple
-                              onClick={handleToggle(value)}
-                              inputProps={{ 'aria-labelledby': labelId }}
-                            />
-                            {qualifierTable.hasOwnProperty(value) ? (
-                              <ListItemSecondaryAction>
-                                <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
-                                  <InfoOutlinedIcon />
+                  /* ~~ is a header */
+                  /* ~other:<text> means prompt for input with <text> */
+                  /* ~~! or ~! means "always show this line" */
+                  /* ~% means suppress all lines after this one that do not include 
+                      the freetext attached to this line 
+                      (prompt for freeText with ~%other:<prompt text>) */
+                  return value.startsWith('~~') ? (
+                    <ListItem key={value} role={undefined} dense className={classes.factTitle}>
+                      <ListItemText
+                        id={'subhead' + value}
+                        classes={{ primary: classes.factTitle }}
+                        primary={
+                          <Typography noWrap={true} className={classes.factTitle}>
+                            {value.replace('!', '').substr(2)}
+                          </Typography>
+                        }
+                      />
+                    </ListItem>
+                  ) : (
+                    <ListItem
+                      id={'blockhead' + value}
+                      key={value}
+                      role={undefined}
+                      dense
+                      className={classes.defaultButton}>
+                      {!value.includes('other:') ? (
+                        <React.Fragment key={`fragment-${value}`}>
+                          <Checkbox
+                            edge='start'
+                            checked={checked.indexOf(value) !== -1}
+                            disableRipple
+                            onClick={handleToggle(value)}
+                            inputProps={{ 'aria-labelledby': labelId }}
+                          />
+                          {qualifierTable.hasOwnProperty(value) ? (
+                            <ListItemSecondaryAction>
+                              <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
+                                <InfoOutlinedIcon />
+                              </IconButton>
+                            </ListItemSecondaryAction>
+                          ) : null}
+                          <ListItemText
+                            id={labelId}
+                            onClick={handleToggle(value)}
+                            classes={{ root: classes.inputText }}
+                            primary={value}
+                            secondary={
+                              newFact.value.qualifiers && newFact.value.qualifiers[value]
+                                ? newFact.value.qualifiers[value].join(' ~ ')
+                                : null
+                            }
+                          />
+                        </React.Fragment>
+                      ) : !value.includes('~%') && !value.includes('~^') ? (
+                        <FormControl className={classes.freeInput}>
+                          <TextField
+                            id={value.split(':')[1]}
+                            placeholder={value.split(':')[1]}
+                            value={
+                              newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
+                                ? newFact.value.freeText[value.split(':')[1]]
+                                : ''
+                            }
+                            InputLabelProps={{ shrink: true }}
+                            InputProps={{ noWrap: true }}
+                            onChange={onChangeFreeText}
+                          />
+                        </FormControl>
+                      ) : value.includes('~%') ? (
+                        <FormControl className={classes.freeInput}>
+                          <Input
+                            id='%filter-input%'
+                            type='text'
+                            onChange={onChangeFilterText}
+                            placeholder={value.split(':')[1]}
+                            value={filterText}
+                            endAdornment={
+                              <InputAdornment position='end'>
+                                <IconButton id='%filter%' aria-label='trigger-filter-action' onClick={handleFilterText}>
+                                  <SearchIcon />
                                 </IconButton>
-                              </ListItemSecondaryAction>
-                            ) : null}
-                            <ListItemText
-                              id={labelId}
-                              onClick={handleToggle(value)}
-                              classes={{ root: classes.inputText }}
-                              primary={value}
-                              secondary={
-                                newFact.value.qualifiers && newFact.value.qualifiers[value]
-                                  ? newFact.value.qualifiers[value].join(' ~ ')
-                                  : null
-                              }
-                            />
-                          </React.Fragment>
-                        ) : (
-                          <FormControl className={classes.freeInput}>
-                            <TextField
-                              id={value.split(':')[1]}
-                              placeholder={value.split(':')[1]}
-                              value={
-                                newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
-                                  ? newFact.value.freeText[value.split(':')[1]]
-                                  : ''
-                              }
-                              InputLabelProps={{ shrink: true }}
-                              InputProps={{ noWrap: true }}
-                              onChange={onChangeFreeText}
-                            />
-                          </FormControl>
-                        )}
-                      </ListItem>
-                    )
-                  ) : null;
+                              </InputAdornment>
+                            }
+                          />
+                        </FormControl>
+                      ) : (
+                        <FormControl className={classes.messageInput}>
+                          <TextField
+                            id={value.split(':')[1]}
+                            label={value.split(':')[1]}
+                            multiline
+                            rows={5}
+                            variant='outlined'
+                            value={
+                              newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
+                                ? newFact.value.freeText[value.split(':')[1]]
+                                : ''
+                            }
+                            // InputLabelProps={{ shrink: true }}
+                            onChange={onChangeFreeText}
+                          />
+                        </FormControl>
+                      )}
+                    </ListItem>
+                  );
                 })}
               </List>
             </FormGroup>

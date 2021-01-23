@@ -153,7 +153,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       !newFact ||
       !newFact.value ||
       activities.every(aObj => {
-        return aObj.type === 'event' || aObj.observation_expires === null || aObj.observation_expires < timeNow;
+        return aObj.observation_expires !== null && aObj.observation_expires < timeNow;
       })
     ) {
       setSummary(false);
@@ -198,7 +198,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     selectedActivityName = selected.name;
     setNewFact(newFact);
     onSaveFact(newFact);
-    returnToHome();
+    //    returnToHome();
   };
 
   const handleSummaryBack = () => {
@@ -234,8 +234,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
         separator = ' ~ ';
       }
       selected.most_recent_observation = constructedValue;
+      selected.default_value = 'defaults.' + constructedValue;
     }
-    onChooseActivity(selected);
+    //onChooseActivity(selected);
+    setSelected(selected);
+    //selectedActivityName = activity.name;
+    setOpen(true);
   };
 
   const handleSummaryExit = () => {
@@ -376,8 +380,10 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 }
               }
               for (const [key, value] of Object.entries(freeTextObject)) {
-                constructedValue += separator + key + ' = ' + value;
-                separator = ' ~ ';
+                if (key !== '%filter%') {
+                  constructedValue += separator + key + ' = ' + value;
+                  separator = ' ~ ';
+                }
               }
               newFact.activity_key = masterKey;
               newFact.value = 'form_selections.' + constructedValue;
@@ -733,7 +739,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         <DialogContent dividers={true} className={classes.descriptionText}>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
             {activities.map(activity =>
-              activity.observation_expires < timeNow ? (
+              activity.observation_expires && activity.observation_expires < timeNow ? (
                 <Typography key={activity.name}>
                   <Box key={activity.name + '.name'} pt={2}>
                     {activity.name + ':  (no data)'}
@@ -797,13 +803,18 @@ export default ({ patient, session, newFact, setNewFact }) => {
           </DialogContentText>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
             {newFact && newFact.value && newFact.value.freeText
-              ? Object.keys(newFact.value.freeText).map(selectedValue => (
-                  <Typography key={selectedValue}>
-                    <Box key={selectedValue + '.value'} pt={2} fontWeight='fontWeightBold'>
-                      {selectedValue} = {newFact.value.freeText[selectedValue]}
-                    </Box>
-                  </Typography>
-                ))
+              ? Object.keys(newFact.value.freeText).map(selectedValue =>
+                  !selectedValue.startsWith('%filter%') ? (
+                    <Typography key={selectedValue}>
+                      <Box key={selectedValue + '.name'} pt={2} fontWeight='fontWeightBold'>
+                        {selectedValue}
+                      </Box>
+                      <Box key={selectedValue + '.value'} pl={2} fontSize='0.8rem'>
+                        {newFact.value.freeText[selectedValue]}
+                      </Box>
+                    </Typography>
+                  ) : null
+                )
               : null}
           </DialogContentText>
         </DialogContent>

@@ -64,8 +64,12 @@ export default Component => props => {
 
       // get the roles for the current user
       const client_group_id = session.client_id + '~' + (session.responsible_for || session.assigned_to);
-      getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: user_id, client_group_id }));
-      const roles = getRolesResult.data.getRoles;
+      getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: user_id, client_group_id })).catch(
+        error => {
+          console.log('security record not found (' + client_group_id + ')');
+        }
+      );
+      const roles = getRolesResult ? getRolesResult.data.getRoles : null;
 
       // get the current patient information for a user; if the user does not have a current patient, use the user's id
       const patient_id = session.patient_id;

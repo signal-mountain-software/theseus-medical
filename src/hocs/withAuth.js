@@ -38,11 +38,7 @@ export default Component => props => {
     return (
       <AmplifyContainer>
         <AmplifyAuthenticator>
-          <AmplifySignIn
-            headerText='Welcome to CHubbie - your Electronic Communication Hub!'
-            slot='sign-in'
-            //           hideSignUp
-          />
+          <AmplifySignIn headerText='Welcome to CHubbie' slot='sign-in' />
         </AmplifyAuthenticator>
       </AmplifyContainer>
     );
