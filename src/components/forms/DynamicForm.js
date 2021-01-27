@@ -70,7 +70,7 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 15,
     width: '95%',
-    verticalAlign: 'middle',
+    //    verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
     height: theme.typography.fontSize * 2.8,
   },
@@ -493,7 +493,12 @@ export default ({
       if (checked.length === 0) {
         setStatusMessage('');
       } else {
-        setStatusMessage('You selected: ' + checked.join(' ~ '));
+        let stopAt = checked.length - 1;
+        let sMess = 'You selected: ';
+        checked.forEach((entry, index) => {
+          sMess += entry.split(':')[0] + (index < stopAt ? ' ~ ' : '');
+        });
+        setStatusMessage(sMess);
       }
       return (
         <React.Fragment key={`selection-panel`}>
@@ -504,6 +509,7 @@ export default ({
                   const labelId = `checkbox-list-label-${value}`;
                   /* ~~ is a header */
                   /* ~other:<text> means prompt for input with <text> */
+                  /* ~^ means "put this value in the message area (below the title) */
                   /* ~~! or ~! means "always show this line" */
                   /* ~% means suppress all lines after this one that do not include 
                       the freetext attached to this line 
@@ -547,7 +553,7 @@ export default ({
                             id={labelId}
                             onClick={handleToggle(value)}
                             classes={{ root: classes.inputText }}
-                            primary={value}
+                            primary={value.split(':')[0]}
                             secondary={
                               newFact.value.qualifiers && newFact.value.qualifiers[value]
                                 ? newFact.value.qualifiers[value].join(' ~ ')
@@ -588,22 +594,24 @@ export default ({
                           />
                         </FormControl>
                       ) : (
-                        <FormControl className={classes.messageInput}>
-                          <TextField
-                            id={value.split(':')[1]}
-                            label={value.split(':')[1]}
-                            multiline
-                            rows={5}
-                            variant='outlined'
-                            value={
-                              newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
-                                ? newFact.value.freeText[value.split(':')[1]]
-                                : ''
-                            }
-                            // InputLabelProps={{ shrink: true }}
-                            onChange={onChangeFreeText}
-                          />
-                        </FormControl>
+                        //                        <FormControl className={classes.messageInput}>
+                        <TextField
+                          id={value.split(':')[1]}
+                          label={value.split(':')[1]}
+                          multiline
+                          fullWidth
+                          rows={5}
+                          type='text'
+                          variant='outlined'
+                          value={
+                            newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
+                              ? newFact.value.freeText[value.split(':')[1]]
+                              : ''
+                          }
+                          InputLabelProps={{ shrink: true }}
+                          onChange={onChangeFreeText}
+                        />
+                        //                        </FormControl>
                       )}
                     </ListItem>
                   );

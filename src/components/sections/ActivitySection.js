@@ -787,7 +787,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                   <Typography key={selectedValue}>
                     {newFact.value.freeText[selectedValue] ? null : (
                       <Box key={selectedValue + '.value'} pt={2} fontWeight='fontWeightBold'>
-                        {selectedValue}
+                        {selectedValue.split(':')[0]}
                       </Box>
                     )}
                     {newFact.value.qualifiers &&
