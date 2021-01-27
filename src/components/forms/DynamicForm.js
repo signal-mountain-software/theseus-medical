@@ -375,6 +375,8 @@ export default ({
     }
     qualChecked[selectedFact] = newChecked;
     setQualChecked(qualChecked);
+    var resetter = formState + 1;
+    setFormState(resetter);
     // if (newChecked.length === 0) {
     //   setQualMessage('');
     // } else {
