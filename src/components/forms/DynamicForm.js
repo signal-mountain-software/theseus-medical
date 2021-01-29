@@ -237,7 +237,7 @@ export default ({
         defaultSelections = dValues.split(' ~ ');
       }
       if (defaultSelections.length > 0) {
-        setValue(defaultSelections); /* this line handles numeric & text defaults */
+        setValue(defaultSelections[0]); /* this line handles numeric & text defaults */
         setNums(defaultSelections[0].split(' over ')); /* two numbers */
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
@@ -478,6 +478,11 @@ export default ({
           onError={onError}
         />
       );
+
+    case 'document':
+      window.open(defaultValue, message);
+    // intentionally fall through to the message case
+
     case 'message':
       return (
         <FreeTextForm

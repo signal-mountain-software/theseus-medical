@@ -214,6 +214,14 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
           fact.default_value = '';
           break;
         }
+        case 'document': {
+          if (fact.prompt) {
+            eString = fact.prompt;
+          } else {
+            eString = fact.name;
+          }
+          break;
+        }
         case 'list_multiple': {
           if (fact.prompt) {
             eString = fact.prompt;
@@ -235,13 +243,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   }, [fact, session]);
 
   return (
-    <Dialog
-      open={open}
-      fullWidth={true}
-      classes={{
-        input: classes.searchBox,
-      }}
-      onClose={onClose}>
+    <Dialog open={open} fullWidth={true} onClose={onClose}>
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
       </DialogContentText>
@@ -302,10 +304,12 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
           {isMobile ? 'Can' : 'Cancel'}
         </Button>
-        <Button variant='contained' color='primary' size='small' onClick={handleSave}>
-          Save
-        </Button>
-        {fromHome === 'event' ? (
+        {fact && fact.code && fact.code.startsWith('document.') ? null : (
+          <Button variant='contained' color='primary' size='small' onClick={handleSave}>
+            Save
+          </Button>
+        )}
+        {fromHome === 'event' && (!fact || !fact.code || !fact.code.startsWith('document.')) ? (
           <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
             {isMobile ? 'Save +' : 'Save & Next'}
           </Button>

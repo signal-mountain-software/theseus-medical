@@ -123,7 +123,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [loading, setLoading] = React.useState(false); // a flag that shows/hides loading spinner
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
-  const [clearSearch, setClearSearch] = React.useState(true);
   const [searchString, setSearchString] = React.useState('');
   const [homeState, setHomeState] = React.useState('home');
   //const [defaultRequested, setDefaultRequested] = React.useState(false);
@@ -260,7 +259,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onTap = event => {
-    setClearSearch(true);
     if (searchString !== '') {
       setEvent('');
       setLimit(DEFAULT_LIMIT);
@@ -277,7 +275,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onSearch = event => {
     setSearchString(event.target.value);
-    setClearSearch(false);
   };
 
   const onChooseDefault = () => {
@@ -339,7 +336,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
       });
       setSelected(result.data.getActivityData[0]);
       selectedActivityName = activity.name;
-      setOpen(true);
+      if (!open) {
+        setOpen(true);
+      }
     }
   };
 
@@ -616,13 +615,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
             <SearchIcon />
             <InputBase
               type='text'
-              value={clearSearch ? '' : null}
               placeholder='Search…'
               onChange={onSearch}
               onKeyPress={checkEnter}
               classes={{
                 root: classes.inputRoot,
-                input: classes.inputInput,
               }}
             />
           </Box>
