@@ -82,13 +82,7 @@ export default () => {
             <>
               {hide ? null : (
                 <Box mr={2}>
-                  <Tooltip
-                    title={
-                      <Typography variant='subtitle1'>
-                        {roles.includes('patient_with_partner') ? 'Switch current partner' : 'Switch current resident'}
-                      </Typography>
-                    }
-                    placement='bottom-end'>
+                  <Tooltip title={<Typography variant='subtitle1'>Change Account</Typography>} placement='bottom-end'>
                     <Button
                       color='primary'
                       size='small'
@@ -96,12 +90,12 @@ export default () => {
                       startIcon={<AssignmentIndIcon />}
                       endIcon={<SwapHorizIcon />}
                       onClick={onSwitchPatient}>
-                      {roles.includes('patient_with_partner') ? 'Partner' : 'Resident'}
+                      Change Account
                     </Button>
                   </Tooltip>
                 </Box>
               )}
-              <Tooltip title={<Typography variant='subtitle1'>Sign out of cHubbie</Typography>} placement='bottom-end'>
+              <Tooltip title={<Typography variant='subtitle1'>Sign out of Community Hub</Typography>} placement='bottom-end'>
                 <Button
                   color='secondary'
                   size='small'
@@ -133,9 +127,7 @@ export default () => {
                     <ListItemIcon>
                       <SwapHorizIcon />
                     </ListItemIcon>
-                    <ListItemText
-                      primary={roles.includes('patient_with_partner') ? 'Switch Partner' : 'Switch Resident'}
-                    />
+                    <ListItemText primary={'Change Account'} />
                   </MenuItem>
                 )}
                 <MenuItem onClick={onSignOut}>
