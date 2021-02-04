@@ -100,7 +100,7 @@ export default ({ open, roles, onClose }) => {
             <CloseIcon />
           </IconButton>
           <Typography variant='h6' className={classes.title}>
-            {roles && roles.includes('patient_with_partner') ? 'Switch Partners' : 'Switch Residents'}
+            Change Account
           </Typography>
         </Toolbar>
       </AppBar>

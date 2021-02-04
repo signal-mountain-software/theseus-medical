@@ -633,7 +633,7 @@ export default ({
             <Box display='flex' flexDirection='row' width='95%'>
               <Box display='flex' flexDirection='column' width='95%'>
                 <Typography className={classes.qualTitle} noWrap={true}>
-                  {qualifierData.value}
+                  {qualifierData.value ? qualifierData.value.split(':')[0] : null}
                 </Typography>
                 {qualifierData.description ? (
                   <DialogContentText className={classes.qualDescription}>{qualifierData.description}</DialogContentText>

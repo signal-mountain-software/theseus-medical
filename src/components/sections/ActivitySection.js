@@ -336,9 +336,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
       });
       setSelected(result.data.getActivityData[0]);
       selectedActivityName = activity.name;
-      if (!open) {
-        setOpen(true);
-      }
+      // if (!open) {
+      setOpen(true);
+      // }
     }
   };
 
