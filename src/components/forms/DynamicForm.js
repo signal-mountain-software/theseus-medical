@@ -89,6 +89,7 @@ const useStyles = makeStyles(theme => ({
     paddingBottom: 0,
     lineHeight: 1,
     minWidth: '50%',
+    width: '95%',
     height: theme.typography.fontSize * 25,
   },
   qualDialog: {},
@@ -510,7 +511,7 @@ export default ({
           <FormControl fullWidth>
             <FormGroup value={value} id='value-label' name='value' open={formState > 0}>
               <List className={classes.valueLine}>
-                {listValues.map(value => {
+                {listValues.map((value, vIndex) => {
                   const labelId = `checkbox-list-label-${value}`;
                   /* ~~ is a header */
                   /* ~other:<text> means prompt for input with <text> */
@@ -520,7 +521,7 @@ export default ({
                       the freetext attached to this line 
                       (prompt for freeText with ~%other:<prompt text>) */
                   return value.startsWith('~~') ? (
-                    <ListItem key={value} role={undefined} dense className={classes.factTitle}>
+                    <ListItem key={value + vIndex.toString()} role={undefined} dense className={classes.factTitle}>
                       <ListItemText
                         id={'subhead' + value}
                         classes={{ primary: classes.factTitle }}
@@ -534,12 +535,12 @@ export default ({
                   ) : (
                     <ListItem
                       id={'blockhead' + value}
-                      key={value}
+                      key={value + vIndex.toString()}
                       role={undefined}
                       dense
                       className={classes.defaultButton}>
                       {!value.includes('other:') ? (
-                        <React.Fragment key={`fragment-${value}`}>
+                        <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
                           <Checkbox
                             edge='start'
                             checked={checked.indexOf(value) !== -1}
@@ -655,9 +656,13 @@ export default ({
                 <FormControl>
                   <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
                     {qualifiers
-                      ? qualifiers.map(qualifier =>
+                      ? qualifiers.map((qualifier, qIndex) =>
                           qualifier.startsWith('~~') ? (
-                            <ListItem key={value} role={undefined} className={classes.defaultButton} dense>
+                            <ListItem
+                              key={value + qIndex.toString()}
+                              role={undefined}
+                              className={classes.defaultButton}
+                              dense>
                               <ListItemText
                                 id={'qhead' + value}
                                 classes={{ primary: classes.subHeader }}
@@ -666,13 +671,13 @@ export default ({
                             </ListItem>
                           ) : (
                             <ListItem
-                              key={qualifier}
+                              key={qualifier + qIndex.toString()}
                               role={undefined}
                               dense
                               button
                               className={classes.defaultButton}
                               onClick={handleToggleQual(qualifier)}>
-                              <React.Fragment key={`qfragment-${qualifier}`}>
+                              <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
                                 <Checkbox
                                   edge='start'
                                   checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}

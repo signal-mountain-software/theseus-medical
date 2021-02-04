@@ -157,6 +157,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
     ) {
       setSummary(false);
       setConfirmation(false);
+      if (homeState === 'home') {
+        window.location.reload();
+      }
       returnToHome();
     } else {
       setSummary(true);
@@ -314,6 +317,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setType(DEFAULT_TYPE);
       setLimit(DEFAULT_LIMIT);
       setEvent(activity.code.split('.')[1]);
+      setNewFact();
     } else {
       let result = await API.graphql(
         graphqlOperation(getActivityData, {
@@ -583,7 +587,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           <Box
             flexDirection='row'
             pl={1}
-            display={isMobile && homeState !== 'home' ? 'none' : 'flex'}
+            display={isMobile ? 'none' : 'flex'}
             grow={1}
             justifyContent='flex-start'
             alignItems='center'>
@@ -591,24 +595,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
               Activities
             </Typography>
           </Box>
-          <Box pl={5} display={homeState === 'event' ? 'flex' : 'none'}>
+          <Box pl={5} display='flex'>
             <Button
               color='secondary'
               size='small'
               variant='contained'
               startIcon={<AssignmentTurnedInOutlinedIcon />}
               onClick={doneWithEvent}>
-              Done
-            </Button>
-          </Box>
-          <Box pl={5} display={homeState === 'search' ? 'flex' : 'none'}>
-            <Button
-              color='secondary'
-              size='small'
-              variant='contained'
-              startIcon={<AssignmentTurnedInOutlinedIcon />}
-              onClick={doneWithEvent}>
-              Home
+              {homeState === 'event' ? 'Done' : homeState === 'search' ? 'Home' : 'Refresh'}
             </Button>
           </Box>
           <Box paddingLeft={1} className={classes.search}>
