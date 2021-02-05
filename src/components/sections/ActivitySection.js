@@ -14,12 +14,11 @@ import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { fade } from '@material-ui/core/styles/colorManipulator';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-//import AssignmentOutlinedIcon from '@material-ui/icons/AssignmentOutlined';
 import BusinessCenterOutlinedIcon from '@material-ui/icons/BusinessCenterOutlined';
-import CheckCircle from '@material-ui/icons/CheckCircle';
-// import HomeIcon from '@material-ui/icons/Home';
 import AssignmentTurnedInOutlinedIcon from '@material-ui/icons/AssignmentTurnedInOutlined';
 import SearchIcon from '@material-ui/icons/Search';
+import IconButton from '@material-ui/core/IconButton';
+import AddToQueueOutlinedIcon from '@material-ui/icons/AddToQueueOutlined';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogTitle from '@material-ui/core/DialogTitle';
@@ -145,6 +144,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   var priorReason = '';
   var defaultRequested = false;
   var selectedActivityName = '';
+  var addedAFavorite = false;
 
   const doneWithEvent = () => {
     if (
@@ -238,9 +238,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       selected.most_recent_observation = constructedValue;
       selected.default_value = 'defaults.' + constructedValue;
     }
-    //onChooseActivity(selected);
     setSelected(selected);
-    //selectedActivityName = activity.name;
     setOpen(true);
   };
 
@@ -285,6 +283,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onChooseActivity = async activity => {
+    if (addedAFavorite) {
+      return;
+    }
     if (defaultRequested) {
       defaultRequested = false;
       selectedActivityName = activity.name;
@@ -340,10 +341,22 @@ export default ({ patient, session, newFact, setNewFact }) => {
       });
       setSelected(result.data.getActivityData[0]);
       selectedActivityName = activity.name;
-      // if (!open) {
       setOpen(true);
-      // }
     }
+  };
+
+  const handleAddFavorite = async activity => {
+    let instruction = {
+      patient_id: session.patient_id || session.user_id,
+      activity_key: '___addToFavorites___',
+      value: activity.code,
+      session: {
+        user_id: session.user_id,
+        session_id: session.session_id,
+      },
+    };
+    await API.graphql(graphqlOperation(createPutFact, { input: instruction }));
+    addedAFavorite = false;
   };
 
   const onSaveFact = async newFact => {
@@ -646,9 +659,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
                             {activity.name}
                           </Typography>
                           <Box
-                            pl={7}
-                            position='absolute'
-                            right={15}
+                            alignSelf='center'
+                            flexDirection='row'
+                            paddingLeft={5}
                             display={
                               activity.hasOwnProperty('default_value') &&
                               activity.default_value &&
@@ -673,8 +686,20 @@ export default ({ patient, session, newFact, setNewFact }) => {
                           )}
                         </Box>
                       </Box>
-                      <Box alignSelf='flex-end' flexDirection='row' color='white' display={'none'}>
-                        <CheckCircle style={{ color: 'orange' }}></CheckCircle>
+                      <Box
+                        alignSelf='center'
+                        flexDirection='row'
+                        color='white'
+                        display={homeState === 'search' ? 'flex' : 'none'}>
+                        <IconButton
+                          color='orange'
+                          aria-label='add to favorites'
+                          onClick={() => {
+                            addedAFavorite = true;
+                            handleAddFavorite(activity);
+                          }}>
+                          <AddToQueueOutlinedIcon />
+                        </IconButton>
                       </Box>
                     </Box>
                   </Paper>
