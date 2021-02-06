@@ -242,8 +242,10 @@ export default ({
         setNums(defaultSelections[0].split(' over ')); /* two numbers */
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
-          let [value, freeText] = nfValue.split(' = ');
+          let [value, freeText] = nfValue.split('=');
+          value = value.trim();
           if (freeText) {
+            freeText = freeText.trim();
             newFact.value.freeText[value] = freeText;
             if (value === mF) {
               setMessage(freeText);
@@ -561,7 +563,7 @@ export default ({
                             classes={{ root: classes.inputText }}
                             primary={value.split(':')[0]}
                             secondary={
-                              newFact.value.qualifiers && newFact.value.qualifiers[value]
+                              newFact && newFact.value && newFact.value.qualifiers && newFact.value.qualifiers[value]
                                 ? newFact.value.qualifiers[value].join(' ~ ')
                                 : null
                             }
