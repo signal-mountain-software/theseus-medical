@@ -690,9 +690,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
                         alignSelf='center'
                         flexDirection='row'
                         color='white'
-                        display={homeState === 'search' ? 'flex' : 'none'}>
+                        display={activity.reason.startsWith('Search') ? 'flex' : 'none'}>
                         <IconButton
-                          color='orange'
                           aria-label='add to favorites'
                           onClick={() => {
                             addedAFavorite = true;
