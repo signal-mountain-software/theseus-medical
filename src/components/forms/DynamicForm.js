@@ -483,7 +483,9 @@ export default ({
       );
 
     case 'document':
-      window.open(defaultValue, message);
+      if (firstTime) {
+        window.open(defaultValue, '_blank');
+      }
     // intentionally fall through to the message case
 
     case 'message':
