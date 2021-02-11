@@ -46,7 +46,7 @@ const useStyles = makeStyles(theme => ({
     zIndex: 1,
   },
   gridList: {
-    maxHeight: 400,
+    // maxHeight: 400,
   },
   search: {
     backgroundColor: fade(theme.palette.common.white, 0.15),
@@ -655,9 +655,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                       <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
                         <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                          <Typography variant='h5' noWrap>
-                            {activity.name}
-                          </Typography>
+                          <Typography variant='h5'>{activity.name}</Typography>
                           <Box
                             alignSelf='center'
                             flexDirection='row'
