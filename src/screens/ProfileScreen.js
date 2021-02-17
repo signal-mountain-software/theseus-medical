@@ -10,11 +10,11 @@ import useSession from '../hooks/useSession';
 
 export default () => {
   const { state } = useSession();
-  const { profile, session } = state;
+  const { profile, session, user } = state;
 
   return (
     <Box>
-      <ProfileSection session={session} />
+      <ProfileSection session={session} profile={profile} loginID={user ? user.username : null} />
       <RelationshipSection person={profile} />
       <ActivityCustomizationsSection person={profile} />
       <ClientsSection person={profile} />

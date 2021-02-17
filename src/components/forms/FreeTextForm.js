@@ -1,7 +1,9 @@
 import React from 'react';
 import TextField from '@material-ui/core/TextField';
 
-export default ({ open, label, value, message, onChange, onError }) => {
+export default ({ open, label, value, message, onChange, onKeyPress, onError }) => {
+  const keyWords = ['.org', 'org/', 'com/', '.com', 'http', '.mp', '.doc', '.pdf'];
+
   React.useEffect(() => {
     if (!open) {
       onError(false);
@@ -18,11 +20,16 @@ export default ({ open, label, value, message, onChange, onError }) => {
 
   return (
     <TextField
-      value={value}
+      pt={13}
+      value={
+        keyWords.some(element => value.includes(element)) ? '"' + message + '" has opened in another window!' : value
+      }
+      multiline
       label={label}
-      type='number'
+      type='message'
       variant='outlined'
       onChange={onChange}
+      onKeyPress={onKeyPress}
       InputLabelProps={{ shrink: true }}
       fullWidth
     />

@@ -38,7 +38,7 @@ export default Component => props => {
     return (
       <AmplifyContainer>
         <AmplifyAuthenticator>
-          <AmplifySignIn slot='sign-in' hideSignUp />
+          <AmplifySignIn headerText='Welcome to Community Hub' slot='sign-in' />
         </AmplifyAuthenticator>
       </AmplifyContainer>
     );

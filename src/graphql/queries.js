@@ -17,7 +17,28 @@ export const getActivityData = /* GraphQL */ `
       observation_expires
       observation_status
       observation_key
+      prompt
       valid_values_list
+      value_qualifiers {
+        associated_activity
+        value
+        description
+        image_url
+        minimum_required
+        maximum_allowed
+        qualifiers
+      }
+      fact_history {
+        person_id
+        activity_key
+        value
+        qualifier
+        status
+        user_id
+        session_id
+        method
+        posted_time
+      }
     }
   }
 `;
@@ -79,6 +100,7 @@ export const getPeopleByGroup = /* GraphQL */ `
       messaging {
         email
         sms
+        voice
       }
       relationships {
         person_id
@@ -116,6 +138,7 @@ export const getPerson = /* GraphQL */ `
       messaging {
         email
         sms
+        voice
       }
       relationships {
         person_id
@@ -143,26 +166,19 @@ export const getSession = /* GraphQL */ `
     getSession(session_id: $session_id) {
       session_id
       client_id
-      current_event
       device_id
       method
-      patient_display_name
-      patient_id
       status
       user_display_name
       user_id
-      directed_action
-      code_version
-      full_device_id
-      host_session_id
-      host_user_id
-      patient_activity_customizations {
-        activity_key
-        baseline
-        permitted_role
-      }
-      responsible_for
+      patient_display_name
+      patient_id
       assigned_to
+      responsible_for
+      current_event
+      description
+      event_description
+      kiosk_mode
     }
   }
 `;

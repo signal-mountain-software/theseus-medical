@@ -24,6 +24,16 @@ export default Component => props => {
             main: '#f48fb1',
             dark: '#aa647b',
           },
+          confirm: {
+            light: '#3bd12a',
+            main: '#44f230',
+            dark: '#459130',
+          },
+          reject: {
+            light: '#f70531',
+            main: '#d10228',
+            dark: '#ad0322',
+          },
           error: {
             light: '#e57373',
             main: '#f44336',
