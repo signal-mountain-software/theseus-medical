@@ -182,3 +182,22 @@ export const getSession = /* GraphQL */ `
     }
   }
 `;
+export const getReservation = /* GraphQL */ `
+  query GetReservation($client_id: String!, $event_code: String!) {
+    getReservation(client_id: $client_id, event_code: $event_code) {
+      event_name
+      available_to
+      show_slots
+      owner
+      slot {
+        display_name
+        identifier
+        type
+        owner
+      }
+      expires_after
+      event_code
+      client_id
+    }
+  }
+`;

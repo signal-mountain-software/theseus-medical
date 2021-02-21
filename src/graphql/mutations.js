@@ -37,3 +37,23 @@ export const updateSession = /* GraphQL */ `
     }
   }
 `;
+
+export const updateReservation = /* GraphQL */ `
+  mutation UpdateReservation($input: UpdateReservationInput!) {
+    updateReservation(input: $input) {
+      client_id
+	    event_code
+	    available_to
+	    event_name
+	    expires_after
+	    owner
+	    show_slots
+	    slot {
+        display_name
+        identifier
+        type
+        owner
+      }
+    }
+  }
+`;

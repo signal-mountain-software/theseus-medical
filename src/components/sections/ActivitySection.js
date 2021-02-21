@@ -27,7 +27,9 @@ import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
 
 import { createPutFact } from '../../graphql/mutations';
+import { updateReservation } from '../../graphql/mutations';
 import { getActivityData } from '../../graphql/queries';
+import { getReservation } from '../../graphql/queries';
 import NewFactDialog from '../dialogs/NewFactDialog';
 
 const useStyles = makeStyles(theme => ({
@@ -319,6 +321,41 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setLimit(DEFAULT_LIMIT);
       setEvent(activity.code.split('.')[1]);
       setNewFact();
+    } else if (activity.type === 'reservation') {
+      let result = await API.graphql(
+        graphqlOperation(getActivityData, {
+          input: {
+            client_id: session.client_id,
+            person_id: patient.person_id,
+            event_id: '',
+            activity_type: '$$' + activity.code,
+            limit: limit,
+            fact_data: false,
+            includeEvents: true,
+            history_only: false,
+            use_short_date: isMobile,
+          },
+        })
+      ).catch(error => {
+        enqueueSnackbar(`We had a problem getting current information: ${error}`, {
+          variant: 'error',
+        });
+      });
+      let selectedActivity = result.data.getActivityData[0];
+      selectedActivityName = activity.name;
+      result = await API.graphql(
+        graphqlOperation(getReservation, {
+          client_id: session.client_id,
+          event_code: activity.code,
+        })
+      ).catch(error => {
+        enqueueSnackbar(`We had a problem getting that event: ${JSON.stringify(error)}`, {
+          variant: 'error',
+        });
+      });
+      selectedActivity.default_value = result.data.getReservation;
+      setSelected(selectedActivity);
+      setOpen(true);
     } else {
       let result = await API.graphql(
         graphqlOperation(getActivityData, {
@@ -439,14 +476,38 @@ export default ({ patient, session, newFact, setNewFact }) => {
               }
             }
           }
+        } else if (newFact.value.hasOwnProperty('event_code')) {
+          constructedValue = '';
+          let nS = newFact.value.slot.length;
+          for (let s = 0; s < nS; s++) {
+            if (newFact.value.slot[s].hasOwnProperty('action')) {
+              if (newFact.value.slot[s].action) {
+                constructedValue +=
+                  'ID ' + newFact.value.slot[s].identifier + ' ' + newFact.value.slot[s].action + ' ~ ';
+              }
+              delete newFact.value.slot[s].action;
+            }
+          }
+          if (constructedValue) {
+            constructedValue += '*END*';
+            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+            writtenFact.data.createPutFact.value = 'update.' + constructedValue;
+            setLastWrittenFact(writtenFact.data.createPutFact);
+            await API.graphql(graphqlOperation(updateReservation, { input: newFact.value })).catch(error => {
+              enqueueSnackbar(
+                `Uh oh! We couldn't update that.  You may want to check, and try again: ${JSON.stringify(
+                  error.message || error.errors[0].message
+                )}`,
+                {
+                  variant: 'error',
+                }
+              );
+            });
+          }
         }
       }
     }
-    if (constructedValue) {
-      sVal = constructedValue;
-    } else {
-      sVal = '~~ no value ~~';
-    }
+    sVal = constructedValue || '~~ no value ~~';
 
     setNewFact(newFact);
     setLimit(limit);

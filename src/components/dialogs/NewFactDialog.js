@@ -148,6 +148,19 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         badData = true;
         setStatusMessage(`We expected two numbers here`);
       }
+    } else {
+      if ( fact.hasOwnProperty('numeric_minimum') 
+        && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10) ) {
+          badData = true;
+          if (newFact.value.selected.length === 0) {
+            setMessage(`!!!!! Ooops!  I don't see that you made any selections before pressing SAVE.
+              You need to make at least ${fact.numeric_minimum} selection${fact.numerica_minimum === '1' ? '' : 's'}, please.`);
+          }
+          else {
+            setMessage(`!!!!! Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
+              but I only see ${newFact.value.selected.length}: ${newFact.value.selected.join(', ')}`);
+          }
+      }
     }
     if (!badData) {
       setMessage('');
@@ -170,7 +183,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       setNewFact({
         patient_id: session.patient_id || session.user_id,
         activity_key: fact.code,
-        value: null,
+        value: fact.type === 'reservation' ? fact.default_value : null,
         session: {
           user_id: session.user_id,
           session_id: session.session_id,
@@ -268,6 +281,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
             newFact={newFact}
             setNewFact={setNewFact}
             type={fact.type}
+            client={session.client_id}
             message={message}
             statusMessage={statusMessage}
             values={fact.valid_values_list}
