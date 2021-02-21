@@ -148,6 +148,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         badData = true;
         setStatusMessage(`We expected two numbers here`);
       }
+    } else {
+      console.log('test for good return here');
     }
     if (!badData) {
       setMessage('');
@@ -170,7 +172,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       setNewFact({
         patient_id: session.patient_id || session.user_id,
         activity_key: fact.code,
-        value: null,
+        value: fact.type === 'reservation' ? fact.default_value : null,
         session: {
           user_id: session.user_id,
           session_id: session.session_id,
@@ -268,6 +270,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
             newFact={newFact}
             setNewFact={setNewFact}
             type={fact.type}
+            client={session.client_id}
             message={message}
             statusMessage={statusMessage}
             values={fact.valid_values_list}
