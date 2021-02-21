@@ -571,7 +571,7 @@ export default ({
         />
       );
     default:
-      if (checked.length === 0) {
+      if (checked.length === 0) { 
         setStatusMessage('');
       } else {
         let stopAt = checked.length - 1;

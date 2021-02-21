@@ -149,7 +149,18 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         setStatusMessage(`We expected two numbers here`);
       }
     } else {
-      console.log('test for good return here');
+      if ( fact.hasOwnProperty('numeric_minimum') 
+        && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10) ) {
+          badData = true;
+          if (newFact.value.selected.length === 0) {
+            setMessage(`!!!!! Ooops!  I don't see that you made any selections before pressing SAVE.
+              You need to make at least ${fact.numeric_minimum} selection${fact.numerica_minimum === '1' ? '' : 's'}, please.`);
+          }
+          else {
+            setMessage(`!!!!! Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
+              but I only see ${newFact.value.selected.length}: ${newFact.value.selected.join(', ')}`);
+          }
+      }
     }
     if (!badData) {
       setMessage('');
