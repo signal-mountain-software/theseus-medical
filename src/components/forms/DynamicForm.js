@@ -175,6 +175,7 @@ export default ({
   const [qualifierOpen, setQualifierOpen] = React.useState(false);
   const [qualifierData, setQualifierData] = React.useState({});
   const [OGmessage, setOGmessage] = React.useState('');
+  const [OGvalue, setOGvalue] = React.useState('');
 
   const [listValues, setListValues] = React.useState([]);
 
@@ -192,6 +193,10 @@ export default ({
 
   if (OGmessage === '') {
     setOGmessage(message);
+  }
+
+  if (OGvalue === '' && type === 'document') {
+    setOGvalue(value);
   }
 
   if (firstTime) {
@@ -214,8 +219,8 @@ export default ({
     if (vL > 0) {
       let v = 0;
       do {
-        if (values[v].includes('~^')) {
-          [, mF] = values[v].split(':');
+        if (values[v].includes('~^')) {     // ~^ indicates free form text box 
+          [, mF] = values[v].split(':');    // prompt with the string after the ":"
         }
         v++;
       } while (v < vL && !mF);
@@ -555,7 +560,7 @@ export default ({
       );
     case 'document':
       if (firstTime) {
-        window.open(defaultValue, '_blank');
+        window.open(defaultValue, message);
       }
     // intentionally fall through to the message case
 
@@ -564,7 +569,7 @@ export default ({
         <FreeTextForm
           open={open}
           label='Message'
-          value={value}
+          value={OGvalue !== value ? OGvalue : value}
           message={mOut}
           onChange={onChangeMessage}
           onError={onError}
