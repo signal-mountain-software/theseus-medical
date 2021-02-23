@@ -72,6 +72,15 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(5),
     fontSize: '0.8rem',
   },
+  warningText: {
+    marginLeft: theme.spacing(3),
+    marginTop: 0,
+    marginBottom: theme.spacing(1),
+    marginRight: theme.spacing(5),
+    fontSize: '0.8rem',
+    fontWeight: 'bold',
+    color: 'red'
+  },
   subDescriptionText: {
     marginLeft: theme.spacing(3),
     marginTop: theme.spacing(1),
@@ -154,11 +163,15 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
           badData = true;
           if (newFact.value.selected.length === 0) {
             setMessage(`!!!!! Ooops!  I don't see that you made any selections before pressing SAVE.
-              You need to make at least ${fact.numeric_minimum} selection${fact.numerica_minimum === '1' ? '' : 's'}, please.`);
+              You need to make at least ${fact.numeric_minimum} selection${fact.numerica_minimum === '1' ? '' : 's'}, please. !!!!!`);
+          }
+          else if (newFact.value.selected.length === 1) {
+            setMessage(`!!!!! Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
+              but I only see 1 selection.  It is: ${newFact.value.selected.join(', ')} !!!!!`);
           }
           else {
             setMessage(`!!!!! Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
-              but I only see ${newFact.value.selected.length}: ${newFact.value.selected.join(', ')}`);
+              but I only see ${newFact.value.selected.length}.  They are: ${newFact.value.selected.join(', ')} !!!!!`);
           }
       }
     }
@@ -260,7 +273,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
       </DialogContentText>
-      <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
+      { message.startsWith('!!!') 
+      ? <DialogContentText className={classes.warningText}>{message}</DialogContentText> 
+      : <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
+      }      
       {statusMessage ? (
         <DialogContentText className={classes.subDescriptionText}>{statusMessage}</DialogContentText>
       ) : null}
