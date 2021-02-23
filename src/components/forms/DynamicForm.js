@@ -143,7 +143,7 @@ export default ({
   newFact,
   setNewFact,
   type,
-  client,
+  current_user_display_name,
   message,
   statusMessage,
   values,
@@ -294,9 +294,11 @@ export default ({
   const handleReserve = slotIndex => () => {
     if (newFact.value.slot[slotIndex].owner === newFact.patient_id) {
       newFact.value.slot[slotIndex].owner = null;
+      newFact.value.slot[slotIndex].display_name = null;
       newFact.value.slot[slotIndex].action = 'relinquished';
     } else {
       newFact.value.slot[slotIndex].owner = newFact.patient_id;
+      newFact.value.slot[slotIndex].display_name = current_user_display_name;
       newFact.value.slot[slotIndex].action = 'reserved';
     }
     setNewFact(newFact);
@@ -569,7 +571,7 @@ export default ({
         <FreeTextForm
           open={open}
           label='Message'
-          value={OGvalue !== value ? OGvalue : value}
+          value={(OGvalue !== value && type === 'document') ? OGvalue : value}
           message={mOut}
           onChange={onChangeMessage}
           onError={onError}
