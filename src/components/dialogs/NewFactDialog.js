@@ -158,8 +158,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         setStatusMessage(`We expected two numbers here`);
       }
     } else {
-      if ( fact.hasOwnProperty('numeric_minimum') 
-        && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10) ) {
+      if (fact.numeric_minimum
+      && newFact.value.selected  
+      && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10) ) {
           badData = true;
           if (newFact.value.selected.length === 0) {
             setMessage(`!!!!! Ooops!  I don't see that you made any selections before pressing SAVE.
@@ -297,7 +298,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
             newFact={newFact}
             setNewFact={setNewFact}
             type={fact.type}
-            client={session.client_id}
+            current_user_display_name={session.patient_display_name}
             message={message}
             statusMessage={statusMessage}
             values={fact.valid_values_list}
