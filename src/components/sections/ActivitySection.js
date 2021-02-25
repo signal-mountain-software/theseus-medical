@@ -684,6 +684,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             <InputBase
               type='text'
               placeholder='Search…'
+              value={searchString}
               onChange={onSearch}
               onKeyPress={checkEnter}
               classes={{

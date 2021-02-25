@@ -77,7 +77,8 @@ const useStyles = makeStyles(theme => ({
   freeInput: {
     marginLeft: 0,
     paddingLeft: 0,
-    paddingRight: 15,
+    paddingRight: 0,
+    marginBottom: 15,
     width: '95%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
@@ -639,7 +640,7 @@ export default ({
                           ) : null}
                           <ListItemText
                             id={labelId}
-                            onClick={handleToggle(value)}
+                            onChange={onChangeFreeText}
                             classes={{ root: classes.inputText }}
                             primary={value.split(':')[0]}
                             secondary={
@@ -653,7 +654,7 @@ export default ({
                         <FormControl className={classes.freeInput}>
                           <TextField
                             id={value.split(':')[1]}
-                            placeholder={value.split(':')[1]}
+                            helperText={value.split(':')[1]}
                             value={
                               newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
                                 ? newFact.value.freeText[value.split(':')[1]]
@@ -670,7 +671,7 @@ export default ({
                             id='%filter-input%'
                             type='text'
                             onChange={onChangeFilterText}
-                            placeholder={value.split(':')[1]}
+                            helperText={value.split(':')[1]}
                             value={filterText}
                             endAdornment={
                               <InputAdornment position='end'>
