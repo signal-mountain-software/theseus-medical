@@ -138,34 +138,40 @@ export default ({ session, profile, loginID }) => {
 
   React.useEffect(() => {
     if (profile) {
-      setEmail(profile.messaging.email);
+      if (profile.messaging.email) {
+        setEmail(profile.messaging.email);
+      }
 
-      var match = '' + profile.messaging.sms.replace(/\D/g, '').substr(-10);
-      let newCell = '';
-      if (match.length > 0) {
-        newCell += '(' + match.substr(0, 3);
+      if (profile.messaging.sms) {
+        var match = '' + profile.messaging.sms.replace(/\D/g, '').substr(-10);
+        let newCell = '';
+        if (match.length > 0) {
+          newCell += '(' + match.substr(0, 3);
+        }
+        if (match.length > 3) {
+          newCell += ') ' + match.substr(3, 3);
+        }
+        if (match.length > 6) {
+          newCell += '-' + match.substr(6, 4);
+        }
+        setCell(newCell);
       }
-      if (match.length > 3) {
-        newCell += ') ' + match.substr(3, 3);
-      }
-      if (match.length > 6) {
-        newCell += '-' + match.substr(6, 4);
-      }
-      setCell(newCell);
 
-      match = '' + profile.messaging.voice.replace(/\D/g, '').substr(-10);
-      let newVoice = '';
-      if (match.length > 0) {
-        newVoice += '(' + match.substr(0, 3);
+      if (profile.messaging.voice) {
+        match = '' + profile.messaging.voice.replace(/\D/g, '').substr(-10);
+        let newVoice = '';
+        if (match.length > 0) {
+          newVoice += '(' + match.substr(0, 3);
+        }
+        if (match.length > 3) {
+          newVoice += ') ' + match.substr(3, 3);
+        }
+        if (match.length > 6) {
+          newVoice += '-' + match.substr(6, 4);
+        }
+        setVoice(newVoice);
       }
-      if (match.length > 3) {
-        newVoice += ') ' + match.substr(3, 3);
-      }
-      if (match.length > 6) {
-        newVoice += '-' + match.substr(6, 4);
-      }
-      setVoice(newVoice);
-
+      
       if (profile.person_id === loginID) {
         setFirstName(profile.name.first);
         setLastName(profile.name.last);
