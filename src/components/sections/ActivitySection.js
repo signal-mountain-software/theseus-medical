@@ -898,7 +898,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             Back
           </Button>
           <Button variant='contained' className={classes.confirm} size='small' onClick={handleConfirmSubmit}>
-            Confirm
+            Submit
           </Button>
         </DialogActions>
       </Dialog>
