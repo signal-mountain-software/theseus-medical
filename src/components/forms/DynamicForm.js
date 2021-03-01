@@ -51,6 +51,17 @@ const useStyles = makeStyles(theme => ({
   inputText: {
     paddingRight: '45px',
   },
+  leftButton: {
+    minWidth: '30px',
+  },
+  listItemAVA: {
+    maxWidth: 'max-content',
+    marginRight: '7px'
+  },
+  idText: {
+    display: 'inline',
+    marginLeft: '25px'
+  },
   subHeader: {
     fontWeight: 'bold',
     minWidth: '100%',
@@ -522,17 +533,18 @@ export default ({
               {newFact.value.slot.map((currentSlot, vX) => {
                 const labelId = `checkbox-list-label-${currentSlot.identifier}#${vX.toString()}`;
                 const owned = !!currentSlot.owner;
-                const ownedByMe = owned && currentSlot.owner === newFact.session.user_id;
+                const ownedByMe = owned && currentSlot.owner === newFact.patient_id;
                 var freeName =
                   currentSlot.show_slots && currentSlot.show_slots === 'no_names' && !ownedByMe
                     ? 'taken'
                     : currentSlot.display_name || '';
                 return (
-                  <ListItem key={currentSlot.identifier} role={undefined} dense button onClick={handleReserve(vX)}>
-                    <ListItemIcon>
+                  <ListItem key={currentSlot.identifier} role={undefined} dense button>
+                    <ListItemIcon classes={{ root: classes.leftButton }}>
                       {!owned || ownedByMe ? (
                         <Checkbox
-                          edge='start'
+                          edge='start' 
+                          onClick={handleReserve(vX)}                         
                           checked={owned}
                           tabIndex={-1}
                           disabled={owned && !ownedByMe}
@@ -541,10 +553,11 @@ export default ({
                         />
                       ) : null}
                     </ListItemIcon>
-                    <ListItemText id={'id-' + labelId} primary={currentSlot.identifier} />
-                    <ListItemSecondaryAction>
+                    <ListItemText classes={{ root: classes.listItemAVA }} id={'id-' + labelId} primary={currentSlot.identifier} />
+                    
                       {owned ? (
                         <TextField
+                        classes={{ root: classes.idText }}
                           id={'val-' + labelId}
                           value={freeName}
                           disabled={!ownedByMe}
@@ -553,7 +566,7 @@ export default ({
                           onChange={onChangeFreeName}
                         />
                       ) : null}
-                    </ListItemSecondaryAction>
+                    
                   </ListItem>
                 );
               })}
