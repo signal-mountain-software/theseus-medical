@@ -105,10 +105,13 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const DEFAULT_TYPE = 'My_activities';
-const DEFAULT_LIMIT = 50;
-const DEFAULT_LIMIT_INCREMENT = 20;
+var DEFAULT_LIMIT = 100;
+
 
 export default ({ patient, session, newFact, setNewFact }) => {
+  DEFAULT_LIMIT++;
+  const DEFAULT_LIMIT_INCREMENT = 20;
+
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
   const [events, setEvents] = React.useState([]); // populates the events dropdown list
   const [types, setTypes] = React.useState([]); // populates the types dropdown list
@@ -119,6 +122,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const [lastEvent, setLastEvent] = React.useState(''); // stores the current selected event filter
   const [lastType, setLastType] = React.useState(''); // stores the current selected type filter
+  const [lastPerson, setLastPerson] = React.useState(''); // stores the current selected type filter
   const [lastLimit, setLastLimit] = React.useState(0); // stores the current limit of activity buttons displayed
 
   const [loading, setLoading] = React.useState(false); // a flag that shows/hides loading spinner
@@ -153,7 +157,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       homeState === 'search' ||
       !newFact ||
       !newFact.value ||
-      activities.every(aObj => {
+      !activities.every(aObj => {
         return aObj.observation_expires !== null && aObj.observation_expires < timeNow;
       })
     ) {
@@ -569,9 +573,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
     (async () => {
       let result;
       if (patient && session) {
-        if (event !== lastEvent || type !== lastType || limit !== lastLimit) {
+        if (event !== lastEvent || type !== lastType || limit !== lastLimit || patient.person_id !== lastPerson) {
           result = await API.graphql(
-            graphqlOperation(getActivityData, {
+            graphqlOperation(getActivityData, { 
               input: {
                 client_id: session.client_id,
                 person_id: patient.person_id,
@@ -592,6 +596,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           });
           setLastEvent(event);
           setLastType(type);
+          setLastPerson(patient.person_id)
           setLastLimit(limit);
         } else {
           result = {
@@ -698,7 +703,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         <Grid container>
           <Grid md={6} sm={7} xs={12} item>
             <GridList className={classes.gridList} cellHeight='auto' cols={1}>
-              {activities.map(activity => (
+              {!activities || activities.length === 0 ? null : activities.map(activity => (
                 <GridListTile key={activity.code} cols={1}>
                   <Box display={activity.reason === priorReason ? 'none' : 'block'}>
                     <Typography variant='body1' noWrap>
@@ -767,11 +772,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='body1' noWrap>
-                    {activities.length < limit ? 'No more items' : 'More items...'}
+                    {!activities || activities.length < limit ? 'No more items' : 'More items...'}
                   </Typography>
                 </Box>
                 <Paper
-                  display={activities.length < limit ? 'none' : 'block'}
+                  display={!activities || activities.length < limit ? 'none' : 'block'}
                   component={Box}
                   py={2}
                   px={2}
@@ -800,20 +805,20 @@ export default ({ patient, session, newFact, setNewFact }) => {
         />
       ) : null}
       <Dialog
-        open={showSummary}
+        open={showSummary && homeState === 'event'}
         onClose={handleSummaryBack}
         scroll='paper'
         fullWidth={true}
         aria-labelledby='scroll-dialog-title'
         aria-describedby='scroll-dialog-description'>
         <DialogTitle id='scroll-dialog-title' className={classes.descriptionText}>
-          {activities[0] && activities[0].reason
+          {activities && activities[0] && activities[0].reason
             ? activities[0].reason.substr(0, activities[0].reason.length - 6)
             : null}
         </DialogTitle>
         <DialogContent dividers={true} className={classes.descriptionText}>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
-            {activities.map(activity =>
+            {!activities || activities.length === 0 ? null : activities.map(activity =>
               activity.observation_expires && activity.observation_expires < timeNow ? (
                 <Typography key={activity.name}>
                   <Box key={activity.name + '.name'} pt={2}>
