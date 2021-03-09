@@ -337,10 +337,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         </Button>
         {fact && fact.code && fact.code.startsWith('document.') ? null : (
           <Button variant='contained' color='primary' size='small' onClick={handleSave}>
-            Save
+            { fact && fact.code && fact.code.startsWith('message.') ? 'Send' : 'Save' }
           </Button>
         )}
-        {fromHome === 'event' && (!fact || !fact.code || !fact.code.startsWith('document.')) ? (
+        {fromHome === 'event' && (!fact || !fact.code || (!fact.code.startsWith('document.') && !fact.code.startsWith('form.'))) ? (
           <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
             {isMobile ? 'Save +' : 'Save & Next'}
           </Button>
