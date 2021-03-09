@@ -21,7 +21,7 @@ import TopBar from './components/TopBar';
 
 const menu = [
   { label: 'Profile', path: '/profile', icon: <AccountCircleIcon />, screen: <ProfileScreen /> },
-  { label: 'cHub', path: '/theseus', icon: <AssignmentIcon />, screen: <TheseusScreen /> },
+  { label: 'AVA', path: '/theseus', icon: <AssignmentIcon />, screen: <TheseusScreen /> },
   { label: 'Chat', path: '/chat', icon: <ChatIcon />, screen: <ChatScreen /> },
 ];
 

@@ -96,7 +96,7 @@ export default () => {
                 </Box>
               )}
               <Tooltip
-                title={<Typography variant='subtitle1'>Sign out of Community Hub</Typography>}
+                title={<Typography variant='subtitle1'>Sign out of AVA</Typography>}
                 placement='bottom-end'>
                 <Button
                   color='secondary'
