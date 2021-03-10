@@ -1,6 +1,6 @@
 {
-  "short_name": "c-Hub",
-  "name": "Communications Hub from Signal Mountain Software",
+  "short_name": "AVA",
+  "name": "AVA - from Signal Mountain Software",
   "icons": [
     {
       "src": "favicon.ico",
@@ -10,7 +10,7 @@
     {
       "src": "logo192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "155x132"
     },
     {
       "src": "logo512.png",

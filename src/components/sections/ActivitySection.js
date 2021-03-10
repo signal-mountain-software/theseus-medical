@@ -27,7 +27,9 @@ import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
 
 import { createPutFact } from '../../graphql/mutations';
+import { updateReservation } from '../../graphql/mutations';
 import { getActivityData } from '../../graphql/queries';
+import { getReservation } from '../../graphql/queries';
 import NewFactDialog from '../dialogs/NewFactDialog';
 
 const useStyles = makeStyles(theme => ({
@@ -103,10 +105,13 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const DEFAULT_TYPE = 'My_activities';
-const DEFAULT_LIMIT = 50;
-const DEFAULT_LIMIT_INCREMENT = 20;
+var DEFAULT_LIMIT = 100;
+
 
 export default ({ patient, session, newFact, setNewFact }) => {
+  DEFAULT_LIMIT++;
+  const DEFAULT_LIMIT_INCREMENT = 20;
+
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
   const [events, setEvents] = React.useState([]); // populates the events dropdown list
   const [types, setTypes] = React.useState([]); // populates the types dropdown list
@@ -117,6 +122,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const [lastEvent, setLastEvent] = React.useState(''); // stores the current selected event filter
   const [lastType, setLastType] = React.useState(''); // stores the current selected type filter
+  const [lastPerson, setLastPerson] = React.useState(''); // stores the current selected type filter
   const [lastLimit, setLastLimit] = React.useState(0); // stores the current limit of activity buttons displayed
 
   const [loading, setLoading] = React.useState(false); // a flag that shows/hides loading spinner
@@ -151,7 +157,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       homeState === 'search' ||
       !newFact ||
       !newFact.value ||
-      activities.every(aObj => {
+      !activities.every(aObj => {
         return aObj.observation_expires !== null && aObj.observation_expires < timeNow;
       })
     ) {
@@ -283,7 +289,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onChooseActivity = async activity => {
-    if (addedAFavorite) {
+    if (addedAFavorite || activity.code.startsWith('document')) {
       return;
     }
     if (defaultRequested) {
@@ -319,6 +325,41 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setLimit(DEFAULT_LIMIT);
       setEvent(activity.code.split('.')[1]);
       setNewFact();
+    } else if (activity.type === 'reservation') {
+      let result = await API.graphql(
+        graphqlOperation(getActivityData, {
+          input: {
+            client_id: session.client_id,
+            person_id: patient.person_id,
+            event_id: '',
+            activity_type: '$$' + activity.code,
+            limit: limit,
+            fact_data: false,
+            includeEvents: true,
+            history_only: false,
+            use_short_date: isMobile,
+          },
+        })
+      ).catch(error => {
+        enqueueSnackbar(`We had a problem getting current information: ${error}`, {
+          variant: 'error',
+        });
+      });
+      let selectedActivity = result.data.getActivityData[0];
+      selectedActivityName = activity.name;
+      result = await API.graphql(
+        graphqlOperation(getReservation, {
+          client_id: session.client_id,
+          event_code: activity.code,
+        })
+      ).catch(error => {
+        enqueueSnackbar(`We had a problem getting that event: ${JSON.stringify(error)}`, {
+          variant: 'error',
+        });
+      });
+      selectedActivity.default_value = result.data.getReservation;
+      setSelected(selectedActivity);
+      setOpen(true);
     } else {
       let result = await API.graphql(
         graphqlOperation(getActivityData, {
@@ -439,14 +480,38 @@ export default ({ patient, session, newFact, setNewFact }) => {
               }
             }
           }
+        } else if (newFact.value.hasOwnProperty('event_code')) {
+          constructedValue = '';
+          let nS = newFact.value.slot.length;
+          for (let s = 0; s < nS; s++) {
+            if (newFact.value.slot[s].hasOwnProperty('action')) {
+              if (newFact.value.slot[s].action) {
+                constructedValue +=
+                  'ID ' + newFact.value.slot[s].identifier + ' ' + newFact.value.slot[s].action + ' ~ ';
+              }
+              delete newFact.value.slot[s].action;
+            }
+          }
+          if (constructedValue) {
+            constructedValue += '*END*';
+            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+            writtenFact.data.createPutFact.value = 'update.' + constructedValue;
+            setLastWrittenFact(writtenFact.data.createPutFact);
+            await API.graphql(graphqlOperation(updateReservation, { input: newFact.value })).catch(error => {
+              enqueueSnackbar(
+                `Uh oh! We couldn't update that.  You may want to check, and try again: ${JSON.stringify(
+                  error.message || error.errors[0].message
+                )}`,
+                {
+                  variant: 'error',
+                }
+              );
+            });
+          }
         }
       }
     }
-    if (constructedValue) {
-      sVal = constructedValue;
-    } else {
-      sVal = '~~ no value ~~';
-    }
+    sVal = constructedValue || '~~ no value ~~';
 
     setNewFact(newFact);
     setLimit(limit);
@@ -508,9 +573,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
     (async () => {
       let result;
       if (patient && session) {
-        if (event !== lastEvent || type !== lastType || limit !== lastLimit) {
+        if (event !== lastEvent || type !== lastType || limit !== lastLimit || patient.person_id !== lastPerson) {
           result = await API.graphql(
-            graphqlOperation(getActivityData, {
+            graphqlOperation(getActivityData, { 
               input: {
                 client_id: session.client_id,
                 person_id: patient.person_id,
@@ -531,6 +596,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           });
           setLastEvent(event);
           setLastType(type);
+          setLastPerson(patient.person_id)
           setLastLimit(limit);
         } else {
           result = {
@@ -623,6 +689,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             <InputBase
               type='text'
               placeholder='Search…'
+              value={searchString}
               onChange={onSearch}
               onKeyPress={checkEnter}
               classes={{
@@ -636,7 +703,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         <Grid container>
           <Grid md={6} sm={7} xs={12} item>
             <GridList className={classes.gridList} cellHeight='auto' cols={1}>
-              {activities.map(activity => (
+              {!activities || activities.length === 0 ? null : activities.map(activity => (
                 <GridListTile key={activity.code} cols={1}>
                   <Box display={activity.reason === priorReason ? 'none' : 'block'}>
                     <Typography variant='body1' noWrap>
@@ -654,35 +721,42 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     square>
                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                       <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                          <Typography variant='h5'>{activity.name}</Typography>
-                          <Box
-                            alignSelf='center'
-                            flexDirection='row'
-                            paddingLeft={5}
-                            display={
-                              activity.hasOwnProperty('default_value') &&
-                              activity.default_value &&
-                              !activity.default_value.includes('.')
-                                ? 'flex'
-                                : 'none'
-                            }>
-                            <Button onClick={onChooseDefault} className={classes.defaultButton}>
-                              <Typography noWrap>{activity.default_value}</Typography>
-                            </Button>
+                        {activity.type === 'document' ? 
+                          <a href={activity.default_value} style={{color: 'black', textDecoration: 'none'}} target="_blank" rel="noopener noreferrer">
+                            <Typography variant='h5'>{activity.name}</Typography>
+                          </a> :
+                          <React.Fragment key={`act_box_${activity.name}`}>
+                            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                              <Typography variant='h5'>{activity.name}</Typography>
+                              <Box
+                                alignSelf='center'
+                                flexDirection='row'
+                                paddingLeft={5}
+                                display={
+                                  activity.hasOwnProperty('default_value') &&
+                                  activity.default_value &&
+                                  !activity.default_value.includes('.')
+                                    ? 'flex'
+                                    : 'none'
+                                }>
+                                <Button onClick={onChooseDefault} className={classes.defaultButton}>
+                                  <Typography noWrap>{activity.default_value}</Typography>
+                                </Button>
+                              </Box>
+                            </Box>
+                            <Box display={activity.most_recent_observation ? 'block' : 'none'}>
+                            {activity.observation_status && activity.observation_status.includes('(exp)') ? (
+                              <Typography variant='body2'>
+                                No current data - Last {activity.observation_status.replace('(exp)', '')}
+                              </Typography>
+                            ) : (
+                              <Typography variant='body2'>
+                                {activity.most_recent_observation} - {activity.observation_status}
+                              </Typography>
+                            )}
                           </Box>
-                        </Box>
-                        <Box display={activity.most_recent_observation ? 'block' : 'none'}>
-                          {activity.observation_status && activity.observation_status.includes('(exp)') ? (
-                            <Typography variant='body2'>
-                              No current data - Last {activity.observation_status.replace('(exp)', '')}
-                            </Typography>
-                          ) : (
-                            <Typography variant='body2'>
-                              {activity.most_recent_observation} - {activity.observation_status}
-                            </Typography>
-                          )}
-                        </Box>
+                          </React.Fragment>
+                        }
                       </Box>
                       <Box
                         alignSelf='center'
@@ -705,11 +779,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='body1' noWrap>
-                    {activities.length < limit ? 'No more items' : 'More items...'}
+                    {!activities || activities.length < limit ? 'No more items' : 'More items...'}
                   </Typography>
                 </Box>
                 <Paper
-                  display={activities.length < limit ? 'none' : 'block'}
+                  display={!activities || activities.length < limit ? 'none' : 'block'}
                   component={Box}
                   py={2}
                   px={2}
@@ -738,20 +812,20 @@ export default ({ patient, session, newFact, setNewFact }) => {
         />
       ) : null}
       <Dialog
-        open={showSummary}
+        open={showSummary && homeState === 'event'}
         onClose={handleSummaryBack}
         scroll='paper'
         fullWidth={true}
         aria-labelledby='scroll-dialog-title'
         aria-describedby='scroll-dialog-description'>
         <DialogTitle id='scroll-dialog-title' className={classes.descriptionText}>
-          {activities[0] && activities[0].reason
+          {activities && activities[0] && activities[0].reason
             ? activities[0].reason.substr(0, activities[0].reason.length - 6)
             : null}
         </DialogTitle>
         <DialogContent dividers={true} className={classes.descriptionText}>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
-            {activities.map(activity =>
+            {!activities || activities.length === 0 ? null : activities.map(activity =>
               activity.observation_expires && activity.observation_expires < timeNow ? (
                 <Typography key={activity.name}>
                   <Box key={activity.name + '.name'} pt={2}>
@@ -836,7 +910,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             Back
           </Button>
           <Button variant='contained' className={classes.confirm} size='small' onClick={handleConfirmSubmit}>
-            Confirm
+            Submit
           </Button>
         </DialogActions>
       </Dialog>

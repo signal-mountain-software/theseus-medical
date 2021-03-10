@@ -48,8 +48,8 @@ export default ({ patient, roles, session }) => {
               <Typography variant='subtitle1'>
                 {session.patient_id
                   ? roles.includes('patient_with_partner')
-                    ? 'View current partner'
-                    : 'View current patient'
+                    ? 'View current account info'
+                    : 'View current account info'
                   : 'View your profile'}
               </Typography>
             }

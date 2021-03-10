@@ -28,6 +28,7 @@ import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
 import ListItemText from '@material-ui/core/ListItemText';
+import ListItemIcon from '@material-ui/core/ListItemIcon';
 
 import Input from '@material-ui/core/Input';
 import InputAdornment from '@material-ui/core/InputAdornment';
@@ -35,7 +36,6 @@ import IconButton from '@material-ui/core/IconButton';
 import SearchIcon from '@material-ui/icons/Search';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 
-// import QualifierForm from '../forms/QualifierForm';
 import DialogContentText from '@material-ui/core/DialogContentText';
 
 import Box from '@material-ui/core/Box';
@@ -50,6 +50,17 @@ const useStyles = makeStyles(theme => ({
   },
   inputText: {
     paddingRight: '45px',
+  },
+  leftButton: {
+    minWidth: '30px',
+  },
+  listItemAVA: {
+    maxWidth: 'max-content',
+    marginRight: '7px'
+  },
+  idText: {
+    display: 'inline',
+    marginLeft: '25px'
   },
   subHeader: {
     fontWeight: 'bold',
@@ -77,7 +88,8 @@ const useStyles = makeStyles(theme => ({
   freeInput: {
     marginLeft: 0,
     paddingLeft: 0,
-    paddingRight: 15,
+    paddingRight: 0,
+    marginBottom: 15,
     width: '95%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
@@ -143,6 +155,7 @@ export default ({
   newFact,
   setNewFact,
   type,
+  current_user_display_name,
   message,
   statusMessage,
   values,
@@ -174,6 +187,7 @@ export default ({
   const [qualifierOpen, setQualifierOpen] = React.useState(false);
   const [qualifierData, setQualifierData] = React.useState({});
   const [OGmessage, setOGmessage] = React.useState('');
+  const [OGvalue, setOGvalue] = React.useState('');
 
   const [listValues, setListValues] = React.useState([]);
 
@@ -191,6 +205,10 @@ export default ({
 
   if (OGmessage === '') {
     setOGmessage(message);
+  }
+
+  if (OGvalue === '' && type === 'document') {
+    setOGvalue(value);
   }
 
   if (firstTime) {
@@ -213,23 +231,25 @@ export default ({
     if (vL > 0) {
       let v = 0;
       do {
-        if (values[v].includes('~^')) {
-          [, mF] = values[v].split(':');
+        if (values[v].includes('~^')) {     // ~^ indicates free form text box 
+          [, mF] = values[v].split(':');    // prompt with the string after the ":"
         }
         v++;
       } while (v < vL && !mF);
     }
     setMessageField(mF);
 
-    newFact.value = {
-      selected: [],
-      associations: associationsTable,
-      freeText: {},
-    };
+    if (type !== 'reservation') {
+      newFact.value = {
+        selected: [],
+        associations: associationsTable,
+        freeText: {},
+      };
+    }
 
     setQualChecked({});
 
-    if (defaultValue) {
+    if (defaultValue && type !== 'reservation') {
       let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
       let defaultSelections;
       if (!dValues) {
@@ -269,10 +289,34 @@ export default ({
       }
     }
 
-    setChecked(newFact.value.selected);
+    setChecked(type !== 'reservation' ? newFact.value.selected : {});
     setNewFact(newFact);
     setFirstTime(false);
   }
+
+  const onChangeFreeName = event => {
+    let slotIndex = event.target.id.substr(event.target.id.indexOf('#') + 1);
+    newFact.value.slot[slotIndex].display_name = event.target.value;
+    newFact.value.slot[slotIndex].action = 'set name to ' + event.target.value;
+    setNewFact(newFact);
+    var resetter = formState + 1;
+    setFormState(resetter);
+  };
+
+  const handleReserve = slotIndex => () => {
+    if (newFact.value.slot[slotIndex].owner === newFact.patient_id) {
+      newFact.value.slot[slotIndex].owner = null;
+      newFact.value.slot[slotIndex].display_name = null;
+      newFact.value.slot[slotIndex].action = 'relinquished';
+    } else {
+      newFact.value.slot[slotIndex].owner = newFact.patient_id;
+      newFact.value.slot[slotIndex].display_name = current_user_display_name;
+      newFact.value.slot[slotIndex].action = 'reserved';
+    }
+    setNewFact(newFact);
+    var resetter = formState + 1;
+    setFormState(resetter);
+  };
 
   const handleToggle = value => () => {
     // noToggle ignores the whole function code (used when handleToggle is fired by the OS)
@@ -481,10 +525,58 @@ export default ({
           onError={onError}
         />
       );
-
+    case 'reservation':
+      return (
+        <FormControl fullWidth>
+          <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
+            <List className={classes.root}>
+              {newFact.value.slot.map((currentSlot, vX) => {
+                const labelId = `checkbox-list-label-${currentSlot.identifier}#${vX.toString()}`;
+                const owned = !!currentSlot.owner;
+                const ownedByMe = owned && currentSlot.owner === newFact.patient_id;
+                var freeName =
+                  currentSlot.show_slots && currentSlot.show_slots === 'no_names' && !ownedByMe
+                    ? 'taken'
+                    : currentSlot.display_name || '';
+                return (
+                  <ListItem key={currentSlot.identifier} role={undefined} dense button>
+                    <ListItemIcon classes={{ root: classes.leftButton }}>
+                      {!owned || ownedByMe ? (
+                        <Checkbox
+                          edge='start' 
+                          onClick={handleReserve(vX)}                         
+                          checked={owned}
+                          tabIndex={-1}
+                          disabled={owned && !ownedByMe}
+                          disableRipple
+                          inputProps={{ 'aria-labelledby': labelId }}
+                        />
+                      ) : null}
+                    </ListItemIcon>
+                    <ListItemText classes={{ root: classes.listItemAVA }} id={'id-' + labelId} primary={currentSlot.identifier} />
+                    
+                      {owned ? (
+                        <TextField
+                        classes={{ root: classes.idText }}
+                          id={'val-' + labelId}
+                          value={freeName}
+                          disabled={!ownedByMe}
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{ noWrap: true }}
+                          onChange={onChangeFreeName}
+                        />
+                      ) : null}
+                    
+                  </ListItem>
+                );
+              })}
+            </List>
+          </FormGroup>
+        </FormControl>
+      );
     case 'document':
       if (firstTime) {
-        window.open(defaultValue, '_blank');
+        window.open(defaultValue, message);
       }
     // intentionally fall through to the message case
 
@@ -493,14 +585,14 @@ export default ({
         <FreeTextForm
           open={open}
           label='Message'
-          value={value}
+          value={(OGvalue !== value && type === 'document') ? OGvalue : value}
           message={mOut}
           onChange={onChangeMessage}
           onError={onError}
         />
       );
     default:
-      if (checked.length === 0) {
+      if (checked.length === 0) { 
         setStatusMessage('');
       } else {
         let stopAt = checked.length - 1;
@@ -561,7 +653,7 @@ export default ({
                           ) : null}
                           <ListItemText
                             id={labelId}
-                            onClick={handleToggle(value)}
+                            onChange={onChangeFreeText}
                             classes={{ root: classes.inputText }}
                             primary={value.split(':')[0]}
                             secondary={
@@ -575,7 +667,7 @@ export default ({
                         <FormControl className={classes.freeInput}>
                           <TextField
                             id={value.split(':')[1]}
-                            placeholder={value.split(':')[1]}
+                            helperText={value.split(':')[1]}
                             value={
                               newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
                                 ? newFact.value.freeText[value.split(':')[1]]
@@ -592,7 +684,7 @@ export default ({
                             id='%filter-input%'
                             type='text'
                             onChange={onChangeFilterText}
-                            placeholder={value.split(':')[1]}
+                            helperText={value.split(':')[1]}
                             value={filterText}
                             endAdornment={
                               <InputAdornment position='end'>
