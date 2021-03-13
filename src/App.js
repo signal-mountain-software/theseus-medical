@@ -18,6 +18,7 @@ import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
+import A2HS from './components/A2HS';
 
 const menu = [
   { label: 'Profile', path: '/profile', icon: <AccountCircleIcon />, screen: <ProfileScreen /> },
@@ -29,6 +30,7 @@ const HOME = '/theseus';
 
 const App = () => (
   <Box>
+    <A2HS />
     <TopBar />
     <Box pb={7}>
       <RootNavigation menu={menu} homePath={HOME} />
