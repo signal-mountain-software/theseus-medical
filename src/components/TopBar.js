@@ -1,5 +1,5 @@
 import React from 'react';
-import { isIOS } from 'react-device-detect';
+import { isIOS, isIOS13, isIPad13, isIPhone13, isIPod13 } from 'react-device-detect';
 import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
 import AppBar from '@material-ui/core/AppBar';
@@ -94,7 +94,7 @@ export default () => {
         }
       });
     } else {
-      if (isIOS) {
+      if (isIOS || isIOS13 || isIPad13 || isIPhone13 || isIPod13) {
         setShowIOSDialog(true);
       } else {
         alert('Error: deferred prompt not found');

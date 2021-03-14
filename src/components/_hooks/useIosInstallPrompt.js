@@ -1,4 +1,4 @@
-import { isIOS } from 'react-device-detect';
+import { isIOS, isIOS13, isIPad13, isIPhone13, isIPod13 } from 'react-device-detect';
 import getNavigatorInstance from '../_utils/getNavigatorInstance';
 import useShouldShowPrompt from './useShouldShowPrompt';
 
@@ -8,7 +8,7 @@ const iOSCheck = () => {
     // user already installed the app
     return false;
   }
-  return isIOS;
+  return isIOS || isIOS13 || isIPad13 || isIPhone13 || isIPod13;
 };
 
 const useIosInstallPrompt = () => {
