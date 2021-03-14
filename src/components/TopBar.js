@@ -46,7 +46,7 @@ const ITEM_HEIGHT = 48;
 const nav = getNavigatorInstance();
 
 export default () => {
-  const [showInstall, setShowInstall] = React.useState(!(nav && nav.standalone) || !isIOS);
+  const [showInstall, setShowInstall] = React.useState(!(nav && nav.standalone));
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
