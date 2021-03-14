@@ -10,11 +10,11 @@ const setPromptLastSeen = prompt => {
 
 const getShouldUserBePrompted = (prompt, interval) => {
   const lastSeen = moment(promptLastSeen(prompt));
-  const daysSincePromptLastSeen = moment().diff(lastSeen, 'days');
+  const daysSincePromptLastSeen = moment().diff(lastSeen, 'minutes');
   return isNaN(daysSincePromptLastSeen) || daysSincePromptLastSeen > interval;
 };
 
-const useShouldShowPrompt = (prompt, interval = 30) => {
+const useShouldShowPrompt = (prompt, interval = 5) => {
   const [userShouldSeePrompt, setUserShouldSeePrompt] = React.useState(getShouldUserBePrompted(prompt, interval));
 
   const handleInstallPromptSeen = () => {

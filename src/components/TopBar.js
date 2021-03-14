@@ -1,4 +1,5 @@
 import React from 'react';
+import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
@@ -16,9 +17,11 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 //import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import AssignmentIndIcon from '@material-ui/icons/AssignmentInd';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
+import GetAppIcon from '@material-ui/icons/GetApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 
+import promptState from '../_states/promptState';
 import useSession from '../hooks/useSession';
 import SwitchPatientDialog from './dialogs/SwitchPatientDialog';
 import PatientChip from './PatientChip';
@@ -38,12 +41,15 @@ const HideOnScroll = ({ children }) => {
 const ITEM_HEIGHT = 48;
 
 export default () => {
+  const [showInstall, setShowInstall] = React.useState(typeof window !== 'undefined' && !navigator.standalone);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { state } = useSession();
   const { patient, roles, session } = state;
+
+  const [prompt, setPrompt] = useRecoilState(promptState);
 
   const handleClick = event => {
     setAnchorEl(event.currentTarget);
@@ -63,6 +69,23 @@ export default () => {
     Auth.signOut().then(() => {
       window.location.reload();
     });
+  };
+
+  const onInstall = () => {
+    if (prompt) {
+      // show native prompt
+      prompt.prompt();
+
+      // decide what to do after the user chooses
+      prompt.userChoice.then(choice => {
+        if (choice.outcome === 'accepted') {
+          setShowInstall(false);
+          setPrompt(null);
+        }
+      });
+    } else {
+      alert('deferred prompt not found');
+    }
   };
 
   React.useEffect(() => {
@@ -95,9 +118,7 @@ export default () => {
                   </Tooltip>
                 </Box>
               )}
-              <Tooltip
-                title={<Typography variant='subtitle1'>Sign out of AVA</Typography>}
-                placement='bottom-end'>
+              <Tooltip title={<Typography variant='subtitle1'>Sign out of AVA</Typography>} placement='bottom-end'>
                 <Button
                   color='secondary'
                   size='small'
@@ -107,6 +128,19 @@ export default () => {
                   Sign Out
                 </Button>
               </Tooltip>
+              {showInstall && (
+                <Tooltip title={<Typography variant='subtitle1'>Install AVA</Typography>} placement='bottom-end'>
+                  <Button
+                    style={{ marginLeft: '1rem' }}
+                    color='primary'
+                    size='small'
+                    variant='contained'
+                    endIcon={<GetAppIcon />}
+                    onClick={onInstall}>
+                    Install
+                  </Button>
+                </Tooltip>
+              )}
             </>
           ) : (
             <>
@@ -138,6 +172,14 @@ export default () => {
                   </ListItemIcon>
                   <ListItemText primary='Sign Out' />
                 </MenuItem>
+                {showInstall && (
+                  <MenuItem onClick={onInstall}>
+                    <ListItemIcon>
+                      <GetAppIcon />
+                    </ListItemIcon>
+                    <ListItemText primary='Install' />
+                  </MenuItem>
+                )}
               </Menu>
             </>
           )}

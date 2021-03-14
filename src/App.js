@@ -16,6 +16,7 @@ import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
+import withRecoil from './_wrappers/withRecoil';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
 import A2HS from './components/A2HS';
@@ -47,4 +48,5 @@ export default hocFactory(App, [
   withSession,
   withAuth,
   withBootstrap,
+  withRecoil,
 ]);

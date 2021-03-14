@@ -1,7 +1,11 @@
 import React from 'react';
+import { useSetRecoilState } from 'recoil';
+
+import promptState from '../_states/promptState';
 import useShouldShowPrompt from './useShouldShowPrompt';
 
 const useWebInstallPrompt = () => {
+  const setPrompt = useSetRecoilState(promptState);
   const [installPromptEvent, setInstallPromptEvent] = React.useState(null);
   const [userShouldSeePrompt, handleInstallPromptSeen] = useShouldShowPrompt('webPromptLastSeen');
 
@@ -12,6 +16,7 @@ const useWebInstallPrompt = () => {
       // check if user was already asked
       if (userShouldSeePrompt) {
         // store event for later use
+        setPrompt(event);
         setInstallPromptEvent(event);
       }
     };
@@ -20,7 +25,7 @@ const useWebInstallPrompt = () => {
     return () => {
       window.removeEventListener('beforeinstallprompt', beforeInstallPromptHandler);
     };
-  }, [userShouldSeePrompt]);
+  }, [setPrompt, userShouldSeePrompt]);
 
   const onDecline = () => {
     handleInstallPromptSeen();
