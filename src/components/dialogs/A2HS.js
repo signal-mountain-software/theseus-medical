@@ -7,8 +7,8 @@ import DialogContentText from '@material-ui/core/DialogContentText';
 import DialogTitle from '@material-ui/core/DialogTitle';
 import SvgIcon from '@material-ui/core/SvgIcon';
 
-import useIosInstallPrompt from '../hooks/useIosInstallPrompt';
-import useWebInstallPrompt from '../hooks/useWebInstallPrompt';
+import useIosInstallPrompt from '../_hooks/useIosInstallPrompt';
+import useWebInstallPrompt from '../_hooks/useWebInstallPrompt';
 
 const A2HS = () => {
   const [confirm, setConfirm] = React.useState(false);

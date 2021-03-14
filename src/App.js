@@ -16,10 +16,10 @@ import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
-import withRecoil from './_wrappers/withRecoil';
+import withRecoil from './components/_wrappers/withRecoil';
+import A2HS from './components/dialogs/A2HS';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
-import A2HS from './components/A2HS';
 
 const menu = [
   { label: 'Profile', path: '/profile', icon: <AccountCircleIcon />, screen: <ProfileScreen /> },

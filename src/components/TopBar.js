@@ -1,4 +1,5 @@
 import React from 'react';
+import { isIOS } from 'react-device-detect';
 import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
 import AppBar from '@material-ui/core/AppBar';
@@ -21,8 +22,10 @@ import GetAppIcon from '@material-ui/icons/GetApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 
-import promptState from '../_states/promptState';
 import useSession from '../hooks/useSession';
+import promptState from './_states/promptState';
+import getNavigatorInstance from './_utils/getNavigatorInstance';
+import IosInstall from './dialogs/IosInstall';
 import SwitchPatientDialog from './dialogs/SwitchPatientDialog';
 import PatientChip from './PatientChip';
 
@@ -40,8 +43,11 @@ const HideOnScroll = ({ children }) => {
 
 const ITEM_HEIGHT = 48;
 
+const nav = getNavigatorInstance();
+
 export default () => {
-  const [showInstall, setShowInstall] = React.useState(typeof window !== 'undefined' && !navigator.standalone);
+  const [showInstall, setShowInstall] = React.useState(!(nav && nav.standalone) || !isIOS);
+  const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
@@ -64,6 +70,10 @@ export default () => {
     setOpen(true);
   };
 
+  const onIOSInstallClose = () => {
+    setShowIOSDialog(false);
+  };
+
   const onSignOut = () => {
     setAnchorEl(null);
     Auth.signOut().then(() => {
@@ -84,7 +94,11 @@ export default () => {
         }
       });
     } else {
-      alert('deferred prompt not found');
+      if (isIOS) {
+        setShowIOSDialog(true);
+      } else {
+        alert('Error: deferred prompt not found');
+      }
     }
   };
 
@@ -193,6 +207,7 @@ export default () => {
           setOpen(false);
         }}
       />
+      <IosInstall open={showIOSDialog} onClose={onIOSInstallClose} />
     </Box>
   );
 };
