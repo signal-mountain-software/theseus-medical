@@ -46,7 +46,7 @@ const ITEM_HEIGHT = 48;
 const nav = getNavigatorInstance();
 
 export default () => {
-  const [showInstall, setShowInstall] = React.useState(!(nav && nav.standalone));
+  const [showInstall, setShowInstall] = React.useState(!(nav && nav.standalone) || !prompt);
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
@@ -82,7 +82,9 @@ export default () => {
   };
 
   const onInstall = () => {
-    if (prompt) {
+    if (isIOS || isIOS13 || isIPad13 || isIPhone13 || isIPod13) {
+      setShowIOSDialog(true);
+    } else {
       // show native prompt
       prompt.prompt();
 
@@ -93,12 +95,6 @@ export default () => {
           setPrompt(null);
         }
       });
-    } else {
-      if (isIOS || isIOS13 || isIPad13 || isIPhone13 || isIPod13) {
-        setShowIOSDialog(true);
-      } else {
-        alert('Error: deferred prompt not found');
-      }
     }
   };
 
