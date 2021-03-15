@@ -43,15 +43,16 @@ const HideOnScroll = ({ children }) => {
 
 const ITEM_HEIGHT = 48;
 
-const nav = getNavigatorInstance();
+const NAV = getNavigatorInstance();
 
 export default () => {
-  const [showInstall, setShowInstall] = React.useState(!(nav && nav.standalone));
+  const [showInstall, setShowInstall] = React.useState(!(NAV && NAV.standalone));
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isStandalone = React.useState('(display-mode: standalone)'); // checks if device is installed for Android/Chrome users
   const { state } = useSession();
   const { patient, roles, session } = state;
 
@@ -138,7 +139,7 @@ export default () => {
                   Sign Out
                 </Button>
               </Tooltip>
-              {showInstall && (
+              {!isStandalone && showInstall && (
                 <Tooltip title={<Typography variant='subtitle1'>Install AVA</Typography>} placement='bottom-end'>
                   <Button
                     style={{ marginLeft: '1rem' }}
