@@ -15,6 +15,7 @@ import Toolbar from '@material-ui/core/Toolbar';
 import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
+import makeStyles from '@material-ui/core/styles/makeStyles';
 //import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import AssignmentIndIcon from '@material-ui/icons/AssignmentInd';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
@@ -41,18 +42,28 @@ const HideOnScroll = ({ children }) => {
 };
 */
 
+const useStyles = makeStyles({
+  installButton: {
+    display: 'block',
+    marginLeft: '1rem',
+    '@media all and (display-mode:standalone)': {
+      display: 'hidden',
+    },
+  },
+});
+
 const ITEM_HEIGHT = 48;
 
 const NAV = getNavigatorInstance();
 
 export default () => {
+  const classes = useStyles();
   const [showInstall, setShowInstall] = React.useState(!(NAV && NAV.standalone));
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-  const isStandalone = useMediaQuery('(display-mode: standalone)'); // checks if device is installed for Android/Chrome users
   const { state } = useSession();
   const { patient, roles, session } = state;
 
@@ -139,10 +150,10 @@ export default () => {
                   Sign Out
                 </Button>
               </Tooltip>
-              {!isStandalone && showInstall && (
+              {showInstall && (
                 <Tooltip title={<Typography variant='subtitle1'>Install AVA</Typography>} placement='bottom-end'>
                   <Button
-                    style={{ marginLeft: '1rem' }}
+                    className={classes.installButton}
                     color='primary'
                     size='small'
                     variant='contained'
