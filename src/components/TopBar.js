@@ -52,7 +52,7 @@ export default () => {
   const [open, setOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-  const isStandalone = React.useState('(display-mode: standalone)'); // checks if device is installed for Android/Chrome users
+  const isStandalone = useMediaQuery('(display-mode: standalone)'); // checks if device is installed for Android/Chrome users
   const { state } = useSession();
   const { patient, roles, session } = state;
 
