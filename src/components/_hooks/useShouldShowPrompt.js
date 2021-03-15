@@ -1,21 +1,26 @@
 import React from 'react';
 import moment from 'moment';
+import getLocalStorageInstance from '../_utils/getLocalStorageInstance';
 
-const promptLastSeen = prompt => typeof window !== 'undefined' && localStorage.getItem(prompt);
+const LS = getLocalStorageInstance();
+
+const getPromptLastSeen = prompt => LS && LS.getItem(prompt);
 
 const setPromptLastSeen = prompt => {
   const today = moment().toISOString();
-  typeof window !== 'undefined' && localStorage.setItem(prompt, today);
+  LS && LS.setItem(prompt, today);
 };
 
-const getShouldUserBePrompted = (prompt, interval) => {
-  const lastSeen = moment(promptLastSeen(prompt));
-  const daysSincePromptLastSeen = moment().diff(lastSeen, 'minutes');
-  return isNaN(daysSincePromptLastSeen) || daysSincePromptLastSeen > interval;
+const getUserShouldSeePrompt = (prompt, waitTime, unitOfTime) => {
+  const lastSeen = moment(getPromptLastSeen(prompt));
+  const daysSincePromptLastSeen = moment().diff(lastSeen, unitOfTime);
+  return isNaN(daysSincePromptLastSeen) || daysSincePromptLastSeen > waitTime;
 };
 
-const useShouldShowPrompt = (prompt, interval = 5) => {
-  const [userShouldSeePrompt, setUserShouldSeePrompt] = React.useState(getShouldUserBePrompted(prompt, interval));
+const useShouldShowPrompt = (prompt, waitTime = 3, unitOfTime = 'days') => {
+  const [userShouldSeePrompt, setUserShouldSeePrompt] = React.useState(
+    getUserShouldSeePrompt(prompt, waitTime, unitOfTime)
+  );
 
   const handleInstallPromptSeen = () => {
     setUserShouldSeePrompt(false);

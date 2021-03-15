@@ -46,6 +46,7 @@ const ITEM_HEIGHT = 48;
 const nav = getNavigatorInstance();
 
 export default () => {
+  const [showInstall, setShowInstall] = React.useState(!(nav && nav.standalone));
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
@@ -55,7 +56,6 @@ export default () => {
   const { patient, roles, session } = state;
 
   const [prompt, setPrompt] = useRecoilState(promptState);
-  const [showInstall, setShowInstall] = React.useState(!(nav && nav.standalone) || !prompt);
 
   const handleClick = event => {
     setAnchorEl(event.currentTarget);

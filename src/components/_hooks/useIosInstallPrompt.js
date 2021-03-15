@@ -2,9 +2,10 @@ import { isIOS, isIOS13, isIPad13, isIPhone13, isIPod13 } from 'react-device-det
 import getNavigatorInstance from '../_utils/getNavigatorInstance';
 import useShouldShowPrompt from './useShouldShowPrompt';
 
-const iOSCheck = () => {
-  const nav = getNavigatorInstance();
-  if (nav && nav.standalone) {
+const NAV = getNavigatorInstance();
+
+const isUsingIOS = () => {
+  if (NAV && NAV.standalone) {
     // user already installed the app
     return false;
   }
@@ -13,7 +14,7 @@ const iOSCheck = () => {
 
 const useIosInstallPrompt = () => {
   const [userShouldSeePrompt, handleInstallPromptSeen] = useShouldShowPrompt('iosPromptLastSeen');
-  return [iOSCheck() && userShouldSeePrompt, handleInstallPromptSeen];
+  return [isUsingIOS() && userShouldSeePrompt, handleInstallPromptSeen];
 };
 
 export default useIosInstallPrompt;
