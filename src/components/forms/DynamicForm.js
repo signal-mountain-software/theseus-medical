@@ -526,49 +526,56 @@ export default ({
         />
       );
     case 'reservation':
+      var availableSlots = 0;
+      newFact.value.slot.forEach((curVal) => {if (!curVal.owner) {availableSlots++}; return});
+      var unownedSlotFound = false;
       return (
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <List className={classes.root}>
-              {newFact.value.slot.map((currentSlot, vX) => {
-                const labelId = `checkbox-list-label-${currentSlot.identifier}#${vX.toString()}`;
-                const owned = !!currentSlot.owner;
-                const ownedByMe = owned && currentSlot.owner === newFact.patient_id;
-                var freeName =
-                  currentSlot.show_slots && currentSlot.show_slots === 'no_names' && !ownedByMe
-                    ? 'taken'
-                    : currentSlot.display_name || '';
-                return (
-                  <ListItem key={currentSlot.identifier} role={undefined} dense button>
-                    <ListItemIcon classes={{ root: classes.leftButton }}>
-                      {!owned || ownedByMe ? (
-                        <Checkbox
-                          edge='start' 
-                          onClick={handleReserve(vX)}                         
-                          checked={owned}
-                          tabIndex={-1}
-                          disabled={owned && !ownedByMe}
-                          disableRipple
-                          inputProps={{ 'aria-labelledby': labelId }}
-                        />
-                      ) : null}
-                    </ListItemIcon>
-                    <ListItemText classes={{ root: classes.listItemAVA }} id={'id-' + labelId} primary={currentSlot.identifier} />
-                    
-                      {owned ? (
-                        <TextField
-                        classes={{ root: classes.idText }}
-                          id={'val-' + labelId}
-                          value={freeName}
-                          disabled={!ownedByMe}
-                          InputLabelProps={{ shrink: true }}
-                          InputProps={{ noWrap: true }}
-                          onChange={onChangeFreeName}
-                        />
-                      ) : null}
-                    
-                  </ListItem>
-                );
+              {newFact.value.slot.flatMap((currentSlot, vX) => {
+                if (!newFact.value.show_slots || !newFact.value.show_slots.includes('first_available') || !unownedSlotFound) { 
+                  const labelId = `checkbox-list-label-${currentSlot.identifier}#${vX.toString()}`;
+                  const owned = !!currentSlot.owner;
+                  if (!owned) { unownedSlotFound = true };
+                  const ownedByMe = owned && currentSlot.owner === newFact.patient_id;
+                  var slotValue = currentSlot.identifier || (owned ? '' : `${availableSlots} spaces available - click to reserve`);
+                  var freeName =
+                  newFact.value.show_slots && newFact.value.show_slots === 'no_names' && !ownedByMe
+                      ? 'taken'
+                      : currentSlot.display_name || '';
+                  return (
+                    <ListItem key={'key-' + labelId} role={undefined} dense button>
+                      <ListItemIcon classes={{ root: classes.leftButton }}>
+                        {!owned || ownedByMe ? (
+                          <Checkbox
+                            edge='start' 
+                            onClick={handleReserve(vX)}                         
+                            checked={owned}
+                            tabIndex={-1}
+                            disabled={owned && !ownedByMe}
+                            disableRipple
+                            inputProps={{ 'aria-labelledby': labelId }}
+                          />
+                        ) : null}
+                      </ListItemIcon>
+                      <ListItemText classes={{ root: classes.listItemAVA }} id={'id-' + labelId} primary={slotValue} />
+                      
+                        {owned ? (
+                          <TextField
+                          classes={{ root: classes.idText }}
+                            id={'val-' + labelId}
+                            value={freeName}
+                            disabled={!ownedByMe}
+                            InputLabelProps={{ shrink: true }}
+                            InputProps={{ noWrap: true }}
+                            onChange={onChangeFreeName}
+                          />
+                        ) : null}
+                      
+                    </ListItem>
+                  );
+                }
               })}
             </List>
           </FormGroup>

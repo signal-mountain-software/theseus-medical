@@ -480,20 +480,20 @@ export default ({ patient, session, newFact, setNewFact }) => {
               }
             }
           }
-        } else if (newFact.value.hasOwnProperty('event_code')) {
+        } else if (newFact.value.hasOwnProperty('event_code')) {      // for "reservation" type activities
           constructedValue = '';
+          let link = '';
           let nS = newFact.value.slot.length;
           for (let s = 0; s < nS; s++) {
             if (newFact.value.slot[s].hasOwnProperty('action')) {
               if (newFact.value.slot[s].action) {
-                constructedValue +=
-                  'ID ' + newFact.value.slot[s].identifier + ' ' + newFact.value.slot[s].action + ' ~ ';
+                constructedValue += link + newFact.value.slot[s].identifier + ' ' + newFact.value.slot[s].action;
+                link =  ' ~ ';
               }
               delete newFact.value.slot[s].action;
             }
           }
           if (constructedValue) {
-            constructedValue += '*END*';
             let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
             writtenFact.data.createPutFact.value = 'update.' + constructedValue;
             setLastWrittenFact(writtenFact.data.createPutFact);
@@ -607,18 +607,21 @@ export default ({ patient, session, newFact, setNewFact }) => {
         if (mounted) {
           setLoading(false);
           if (Object.keys(lastWrittenFact).length > 0) {
-            let [findAKey] = lastWrittenFact.activity_key.split('#');
-            result.data.getActivityData.some((checkObj, aIndex) => {
-              if (checkObj.code !== findAKey) {
-                return false;
+            // getActivityData is list of options that displays on the user's screen 
+            // If we just wrote a fact, attempt to drop information about that fact into getActivityData 
+            let [findAKey] = lastWrittenFact.activity_key.split('#');       // fact keys are in the form activity_type.activity_code#time_stamp
+            result.data.getActivityData.some((checkObj, aIndex) => {         
+              if (checkObj.code !== findAKey) {                             // if the current activity_code is NOT the one that was most recently recorded
+                return false;                                               //    leave this iteration, but keep the loop alive (return false)
               }
-              result.data.getActivityData[aIndex].fact_history = [lastWrittenFact];
-              result.data.getActivityData[aIndex].observation_status = 'Updated moments ago';
+              // A match! put info about the recently recorded fact into getActivityData 
+              result.data.getActivityData[aIndex].fact_history = [lastWrittenFact];   
+              result.data.getActivityData[aIndex].observation_status = '';
               [, result.data.getActivityData[aIndex].most_recent_observation] = lastWrittenFact.value
                 .replace('.', '^')
                 .split('^');
               setLastWrittenFact({});
-              return true;
+              return true;                                                    // exit this iteration AND stop the loop (.some ends when ANY true is returned)
             });
           }
           setActivities(result.data.getActivityData);
@@ -751,7 +754,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                               </Typography>
                             ) : (
                               <Typography variant='body2'>
-                                {activity.most_recent_observation} - {activity.observation_status}
+                                {activity.most_recent_observation} {activity.observation_status ? '- ' + activity.observation_status : ''}
                               </Typography>
                             )}
                           </Box>
