@@ -1,5 +1,5 @@
 import React from 'react';
-import { isIOS, isIOS13, isIPad13, isIPhone13, isIPod13 } from 'react-device-detect';
+import { isAndroid, isIOS, isIOS13, isIPad13, isIPhone13, isIPod13 } from 'react-device-detect';
 import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
 import AppBar from '@material-ui/core/AppBar';
@@ -15,7 +15,6 @@ import Toolbar from '@material-ui/core/Toolbar';
 import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
-import makeStyles from '@material-ui/core/styles/makeStyles';
 //import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import AssignmentIndIcon from '@material-ui/icons/AssignmentInd';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
@@ -42,23 +41,12 @@ const HideOnScroll = ({ children }) => {
 };
 */
 
-const useStyles = makeStyles({
-  installButton: {
-    display: 'block',
-    marginLeft: '1rem',
-    '@media all and (display-mode:standalone)': {
-      display: 'hidden',
-    },
-  },
-});
-
 const ITEM_HEIGHT = 48;
 
 const NAV = getNavigatorInstance();
 
 export default () => {
-  const classes = useStyles();
-  const [showInstall, setShowInstall] = React.useState(!(NAV && NAV.standalone));
+  const [showInstall, setShowInstall] = React.useState(!(NAV && NAV.standalone) || !isAndroid);
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
@@ -152,13 +140,7 @@ export default () => {
               </Tooltip>
               {showInstall && (
                 <Tooltip title={<Typography variant='subtitle1'>Install AVA</Typography>} placement='bottom-end'>
-                  <Button
-                    className={classes.installButton}
-                    color='primary'
-                    size='small'
-                    variant='contained'
-                    endIcon={<GetAppIcon />}
-                    onClick={onInstall}>
+                  <Button color='primary' size='small' variant='contained' endIcon={<GetAppIcon />} onClick={onInstall}>
                     Install
                   </Button>
                 </Tooltip>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { isAndroid } from 'react-device-detect';
 import Button from '@material-ui/core/Button';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -31,7 +32,7 @@ const A2HS = () => {
     }
   };
 
-  if (!(iosInstallPrompt || webInstallPrompt)) return null;
+  if (isAndroid || !(iosInstallPrompt || webInstallPrompt)) return null;
 
   return (
     <Dialog open={iosInstallPrompt || webInstallPrompt}>
