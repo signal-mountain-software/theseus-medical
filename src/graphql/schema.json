@@ -171,6 +171,37 @@
               "deprecationReason": null
             },
             {
+              "name": "getGroup",
+              "description": null,
+              "args": [
+                  {
+                      "name": "client_group_id",
+                      "description": null,
+                      "type": {
+                          "kind": "NON_NULL",
+                          "name": null,
+                          "ofType": {
+                              "kind": "SCALAR",
+                              "name": "String",
+                              "ofType": null
+                          }
+                      },
+                      "defaultValue": null
+                  }
+              ],
+              "type": {
+                  "kind": "LIST",
+                  "name": null,
+                  "ofType": {
+                      "kind": "OBJECT",
+                      "name": "PersonGroup",
+                      "ofType": null
+                  }
+              },
+              "isDeprecated": false,
+              "deprecationReason": null
+          },
+            {
               "name": "getPerson",
               "description": null,
               "args": [

@@ -3,7 +3,7 @@ import { useSnackbar } from 'notistack';
 import { API, Auth, graphqlOperation } from 'aws-amplify';
 
 import useSession from '../hooks/useSession';
-import { getPeopleByGroup, getPerson, getRoles, getSession } from '../graphql/queries';
+import { getPeopleByGroup, getGroup, getPerson, getRoles, getSession } from '../graphql/queries';
 import { SET_PATIENT, SET_PATIENTS, SET_PROFILE, SET_ROLES, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 
 export default Component => props => {
@@ -80,14 +80,14 @@ export default Component => props => {
       // get a group of patients a user is responsible for
       let patients = null;
       if (session.responsible_for) {
-        getPeopleByGroupResult = await API.graphql(graphqlOperation(getPeopleByGroup, { client_group_id })).catch(
+        getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id })).catch(
           error => {
             console.log(error);
           }
         );
         if (getPeopleByGroupResult) {
-          patients = getPeopleByGroupResult.data.getPeopleByGroup;
-          if (patients.length > 49) {
+          patients = getPeopleByGroupResult.data.getGroup;
+      /*    if (patients.length > 49) {
             let fakeName = {
               first: '** Stopped after 50 entries **',
               last: '',
@@ -97,7 +97,8 @@ export default Component => props => {
               name: fakeName,
             };
             patients.push(extraRecord);
-          }
+      
+          }  */
         }
       }
 

@@ -40,8 +40,9 @@ export default ({ open, roles, onClose }) => {
 
   const parsePersonObject = person => {
     const patient_id = person.person_id;
-    const { first, last, suffix } = person.name;
-    const patient_display_name = `${first} ${last}${suffix ? ' ' + suffix : ''}`;
+    const patient_display_name = person.display_name;
+    // const { first, last, suffix } = person.name;
+    // const patient_display_name = `${first} ${last}${suffix ? ' ' + suffix : ''}`;
     return { patient_id, patient_display_name };
   };
 

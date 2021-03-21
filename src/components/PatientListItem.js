@@ -14,7 +14,7 @@ export default ({ patient, selected, onClick }) => {
 
   React.useEffect(() => {
     (async () => {
-      if (patient_id) {
+  /*    if (patient_id) {
         const response = await Storage.get('patients/' + patient_id + '.jpg').catch(error => {
           enqueueSnackbar(`Whoops! Something went wrong when retrieving public object from s3: ${error.message}`, {
             variant: 'error',
@@ -22,23 +22,12 @@ export default ({ patient, selected, onClick }) => {
         });
 
         setPicture(response);
-      }
+      }  */
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <ListItem selected={selected.patient_id === patient_id} onClick={onClick} button>
-      <ListItemAvatar>
-        {patient_id ? (
-          <Avatar src={picture}>
-            <FaceIcon style={{ width: '100%', height: '100%' }} />
-          </Avatar>
-        ) : (
-          <Avatar>
-            <FaceIcon style={{ width: '100%', height: '100%' }} />
-          </Avatar>
-        )}
-      </ListItemAvatar>
       <ListItemText>{patient_display_name}</ListItemText>
     </ListItem>
   );

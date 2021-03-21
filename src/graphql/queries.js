@@ -161,6 +161,16 @@ export const getRoles = /* GraphQL */ `
     getRoles(person_id: $person_id, client_group_id: $client_group_id)
   }
 `;
+export const getGroup = /* GraphQL */ `
+  query getGroup($client_group_id: String!) {
+    getGroup(client_group_id: $client_group_id) { 
+      display_name
+      person_id
+      roles
+      client_group_id
+    }
+  }
+`;
 export const getSession = /* GraphQL */ `
   query GetSession($session_id: String!) {
     getSession(session_id: $session_id) {
