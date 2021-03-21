@@ -21,9 +21,9 @@ import GetAppIcon from '@material-ui/icons/GetApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 
-import useIosCheck from './_hooks/useIosCheck';
+import useIosCheck from '../hooks/useIosCheck';
 import useSession from '../hooks/useSession';
-import promptState from './_states/promptState';
+import promptState from '../states/promptState';
 import IosInstall from './dialogs/IosInstall';
 import SwitchPatientDialog from './dialogs/SwitchPatientDialog';
 import PatientChip from './PatientChip';

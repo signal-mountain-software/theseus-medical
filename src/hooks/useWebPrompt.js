@@ -1,5 +1,5 @@
 import { useRecoilState } from 'recoil';
-import promptState from '../_states/promptState';
+import promptState from '../states/promptState';
 import useShowPrompt from './useShowPrompt';
 
 const useWebPrompt = () => {

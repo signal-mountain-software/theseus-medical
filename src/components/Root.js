@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSetRecoilState } from 'recoil';
-import promptState from './_states/promptState';
+import promptState from '../states/promptState';
 
 const Root = ({ children }) => {
   const setPrompt = useSetRecoilState(promptState);

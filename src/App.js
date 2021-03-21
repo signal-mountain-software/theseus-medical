@@ -4,6 +4,9 @@ import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 import AssignmentIcon from '@material-ui/icons/Assignment';
 import ChatIcon from '@material-ui/icons/Chat';
 
+import withA2HS from './wrappers/withA2HS';
+import withRecoil from './wrappers/withRecoil';
+import withRoot from './wrappers/withRoot';
 import hocFactory from './util/hocFactory';
 import ChatScreen from './screens/ChatScreen';
 import ProfileScreen from './screens/ProfileScreen';
@@ -16,9 +19,6 @@ import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
-import withA2HS from './components/_wrappers/withA2HS';
-import withRecoil from './components/_wrappers/withRecoil';
-import withRoot from './components/_wrappers/withRoot';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
 
