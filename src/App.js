@@ -16,8 +16,8 @@ import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
+import withA2HS from './components/_wrappers/withA2HS';
 import withRecoil from './components/_wrappers/withRecoil';
-import A2HS from './components/dialogs/A2HS';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
 
@@ -31,7 +31,6 @@ const HOME = '/theseus';
 
 const App = () => (
   <Box>
-    <A2HS />
     <TopBar />
     <Box pb={7}>
       <RootNavigation menu={menu} homePath={HOME} />
@@ -49,4 +48,5 @@ export default hocFactory(App, [
   withAuth,
   withBootstrap,
   withRecoil,
+  withA2HS,
 ]);
