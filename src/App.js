@@ -18,6 +18,7 @@ import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
 import withA2HS from './components/_wrappers/withA2HS';
 import withRecoil from './components/_wrappers/withRecoil';
+import withRoot from './components/_wrappers/withRoot';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
 
@@ -40,6 +41,7 @@ const App = () => (
 );
 
 export default hocFactory(App, [
+  withRoot,
   withRouter,
   withDarkMode,
   withTheme,
