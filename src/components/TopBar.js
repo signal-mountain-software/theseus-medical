@@ -139,11 +139,13 @@ export default () => {
                 </Button>
               </Tooltip>
               {showInstall && (
+                <Box ml={2}>
                 <Tooltip title={<Typography variant='subtitle1'>Install AVA</Typography>} placement='bottom-end'>
                   <Button color='primary' size='small' variant='contained' endIcon={<GetAppIcon />} onClick={onInstall}>
                     Install
                   </Button>
                 </Tooltip>
+                </Box>
               )}
             </>
           ) : (
