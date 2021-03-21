@@ -41,6 +41,7 @@ const App = () => (
 );
 
 export default hocFactory(App, [
+  withRecoil,
   withRoot,
   withRouter,
   withDarkMode,
@@ -49,6 +50,5 @@ export default hocFactory(App, [
   withSession,
   withAuth,
   withBootstrap,
-  withRecoil,
   withA2HS,
 ]);
