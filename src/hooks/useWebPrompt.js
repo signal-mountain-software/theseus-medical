@@ -19,8 +19,9 @@ const useWebPrompt = () => {
       // if user declined, don't show prompt again
       if (choice.outcome !== 'accepted') {
         onPromptViewed();
+      } else {
+        setPrompt(null);
       }
-      setPrompt(null);
     });
   };
 
