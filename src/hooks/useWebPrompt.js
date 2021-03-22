@@ -8,7 +8,6 @@ const useWebPrompt = () => {
 
   const onDecline = () => {
     onPromptViewed();
-    setPrompt(null);
   };
 
   const onInstall = () => {
