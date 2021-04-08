@@ -1,5 +1,4 @@
 import React from 'react';
-import { isAndroid, isIOS, isIOS13, isIPad13, isIPhone13, isIPod13 } from 'react-device-detect';
 import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
 import AppBar from '@material-ui/core/AppBar';
@@ -22,9 +21,9 @@ import GetAppIcon from '@material-ui/icons/GetApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 
+import useIosCheck from '../hooks/useIosCheck';
 import useSession from '../hooks/useSession';
-import promptState from './_states/promptState';
-import getNavigatorInstance from './_utils/getNavigatorInstance';
+import promptState from '../states/promptState';
 import IosInstall from './dialogs/IosInstall';
 import SwitchPatientDialog from './dialogs/SwitchPatientDialog';
 import PatientChip from './PatientChip';
@@ -43,19 +42,20 @@ const HideOnScroll = ({ children }) => {
 
 const ITEM_HEIGHT = 48;
 
-const NAV = getNavigatorInstance();
-
 export default () => {
-  const [showInstall, setShowInstall] = React.useState(!(NAV && NAV.standalone) || !isAndroid);
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isStandalone = useMediaQuery('(display-mode: standalone)');
+  const showIOS = useIosCheck();
   const { state } = useSession();
   const { patient, roles, session } = state;
 
   const [prompt, setPrompt] = useRecoilState(promptState);
+
+  const showInstall = () => showIOS || !isStandalone;
 
   const handleClick = event => {
     setAnchorEl(event.currentTarget);
@@ -82,7 +82,7 @@ export default () => {
   };
 
   const onInstall = () => {
-    if (isIOS || isIOS13 || isIPad13 || isIPhone13 || isIPod13) {
+    if (showIOS) {
       setShowIOSDialog(true);
     } else {
       // show native prompt
@@ -91,7 +91,6 @@ export default () => {
       // decide what to do after the user chooses
       prompt.userChoice.then(choice => {
         if (choice.outcome === 'accepted') {
-          setShowInstall(false);
           setPrompt(null);
         }
       });
@@ -178,7 +177,7 @@ export default () => {
                   </ListItemIcon>
                   <ListItemText primary='Sign Out' />
                 </MenuItem>
-                {showInstall && (
+                {showInstall() && (
                   <MenuItem onClick={onInstall}>
                     <ListItemIcon>
                       <GetAppIcon />

@@ -4,6 +4,9 @@ import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 import AssignmentIcon from '@material-ui/icons/Assignment';
 import ChatIcon from '@material-ui/icons/Chat';
 
+import withA2HS from './wrappers/withA2HS';
+import withRecoil from './wrappers/withRecoil';
+import withRoot from './wrappers/withRoot';
 import hocFactory from './util/hocFactory';
 import ChatScreen from './screens/ChatScreen';
 import ProfileScreen from './screens/ProfileScreen';
@@ -16,8 +19,6 @@ import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
-import withRecoil from './components/_wrappers/withRecoil';
-import A2HS from './components/dialogs/A2HS';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
 
@@ -31,7 +32,6 @@ const HOME = '/theseus';
 
 const App = () => (
   <Box>
-    <A2HS />
     <TopBar />
     <Box pb={7}>
       <RootNavigation menu={menu} homePath={HOME} />
@@ -41,6 +41,8 @@ const App = () => (
 );
 
 export default hocFactory(App, [
+  withRecoil,
+  withRoot,
   withRouter,
   withDarkMode,
   withTheme,
@@ -48,5 +50,5 @@ export default hocFactory(App, [
   withSession,
   withAuth,
   withBootstrap,
-  withRecoil,
+  withA2HS,
 ]);
