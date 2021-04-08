@@ -725,9 +725,10 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                       <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
                         {activity.type === 'document' ? 
-                          <a href={activity.default_value} style={{color: 'black', textDecoration: 'none'}} target="_blank" rel="noopener noreferrer">
+                          <a href={activity.default_value} style={{color: 'inherit', textDecoration: 'none'}} target="_blank" rel="noopener noreferrer">
                             <Typography variant='h5'>{activity.name}</Typography>
-                          </a> :
+                          </a> 
+                          :
                           <React.Fragment key={`act_box_${activity.name}`}>
                             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                               <Typography variant='h5'>{activity.name}</Typography>
