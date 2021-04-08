@@ -3,7 +3,7 @@ import { useSnackbar } from 'notistack';
 import { API, Auth, graphqlOperation } from 'aws-amplify';
 
 import useSession from '../hooks/useSession';
-import { getPeopleByGroup, getGroup, getPerson, getRoles, getSession } from '../graphql/queries';
+import { getGroup, getPerson, getRoles, getSession } from '../graphql/queries';
 import { SET_PATIENT, SET_PATIENTS, SET_PROFILE, SET_ROLES, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 
 export default Component => props => {

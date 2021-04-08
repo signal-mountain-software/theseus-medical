@@ -1,15 +1,8 @@
 import React from 'react';
-import { useSnackbar } from 'notistack';
-import { Storage } from 'aws-amplify';
-import Avatar from '@material-ui/core/Avatar';
 import ListItem from '@material-ui/core/ListItem';
-import ListItemAvatar from '@material-ui/core/ListItemAvatar';
 import ListItemText from '@material-ui/core/ListItemText';
-import FaceIcon from '@material-ui/icons/Face';
 
 export default ({ patient, selected, onClick }) => {
-  const [picture, setPicture] = React.useState('');
-  const { enqueueSnackbar } = useSnackbar();
   const { patient_id, patient_display_name } = patient;
 
   React.useEffect(() => {
