@@ -3,6 +3,8 @@ import Button from '@material-ui/core/Button';
 import { fade, withStyles, makeStyles } from '@material-ui/core/styles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
+import { useSnackbar } from 'notistack';
+
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
@@ -115,6 +117,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   const [statusMessage, setStatusMessage] = React.useState('');
   const classes = useStyles();
 
+  const { enqueueSnackbar } = useSnackbar();
+
   const [searchText, setSearchText] = React.useState('');
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
@@ -162,18 +166,21 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       && newFact.value.selected  
       && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10) ) {
           badData = true;
+          let oopsie;
           if (newFact.value.selected.length === 0) {
-            setMessage(`!!!!! Ooops!  I don't see that you made any selections before pressing SAVE.
-              You need to make at least ${fact.numeric_minimum} selection${fact.numerica_minimum === '1' ? '' : 's'}, please. !!!!!`);
+            oopsie = `Ooops!  I don't see that you made any selections before pressing SAVE.
+              You need to make at least ${fact.numeric_minimum} selection${fact.numerica_minimum === '1' ? '' : 's'}, please.`;
           }
           else if (newFact.value.selected.length === 1) {
-            setMessage(`!!!!! Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
-              but I only see 1 selection.  It is: ${newFact.value.selected.join(', ')} !!!!!`);
+            oopsie = `Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
+              but I only see 1... ${newFact.value.selected.join(', ')}`;
           }
           else {
-            setMessage(`!!!!! Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
-              but I only see ${newFact.value.selected.length}.  They are: ${newFact.value.selected.join(', ')} !!!!!`);
+            oopsie = `Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
+              but I only see ${newFact.value.selected.length}.  They are: ${newFact.value.selected.join(', ')}`;
           }
+          enqueueSnackbar(oopsie, {variant: 'error', persist: true});
+          setMessage('!!!!! ' + oopsie + ' !!!!!');
       }
     }
     if (!badData) {

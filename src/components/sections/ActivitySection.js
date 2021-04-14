@@ -324,8 +324,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setType(DEFAULT_TYPE);
       setLimit(DEFAULT_LIMIT);
       setEvent(activity.code.split('.')[1]);
-      setNewFact();
-    } else if (activity.type === 'reservation') {
+      setNewFact();    
+    } else {
       let result = await API.graphql(
         graphqlOperation(getActivityData, {
           input: {
@@ -347,41 +347,41 @@ export default ({ patient, session, newFact, setNewFact }) => {
       });
       let selectedActivity = result.data.getActivityData[0];
       selectedActivityName = activity.name;
-      result = await API.graphql(
-        graphqlOperation(getReservation, {
-          client_id: session.client_id,
-          event_code: activity.code,
-        })
-      ).catch(error => {
-        enqueueSnackbar(`We had a problem getting that event: ${JSON.stringify(error)}`, {
-          variant: 'error',
-        });
-      });
-      selectedActivity.default_value = result.data.getReservation;
-      setSelected(selectedActivity);
-      setOpen(true);
-    } else {
-      let result = await API.graphql(
-        graphqlOperation(getActivityData, {
-          input: {
+      if (activity.type === 'reservation') { 
+        let reservationKey = activity.code.replace('.','^').split('^')[1];
+        result = await API.graphql(
+          graphqlOperation(getReservation, {
             client_id: session.client_id,
-            person_id: patient.person_id,
-            event_id: '',
-            activity_type: '$$' + activity.code,
-            limit: limit,
-            fact_data: false,
-            includeEvents: true,
-            history_only: false,
-            use_short_date: isMobile,
-          },
-        })
-      ).catch(error => {
-        enqueueSnackbar(`We had a problem getting current information: ${error}`, {
-          variant: 'error',
-        });
-      });
-      setSelected(result.data.getActivityData[0]);
-      selectedActivityName = activity.name;
+            event_code: reservationKey,
+          })
+        ).catch(error => {console.log('error on first get with ', reservationKey)});
+        if (!result.data.getReservation) {
+          result = await API.graphql(
+            graphqlOperation(getReservation, {
+              client_id: session.client_id,
+              event_code: activity.code.replace('.','^').split('^')[1],
+            })
+          ).catch(error => {
+            enqueueSnackbar(`We had a problem getting that event: ${JSON.stringify(error)}`, {
+              variant: 'error',
+            });
+          });
+        }
+        if (!result.data.getReservation) {
+          result = await API.graphql(
+            graphqlOperation(getReservation, {
+              client_id: session.client_id,
+              event_code: activity.code,
+            })
+          ).catch(error => {
+            enqueueSnackbar(`We had a problem getting that event: ${JSON.stringify(error)}`, {
+              variant: 'error',
+            });
+          });
+        }
+        selectedActivity.default_value = result.data.getReservation;
+      }
+      setSelected(selectedActivity);
       setOpen(true);
     }
   };
@@ -511,7 +511,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         }
       }
     }
-    sVal = constructedValue || '~~ no value ~~';
+    sVal = constructedValue || 'completed';
 
     setNewFact(newFact);
     setLimit(limit);

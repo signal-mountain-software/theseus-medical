@@ -24,6 +24,8 @@ import DialogContent from '@material-ui/core/DialogContent';
 import Typography from '@material-ui/core/Typography';
 import Button from '@material-ui/core/Button';
 
+import { useSnackbar } from 'notistack'
+
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
@@ -174,6 +176,8 @@ export default ({
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
 
+  const { closeSnackbar } = useSnackbar();
+
   const [formState, setFormState] = React.useState(1);
   const [firstTime, setFirstTime] = React.useState(true);
 
@@ -321,13 +325,54 @@ export default ({
   const handleToggle = value => () => {
     // noToggle ignores the whole function code (used when handleToggle is fired by the OS)
     if (!noToggle) {
-      const currentIndex = checked.indexOf(value);
+      closeSnackbar();   // close any persistent snackbars on the screen
+      
+      let checkedItems = value.split('~-');
+      const currentIndex = checked.indexOf(checkedItems[0]);
       const newChecked = [...checked];
 
       if (currentIndex === -1) {
-        newChecked.push(value);
+        newChecked.push(checkedItems[0]);
+        if (checkedItems.length > 1) {
+          for (let i = 1; i < checkedItems.length; i++) {
+            let inverse = true;
+            if (checkedItems[i].substr(0,1) === '-') {
+              inverse = false;
+              checkedItems[i] = checkedItems[i].substr(1)
+            }
+            // key in value was just checked ON; 
+            //    if this checkedItems[i] was a '~-' then it must turn OFF
+            //    if this checkedItems[i] was a '~--' then it must turn ON
+            let foundAt = checked.indexOf(checkedItems[i]);
+            if (foundAt !== -1 && inverse) {    // was previously checked and inverse is on...  remove it
+              newChecked.splice(foundAt, 1);
+            }
+            else if (foundAt === -1 && !inverse) {    // was NOT previously checked and identical is on (inverse off)...  add it
+              newChecked.push(checkedItems[i].replace('-',''));
+            }
+          }
+        }
       } else {
         newChecked.splice(currentIndex, 1); /* this removes the check mark */
+        if (checkedItems.length > 1) {
+          for (let i = 1; i < checkedItems.length; i++) {
+            let inverse = true;
+            if (checkedItems[i].substr(0,1) === '-') {
+              inverse = false;
+              checkedItems[i] = checkedItems[i].substr(1)
+            }
+            // key in value was just turned OFF; 
+            //    if this checkedItems[i] was a '~-' then it must turn ON
+            //    if this checkedItems[i] was a '~--' then it must turn OFF
+            let foundAt = checked.indexOf(checkedItems[i]);
+            if (foundAt !== -1 && !inverse) {
+              newChecked.splice(foundAt, 1);
+            }
+            else if (foundAt === -1 && inverse) {
+              newChecked.push(checkedItems[i]);
+            }
+          }
+        }
       }
       setChecked(newChecked);
 
@@ -533,17 +578,34 @@ export default ({
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <List className={classes.root}>
+              <ListItem key={'subhead_list_titlekey'} role={undefined} dense className={classes.factTitle}>
+                <ListItemText
+                  id={'subhead_list_title'}
+                  classes={{ primary: classes.factTitle }}
+                  primary={
+                    <Typography noWrap={true} className={classes.factTitle}>
+                      Click any check box to reserve your place!
+                    </Typography>
+                  }
+                />
+              </ListItem>
               {newFact.value.slot.flatMap((currentSlot, vX) => {
-                if (!newFact.value.show_slots || !newFact.value.show_slots.includes('first_available') || !unownedSlotFound) { 
+                if (!newFact?.value?.show_slots?.includes('first_available') || !unownedSlotFound) { 
                   const labelId = `checkbox-list-label-${currentSlot.identifier}#${vX.toString()}`;
                   const owned = !!currentSlot.owner;
-                  if (!owned) { unownedSlotFound = true };
                   const ownedByMe = owned && currentSlot.owner === newFact.patient_id;
-                  var slotValue = currentSlot.identifier || (owned ? '' : `${availableSlots} spaces available - click to reserve`);
-                  var freeName =
-                  newFact.value.show_slots && newFact.value.show_slots === 'no_names' && !ownedByMe
-                      ? 'taken'
-                      : currentSlot.display_name || '';
+                  var slotValue = 
+                    currentSlot.identifier 
+                    || 
+                    (owned ? '' : 
+                      ( newFact?.value?.show_slots?.includes('first_available') ? availableSlots + ' ' : '' )
+                        + 'available - click to reserve');
+                  var freeName = currentSlot.display_name;
+                  if (!owned) { 
+                    unownedSlotFound = true 
+                  };
+                  if (newFact.value?.show_slots === 'no_names') { freeName = '' }
+                  else if (newFact.value?.show_slots === 'hide_names' && !ownedByMe) { freeName = 'taken' }
                   return (
                     <ListItem key={'key-' + labelId} role={undefined} dense button>
                       <ListItemIcon classes={{ root: classes.leftButton }}>
@@ -560,19 +622,15 @@ export default ({
                         ) : null}
                       </ListItemIcon>
                       <ListItemText classes={{ root: classes.listItemAVA }} id={'id-' + labelId} primary={slotValue} />
-                      
-                        {owned ? (
                           <TextField
-                          classes={{ root: classes.idText }}
+                            classes={{ root: classes.idText }}
                             id={'val-' + labelId}
-                            value={freeName}
+                            value={freeName || ''}
                             disabled={!ownedByMe}
                             InputLabelProps={{ shrink: true }}
                             InputProps={{ noWrap: true }}
                             onChange={onChangeFreeName}
                           />
-                        ) : null}
-                      
                     </ListItem>
                   );
                 }
@@ -616,14 +674,51 @@ export default ({
               <List className={classes.valueLine}>
                 {listValues.map((value, vIndex) => {
                   const labelId = `checkbox-list-label-${value}`;
-                  /* ~~ is a header */
-                  /* ~other:<text> means prompt for input with <text> */
-                  /* ~^ means "put this value in the message area (below the title) */
+                  
+                  /* value                       | meaning                                  | example                                                   */
+                  /* ---------                   | ----------                               | -------------                                             */
+                  
+                  /* headers...
+                  /* ~~<displayThis>             | section header                           | ~~Entree Choices                                          */
+                  
+                  /* check boxes...
+                  /* <textOnly>                  | selection/check box                      | Filet Mignon                                              */
+                  /*                             |                                          | Club Sandwich                                             */
+                  /* <text>~-<key1>~--<key2>...  | ~- inverse (if text turns on, key1 turns | Deliver~-Pick-up                                          */
+                  /*                             | off... and vice versa)
+                  /*                             | ~-- identical (text turns on, key2 turns 
+                  /*                             | on;  text turns off, key2 turns off)
+
+                  /* prompt for text response...
+                  /* ~other:<text>               | prompt for text response with <text>     | ~other:What time would you like your meal?                */
+                  /* ~prompt:<text>              | prompt for text response with <text>     | ~prompt:Special requests?                                 */                  
+                  
+                  /* special cases...
+                  /* ~+<key>~<value>             | use value only when <key> is selected    | ~+Filet Mignon:How would you like your filet cooked?      */
+                  /* ~includeObservations.<code> | use CLIENT_ID~<code> to get one or more  | ~includeObservations.entree_today
+                  /*                             | rows from Observations table; use each   |
+                  /*                             | each row's observation_code as a value   |
+                  /*                             | to build out this form                   |
+
+                  /* ~^<useTextBoxforThis>       | text entered will be shown in the        |                                                           */
+                  /*                             | message area (just below the title)      |                                                           */
+                  
+
+
+                  /* */
+
+                  /* suppressing rows...
                   /* ~~! or ~! means "always show this line" */
                   /* ~% means suppress all lines after this one that do not include 
                       the freetext attached to this line 
                       (prompt for freeText with ~%other:<prompt text>) */
-                  return value.startsWith('~~') ? (
+                  
+                  if (value.startsWith('~+')) {
+                    let checkMe = value.substr(2).replace('~','?').split('?');
+                    if (checked.indexOf(checkMe[0]) === -1) {return null}
+                    else {value = checkMe[1]}
+                  }    
+  /* Headers */   return value.startsWith('~~') ? (
                     <ListItem key={value + vIndex.toString()} role={undefined} dense className={classes.factTitle}>
                       <ListItemText
                         id={'subhead' + value}
@@ -642,11 +737,11 @@ export default ({
                       role={undefined}
                       dense
                       className={classes.defaultButton}>
-                      {!value.includes('other:') ? (
-                        <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
+                      {!value.includes(':') ? (
+  /* Check Box */       <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
                           <Checkbox
                             edge='start'
-                            checked={checked.indexOf(value) !== -1}
+                            checked={checked.indexOf(value.split('~-')[0]) !== -1}
                             disableRipple
                             onClick={handleToggle(value)}
                             inputProps={{ 'aria-labelledby': labelId }}
@@ -660,9 +755,8 @@ export default ({
                           ) : null}
                           <ListItemText
                             id={labelId}
-                            onChange={onChangeFreeText}
                             classes={{ root: classes.inputText }}
-                            primary={value.split(':')[0]}
+                            primary={value.split('~-')[0]}
                             secondary={
                               newFact && newFact.value && newFact.value.qualifiers && newFact.value.qualifiers[value]
                                 ? newFact.value.qualifiers[value].join(' ~ ')
@@ -671,7 +765,7 @@ export default ({
                           />
                         </React.Fragment>
                       ) : !value.includes('~%') && !value.includes('~^') ? (
-                        <FormControl className={classes.freeInput}>
+  /* Text prompt */       <FormControl className={classes.freeInput}>
                           <TextField
                             id={value.split(':')[1]}
                             helperText={value.split(':')[1]}
@@ -686,7 +780,7 @@ export default ({
                           />
                         </FormControl>
                       ) : value.includes('~%') ? (
-                        <FormControl className={classes.freeInput}>
+  /* Prompt for filter */ <FormControl className={classes.freeInput}>
                           <Input
                             id='%filter-input%'
                             type='text'
@@ -703,8 +797,7 @@ export default ({
                           />
                         </FormControl>
                       ) : (
-                        //                        <FormControl className={classes.messageInput}>
-                        <TextField
+  /* Text box prompt */ <TextField
                           id={value.split(':')[1]}
                           label={value.split(':')[1]}
                           multiline
