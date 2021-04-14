@@ -737,7 +737,7 @@ export default ({
                       role={undefined}
                       dense
                       className={classes.defaultButton}>
-                      {!value.includes(':') ? (
+                      {!value.includes('other:') ? (
   /* Check Box */       <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
                           <Checkbox
                             edge='start'
@@ -756,7 +756,7 @@ export default ({
                           <ListItemText
                             id={labelId}
                             classes={{ root: classes.inputText }}
-                            primary={value.split('~-')[0]}
+                            primary={value.split(':')[0]}
                             secondary={
                               newFact && newFact.value && newFact.value.qualifiers && newFact.value.qualifiers[value]
                                 ? newFact.value.qualifiers[value].join(' ~ ')

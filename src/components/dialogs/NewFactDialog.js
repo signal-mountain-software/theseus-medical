@@ -347,11 +347,12 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
             { fact && fact.code && fact.code.startsWith('message.') ? 'Send' : 'Save' }
           </Button>
         )}
-        {fromHome === 'event' && (!fact || !fact.code || (!fact.code.startsWith('document.') && !fact.code.startsWith('form.'))) ? (
+        {fromHome !== 'event' || fact.code?.startsWith('document.') || fact.code?.startsWith('form.') || fact.type === 'reservation' 
+          ? null : (
           <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
             {isMobile ? 'Save +' : 'Save & Next'}
           </Button>
-        ) : null}
+        )}
       </DialogActions>
     </Dialog>
   );
