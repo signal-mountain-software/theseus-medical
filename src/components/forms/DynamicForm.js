@@ -578,17 +578,9 @@ export default ({
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <List className={classes.root}>
-              <ListItem key={'subhead_list_titlekey'} role={undefined} dense className={classes.factTitle}>
-                <ListItemText
-                  id={'subhead_list_title'}
-                  classes={{ primary: classes.factTitle }}
-                  primary={
-                    <Typography noWrap={true} className={classes.factTitle}>
-                      Click any check box to reserve your place!
-                    </Typography>
-                  }
-                />
-              </ListItem>
+              <Typography noWrap={true} className={classes.factTitle}>
+                {availableSlots > 0 ? "Choose any open check box to reserve your place!" : "I'm sorry, this event is full"}
+              </Typography>
               {newFact.value.slot.flatMap((currentSlot, vX) => {
                 if (!newFact?.value?.show_slots?.includes('first_available') || !unownedSlotFound) { 
                   const labelId = `checkbox-list-label-${currentSlot.identifier}#${vX.toString()}`;

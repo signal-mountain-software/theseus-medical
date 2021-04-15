@@ -48,6 +48,7 @@ export const updateReservation = /* GraphQL */ `
 	    expires_after
 	    owner
 	    show_slots
+      version
 	    slot {
         display_name
         identifier

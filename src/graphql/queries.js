@@ -208,6 +208,7 @@ export const getReservation = /* GraphQL */ `
       expires_after
       event_code
       client_id
+      version
     }
   }
 `;

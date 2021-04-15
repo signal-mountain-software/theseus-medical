@@ -494,19 +494,48 @@ export default ({ patient, session, newFact, setNewFact }) => {
             }
           }
           if (constructedValue) {
-            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
-            writtenFact.data.createPutFact.value = 'update.' + constructedValue;
-            setLastWrittenFact(writtenFact.data.createPutFact);
-            await API.graphql(graphqlOperation(updateReservation, { input: newFact.value })).catch(error => {
-              enqueueSnackbar(
-                `Uh oh! We couldn't update that.  You may want to check, and try again: ${JSON.stringify(
-                  error.message || error.errors[0].message
-                )}`,
-                {
-                  variant: 'error',
-                }
-              );
+            // **** check to see if the reservation has been updated while this user had it open
+            let result = await API.graphql(
+              graphqlOperation(getReservation, {
+                client_id: newFact.value.client_id,
+                event_code: newFact.value.event_code,
+              })
+            ).catch(error => {
+              console.log(`Reservation not read while checking version: ${JSON.stringify(error)}`, {
+                variant: 'error',
+              });
             });
+            if (result.data.getReservation.version !== newFact.value.version) {
+              enqueueSnackbar(
+                `Uh oh! Someone else may have been in the sign-up sheet for ${newFact.value.event_name}, 
+                and made a change before you pressed SAVE.  Please try again`,
+                {variant: 'error', persist: true}
+              );
+              let selectedActivity = selected;
+              let chosenActivity = selected; 
+              selectedActivity.default_value = result.data.getReservation;
+              setSelected(selectedActivity);
+              setOpen(true);
+              showMessage = false;
+              onChooseActivity(chosenActivity);
+            }
+            else {
+              let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+              writtenFact.data.createPutFact.value = 'update.' + constructedValue;
+              setLastWrittenFact(writtenFact.data.createPutFact);
+              newFact.value.version ? newFact.value.version++ : newFact.value.version = 1;
+              await API.graphql(graphqlOperation(updateReservation, { input: newFact.value })).catch(error => {
+                enqueueSnackbar(
+                  `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong.  
+                  Please try again: ${JSON.stringify(
+                    error.message || error.errors[0].message
+                  )}`,
+                  {
+                    variant: 'error', persist: true
+                  }
+                );
+              });
+            }
           }
         }
       }
