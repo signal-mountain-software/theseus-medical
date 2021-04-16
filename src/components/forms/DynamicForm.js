@@ -308,7 +308,7 @@ export default ({
   };
 
   const handleReserve = slotIndex => () => {
-    if (newFact.value.slot[slotIndex].owner === newFact.patient_id) {
+    if (newFact.value.slot[slotIndex].owner !== null) {
       newFact.value.slot[slotIndex].owner = null;
       newFact.value.slot[slotIndex].display_name = null;
       newFact.value.slot[slotIndex].action = 'relinquished';
@@ -585,7 +585,7 @@ export default ({
                 if (!newFact?.value?.show_slots?.includes('first_available') || !unownedSlotFound) { 
                   const labelId = `checkbox-list-label-${currentSlot.identifier}#${vX.toString()}`;
                   const owned = !!currentSlot.owner;
-                  const ownedByMe = owned && currentSlot.owner === newFact.patient_id;
+                  const ownedByMe = owned && (currentSlot.owner === newFact.patient_id || newFact.value.owner.includes(newFact.patient_id));
                   var slotValue = 
                     currentSlot.identifier 
                     || 
