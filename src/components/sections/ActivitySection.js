@@ -812,7 +812,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='body1' noWrap>
-                    {!activities || activities.length < limit ? 'No more items' : 'More items...'}
+                    {'***AVA v21.4.22***'}
                   </Typography>
                 </Box>
                 <Paper
