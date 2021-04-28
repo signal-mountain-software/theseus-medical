@@ -32,8 +32,44 @@ export default Component => props => {
       var getPeopleByGroupResult;
       let getRolesResult;
 
-      getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: user.username })).catch(error => {
-        console.log('nothing to see here...');
+      // get the session for the current user 
+      // SessionsV2 delivers information about the current user environment.  Specifically...
+      // session_id (primary key) is the authenticated user_id
+      // user_id is the account that we will emulate for this session.  This should always be = session_id UNLESS we are trying to debug a user's account
+      // patient_id is the account for which we are creating facts
+      // Fred signs on as fred and we get Sessionv2 row with fred as primary key.  We assume this session is for user_id = fred.
+      // That user_id will persist throughout the session and be used to determine which users you are allowed to work on behalf of (responsible_for)
+      // The current user that you are working on behalf of (often and typically yourself), is stored in patient_id
+      getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(error => {
+        enqueueSnackbar(`Welcome to AVA, ${user.username}!  \nPlease select the "Associate my Account..." option and answer a couple of questions.
+                We'll get your account finalized right away.\nNo worries, though.  You can use AVA in the meantime while we personalize things for you.`, {
+              variant: 'info', persist: true,
+            });
+      });
+      var session;
+      if (!getSessionResult) {
+        getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: 'SMSoft~default' }));
+        session = getSessionResult.data.getSession;
+        // session.user_id = user.username;
+        session.user_display_name = 'Username ' + user.username;
+      } else {
+        session = getSessionResult.data.getSession;
+        if ( session.user_id !== user.username ) {
+          enqueueSnackbar(`You are emulating ${session.user_id}`, {
+            variant: 'info',
+          });
+        }
+      }
+
+      // get person's Account information
+      getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: session.user_id }))
+        .catch(error => {
+  //        if (error.errors[0].message !== 'Person not found...') {
+            enqueueSnackbar(`You are assigned to ${session.user_id}, but that account doesn't have a profile in the People table.`, {
+              variant: 'error', persist: true,
+            });
+  //        }
+          console.log('using default user...');
       });
 
       if (!getProfileResult) {
@@ -46,26 +82,16 @@ export default Component => props => {
         getProfileResult.data.getPerson.name.last = 'Username';
       }
       let profile = getProfileResult.data.getPerson;
-      var user_id = profile.person_id;
-
-      // get the session for the current user
-      getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(error => {
-        console.log('nothing to see here either...');
-      });
-      var session;
-      if (!getSessionResult) {
-        getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: 'SMSoft~default' }));
-        session = getSessionResult.data.getSession;
-        session.user_id = user.username;
-        session.user_display_name = 'Username ' + user.username;
-      } else {
-        session = getSessionResult.data.getSession;
-      }
+      // var user_id = profile.person_id;
 
       // get the roles for the current user
       const client_group_id = session.client_id + '~' + (session.responsible_for || session.assigned_to);
-      getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: user_id, client_group_id })).catch(
+      getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: session.user_id, client_group_id })).catch(
         error => {
+          enqueueSnackbar(`Warning! We couldn't get a security record for ${session.user_id} in ${client_group_id}.  
+              Tell AVA support that the error is: ${error.errors[0].message}`, {
+            variant: 'warning', persist: true,
+          });
           console.log('security record not found (' + client_group_id + ')');
         }
       );
@@ -73,7 +99,7 @@ export default Component => props => {
 
       // get the current patient information for a user; if the user does not have a current patient, use the user's id
       const patient_id = session.patient_id;
-      const person_id = patient_id || user_id;
+      const person_id = patient_id || session.user_id;
       getPatientResult = await API.graphql(graphqlOperation(getPerson, { person_id: person_id }));
       const patient = getPatientResult.data.getPerson;
 
@@ -82,23 +108,15 @@ export default Component => props => {
       if (session.responsible_for) {
         getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id })).catch(
           error => {
-            console.log(error);
+            enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${client_group_id} group.  
+              Tell AVA support that the error is: ${error.errors[0].message}`, {
+            variant: 'warning', persist: true,
+          });
+            console.log(error.errors[0].message);
           }
         );
         if (getPeopleByGroupResult) {
           patients = getPeopleByGroupResult.data.getGroup;
-      /*    if (patients.length > 49) {
-            let fakeName = {
-              first: '** Stopped after 50 entries **',
-              last: '',
-            };
-            let extraRecord = {
-              person_id: null,
-              name: fakeName,
-            };
-            patients.push(extraRecord);
-      
-          }  */
         }
       }
 

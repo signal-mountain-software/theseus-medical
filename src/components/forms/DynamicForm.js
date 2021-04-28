@@ -6,6 +6,9 @@ import FormGroup from '@material-ui/core/FormGroup';
 
 import TextField from '@material-ui/core/TextField';
 
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+
 import Grid from '@material-ui/core/Grid';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -67,6 +70,7 @@ const useStyles = makeStyles(theme => ({
   subHeader: {
     fontWeight: 'bold',
     minWidth: '100%',
+
   },
   defaultButton: {
     marginLeft: 0,
@@ -396,6 +400,41 @@ export default ({
     setFormState(resetter);
   };
 
+  const onChangeDate = (date, id) => {
+    if (!date && newFact?.value?.freeText?.hasOwnProperty(id)) { 
+      delete newFact.value.freeText[id]
+    }
+    else {
+      newFact.value.freeText[id] = date ? date.toLocaleString() : null;
+    }
+    setNewFact(newFact);
+    var resetter = formState + 1;
+    setFormState(resetter);
+  };
+
+/*  
+  const onStringDate = (inDate, id) => {
+    if (inDate && inDate.length > 2) { 
+      let d = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+      let currentDOW = new Date().getDay() + 7;
+      let offset = 0;
+      let key = inDate.toLowerCase().substr(0, 3)
+      if (key === 'tom') { offset = 1 }
+      else if (d.indexOf(key) > -1) { offset = currentDOW - d.indexOf(key); }
+      if ( offset > 0 ) {
+        let today = new Date();
+        offset = offset > 7 ? offset - 7 : offset;
+        let offsetDate = today.getDate() + offset;
+        let offsetFinal = new Date(today.setDate(offsetDate));
+        newFact.value.freeText[id] = offsetFinal.toLocaleString();
+      }
+      else  { newFact.value.freeText[id] = (new Date(inDate).toLocaleString()); }
+      setNewFact(newFact);
+      var resetter = formState + 1;
+      setFormState(resetter);
+    }
+  };
+*/
   const onChangeFilterText = event => {
     setFilterText(event.target.value);
     var resetter = formState + 1;
@@ -716,7 +755,7 @@ export default ({
                         id={'subhead' + value}
                         classes={{ primary: classes.factTitle }}
                         primary={
-                          <Typography noWrap={true} className={classes.factTitle}>
+                          <Typography className={classes.factTitle}>
                             {value.replace('!', '').substr(2)}
                           </Typography>
                         }
@@ -729,7 +768,7 @@ export default ({
                       role={undefined}
                       dense
                       className={classes.defaultButton}>
-                      {!value.includes('other:') ? (
+                      {(!value.includes('other:') && !value.includes('~day:')) ? (
   /* Check Box */       <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
                           <Checkbox
                             edge='start'
@@ -748,7 +787,7 @@ export default ({
                           <ListItemText
                             id={labelId}
                             classes={{ root: classes.inputText }}
-                            primary={value.split(':')[0]}
+                            primary={value.split(':')[0].split('~-')[0]}
                             secondary={
                               newFact && newFact.value && newFact.value.qualifiers && newFact.value.qualifiers[value]
                                 ? newFact.value.qualifiers[value].join(' ~ ')
@@ -757,8 +796,33 @@ export default ({
                           />
                         </React.Fragment>
                       ) : !value.includes('~%') && !value.includes('~^') ? (
-  /* Text prompt */       <FormControl className={classes.freeInput}>
-                          <TextField
+                          <FormControl className={classes.freeInput}>
+                          {value.includes('~day:') ? 
+  /* Date prompt */         <DatePicker
+                              selected={newFact.value.freeText[value.split(':')[1]] ? new Date(newFact.value.freeText[value.split(':')[1]]) : null}
+                              onChange={date => {
+                                onChangeDate(date, value.split(':')[1])
+                              }}
+                       //       onChangeRaw={event => onStringDate(event.target.value, value.split(':')[1])}
+                              popperPlacement='right'
+                              popperModifiers={{
+                                  flip: {
+                                      behavior: ['bottom'] // don't allow it to flip to be above
+                                  },
+                                  hide: {
+                                      enabled: false // turn off since needs preventOverflow to be enabled
+                                  }
+                              }}
+                              customInput={<TextField
+                                id={value.split(':')[1]}
+                                helperText={value.split(':')[1]}
+                                InputLabelProps={{ shrink: true }}
+                                InputProps={{ noWrap: true }}
+                                />}
+                              filterDate={date => {return (date > new Date())}}
+                              dateFormat="EE MMM d"
+                          /> : 
+  /* Text prompt */       <TextField
                             id={value.split(':')[1]}
                             helperText={value.split(':')[1]}
                             value={
@@ -770,6 +834,7 @@ export default ({
                             InputProps={{ noWrap: true }}
                             onChange={onChangeFreeText}
                           />
+                          }
                         </FormControl>
                       ) : value.includes('~%') ? (
   /* Prompt for filter */ <FormControl className={classes.freeInput}>

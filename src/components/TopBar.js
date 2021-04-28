@@ -17,6 +17,7 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 //import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import AssignmentIndIcon from '@material-ui/icons/AssignmentInd';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
+import AutorenewIcon from '@material-ui/icons/Autorenew';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -110,10 +111,8 @@ export default () => {
           <Box flexGrow={1}>
             <PatientChip patient={patient} roles={roles} session={session} />
           </Box>
-          {!isMobile ? (
-            <>
-              {hide ? null : (
-                <Box mr={2}>
+          {!isMobile && !hide && (
+                <Box >
                   <Tooltip title={<Typography variant='subtitle1'>Change Account</Typography>} placement='bottom-end'>
                     <Button
                       color='primary'
@@ -127,28 +126,7 @@ export default () => {
                   </Tooltip>
                 </Box>
               )}
-              <Tooltip title={<Typography variant='subtitle1'>Sign out of AVA</Typography>} placement='bottom-end'>
-                <Button
-                  color='secondary'
-                  size='small'
-                  variant='contained'
-                  endIcon={<ExitToAppIcon />}
-                  onClick={onSignOut}>
-                  Sign Out
-                </Button>
-              </Tooltip>
-              {showInstall && (
-                <Box ml={2}>
-                <Tooltip title={<Typography variant='subtitle1'>Install AVA</Typography>} placement='bottom-end'>
-                  <Button color='primary' size='small' variant='contained' endIcon={<GetAppIcon />} onClick={onInstall}>
-                    Install
-                  </Button>
-                </Tooltip>
-                </Box>
-              )}
-            </>
-          ) : (
-            <>
+               
               <IconButton aria-controls='hidden-menu' aria-haspopup='true' onClick={handleClick}>
                 <MoreVertIcon />
               </IconButton>
@@ -163,7 +141,7 @@ export default () => {
                   },
                 }}
                 keepMounted>
-                {hide ? null : (
+                {isMobile && !hide && (
                   <MenuItem onClick={onSwitchPatient}>
                     <ListItemIcon>
                       <SwapHorizIcon />
@@ -177,6 +155,14 @@ export default () => {
                   </ListItemIcon>
                   <ListItemText primary='Sign Out' />
                 </MenuItem>
+                <MenuItem onClick={() => {
+                    window.location.replace(window.location.href);
+                  }}>
+                  <ListItemIcon>
+                    <AutorenewIcon />
+                  </ListItemIcon>
+                  <ListItemText primary='Reload' />
+                </MenuItem>
                 {showInstall() && (
                   <MenuItem onClick={onInstall}>
                     <ListItemIcon>
@@ -186,8 +172,6 @@ export default () => {
                   </MenuItem>
                 )}
               </Menu>
-            </>
-          )}
         </Toolbar>
       </AppBar>
       <Toolbar />

@@ -8,15 +8,13 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
-import InputBase from '@material-ui/core/InputBase';
+// import InputBase from '@material-ui/core/InputBase';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { fade } from '@material-ui/core/styles/colorManipulator';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import BusinessCenterOutlinedIcon from '@material-ui/icons/BusinessCenterOutlined';
-import AssignmentTurnedInOutlinedIcon from '@material-ui/icons/AssignmentTurnedInOutlined';
-import SearchIcon from '@material-ui/icons/Search';
 import IconButton from '@material-ui/core/IconButton';
 import AddToQueueOutlinedIcon from '@material-ui/icons/AddToQueueOutlined';
 
@@ -39,6 +37,9 @@ const useStyles = makeStyles(theme => ({
       width: '100%',
       minWidth: 64,
     },
+  },
+  title: {
+    margin: theme.spacing(1),
   },
   appBar: {
     position: 'relative',
@@ -128,7 +129,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [loading, setLoading] = React.useState(false); // a flag that shows/hides loading spinner
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
-  const [searchString, setSearchString] = React.useState('');
+  // const [searchString, setSearchString] = React.useState('');
   const [homeState, setHomeState] = React.useState('home');
   //const [defaultRequested, setDefaultRequested] = React.useState(false);
 
@@ -258,13 +259,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
     setType(DEFAULT_TYPE);
     setLimit(DEFAULT_LIMIT);
     setEvent('');
-    setSearchString('');
+  //  setSearchString('');
   };
 
   const onShowMore = () => {
     setLimit(limit + DEFAULT_LIMIT_INCREMENT);
   };
 
+  /*
   const onTap = event => {
     if (searchString !== '') {
       setEvent('');
@@ -279,10 +281,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
       onTap(event);
     }
   };
-
+  
   const onSearch = event => {
     setSearchString(event.target.value);
   };
+  */
 
   const onChooseDefault = () => {
     defaultRequested = true;
@@ -693,41 +696,27 @@ export default ({ patient, session, newFact, setNewFact }) => {
           alignItems='center'
           mt={1}
           mb={1}
-          justifyContent='flex-start'>
-          <BusinessCenterOutlinedIcon />
+          justifyContent='space-between'>
           <Box
             flexDirection='row'
             pl={1}
-            display={isMobile ? 'none' : 'flex'}
+            display='flex'
             grow={1}
             justifyContent='flex-start'
             alignItems='center'>
+            <BusinessCenterOutlinedIcon />
             <Typography variant='h6' className={classes.title}>
-              Activities
+              AVA
             </Typography>
           </Box>
-          <Box pl={5} display='flex'>
-            <Button
-              color='secondary'
-              size='small'
-              variant='contained'
-              startIcon={<AssignmentTurnedInOutlinedIcon />}
-              onClick={doneWithEvent}>
-              {homeState === 'event' ? 'Done' : homeState === 'search' ? 'Home' : 'Refresh'}
-            </Button>
-          </Box>
-          <Box paddingLeft={1} className={classes.search}>
-            <SearchIcon />
-            <InputBase
-              type='text'
-              placeholder='Search…'
-              value={searchString}
-              onChange={onSearch}
-              onKeyPress={checkEnter}
-              classes={{
-                root: classes.inputRoot,
-              }}
-            />
+          <Box pl={2} display='flex'>
+              <Button
+                color='secondary'
+                size='small'
+                variant='contained'
+                onClick={doneWithEvent}>
+                {homeState === 'event' ? 'Done' : homeState === 'search' ? 'Home' : 'Refresh'}
+              </Button>
           </Box>
         </Box>
       </AppBar>
@@ -811,8 +800,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Box>
-                  <Typography variant='body1' noWrap>
-                    {'***AVA v21.4.22***'}
+                  <Typography variant='caption' noWrap>
+                    {'***AVA v21.4.28***'}
                   </Typography>
                 </Box>
                 <Paper

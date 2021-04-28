@@ -288,7 +288,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       {statusMessage ? (
         <DialogContentText className={classes.subDescriptionText}>{statusMessage}</DialogContentText>
       ) : null}
-      {fact.type === 'list_multiple' ? (
+      {fact.type === 'DEPRECIATE - list_multiple' ? (
         <FormControl className={classes.margin}>
           <BootstrapInput
             placeholder='Search/Filter'
