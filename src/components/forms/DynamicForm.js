@@ -6,9 +6,6 @@ import FormGroup from '@material-ui/core/FormGroup';
 
 import TextField from '@material-ui/core/TextField';
 
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
-
 import Grid from '@material-ui/core/Grid';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -400,6 +397,8 @@ export default ({
     setFormState(resetter);
   };
 
+  /* 
+
   const onChangeDate = (date, id) => {
     if (!date && newFact?.value?.freeText?.hasOwnProperty(id)) { 
       delete newFact.value.freeText[id]
@@ -412,7 +411,6 @@ export default ({
     setFormState(resetter);
   };
 
-/*  
   const onStringDate = (inDate, id) => {
     if (inDate && inDate.length > 2) { 
       let d = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -798,30 +796,7 @@ export default ({
                       ) : !value.includes('~%') && !value.includes('~^') ? (
                           <FormControl className={classes.freeInput}>
                           {value.includes('~day:') ? 
-  /* Date prompt */         <DatePicker
-                              selected={newFact.value.freeText[value.split(':')[1]] ? new Date(newFact.value.freeText[value.split(':')[1]]) : null}
-                              onChange={date => {
-                                onChangeDate(date, value.split(':')[1])
-                              }}
-                       //       onChangeRaw={event => onStringDate(event.target.value, value.split(':')[1])}
-                              popperPlacement='right'
-                              popperModifiers={{
-                                  flip: {
-                                      behavior: ['bottom'] // don't allow it to flip to be above
-                                  },
-                                  hide: {
-                                      enabled: false // turn off since needs preventOverflow to be enabled
-                                  }
-                              }}
-                              customInput={<TextField
-                                id={value.split(':')[1]}
-                                helperText={value.split(':')[1]}
-                                InputLabelProps={{ shrink: true }}
-                                InputProps={{ noWrap: true }}
-                                />}
-                              filterDate={date => {return (date > new Date())}}
-                              dateFormat="EE MMM d"
-                          /> : 
+  /* Date prompt */        null : 
   /* Text prompt */       <TextField
                             id={value.split(':')[1]}
                             helperText={value.split(':')[1]}
