@@ -18,6 +18,9 @@ import BusinessCenterOutlinedIcon from '@material-ui/icons/BusinessCenterOutline
 import IconButton from '@material-ui/core/IconButton';
 import AddToQueueOutlinedIcon from '@material-ui/icons/AddToQueueOutlined';
 
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import ExpandLessIcon from '@material-ui/icons/ExpandLess';
+
 import Dialog from '@material-ui/core/Dialog';
 import DialogTitle from '@material-ui/core/DialogTitle';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -135,6 +138,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const [activePatient, setActivePatient] = React.useState(null);
 
+  const [rowOpen, setRowOpen] = React.useState([]);
+
   const [showSummary, setSummary] = React.useState(false);
   const [showConfirmation, setConfirmation] = React.useState(false);
   // eslint-disable-next-line
@@ -152,6 +157,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   var defaultRequested = false;
   var selectedActivityName = '';
   var addedAFavorite = false;
+  var toggledRow = false;
 
   const doneWithEvent = () => {
     if (
@@ -293,6 +299,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onChooseActivity = async activity => {
     if (addedAFavorite || activity.code.startsWith('document')) {
+      addedAFavorite = false;
       return;
     }
     if (defaultRequested) {
@@ -337,7 +344,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             event_id: '',
             activity_type: '$$' + activity.code,
             limit: limit,
-            fact_data: false,
+            fact_data: true,
             includeEvents: true,
             history_only: false,
             use_short_date: isMobile,
@@ -385,7 +392,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
         selectedActivity.default_value = result.data.getReservation;
       }
       setSelected(selectedActivity);
-      setOpen(true);
+      if (!toggledRow) { setOpen(true) }
+      toggledRow = false;
     }
   };
 
@@ -604,6 +612,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     let mounted = true;
     (async () => {
       let result;
+      if (rowOpen[0]) {console.log('this is here to force a reload')};
       if (patient && session) {
         if (event !== lastEvent || type !== lastType || limit !== lastLimit || patient.person_id !== lastPerson) {
           result = await API.graphql(
@@ -614,7 +623,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 event_id: event,
                 activity_type: type,
                 limit: limit,
-                fact_data: false,
+                fact_data: true,
                 includeEvents: true,
                 history_only: false,
                 use_short_date: isMobile,
@@ -682,7 +691,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setLoading(false);
       mounted = false;
     };
-  }, [patient, session, event, type, limit, newFact, showConfirmation, lastWrittenFact]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, session, event, type, limit, newFact, showConfirmation, lastWrittenFact, rowOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Paper component={Box} m={2}>
@@ -724,7 +733,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         <Grid container>
           <Grid md={6} sm={7} xs={12} item>
             <GridList className={classes.gridList} cellHeight='auto' cols={1}>
-              {!activities || activities.length === 0 ? null : activities.map(activity => (
+              {!activities || activities.length === 0 ? null : activities.map((activity, index) => (
                 <GridListTile key={activity.code} cols={1}>
                   <Box display={activity.reason === priorReason ? 'none' : 'block'}>
                     <Typography variant='body1' noWrap>
@@ -747,7 +756,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                             <Typography variant='h5'>{activity.name}</Typography>
                           </a> 
                           :
-                          <React.Fragment key={`act_box_${activity.name}`}>
+                          <React.Fragment key={`act_box_${activity.name}`}>                            
                             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                               <Typography variant='h5'>{activity.name}</Typography>
                               <Box
@@ -766,17 +775,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
                                 </Button>
                               </Box>
                             </Box>
-                            <Box display={activity.most_recent_observation ? 'block' : 'none'}>
-                            {activity.observation_status && activity.observation_status.includes('(exp)') ? (
-                              <Typography variant='body2'>
-                                No current data - Last {activity.observation_status.replace('(exp)', '')}
-                              </Typography>
-                            ) : (
-                              <Typography variant='body2'>
-                                {activity.most_recent_observation} {activity.observation_status ? '- ' + activity.observation_status : ''}
-                              </Typography>
-                            )}
-                          </Box>
+                            <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
+                              {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
+                                <Typography variant='body2'>
+                                  {hNdx > 0 ? <p></p> : null}
+                                  {new Date(hItem.posted_time).toLocaleString()} <br></br> {hItem.value.replace('.','^').split('^')[1]} 
+                                </Typography>
+                              )) : null}
+                            </Box>
                           </React.Fragment>
                         }
                       </Box>
@@ -794,6 +800,22 @@ export default ({ patient, session, newFact, setNewFact }) => {
                           <AddToQueueOutlinedIcon />
                         </IconButton>
                       </Box>
+                      <Box
+                        alignSelf='center'
+                        flexDirection='row'
+                        color='white'
+                        display={activity.fact_history ? 'flex' : 'none'}>
+                        <IconButton
+                          aria-label='showHistory'
+                          onClick={() => {
+                            toggledRow = true;
+                            let newRowOpen = rowOpen;
+                            newRowOpen[index] = !newRowOpen[index];
+                            setRowOpen(newRowOpen);
+                          }}>
+                          { rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon /> }
+                        </IconButton>
+                      </Box>
                     </Box>
                   </Paper>
                 </GridListTile>
@@ -801,7 +823,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='caption' noWrap>
-                    {'***AVA v21.4.28***'}
+                    {'***AVA v21.5.23***'}
                   </Typography>
                 </Box>
                 <Paper
