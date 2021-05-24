@@ -15,12 +15,12 @@ import FormControl from '@material-ui/core/FormControl';
 
 import DynamicForm from '../forms/DynamicForm';
 
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3();
+// const AWS = require('aws-sdk');
+// const s3 = new AWS.S3();
 
-const FS = require('fs');
-const path = require('path');
-const region = 'us-east-1';
+// const FS = require('fs');
+// const path = require('path');
+// const region = 'us-east-1';
 
 var fileStream;
 
