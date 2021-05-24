@@ -15,6 +15,15 @@ import FormControl from '@material-ui/core/FormControl';
 
 import DynamicForm from '../forms/DynamicForm';
 
+const AWS = require('aws-sdk');
+const s3 = new AWS.S3();
+
+const FS = require('fs');
+const path = require('path');
+const region = 'us-east-1';
+
+var fileStream;
+
 const BootstrapInput = withStyles(theme => ({
   root: {
     marginTop: '0',
@@ -124,6 +133,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   var withNext;
+  var oopsie;
 
   const handleNext = () => {
     withNext = true;
@@ -166,7 +176,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       && newFact.value.selected  
       && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10) ) {
           badData = true;
-          let oopsie;
           if (newFact.value.selected.length === 0) {
             oopsie = `Ooops!  I don't see that you made any selections before pressing SAVE.
               You need to make at least ${fact.numeric_minimum} selection${fact.numerica_minimum === '1' ? '' : 's'}, please.`;

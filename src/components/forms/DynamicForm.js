@@ -1,5 +1,6 @@
 import React from 'react';
 import { Storage } from 'aws-amplify';
+import { API, graphqlOperation } from 'aws-amplify';
 
 import FormControl from '@material-ui/core/FormControl';
 import FormGroup from '@material-ui/core/FormGroup';
@@ -37,6 +38,8 @@ import InputAdornment from '@material-ui/core/InputAdornment';
 import IconButton from '@material-ui/core/IconButton';
 import SearchIcon from '@material-ui/icons/Search';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
+
+import { getPerson } from '../../graphql/queries';
 
 import DialogContentText from '@material-ui/core/DialogContentText';
 
@@ -477,10 +480,46 @@ export default ({
     setQualifierOpen(false);
   };
 
-  const handleQualSelected = value => () => {
-    setQualifierOpen(true);
+  const handleQualSelected = value => async () => {
+    if (qualifierTable[value].qualifiers[0].startsWith('~people:')) {
+      let person_id = qualifierTable[value].qualifiers[0].split(':')[1]; 
+      let result = await API.graphql(
+        graphqlOperation(getPerson, {
+          person_id: person_id,
+        })
+      ).catch(error => {
+        console.log(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`);
+      });
+      qualifierTable[value].value = value;
+      qualifierTable[value].qualifiers[0] = '~~' + result.data.getPerson.location;
+      if (result.data.getPerson.messaging.email) {qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email)};
+      if (result.data.getPerson.messaging.sms) {
+        let cleaned = ('' + result.data.getPerson.messaging.sms).replace(/\D/g, '');
+        let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
+        let phoneNumber = result.data.getPerson.messaging.sms;
+        if (match) { phoneNumber =  ['(', match[2], ') ', match[3], '-', match[4]].join('') }
+        qualifierTable[value].qualifiers.push('~~cell: ' + phoneNumber)
+      };
+      if (result.data.getPerson.messaging.voice) {
+        let cleaned = ('' + result.data.getPerson.messaging.voice).replace(/\D/g, '');
+        let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
+        let phoneNumber = result.data.getPerson.messaging.voice;
+        if (match) { phoneNumber =  ['(', match[2], ') ', match[3], '-', match[4]].join('') }
+        qualifierTable[value].qualifiers.push('~~home: ' + phoneNumber)
+      };
+      let response = await Storage.get('patients/' + person_id + '.jpg').catch(error => {
+        console.log(`Whoops! Something went wrong getting picture from s3: ${error.message}`);
+      });
+      qualifierTable[value].image_url = 'patients/' + person_id + '.jpg';
+      setDialogImage(response);
+    }
+    else { 
+      getImage(qualifierTable[value].image_url); 
+    }
+
     setQualifierData(qualifierTable[value]);
-    setQualifiers(qualifierTable[value].qualifiers);
+    let qualData = qualifierTable[value].qualifiers; 
+    setQualifiers(qualData);
     setSelectedFact(value);
     if (!qualChecked.hasOwnProperty(value)) {
       /* no selections previously made? */
@@ -488,10 +527,12 @@ export default ({
       setQualChecked(qualChecked);
     }
     setOGQualifiers(qualChecked);
-    getImage(qualifierTable[value].image_url);
+    
     var resetter = formState + 1;
     setFormState(resetter);
+    setQualifierOpen(true);
     noToggle = true;
+
   };
 
   const handleToggleQual = value => () => {
