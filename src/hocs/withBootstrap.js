@@ -17,7 +17,7 @@ export default Component => props => {
 
       dispatch({ type: SET_USER, payload: user });
     })().catch(error => {
-      enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message}`, {
+      enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.errors[0].message}`, {
         variant: 'error',
       });
     });
@@ -64,11 +64,9 @@ export default Component => props => {
       // get person's Account information
       getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: session.user_id }))
         .catch(error => {
-  //        if (error.errors[0].message !== 'Person not found...') {
-            enqueueSnackbar(`You are assigned to ${session.user_id}, but that account doesn't have a profile in the People table.`, {
+            enqueueSnackbar(`You are assigned to ${session.user_id}, but we couldn't get their info.  The problem is: ${error.errors[0].message}`, {
               variant: 'error', persist: true,
             });
-  //        }
           console.log('using default user...');
       });
 

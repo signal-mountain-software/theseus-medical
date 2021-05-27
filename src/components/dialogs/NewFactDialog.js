@@ -22,7 +22,7 @@ import DynamicForm from '../forms/DynamicForm';
 // const path = require('path');
 // const region = 'us-east-1';
 
-var fileStream;
+// var fileStream;
 
 const BootstrapInput = withStyles(theme => ({
   root: {
@@ -173,6 +173,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       }
     } else {
       if (fact.numeric_minimum
+      && (!fact.type.startsWith('characteristic_num'))
       && newFact.value.selected  
       && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10) ) {
           badData = true;
@@ -213,7 +214,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       setNewFact({
         patient_id: session.patient_id || session.user_id,
         activity_key: fact.code,
-        value: fact.type === 'reservation' ? fact.default_value : null,
+        value: (fact.type === 'reservation') ? fact.default_value : null,
         session: {
           user_id: session.user_id,
           session_id: session.session_id,
