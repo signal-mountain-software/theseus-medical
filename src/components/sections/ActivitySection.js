@@ -294,7 +294,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
   */
 
   const onChooseDefault = () => {
-    defaultRequested = true;
+    throw new Error('intentional error thrown');
+    // defaultRequested = true;
   };
 
   const onChooseActivity = async activity => {
@@ -331,10 +332,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setNewFact(newFact);
       onSaveFact(newFact);
     } else if (activity.code.startsWith('event')) {
-      setType(DEFAULT_TYPE);
-      setLimit(DEFAULT_LIMIT);
-      setEvent(activity.code.split('.')[1]);
-      setNewFact();    
+      if (!toggledRow) {       
+        setType(DEFAULT_TYPE);
+        setLimit(DEFAULT_LIMIT);
+        setEvent(activity.code.split('.')[1]);
+        setNewFact();
+      }
+      setLimit(limit + 1);
+      toggledRow = false;
     } else {
       let result = await API.graphql(
         graphqlOperation(getActivityData, {
@@ -351,7 +356,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           },
         })
       ).catch(error => {
-        enqueueSnackbar(`We had a problem getting current information: ${error}`, {
+        enqueueSnackbar(`We had a problem getting current information: ${error.errors[0].message}`, {
           variant: 'error',
         });
       });
@@ -372,7 +377,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               event_code: activity.code.replace('.','^').split('^')[1],
             })
           ).catch(error => {
-            enqueueSnackbar(`We had a problem getting that event: ${JSON.stringify(error)}`, {
+            enqueueSnackbar(`We had a problem getting that event: ${error.errors[0].message}`, {
               variant: 'error',
             });
           });
@@ -384,7 +389,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               event_code: activity.code,
             })
           ).catch(error => {
-            enqueueSnackbar(`We had a problem getting that event: ${JSON.stringify(error)}`, {
+            enqueueSnackbar(`We had a problem getting that event: ${error.errors[0].message}`, {
               variant: 'error',
             });
           });
@@ -631,7 +636,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             })
           ).catch(error => {
             setLoading(false);
-            enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.message}`, {
+            enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.errors[0].message}`, {
               variant: 'error',
             });
           });
@@ -823,7 +828,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='caption' noWrap>
-                    {'***AVA v21.5.23***'}
+                    {'***AVA v21.5.27b***'}
                   </Typography>
                 </Box>
                 <Paper

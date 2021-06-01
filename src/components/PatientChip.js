@@ -29,7 +29,7 @@ export default ({ patient, roles, session }) => {
     (async () => {
       if (patient) {
         const response = await Storage.get('patients/' + patient.person_id + '.jpg').catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when retrieving public object from s3: ${error.message}`, {
+          enqueueSnackbar(`Whoops! Something went wrong when retrieving public object from s3: ${error.errors[0].message}`, {
             variant: 'error',
           });
         });

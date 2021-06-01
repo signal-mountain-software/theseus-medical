@@ -64,7 +64,7 @@ export default ({ open, roles, onClose }) => {
         const result1 = await API.graphql(
           graphqlOperation(updateSession, { input: { session_id: session.session_id, ...selected } })
         ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.message}`, {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.errors[0].message}`, {
             variant: 'error',
           });
         });
@@ -74,7 +74,7 @@ export default ({ open, roles, onClose }) => {
             person_id: result1.data.updateSession.patient_id || result1.data.updateSession.user_id,
           })
         ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`, {
+          enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.errors[0].message}`, {
             variant: 'error',
           });
         });

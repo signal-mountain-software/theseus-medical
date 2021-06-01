@@ -2,7 +2,7 @@ import React from 'react';
 import TextField from '@material-ui/core/TextField';
 
 export default ({ open, label, value, message, onChange, onKeyPress, onError }) => {
-  const keyWords = ['.org', 'org/', 'com/', '.com', 'http', '.mp', '.doc', '.pdf'];
+  //const keyWords = ['.org', 'org/', 'com/', '.com', 'http', '.mp', '.doc', '.pdf'];
 
   React.useEffect(() => { 
     if (!open) {

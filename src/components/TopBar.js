@@ -29,18 +29,6 @@ import IosInstall from './dialogs/IosInstall';
 import SwitchPatientDialog from './dialogs/SwitchPatientDialog';
 import PatientChip from './PatientChip';
 
-/*
-const HideOnScroll = ({ children }) => {
-  const trigger = useScrollTrigger();
-
-  return (
-    <Slide appear={false} direction='down' in={!trigger}>
-      {children}
-    </Slide>
-  );
-};
-*/
-
 const ITEM_HEIGHT = 48;
 
 export default () => {
@@ -78,7 +66,7 @@ export default () => {
   const onSignOut = () => {
     setAnchorEl(null);
     Auth.signOut().then(() => {
-      window.location.reload();
+      window.location.reload(true);
     });
   };
 
@@ -156,7 +144,7 @@ export default () => {
                   <ListItemText primary='Sign Out' />
                 </MenuItem>
                 <MenuItem onClick={() => {
-                    window.location.replace(window.location.href);
+                    window.location.replace(window.location.href + '?v=latest');
                   }}>
                   <ListItemIcon>
                     <AutorenewIcon />

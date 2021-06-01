@@ -21,6 +21,8 @@ import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
 import BottomNav from './components/BottomNav';
 import TopBar from './components/TopBar';
+import { createPutFact } from './graphql/mutations';
+import { API, graphqlOperation } from 'aws-amplify';
 
 const menu = [
   { label: 'Profile', path: '/profile', icon: <AccountCircleIcon />, screen: <ProfileScreen /> },
@@ -29,15 +31,51 @@ const menu = [
 ];
 
 const HOME = '/theseus';
+var hasError = false;
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    hasError = false;
+  }
+  
+  componentDidCatch(error, info) {
+    hasError = true;
+    handleWriteError(error.message);
+  }
+
+  render() {
+    if (hasError) {
+      return <h1>`Whoops! We had a problem. Contact support please.`</h1>;
+    }
+    return this.props.children
+  }
+  
+}
+
+const handleWriteError = async message => {
+  let instruction = {
+    patient_id: 'no info',
+    activity_key: '***ERROR_CAUGHT***',
+    value: 'see error',
+    session: {
+      user_id: 'no user logged',
+      session_id: 'no session logged',
+    },
+  };
+  await API.graphql(graphqlOperation(createPutFact, { input: instruction }));
+};
 
 const App = () => (
-  <Box>
-    <TopBar />
-    <Box pb={7}>
-      <RootNavigation menu={menu} homePath={HOME} />
+  <ErrorBoundary>
+    <Box>
+      <TopBar />
+      <Box pb={7}>
+        <RootNavigation menu={menu} homePath={HOME} />
+      </Box>
+      <BottomNav menu={menu} homePath={HOME} />
     </Box>
-    <BottomNav menu={menu} homePath={HOME} />
-  </Box>
+  </ErrorBoundary>
 );
 
 export default hocFactory(App, [
