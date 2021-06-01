@@ -442,8 +442,13 @@ export default ({
     setFormState(resetter);
   };
 
-  const handleFilterText = () => {
-    newFact.value.freeText['%filter%'] = filterText;
+  const handleFilterText = keyValue => {
+    if (filterText) { 
+      newFact.value.freeText['%filter%'] = filterText 
+    }
+    else if (keyValue) { 
+      newFact.value.freeText['%filter%'] = newFact.value.freeText[keyValue] 
+    }
     setNewFact(newFact);
     var resetter = formState + 1;
     setFormState(resetter);
@@ -856,14 +861,17 @@ export default ({
   /* Prompt for filter */ <FormControl className={classes.freeInput}>
                           <Input
                             id='%filter-input%'
-                            type='text'
+                            type='search'
                             onChange={onChangeFilterText}
+                            placeholder={
+                              newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
+                              ? newFact.value.freeText[value.split(':')[1]]
+                              : value.split(':')[1]}
                             helperText={value.split(':')[1]}
                             value={filterText}
                             endAdornment={
                               <InputAdornment position='end'>
-                                <IconButton id='%filter%' aria-label='trigger-filter-action' onClick={handleFilterText}>
-                                  <SearchIcon />
+                                <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => {handleFilterText(value.split(':')[1])}} >                                 <SearchIcon />
                                 </IconButton>
                               </InputAdornment>
                             }
