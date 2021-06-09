@@ -350,7 +350,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
-          {isMobile ? 'Can' : 'Cancel'}
+          {isMobile ? 'Cncl' : 'Cancel'}
         </Button>
         {fact && fact.code && fact.code.startsWith('document.') ? null : (
           <Button variant='contained' color='primary' size='small' onClick={handleSave}>
