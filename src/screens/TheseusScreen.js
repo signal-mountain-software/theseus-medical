@@ -10,6 +10,16 @@ export default () => {
   const { state } = useSession();
   const { patient, session } = state;
 
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready
+      .then(registration => {
+        registration.update();
+      })
+      .catch(error => {
+        console.error(error.message);
+      });
+  }
+
   return (
     <Box>
       <ActivitySection patient={patient} session={session} newFact={newFact} setNewFact={setNewFact} />

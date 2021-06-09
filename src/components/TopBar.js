@@ -17,7 +17,6 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 //import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import AssignmentIndIcon from '@material-ui/icons/AssignmentInd';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
-import AutorenewIcon from '@material-ui/icons/Autorenew';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -145,14 +144,6 @@ export default () => {
                     <ExitToAppIcon />
                   </ListItemIcon>
                   <ListItemText primary='Sign Out' />
-                </MenuItem>
-                <MenuItem onClick={() => {
-                    window.location.replace(window.location.href + '?v=latest');
-                  }}>
-                  <ListItemIcon>
-                    <AutorenewIcon />
-                  </ListItemIcon>
-                  <ListItemText primary='Reload' />
                 </MenuItem>
                 {showInstall() && (
                   <MenuItem onClick={onInstall}>

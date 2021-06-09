@@ -5,11 +5,14 @@ import * as serviceWorker from '../serviceWorker';
 
 export default () => {
     serviceWorker.unregister();
-    window.location.replace(window.location.href.replace('refresh', 'theseus'));
+    let jumpTo = window.location.href.replace('refresh', 'theseus');
+    console.log('starting ', jumpTo);
+    // alert(`starting ${jumpTo}`);
+    window.location.replace(jumpTo);
     return (  
     <Box mt={3}>
-        <Typography variant='h3' align='center'>
-        Loading new program version
+        <Typography align='center'>
+        Re-Loading AVA...
         </Typography>
     </Box>
 )
