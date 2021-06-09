@@ -726,13 +726,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
               AVA
             </Typography>
           </Box>
-          <Box pl={2} display='flex'>
+          <Box pl={2} display={homeState === 'event' ? 'flex' : 'none'}>
               <Button
                 color='secondary'
                 size='small'
                 variant='contained'
                 onClick={doneWithEvent}>
-                {homeState === 'event' ? 'Done' : homeState === 'search' ? 'Home' : 'Refresh'}
+                Home
               </Button>
           </Box>
         </Box>

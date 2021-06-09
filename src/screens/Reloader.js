@@ -7,12 +7,12 @@ export default () => {
     serviceWorker.unregister();
     let jumpTo = window.location.href.replace('refresh', 'theseus');
     console.log('starting ', jumpTo);
-    alert(`starting ${jumpTo}`);
+    // alert(`starting ${jumpTo}`);
     window.location.replace(jumpTo);
     return (  
     <Box mt={3}>
-        <Typography variant='h3' align='center'>
-        `Loading ${jumpTo}`
+        <Typography align='center'>
+        Re-Loading AVA...
         </Typography>
     </Box>
 )
