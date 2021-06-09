@@ -29,6 +29,8 @@ import IosInstall from './dialogs/IosInstall';
 import SwitchPatientDialog from './dialogs/SwitchPatientDialog';
 import PatientChip from './PatientChip';
 
+import * as serviceWorker from '../serviceWorker';
+
 const ITEM_HEIGHT = 48;
 
 export default () => {
@@ -66,7 +68,8 @@ export default () => {
   const onSignOut = () => {
     setAnchorEl(null);
     Auth.signOut().then(() => {
-      window.location.reload(true);
+      serviceWorker.unregister();
+      window.location.reload();
     });
   };
 

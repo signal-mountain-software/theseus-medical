@@ -33,6 +33,8 @@ import { getActivityData } from '../../graphql/queries';
 import { getReservation } from '../../graphql/queries';
 import NewFactDialog from '../dialogs/NewFactDialog';
 
+import * as serviceWorker from '../../serviceWorker';
+
 const useStyles = makeStyles(theme => ({
   formControl: {
     margin: theme.spacing(1),
@@ -171,6 +173,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       setSummary(false);
       setConfirmation(false);
       if (homeState === 'home') {
+        serviceWorker.unregister()
         window.location.reload();
       }
       returnToHome();
@@ -828,7 +831,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='caption' noWrap>
-                    {'***AVA v21.5.27b***'}
+                    {'***AVA v21.6.4***'}
                   </Typography>
                 </Box>
                 <Paper
