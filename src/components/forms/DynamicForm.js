@@ -48,6 +48,7 @@ import Avatar from '@material-ui/core/Avatar';
 import FaceIcon from '@material-ui/icons/Face';
 
 import VideoRecorder from 'react-video-recorder';
+import ReactPlayer from 'react-player';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -661,6 +662,16 @@ export default ({
               newFact.value = pVideo;
             }
           }          
+        />
+      );
+    case 'play_video':
+      return (
+        <ReactPlayer 
+          url={defaultValue} 
+          controls={true}
+          width='100%'
+          height='100%'
+          playing={true}
         />
       );
     case 'characteristic_num2':

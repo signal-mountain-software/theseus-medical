@@ -357,12 +357,13 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
           {isMobile ? 'Cncl' : 'Cancel'}
         </Button>
-        {fact?.code?.startsWith('document.') ? null : (
+        {fact?.code?.startsWith('document.') || fact?.code?.startsWith('render.')? null : (
           <Button variant='contained' color='primary' size='small' onClick={handleSave}>
-            { fact && fact.code && fact.code.startsWith('message.') ? 'Send' : 'Save' }
+            { fact?.code?.startsWith('message.') ? 'Send' : 'Save' }
           </Button>
         )}
-        {fromHome !== 'event' || fact.code?.startsWith('document.') || fact.code?.startsWith('form.') || fact.type === 'reservation' 
+        {fromHome !== 'event' || fact.code?.startsWith('document.') 
+          || fact.code?.startsWith('render.') || fact.code?.startsWith('form.') || fact.type === 'reservation' 
           ? null : (
             <React.Fragment>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
