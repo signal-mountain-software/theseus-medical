@@ -162,12 +162,20 @@ export default ({ patient, session, newFact, setNewFact }) => {
   var toggledRow = false;
 
   const AWS = require('aws-sdk');
+  AWS.config.update({region:'us-east-1'});
   
   const s3 = new AWS.S3({
     accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
     secretAccessKey: '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',
     Bucket: 'smsoftware-reports'
   });
+
+  var elastictranscoder = new AWS.ElasticTranscoder(
+    {
+      accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
+      secretAccessKey: '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',
+    }
+  );
 
   const doneWithEvent = () => {
     if (
@@ -509,6 +517,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           }
         } else if (newFact.value.hasOwnProperty('ContentType')) {
           if (newFact.value.ContentType === 'video/webm') {
+            await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
             await putFile(newFact.value);
           }
         } else if (newFact.value.hasOwnProperty('event_code')) {      // for "reservation" type activities
@@ -593,10 +602,30 @@ export default ({ patient, session, newFact, setNewFact }) => {
     selectedActivityName = '';
 
     async function putFile(params) {// Uploading files to the bucket
-      enqueueSnackbar(`AVA started loading your video.  We'll name is ${params.Key}`,{variant: 'info', persist: true})
+      enqueueSnackbar(`AVA is preparing your video.  We'll name it ${newFact.activity_key.replace('.','^').split('^')[1]}`,
+        {variant: 'info', persist: true})
       s3.upload(params, function(err, data) {
-        if (err) {alert (`error putFile in activitysection is ${JSON.stringify(err)}`)}
-        else {enqueueSnackbar(`Your video named ${params.Key} just finished uploading into AVA`,{variant: 'success', persist: true})}
+        if (err) {enqueueSnackbar (`Uh oh!  AVA couldn't save your video.  The reason is ${JSON.stringify(err)}`,
+          {variant: 'error', persist: true})}
+        else {
+          var converterParms = {
+            PipelineId: '1626108726566-cv5z9u', /* required */
+            Input: {
+              Key: params.Key,
+            },
+            Output: {
+              Key: newFact.activity_key.replace('.','^').split('^')[1] +'.mp4',
+              PresetId: '1351620000001-000001',
+            },
+          };
+          elastictranscoder.createJob(converterParms, function(err, data) {
+            if (err) alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.','^').split('^')[1] +'.mp4'}`); // an error occurred
+            else {
+              enqueueSnackbar(`Your video named ${newFact.activity_key.replace('.','^').split('^')[1]} is now being prepared for viewing in AVA.`,
+                {variant: 'info', persist: true});           // successful response
+            }
+          });
+        }
       });
     }
   };
