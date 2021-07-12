@@ -28,7 +28,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'], 
           data.accessToken.payload.sub,
-          `Version=v21.6.19 ~ TimeRef=${data.idToken.payload['auth_time']}`
+          `Version=v21.7.12 ~ TimeRef=${data.idToken.payload['auth_time']}`
         );
       };
     } catch (err) {
