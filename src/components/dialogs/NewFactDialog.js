@@ -140,6 +140,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
     handleExit();
   };
 
+  const handleSkip = () => {
+    withNext = true;
+    onNext(newFact);
+  };
+
   const handleSave = () => {
     withNext = false;
     handleExit();
@@ -352,16 +357,21 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
           {isMobile ? 'Cncl' : 'Cancel'}
         </Button>
-        {fact && fact.code && fact.code.startsWith('document.') ? null : (
+        {fact?.code?.startsWith('document.') ? null : (
           <Button variant='contained' color='primary' size='small' onClick={handleSave}>
             { fact && fact.code && fact.code.startsWith('message.') ? 'Send' : 'Save' }
           </Button>
         )}
         {fromHome !== 'event' || fact.code?.startsWith('document.') || fact.code?.startsWith('form.') || fact.type === 'reservation' 
           ? null : (
-          <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
-            {isMobile ? 'Save +' : 'Save & Next'}
-          </Button>
+            <React.Fragment>
+              <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
+                {isMobile ? 'Save +' : 'Save & Next'}
+              </Button>
+              <Button className={classes.confirm} size='small' variant='contained' onClick={handleSkip}>
+                Skip
+              </Button>
+            </React.Fragment>
         )}
       </DialogActions>
     </Dialog>
