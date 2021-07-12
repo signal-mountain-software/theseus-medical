@@ -3,7 +3,7 @@ import { AmplifyAuthenticator, AmplifyContainer, AmplifySignIn } from '@aws-ampl
 import { Auth, appendToCognitoUserAgent } from '@aws-amplify/auth';
 import { onAuthUIStateChange, AuthState } from '@aws-amplify/ui-components';
 import { createPutFact } from '../graphql/mutations';
-import { API, graphqlOperation, Hub } from 'aws-amplify';
+import { API, graphqlOperation } from 'aws-amplify';
 
 export default Component => props => {
   const [signedIn, setSignedIn] = React.useState(false);
