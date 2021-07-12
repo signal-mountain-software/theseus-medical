@@ -161,6 +161,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
   var addedAFavorite = false;
   var toggledRow = false;
 
+  const AWS = require('aws-sdk');
+  
+  const s3 = new AWS.S3({
+    accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
+    secretAccessKey: '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',
+    Bucket: 'smsoftware-reports'
+  });
+
   const doneWithEvent = () => {
     if (
       homeState === 'search' ||
@@ -499,6 +507,10 @@ export default ({ patient, session, newFact, setNewFact }) => {
               }
             }
           }
+        } else if (newFact.value.hasOwnProperty('ContentType')) {
+          if (newFact.value.ContentType === 'video/webm') {
+            await putFile(newFact.value);
+          }
         } else if (newFact.value.hasOwnProperty('event_code')) {      // for "reservation" type activities
           constructedValue = '';
           let link = '';
@@ -579,6 +591,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
       }
     }
     selectedActivityName = '';
+
+    async function putFile(params) {// Uploading files to the bucket
+      enqueueSnackbar(`AVA started loading your video.  We'll name is ${params.Key}`,{variant: 'info', persist: true})
+      s3.upload(params, function(err, data) {
+        if (err) {alert (`error putFile in activitysection is ${JSON.stringify(err)}`)}
+        else {enqueueSnackbar(`Your video named ${params.Key} just finished uploading into AVA`,{variant: 'success', persist: true})}
+      });
+    }
   };
 
   const onNextFact = async newFact => {
@@ -831,7 +851,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='caption' noWrap>
-                    {'***AVA v21.6.9***'}
+                    {'***AVA v21.6.19***'}
                   </Typography>
                 </Box>
                 <Paper
@@ -921,7 +941,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         </DialogTitle>
         <DialogContent dividers={true} className={classes.descriptionText}>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
-            {newFact && newFact.value && newFact.value.selected
+            {newFact?.value?.selected
               ? newFact.value.selected.map(selectedValue => (
                   <Typography key={selectedValue}>
                     {newFact.value.freeText[selectedValue] ? null : (
@@ -941,7 +961,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               : null}
           </DialogContentText>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
-            {newFact && newFact.value && newFact.value.freeText
+            {newFact?.value?.freeText
               ? Object.keys(newFact.value.freeText).map(selectedValue =>
                   !selectedValue.startsWith('%filter%') ? (
                     <Typography key={selectedValue}>

@@ -47,6 +47,8 @@ import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
 import FaceIcon from '@material-ui/icons/Face';
 
+import VideoRecorder from 'react-video-recorder';
+
 const useStyles = makeStyles(theme => ({
   formControl: {
     marginLeft: theme.spacing(3),
@@ -641,6 +643,26 @@ export default ({
           onError={onError}
         />
       );
+    case 'record_video':
+      return (
+        <VideoRecorder
+          isOnInitially
+          showReplayControls
+          replayVideoAutoplayAndLoopOff
+          onRecordingComplete={async (videoBlob) => 
+            {
+              const pVideo = {
+                Bucket: 'smsoftware-reports',
+                Key: newFact.activity_key.replace('.','^').split('^')[1] +'.webm', 
+                Body: videoBlob,
+                ACL: 'public-read-write',
+                ContentType: 'video/webm'
+              };
+              newFact.value = pVideo;
+            }
+          }          
+        />
+      );
     case 'characteristic_num2':
       return (
         <Number2Form
@@ -766,7 +788,6 @@ export default ({
 
                   /* prompt for text response...
                   /* ~other:<text>               | prompt for text response with <text>     | ~other:What time would you like your meal?                */
-                  /* ~prompt:<text>              | prompt for text response with <text>     | ~prompt:Special requests?                                 */                  
                   
                   /* special cases...
                   /* ~+<key>~<value>             | use value only when <key> is selected    | ~+Filet Mignon:How would you like your filet cooked?      */
@@ -797,7 +818,6 @@ export default ({
                     <ListItem key={value + vIndex.toString()} role={undefined} dense className={classes.factTitle}>
                       <ListItemText
                         id={'subhead' + value}
-                        classes={{ primary: classes.factTitle }}
                         primary={
                           <Typography className={classes.factTitle}>
                             {value.replace('!', '').substr(2)}
