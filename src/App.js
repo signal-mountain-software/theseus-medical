@@ -57,10 +57,11 @@ class ErrorBoundary extends React.Component {
 }
 
 const handleWriteError = async message => {
+  var timeNow = new Date().getTime();
   let instruction = {
     patient_id: 'no info',
-    activity_key: '***ERROR_CAUGHT***',
-    value: 'see error',
+    activity_key: '***ERROR_CAUGHT***#' + timeNow,
+    value: message,
     session: {
       user_id: 'no user logged',
       session_id: 'no session logged',
