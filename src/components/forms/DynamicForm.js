@@ -877,11 +877,7 @@ export default ({
   /* Text prompt */       <TextField
                             id={value.split(':')[1]}
                             helperText={value.split(':')[1]}
-                            value={
-                              newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
-                                ? newFact.value.freeText[value.split(':')[1]]
-                                : ''
-                            }
+                            value={newFact?.value?.freeText[value.split(':')[1]] || ''}
                             InputLabelProps={{ shrink: true }}
                             InputProps={{ noWrap: true }}
                             onChange={onChangeFreeText}

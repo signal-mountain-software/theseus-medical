@@ -116,7 +116,7 @@ var DEFAULT_LIMIT = 100;
 
 export default ({ patient, session, newFact, setNewFact }) => {
   DEFAULT_LIMIT++;
-  const DEFAULT_LIMIT_INCREMENT = 20;
+  // const DEFAULT_LIMIT_INCREMENT = 20;
 
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
   const [events, setEvents] = React.useState([]); // populates the events dropdown list
@@ -131,7 +131,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [lastPerson, setLastPerson] = React.useState(''); // stores the current selected type filter
   const [lastLimit, setLastLimit] = React.useState(0); // stores the current limit of activity buttons displayed
 
-  const [loading, setLoading] = React.useState(false); // a flag that shows/hides loading spinner
+  const [loading, setLoading] = React.useState(true); // a flag that shows/hides loading spinner
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   // const [searchString, setSearchString] = React.useState('');
@@ -287,11 +287,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
   //  setSearchString('');
   };
 
+  /*
   const onShowMore = () => {
     setLimit(limit + DEFAULT_LIMIT_INCREMENT);
   };
 
-  /*
   const onTap = event => {
     if (searchString !== '') {
       setEvent('');
@@ -310,12 +310,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const onSearch = event => {
     setSearchString(event.target.value);
   };
-  */
+  
 
   const onChooseDefault = () => {
     throw new Error('intentional error thrown');
     // defaultRequested = true;
   };
+  */
 
   const onChooseActivity = async activity => {
     if (addedAFavorite || activity.code.startsWith('document')) {
@@ -733,7 +734,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             }
           }
         } else {
-          setLoading(false);
+  //        setLoading(false);
           API.cancel(result, 'ActivitySection unmounted, cancel getActivityData');
         }
       }
@@ -745,7 +746,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     }
 
     return () => {
-      setLoading(false);
+  //    setLoading(false);
       mounted = false;
     };
   }, [patient, session, event, type, limit, newFact, showConfirmation, lastWrittenFact, rowOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -826,17 +827,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
                                   !activity.default_value.includes('.')
                                     ? 'flex'
                                     : 'none'
-                                }>
-                                <Button onClick={onChooseDefault} className={classes.defaultButton}>
-                                  <Typography noWrap>{activity.default_value}</Typography>
-                                </Button>
+                                }>                                
                               </Box>
                             </Box>
                             <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
                               {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
-                                <Typography variant='body2'>
-                                  {hNdx > 0 ? <p></p> : null}
-                                  {new Date(hItem.posted_time).toLocaleString()} <br></br> {hItem.value.replace('.','^').split('^')[1]} 
+                                <Typography key={activity.name + 'h' + hNdx} variant='body2'>
+                                  {hNdx > 0 ? <br /> : null}
+                                  {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.','^').split('^')[1]} 
                                 </Typography>
                               )) : null}
                             </Box>
@@ -880,19 +878,20 @@ export default ({ patient, session, newFact, setNewFact }) => {
               <GridListTile cols={1}>
                 <Box>
                   <Typography variant='caption' noWrap>
-                    {'***AVA v21.7.12***'}
+                    {'***AVA v21.7.22***'}
                   </Typography>
                 </Box>
                 <Paper
-                  display={!activities || activities.length < limit ? 'none' : 'block'}
+                  display={loading ? 'block' : 'none'}
                   component={Box}
                   py={2}
                   px={2}
                   textAlign='start'
-                  variant='outlined'
-                  onClick={onShowMore}
-                  square>
-                  {loading ? <CircularProgress /> : <Typography variant='h5'>Click for more</Typography>}
+                  // variant='outlined'
+                  // onClick={onShowMore}
+                  square
+                >
+                  <CircularProgress />  
                 </Paper>
               </GridListTile>
             </GridList>
