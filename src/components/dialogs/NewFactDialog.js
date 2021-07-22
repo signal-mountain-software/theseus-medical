@@ -142,6 +142,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
 
   const handleSkip = () => {
     withNext = true;
+    newFact.value = 'value.SKIPPED';
+    setNewFact(newFact);
     onNext(newFact);
   };
 
