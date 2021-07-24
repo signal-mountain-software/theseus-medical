@@ -49,7 +49,7 @@ class ErrorBoundary extends React.Component {
 
   render() {
     if (hasError) {
-      return <h1>`Whoops! We had a problem. Contact support please.`</h1>;
+      return <h3>Whoops! We had a problem. Contact support please.</h3>;
     }
     return this.props.children
   }
@@ -57,10 +57,9 @@ class ErrorBoundary extends React.Component {
 }
 
 const handleWriteError = async message => {
-  var timeNow = new Date().getTime();
-  let instruction = {
+    let instruction = {
     patient_id: 'no info',
-    activity_key: '***ERROR_CAUGHT***#' + timeNow,
+    activity_key: '***ERROR_CAUGHT***',
     value: message,
     session: {
       user_id: 'no user logged',
