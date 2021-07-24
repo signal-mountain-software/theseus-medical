@@ -603,13 +603,13 @@ export default ({
       setNums(['', '']);
       setMOut(message || 'Enter something here');
     }
-  }, [open, defaultValue, observationKey, message, values]);
+  }, [message]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     if (values) {
       let filtering = false;
       let search1 = null;
-      if (newFact && newFact.value && newFact.value.freeText && newFact.value.freeText['%filter%']) {
+      if (newFact?.value?.freeText['%filter%']) {
         search1 = newFact.value.freeText['%filter%'].toLowerCase();
       }
       let search2 = searchText.toLowerCase();
@@ -645,23 +645,33 @@ export default ({
         />
       );
     case 'record_video':
+      newFact.recordingStatus = 'none';
       return (
         <VideoRecorder
           isOnInitially
+          isFlipped
           showReplayControls
           replayVideoAutoplayAndLoopOff
           onRecordingComplete={async (videoBlob) => 
             {
               const pVideo = {
                 Bucket: 'smsoftware-reports',
-                Key: newFact.activity_key.replace('.','^').split('^')[1] +'.webm', 
+                Key: newFact.activity_key.replace('.','^').split('^')[1] + (newFact.recordingStatus !== 'stopped' ? '_partial' : '') + '.webm', 
                 Body: videoBlob,
                 ACL: 'public-read-write',
                 ContentType: 'video/webm'
               };
               newFact.value = pVideo;
+              if (newFact.recordingStatus !== 'stopped') {
+                newFact.recordingStatus = 'aborted';
+                onSave();
+              };
             }
           }          
+          onStopRecording={() => {
+            newFact.recordingStatus = 'stopped';
+          }}  
+          onStartRecording={() => {newFact.recordingStatus = 'started'}} 
         />
       );
     case 'play_video':
@@ -775,6 +785,7 @@ export default ({
         });
         setStatusMessage(sMess);
       }
+      let checkBoxOn = true;
       return (
         <React.Fragment key={`selection-panel`}>
           <FormControl fullWidth>
@@ -820,6 +831,9 @@ export default ({
                       the freetext attached to this line 
                       (prompt for freeText with ~%other:<prompt text>) */
                   
+                  if (value === '~[checkbox=off]') { checkBoxOn = false; return null; }
+                  else if (value === '~[checkbox=on]') { checkBoxOn = true; return null; }  
+
                   if (value.startsWith('~+')) {
                     let checkMe = value.substr(2).replace('~','?').split('?');
                     if (checked.indexOf(checkMe[0]) === -1) {return null}
@@ -845,13 +859,16 @@ export default ({
                       className={classes.defaultButton}>
                       {(!value.includes('other:') && !value.includes('~day:')) ? (
   /* Check Box */       <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
-                          <Checkbox
-                            edge='start'
-                            checked={checked.indexOf(value.split('~-')[0]) !== -1}
-                            disableRipple
-                            onClick={handleToggle(value)}
-                            inputProps={{ 'aria-labelledby': labelId }}
-                          />
+                          {checkBoxOn ? 
+                            <Checkbox
+                              edge='start'
+                              checked={checked.indexOf(value.split('~-')[0]) !== -1}
+                              disableRipple
+                              onClick={handleToggle(value)}
+                              inputProps={{ 'aria-labelledby': labelId }}
+                            />
+                            : null
+                          }
                           {qualifierTable.hasOwnProperty(value) ? (
                             <ListItemSecondaryAction>
                               <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
