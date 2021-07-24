@@ -291,7 +291,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       }
       setMessage(eString);
     }
-  }, [fact, session]);
+  }, [fact]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Dialog open={open} fullWidth={true} onClose={onClose}>
@@ -357,15 +357,20 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
-          {isMobile ? 'Cncl' : 'Cancel'}
+          {fact?.code?.startsWith('list.') ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
         </Button>
-        {fact?.code?.startsWith('document.') || fact?.code?.startsWith('render.')? null : (
-          <Button variant='contained' color='primary' size='small' onClick={handleSave}>
-            { fact?.code?.startsWith('message.') ? 'Send' : 'Save' }
-          </Button>
-        )}
-        {fromHome !== 'event' || fact.code?.startsWith('document.') 
-          || fact.code?.startsWith('render.') || fact.code?.startsWith('form.') || fact.type === 'reservation' 
+        { (fact?.code?.startsWith('document.') || fact?.code?.startsWith('render.') || (fact?.code?.startsWith('list.')))  
+          ? null 
+          : (<Button variant='contained' color='primary' size='small' onClick={handleSave}>
+              { fact?.code?.startsWith('message.') ? 'Send' : 'Save' }
+            </Button>
+            )
+        }
+        {fromHome !== 'event' 
+          || fact.code?.startsWith('document.') 
+          || fact.code?.startsWith('render.') 
+          || fact.code?.startsWith('form.') 
+          || fact.type === 'reservation' 
           ? null : (
             <React.Fragment>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
