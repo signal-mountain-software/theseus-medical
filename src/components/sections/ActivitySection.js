@@ -111,9 +111,10 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const [loading, setLoading] = React.useState(true); // a flag that shows/hides loading spinner
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
-  const [actionCancelled, setActionCancelled] = React.useState(false);
+  // const [actionCancelled, setActionCancelled] = React.useState(false);
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [homeState, setHomeState] = React.useState('home');
+  var actionCancelled;
 
   const [activePatient, setActivePatient] = React.useState(null);
 
@@ -259,6 +260,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onChooseActivity = async activity => {
+    actionCancelled = false;
     if (addedAFavorite || activity.code.startsWith('document')) {
       addedAFavorite = false;
       return;
@@ -416,7 +418,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
           }
         } else if (newFact.value.hasOwnProperty('ContentType')) {
           if (newFact.value.ContentType === 'video/webm' && !actionCancelled) {
-            await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
+              .catch(error => {
+                console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`)
+              });
+            setLastWrittenFact(writtenFact?.data?.createPutFact || null);
             await putFile(newFact.value);
           }
         } else if (newFact.value.hasOwnProperty('event_code')) {      // for "reservation" type activities
@@ -764,7 +770,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           fromHome={homeState}
           onClose={() => {
             setOpen(false);
-            setActionCancelled(true);
+            actionCancelled = true; 
             if (!selected.code.startsWith('list.')) { enqueueSnackbar(`${selected.name} cancelled`, {variant: 'warning', persist: false}) }
           }}
           onSave={onSaveFact}

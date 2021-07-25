@@ -211,6 +211,7 @@ export default ({
   const [messageField, setMessageField] = React.useState('');
 
   var noToggle = false;
+  var recordingStatus;
 
   const classes = useStyles();
 
@@ -645,7 +646,7 @@ export default ({
         />
       );
     case 'record_video':
-      newFact.recordingStatus = 'none';
+      recordingStatus = 'none';
       return (
         <VideoRecorder
           isOnInitially
@@ -656,22 +657,22 @@ export default ({
             {
               const pVideo = {
                 Bucket: 'smsoftware-reports',
-                Key: newFact.activity_key.replace('.','^').split('^')[1] + (newFact.recordingStatus !== 'stopped' ? '_partial' : '') + '.webm', 
+                Key: newFact.activity_key.replace('.','^').split('^')[1] + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm', 
                 Body: videoBlob,
                 ACL: 'public-read-write',
                 ContentType: 'video/webm'
               };
               newFact.value = pVideo;
-              if (newFact.recordingStatus !== 'stopped') {
-                newFact.recordingStatus = 'aborted';
+              if (recordingStatus !== 'stopped') {
+                recordingStatus = 'aborted';
                 onSave();
               };
             }
           }          
           onStopRecording={() => {
-            newFact.recordingStatus = 'stopped';
+            recordingStatus = 'stopped';
           }}  
-          onStartRecording={() => {newFact.recordingStatus = 'started'}} 
+          onStartRecording={() => {recordingStatus = 'started'}} 
         />
       );
     case 'play_video':
