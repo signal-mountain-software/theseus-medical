@@ -155,11 +155,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
   );
 
   const doneWithEvent = () => {
-    if (
-      activities.some(aObj => {
-        return aObj.observation_expires !== null && aObj.observation_expires > timeNow;
-      })
-    ) { setSummary(true); }
+    if ( activities.some(aObj => { return aObj.observation_expires > timeNow }) ) {   
+      setSummary(true);   // if ANY activity has an expiration date that is in the future (it isn't expired yet), show the summary
+    }
     else {
       setSummary(false);
       setConfirmation(false);
@@ -690,7 +688,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               {!activities || activities.length === 0 ? null : activities.map((activity, index) => (
                 <GridListTile key={activity.code} cols={1}>
                   <Box display={activity.reason === priorReason ? 'none' : 'block'}>
-                    <Typography variant='body1' noWrap>
+                    <Typography variant='body1' noWrap={true}>
                       {(priorReason = activity.reason)}
                     </Typography>
                   </Box>
@@ -746,7 +744,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 </GridListTile>
               ))}
               <GridListTile cols={1}>
-                <Typography variant='caption' noWrap>
+                <Typography variant='caption' noWrap={true}>
                   {'***AVA v21.7.22***'}
                 </Typography>
               </GridListTile>

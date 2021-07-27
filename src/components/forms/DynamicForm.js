@@ -610,7 +610,7 @@ export default ({
     if (values) {
       let filtering = false;
       let search1 = null;
-      if (newFact?.value?.freeText['%filter%']) {
+      if (newFact?.value?.freeText?.['%filter%']) {
         search1 = newFact.value.freeText['%filter%'].toLowerCase();
       }
       let search2 = searchText.toLowerCase();
@@ -895,7 +895,7 @@ export default ({
   /* Text prompt */       <TextField
                             id={value.split(':')[1]}
                             helperText={value.split(':')[1]}
-                            value={newFact?.value?.freeText[value.split(':')[1]] || ''}
+                            value={newFact?.value?.freeText?.[value.split(':')[1]] || ''}
                             InputLabelProps={{ shrink: true }}
                             InputProps={{ noWrap: true }}
                             onChange={onChangeFreeText}
