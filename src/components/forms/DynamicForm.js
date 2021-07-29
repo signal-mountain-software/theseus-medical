@@ -403,43 +403,11 @@ export default ({
     var resetter = formState + 1;
     setFormState(resetter);
   };
+  
+  const onCheckEnter = event => {
+    if (event.key === 'Enter') {handleFilterText(event.target.value)}
+  }
 
-  /* 
-
-  const onChangeDate = (date, id) => {
-    if (!date && newFact?.value?.freeText?.hasOwnProperty(id)) { 
-      delete newFact.value.freeText[id]
-    }
-    else {
-      newFact.value.freeText[id] = date ? date.toLocaleString() : null;
-    }
-    setNewFact(newFact);
-    var resetter = formState + 1;
-    setFormState(resetter);
-  };
-
-  const onStringDate = (inDate, id) => {
-    if (inDate && inDate.length > 2) { 
-      let d = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-      let currentDOW = new Date().getDay() + 7;
-      let offset = 0;
-      let key = inDate.toLowerCase().substr(0, 3)
-      if (key === 'tom') { offset = 1 }
-      else if (d.indexOf(key) > -1) { offset = currentDOW - d.indexOf(key); }
-      if ( offset > 0 ) {
-        let today = new Date();
-        offset = offset > 7 ? offset - 7 : offset;
-        let offsetDate = today.getDate() + offset;
-        let offsetFinal = new Date(today.setDate(offsetDate));
-        newFact.value.freeText[id] = offsetFinal.toLocaleString();
-      }
-      else  { newFact.value.freeText[id] = (new Date(inDate).toLocaleString()); }
-      setNewFact(newFact);
-      var resetter = formState + 1;
-      setFormState(resetter);
-    }
-  };
-*/
   const onChangeFilterText = event => {
     setFilterText(event.target.value);
     var resetter = formState + 1;
@@ -523,7 +491,7 @@ export default ({
       setDialogImage(response);
     }
     else { 
-      getImage(qualifierTable[value].image_url); 
+      getImage((!qualifierTable[value].image_url.includes('/') ? 'observation_images/' : '') + qualifierTable[value].image_url); 
     }
 
     setQualifierData(qualifierTable[value]);
@@ -589,7 +557,7 @@ export default ({
 
   async function getImage(image_name) {
     if (image_name) {
-      const response = await Storage.get('observation_images/' + image_name);
+      const response = await Storage.get(image_name);
       setDialogImage(response);
     } else {
       setDialogImage(null);
@@ -908,6 +876,7 @@ export default ({
                             id='%filter-input%'
                             type='search'
                             onChange={onChangeFilterText}
+                            onKeyPress={onCheckEnter}
                             placeholder={
                               newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
                               ? newFact.value.freeText[value.split(':')[1]]
@@ -968,7 +937,7 @@ export default ({
                 ) : null}
               </Box>
               {qualifierData.image_url ? (
-                <Avatar src={qualifierImage} className={classes.picture}>
+                <Avatar variant="rounded" src={qualifierImage} className={classes.picture}>
                   <FaceIcon className={classes.picture} />
                 </Avatar>
               ) : null}
