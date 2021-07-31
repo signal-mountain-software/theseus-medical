@@ -172,11 +172,11 @@ export default ({ session, profile, loginID }) => {
         setVoice(newVoice);
       }
       
-      if (profile.person_id === loginID) {
+      //if (profile.person_id === loginID) {
         setFirstName(profile.name.first);
         setLastName(profile.name.last);
         setLocation(profile.location);
-      }
+      //}
 
       setChanges(false);
     }

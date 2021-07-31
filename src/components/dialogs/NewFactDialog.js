@@ -140,6 +140,13 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
     handleExit();
   };
 
+  const handleSkip = () => {
+    withNext = true;
+    newFact.value = 'value.SKIPPED';
+    setNewFact(newFact);
+    onNext(newFact);
+  };
+
   const handleSave = () => {
     withNext = false;
     handleExit();
@@ -284,10 +291,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       }
       setMessage(eString);
     }
-  }, [fact, session]);
+  }, [fact]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Dialog open={open} fullWidth={true} onClose={onClose}>
+    // <Dialog open={open} fullWidth={true} onClose={onClose}>
+    <Dialog open={open} fullWidth={true}>
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
       </DialogContentText>
@@ -350,18 +358,29 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
-          {isMobile ? 'Cncl' : 'Cancel'}
+          {fact?.code?.startsWith('list.') ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
         </Button>
-        {fact && fact.code && fact.code.startsWith('document.') ? null : (
-          <Button variant='contained' color='primary' size='small' onClick={handleSave}>
-            { fact && fact.code && fact.code.startsWith('message.') ? 'Send' : 'Save' }
-          </Button>
-        )}
-        {fromHome !== 'event' || fact.code?.startsWith('document.') || fact.code?.startsWith('form.') || fact.type === 'reservation' 
+        { (fact?.code?.startsWith('document.') || fact?.code?.startsWith('render.') || (fact?.code?.startsWith('list.')))  
+          ? null 
+          : (<Button variant='contained' color='primary' size='small' onClick={handleSave}>
+              { fact?.code?.startsWith('message.') ? 'Send' : 'Save' }
+            </Button>
+            )
+        }
+        {fromHome !== 'event' 
+          || fact.code?.startsWith('document.') 
+          || fact.code?.startsWith('render.') 
+          || fact.code?.startsWith('form.') 
+          || fact.type === 'reservation' 
           ? null : (
-          <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
-            {isMobile ? 'Save +' : 'Save & Next'}
-          </Button>
+            <React.Fragment>
+              <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
+                {isMobile ? 'Save +' : 'Save & Next'}
+              </Button>
+              <Button className={classes.confirm} size='small' variant='contained' onClick={handleSkip}>
+                Skip
+              </Button>
+            </React.Fragment>
         )}
       </DialogActions>
     </Dialog>

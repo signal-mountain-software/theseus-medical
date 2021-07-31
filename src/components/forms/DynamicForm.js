@@ -47,6 +47,9 @@ import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
 import FaceIcon from '@material-ui/icons/Face';
 
+import VideoRecorder from 'react-video-recorder';
+import ReactPlayer from 'react-player';
+
 const useStyles = makeStyles(theme => ({
   formControl: {
     marginLeft: theme.spacing(3),
@@ -208,6 +211,7 @@ export default ({
   const [messageField, setMessageField] = React.useState('');
 
   var noToggle = false;
+  var recordingStatus;
 
   const classes = useStyles();
 
@@ -399,43 +403,11 @@ export default ({
     var resetter = formState + 1;
     setFormState(resetter);
   };
+  
+  const onCheckEnter = event => {
+    if (event.key === 'Enter') {handleFilterText(event.target.value)}
+  }
 
-  /* 
-
-  const onChangeDate = (date, id) => {
-    if (!date && newFact?.value?.freeText?.hasOwnProperty(id)) { 
-      delete newFact.value.freeText[id]
-    }
-    else {
-      newFact.value.freeText[id] = date ? date.toLocaleString() : null;
-    }
-    setNewFact(newFact);
-    var resetter = formState + 1;
-    setFormState(resetter);
-  };
-
-  const onStringDate = (inDate, id) => {
-    if (inDate && inDate.length > 2) { 
-      let d = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-      let currentDOW = new Date().getDay() + 7;
-      let offset = 0;
-      let key = inDate.toLowerCase().substr(0, 3)
-      if (key === 'tom') { offset = 1 }
-      else if (d.indexOf(key) > -1) { offset = currentDOW - d.indexOf(key); }
-      if ( offset > 0 ) {
-        let today = new Date();
-        offset = offset > 7 ? offset - 7 : offset;
-        let offsetDate = today.getDate() + offset;
-        let offsetFinal = new Date(today.setDate(offsetDate));
-        newFact.value.freeText[id] = offsetFinal.toLocaleString();
-      }
-      else  { newFact.value.freeText[id] = (new Date(inDate).toLocaleString()); }
-      setNewFact(newFact);
-      var resetter = formState + 1;
-      setFormState(resetter);
-    }
-  };
-*/
   const onChangeFilterText = event => {
     setFilterText(event.target.value);
     var resetter = formState + 1;
@@ -519,7 +491,7 @@ export default ({
       setDialogImage(response);
     }
     else { 
-      getImage(qualifierTable[value].image_url); 
+      getImage((!qualifierTable[value].image_url.includes('/') ? 'observation_images/' : '') + qualifierTable[value].image_url); 
     }
 
     setQualifierData(qualifierTable[value]);
@@ -585,7 +557,7 @@ export default ({
 
   async function getImage(image_name) {
     if (image_name) {
-      const response = await Storage.get('observation_images/' + image_name);
+      const response = await Storage.get(image_name);
       setDialogImage(response);
     } else {
       setDialogImage(null);
@@ -600,13 +572,13 @@ export default ({
       setNums(['', '']);
       setMOut(message || 'Enter something here');
     }
-  }, [open, defaultValue, observationKey, message, values]);
+  }, [message]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     if (values) {
       let filtering = false;
       let search1 = null;
-      if (newFact && newFact.value && newFact.value.freeText && newFact.value.freeText['%filter%']) {
+      if (newFact?.value?.freeText?.['%filter%']) {
         search1 = newFact.value.freeText['%filter%'].toLowerCase();
       }
       let search2 = searchText.toLowerCase();
@@ -639,6 +611,46 @@ export default ({
           message={mOut}
           onChange={onChangeValue}
           onError={onError}
+        />
+      );
+    case 'record_video':
+      recordingStatus = 'none';
+      return (
+        <VideoRecorder
+          isOnInitially
+          isFlipped
+          showReplayControls
+          replayVideoAutoplayAndLoopOff
+          onRecordingComplete={async (videoBlob) => 
+            {
+              const pVideo = {
+                Bucket: 'smsoftware-reports',
+                Key: newFact.activity_key.replace('.','^').split('^')[1] + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm', 
+                Body: videoBlob,
+                ACL: 'public-read-write',
+                ContentType: 'video/webm'
+              };
+              newFact.value = pVideo;
+              if (recordingStatus !== 'stopped') {
+                recordingStatus = 'aborted';
+                onSave();
+              };
+            }
+          }          
+          onStopRecording={() => {
+            recordingStatus = 'stopped';
+          }}  
+          onStartRecording={() => {recordingStatus = 'started'}} 
+        />
+      );
+    case 'play_video':
+      return (
+        <ReactPlayer 
+          url={defaultValue} 
+          controls={true}
+          width='100%'
+          height='100%'
+          playing={true}
         />
       );
     case 'characteristic_num2':
@@ -742,6 +754,7 @@ export default ({
         });
         setStatusMessage(sMess);
       }
+      let checkBoxOn = true;
       return (
         <React.Fragment key={`selection-panel`}>
           <FormControl fullWidth>
@@ -766,7 +779,6 @@ export default ({
 
                   /* prompt for text response...
                   /* ~other:<text>               | prompt for text response with <text>     | ~other:What time would you like your meal?                */
-                  /* ~prompt:<text>              | prompt for text response with <text>     | ~prompt:Special requests?                                 */                  
                   
                   /* special cases...
                   /* ~+<key>~<value>             | use value only when <key> is selected    | ~+Filet Mignon:How would you like your filet cooked?      */
@@ -788,6 +800,9 @@ export default ({
                       the freetext attached to this line 
                       (prompt for freeText with ~%other:<prompt text>) */
                   
+                  if (value === '~[checkbox=off]') { checkBoxOn = false; return null; }
+                  else if (value === '~[checkbox=on]') { checkBoxOn = true; return null; }  
+
                   if (value.startsWith('~+')) {
                     let checkMe = value.substr(2).replace('~','?').split('?');
                     if (checked.indexOf(checkMe[0]) === -1) {return null}
@@ -797,7 +812,6 @@ export default ({
                     <ListItem key={value + vIndex.toString()} role={undefined} dense className={classes.factTitle}>
                       <ListItemText
                         id={'subhead' + value}
-                        classes={{ primary: classes.factTitle }}
                         primary={
                           <Typography className={classes.factTitle}>
                             {value.replace('!', '').substr(2)}
@@ -814,13 +828,16 @@ export default ({
                       className={classes.defaultButton}>
                       {(!value.includes('other:') && !value.includes('~day:')) ? (
   /* Check Box */       <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
-                          <Checkbox
-                            edge='start'
-                            checked={checked.indexOf(value.split('~-')[0]) !== -1}
-                            disableRipple
-                            onClick={handleToggle(value)}
-                            inputProps={{ 'aria-labelledby': labelId }}
-                          />
+                          {checkBoxOn ? 
+                            <Checkbox
+                              edge='start'
+                              checked={checked.indexOf(value.split('~-')[0]) !== -1}
+                              disableRipple
+                              onClick={handleToggle(value)}
+                              inputProps={{ 'aria-labelledby': labelId }}
+                            />
+                            : null
+                          }
                           {qualifierTable.hasOwnProperty(value) ? (
                             <ListItemSecondaryAction>
                               <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
@@ -846,11 +863,7 @@ export default ({
   /* Text prompt */       <TextField
                             id={value.split(':')[1]}
                             helperText={value.split(':')[1]}
-                            value={
-                              newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
-                                ? newFact.value.freeText[value.split(':')[1]]
-                                : ''
-                            }
+                            value={newFact?.value?.freeText?.[value.split(':')[1]] || ''}
                             InputLabelProps={{ shrink: true }}
                             InputProps={{ noWrap: true }}
                             onChange={onChangeFreeText}
@@ -863,6 +876,7 @@ export default ({
                             id='%filter-input%'
                             type='search'
                             onChange={onChangeFilterText}
+                            onKeyPress={onCheckEnter}
                             placeholder={
                               newFact.value && newFact.value.freeText && newFact.value.freeText[value.split(':')[1]]
                               ? newFact.value.freeText[value.split(':')[1]]
@@ -906,7 +920,6 @@ export default ({
             open={qualifierOpen}
             className={classes.qualDialog}
             fullWidth
-            onClose={handleQClose}
             aria-labelledby='qualifier-dialog'>
             <Box display='flex' flexDirection='row' width='95%'>
               <Box display='flex' flexDirection='column' width='95%'>
@@ -928,84 +941,83 @@ export default ({
                 </Avatar>
               ) : null}
             </Box>
-            {qualifierOpen ? (
-              <DialogContent pt={0}>
-                <FormControl>
-                  <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
-                    {qualifiers
-                      ? qualifiers.map((qualifier, qIndex) =>
-                          qualifier.startsWith('~~') ? (
-                            <ListItem
-                              key={value + qIndex.toString()}
-                              role={undefined}
-                              className={classes.defaultButton}
-                              dense>
-                              <ListItemText
-                                id={'qhead' + value}
-                                classes={{ primary: classes.subHeader }}
-                                primary={qualifier.substr(2)}
-                              />
-                            </ListItem>
-                          ) : (
-                            <ListItem
-                              key={qualifier + qIndex.toString()}
-                              role={undefined}
-                              dense
-                              button
-                              className={classes.defaultButton}
-                              onClick={handleToggleQual(qualifier)}>
-                              <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
-                                <Checkbox
-                                  edge='start'
-                                  checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
-                                  name={qualifier}
-                                  disableRipple
-                                  inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
+            <DialogContent pt={0}>
+              <FormControl>
+                <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
+                  {qualifiers
+                    ? qualifiers.map((qualifier, qIndex) =>
+                        qualifier.startsWith('~~') ? (
+                          <ListItem
+                            key={value + qIndex.toString()}
+                            role={undefined}
+                            className={classes.defaultButton}
+                            dense>
+                            <ListItemText
+                              id={'qhead' + value}
+                              classes={{ primary: classes.subHeader }}
+                              primary={qualifier.substr(2)}
+                            />
+                          </ListItem>
+                        ) : (
+                          <ListItem
+                            key={qualifier + qIndex.toString()}
+                            role={undefined}
+                            dense
+                            button
+                            className={classes.defaultButton}
+                            onClick={handleToggleQual(qualifier)}>
+                            <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
+                              { checkBoxOn ?
+                              <Checkbox
+                                edge='start'
+                                checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
+                                name={qualifier}
+                                disableRipple
+                                inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
+                              /> : null }
+                              {!qualifier.startsWith('~other') ? (
+                                <ListItemText
+                                  id={`qlabelid-${qualifier}`}
+                                  fullWidth
+                                  primary={<Typography noWrap={true}>{qualifier}</Typography>}
                                 />
-                                {!qualifier.startsWith('~other') ? (
-                                  <ListItemText
-                                    id={`qlabelid-${qualifier}`}
-                                    fullWidth
-                                    primary={<Typography noWrap={true}>{qualifier}</Typography>}
-                                  />
-                                ) : (
-                                  <FormControl fullWidth>
-                                    <Grid
-                                      container
-                                      alignItems='center'
-                                      justifyContent='flex-start'
-                                      className={classes.defaultButton}>
-                                      <Grid item marginRight={1} paddingRight={2}>
-                                        <Typography noWrap={true} marginRight={1}>
-                                          {qualifier.split(':')[1] + ':'}
-                                        </Typography>
-                                      </Grid>
-                                      <Grid item>
-                                        <Typography>
-                                          <span>&nbsp;&nbsp;</span>
-                                        </Typography>
-                                      </Grid>
-                                      <Grid item>
-                                        <TextField
-                                          value={freeText}
-                                          onChange={onChangeQualText}
-                                          InputLabelProps={{ shrink: true }}
-                                          InputProps={{ marginLeft: '2' }}
-                                          fullWidth
-                                        />
-                                      </Grid>
+                              ) : (
+                                <FormControl fullWidth>
+                                  <Grid
+                                    container
+                                    alignItems='center'
+                                    justifyContent='flex-start'
+                                    className={classes.defaultButton}>
+                                    <Grid item marginRight={1} paddingRight={2}>
+                                      <Typography noWrap={true} marginRight={1}>
+                                        {qualifier.split(':')[1] + ':'}
+                                      </Typography>
                                     </Grid>
-                                  </FormControl>
-                                )}
-                              </React.Fragment>
-                            </ListItem>
-                          )
+                                    <Grid item>
+                                      <Typography>
+                                        <span>&nbsp;&nbsp;</span>
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item>
+                                      <TextField
+                                        value={freeText}
+                                        onChange={onChangeQualText}
+                                        InputLabelProps={{ shrink: true }}
+                                        InputProps={{ marginLeft: '2' }}
+                                        fullWidth
+                                      />
+                                    </Grid>
+                                  </Grid>
+                                </FormControl>
+                              )}
+                            </React.Fragment>
+                          </ListItem>
                         )
-                      : null}
-                  </FormGroup>
-                </FormControl>
-              </DialogContent>
-            ) : null}
+                      )
+                    : null}
+                </FormGroup>
+              </FormControl>
+            </DialogContent>
             <DialogActions>
               <Button onClick={handleQClose} color='inherit' size='small' variant='contained'>
                 Back

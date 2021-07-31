@@ -8,7 +8,7 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
-// import InputBase from '@material-ui/core/InputBase';
+
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -16,7 +16,6 @@ import { fade } from '@material-ui/core/styles/colorManipulator';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import BusinessCenterOutlinedIcon from '@material-ui/icons/BusinessCenterOutlined';
 import IconButton from '@material-ui/core/IconButton';
-import AddToQueueOutlinedIcon from '@material-ui/icons/AddToQueueOutlined';
 
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
@@ -56,21 +55,6 @@ const useStyles = makeStyles(theme => ({
   gridList: {
     // maxHeight: 400,
   },
-  search: {
-    backgroundColor: fade(theme.palette.common.white, 0.15),
-    '&:hover': {
-      backgroundColor: fade(theme.palette.common.white, 0.25),
-    },
-    position: 'absolute',
-    right: 15,
-    borderRadius: 50,
-    width: 150,
-    flexShrink: 2,
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-  },
   defaultButton: {
     borderRadius: 50,
     marginLeft: 0,
@@ -87,11 +71,6 @@ const useStyles = makeStyles(theme => ({
   },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
-  },
-  searchIcon: {
-    padding: theme.spacing(0, 2),
-    height: '100%',
-    pointerEvents: 'auto',
   },
   inputRoot: {
     color: 'inherit',
@@ -116,7 +95,6 @@ var DEFAULT_LIMIT = 100;
 
 export default ({ patient, session, newFact, setNewFact }) => {
   DEFAULT_LIMIT++;
-  const DEFAULT_LIMIT_INCREMENT = 20;
 
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
   const [events, setEvents] = React.useState([]); // populates the events dropdown list
@@ -126,17 +104,17 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const [type, setType] = React.useState(DEFAULT_TYPE); // stores the current selected type filter
   const [limit, setLimit] = React.useState(DEFAULT_LIMIT); // stores the current limit of activity buttons displayed
 
-  const [lastEvent, setLastEvent] = React.useState(''); // stores the current selected event filter
-  const [lastType, setLastType] = React.useState(''); // stores the current selected type filter
-  const [lastPerson, setLastPerson] = React.useState(''); // stores the current selected type filter
-  const [lastLimit, setLastLimit] = React.useState(0); // stores the current limit of activity buttons displayed
+  //const [lastEvent, setLastEvent] = React.useState(''); // stores the current selected event filter
+  //const [lastType, setLastType] = React.useState(''); // stores the current selected type filter
+  //const [lastPerson, setLastPerson] = React.useState(''); // stores the current selected type filter
+  //const [lastLimit, setLastLimit] = React.useState(0); // stores the current limit of activity buttons displayed
 
-  const [loading, setLoading] = React.useState(false); // a flag that shows/hides loading spinner
+  const [loading, setLoading] = React.useState(true); // a flag that shows/hides loading spinner
   const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
+  // const [actionCancelled, setActionCancelled] = React.useState(false);
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
-  // const [searchString, setSearchString] = React.useState('');
   const [homeState, setHomeState] = React.useState('home');
-  //const [defaultRequested, setDefaultRequested] = React.useState(false);
+  var actionCancelled;
 
   const [activePatient, setActivePatient] = React.useState(null);
 
@@ -156,20 +134,31 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const classes = useStyles();
 
   var priorReason = '';
-  var defaultRequested = false;
   var selectedActivityName = '';
   var addedAFavorite = false;
   var toggledRow = false;
 
+  const AWS = require('aws-sdk');
+  AWS.config.update({region:'us-east-1'});
+  
+  const s3 = new AWS.S3({
+    accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
+    secretAccessKey: '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',
+    Bucket: 'smsoftware-reports'
+  });
+
+  var elastictranscoder = new AWS.ElasticTranscoder(
+    {
+      accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
+      secretAccessKey: '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',
+    }
+  );
+
   const doneWithEvent = () => {
-    if (
-      homeState === 'search' ||
-      !newFact ||
-      !newFact.value ||
-      !activities.every(aObj => {
-        return aObj.observation_expires !== null && aObj.observation_expires < timeNow;
-      })
-    ) {
+    if ( activities.some(aObj => { return aObj.observation_expires > timeNow }) ) {   
+      setSummary(true);   // if ANY activity has an expiration date that is in the future (it isn't expired yet), show the summary
+    }
+    else {
       setSummary(false);
       setConfirmation(false);
       if (homeState === 'home') {
@@ -177,23 +166,17 @@ export default ({ patient, session, newFact, setNewFact }) => {
         window.location.reload();
       }
       returnToHome();
-    } else {
-      setSummary(true);
-    }
+    } 
   };
 
   const handleSummarySubmit = () => {
     setSummary(false);
     setConfirmation(false);
-    let confirmedData = [newFact.value];
-    if (newFact.qualifier) {
-      confirmedData.push(newFact.qualifier);
-    }
     newFact = {
       patient_id: session.patient_id || session.user_id,
       activity_key: 'confirmation.' + (event ? event : selected.code),
       value: 'action.confirmed',
-      qualifier: confirmedData,
+      qualifier: [],
       session: {
         user_id: session.user_id,
         session_id: session.session_id,
@@ -266,78 +249,24 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
-    setLimit(DEFAULT_LIMIT);
+    // setLimit(DEFAULT_LIMIT);
     setEvent('');
-  //  setSearchString('');
   };
 
-  const onShowMore = () => {
-    setLimit(limit + DEFAULT_LIMIT_INCREMENT);
-  };
-
-  /*
-  const onTap = event => {
-    if (searchString !== '') {
-      setEvent('');
-      setLimit(DEFAULT_LIMIT);
-      setType('%' + searchString);
-    }
-    setSearchString('');
-  };
-
-  const checkEnter = event => {
-    if (event.key === 'Enter') {
-      onTap(event);
-    }
-  };
-  
-  const onSearch = event => {
-    setSearchString(event.target.value);
-  };
-  */
-
-  const onChooseDefault = () => {
-    throw new Error('intentional error thrown');
-    // defaultRequested = true;
+  const onWildClick = () => {
+    // alert ('you clicked in space');
   };
 
   const onChooseActivity = async activity => {
+    actionCancelled = false;
     if (addedAFavorite || activity.code.startsWith('document')) {
       addedAFavorite = false;
       return;
     }
-    if (defaultRequested) {
-      defaultRequested = false;
-      selectedActivityName = activity.name;
-
-      if (activity.code.startsWith('event')) {
-        newFact = {
-          patient_id: session.patient_id || session.user_id,
-          activity_key: 'defaults.' + activity.code,
-          value: 'action.set_defaults',
-          session: {
-            user_id: session.user_id,
-            session_id: session.session_id,
-          },
-        };
-      } else {
-        newFact = {
-          patient_id: session.patient_id || session.user_id,
-          activity_key: activity.code,
-          value: activity.observation_key + '.' + activity.default_value,
-          session: {
-            user_id: session.user_id,
-            session_id: session.session_id,
-          },
-        };
-      }
-      setSelected(activity);
-      setNewFact(newFact);
-      onSaveFact(newFact);
-    } else if (activity.code.startsWith('event')) {
+    if (activity.code.startsWith('event')) {
       if (!toggledRow) {       
         setType(DEFAULT_TYPE);
-        setLimit(DEFAULT_LIMIT);
+        // setLimit(DEFAULT_LIMIT);
         setEvent(activity.code.split('.')[1]);
         setNewFact();
       }
@@ -403,20 +332,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
       if (!toggledRow) { setOpen(true) }
       toggledRow = false;
     }
-  };
-
-  const handleAddFavorite = async activity => {
-    let instruction = {
-      patient_id: session.patient_id || session.user_id,
-      activity_key: '___addToFavorites___',
-      value: activity.code,
-      session: {
-        user_id: session.user_id,
-        session_id: session.session_id,
-      },
-    };
-    await API.graphql(graphqlOperation(createPutFact, { input: instruction }));
-    addedAFavorite = false;
   };
 
   const onSaveFact = async newFact => {
@@ -499,6 +414,15 @@ export default ({ patient, session, newFact, setNewFact }) => {
               }
             }
           }
+        } else if (newFact.value.hasOwnProperty('ContentType')) {
+          if (newFact.value.ContentType === 'video/webm' && !actionCancelled) {
+            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
+              .catch(error => {
+                console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`)
+              });
+            setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+            await putFile(newFact.value);
+          }
         } else if (newFact.value.hasOwnProperty('event_code')) {      // for "reservation" type activities
           constructedValue = '';
           let link = '';
@@ -559,7 +483,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         }
       }
     }
-    sVal = constructedValue || 'completed';
+    sVal = constructedValue || (actionCancelled ? 'cancelled' : 'completed');
 
     setNewFact(newFact);
     setLimit(limit);
@@ -570,15 +494,39 @@ export default ({ patient, session, newFact, setNewFact }) => {
         selectedActivityName = selected.name;
       }
       if (selectedActivityName) {
-        enqueueSnackbar(
-          `${selectedActivityName} ${sVal === 'set_defaults' ? 'items set to their default values' : 'is ' + sVal}`,
-          {
-            variant: 'success',
-          }
-        );
+        enqueueSnackbar(`${selectedActivityName} is ${sVal}`, {variant: 'success'});
       }
     }
     selectedActivityName = '';
+
+    async function putFile(params) {// Uploading files to the bucket
+      let warning = newFact.value.Key.includes('_partial.webm') ? 'Your recording was interrupted.  AVA will save everything up to that point. ' : '';
+      enqueueSnackbar(`${warning}AVA is preparing your video.  We'll name it ${newFact.activity_key.replace('.','^').split('^')[1]}`,
+        {variant: (warning !== '' ? 'warning' : 'info'), persist: true})
+      s3.upload(params, function(err, data) {
+        if (err) {enqueueSnackbar (`Uh oh!  AVA couldn't save your video.  The reason is ${JSON.stringify(err)}`,
+          {variant: 'error', persist: true})}
+        else {
+          var converterParms = {
+            PipelineId: '1626108726566-cv5z9u', /* required */
+            Input: {
+              Key: params.Key,
+            },
+            Output: {
+              Key: newFact.activity_key.replace('.','^').split('^')[1] +'.mp4',
+              PresetId: '1351620000001-000001',
+            },
+          };
+          elastictranscoder.createJob(converterParms, function(err, data) {
+            if (err) alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.','^').split('^')[1] +'.mp4'}`); // an error occurred
+            else {
+              enqueueSnackbar(`Your video named ${newFact.activity_key.replace('.','^').split('^')[1]} is now being prepared for viewing in AVA.`,
+                {variant: 'info', persist: true});           // successful response
+            }
+          });
+        }
+      });
+    }
   };
 
   const onNextFact = async newFact => {
@@ -622,7 +570,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       let result;
       if (rowOpen[0]) {console.log('this is here to force a reload')};
       if (patient && session) {
-        if (event !== lastEvent || type !== lastType || limit !== lastLimit || patient.person_id !== lastPerson) {
+  //      if (event !== lastEvent || type !== lastType || limit !== lastLimit || patient.person_id !== lastPerson) {
           result = await API.graphql(
             graphqlOperation(getActivityData, { 
               input: {
@@ -643,15 +591,15 @@ export default ({ patient, session, newFact, setNewFact }) => {
               variant: 'error',
             });
           });
-          setLastEvent(event);
-          setLastType(type);
-          setLastPerson(patient.person_id)
-          setLastLimit(limit);
-        } else {
-          result = {
-            data: { getActivityData: activities },
-          };
-        }
+        //  setLastEvent(event);
+        //  setLastType(type);
+        //  setLastPerson(patient.person_id)
+        //  setLastLimit(limit);
+//        } else {
+  //        result = {
+    //        data: { getActivityData: activities },
+      //    };
+    //    }
 
         if (mounted) {
           setLoading(false);
@@ -677,14 +625,9 @@ export default ({ patient, session, newFact, setNewFact }) => {
           if (event === '' && type === DEFAULT_TYPE) {
             setHomeState('home');
           } else {
-            if (type.includes('%')) {
-              setHomeState('search');
-            } else {
-              setHomeState('event');
-            }
+            setHomeState('event');
           }
         } else {
-          setLoading(false);
           API.cancel(result, 'ActivitySection unmounted, cancel getActivityData');
         }
       }
@@ -696,13 +639,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
     }
 
     return () => {
-      setLoading(false);
       mounted = false;
     };
-  }, [patient, session, event, type, limit, newFact, showConfirmation, lastWrittenFact, rowOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, event, type]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Paper component={Box} m={2}>
+    <Paper component={Box} onClick={onWildClick} m={2}>
       <AppBar className={classes.appBar}>
         <Box
           px={3}
@@ -737,6 +679,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
           </Box>
         </Box>
       </AppBar>
+
+      {/* Main Activity List and Selection */}
       <Box p={3} flexGrow={1}>
         <Grid container>
           <Grid md={6} sm={7} xs={12} item>
@@ -744,7 +688,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               {!activities || activities.length === 0 ? null : activities.map((activity, index) => (
                 <GridListTile key={activity.code} cols={1}>
                   <Box display={activity.reason === priorReason ? 'none' : 'block'}>
-                    <Typography variant='body1' noWrap>
+                    <Typography variant='body1' noWrap={true}>
                       {(priorReason = activity.reason)}
                     </Typography>
                   </Box>
@@ -767,46 +711,17 @@ export default ({ patient, session, newFact, setNewFact }) => {
                           <React.Fragment key={`act_box_${activity.name}`}>                            
                             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                               <Typography variant='h5'>{activity.name}</Typography>
-                              <Box
-                                alignSelf='center'
-                                flexDirection='row'
-                                paddingLeft={5}
-                                display={
-                                  activity.hasOwnProperty('default_value') &&
-                                  activity.default_value &&
-                                  !activity.default_value.includes('.')
-                                    ? 'flex'
-                                    : 'none'
-                                }>
-                                <Button onClick={onChooseDefault} className={classes.defaultButton}>
-                                  <Typography noWrap>{activity.default_value}</Typography>
-                                </Button>
-                              </Box>
                             </Box>
                             <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
                               {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
-                                <Typography variant='body2'>
-                                  {hNdx > 0 ? <p></p> : null}
-                                  {new Date(hItem.posted_time).toLocaleString()} <br></br> {hItem.value.replace('.','^').split('^')[1]} 
+                                <Typography key={activity.name + 'h' + hNdx} variant='body2'>
+                                  {hNdx > 0 ? <br /> : null}
+                                  {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.','^').split('^')[1]} 
                                 </Typography>
                               )) : null}
                             </Box>
                           </React.Fragment>
                         }
-                      </Box>
-                      <Box
-                        alignSelf='center'
-                        flexDirection='row'
-                        color='white'
-                        display={activity.reason.startsWith('Search') ? 'flex' : 'none'}>
-                        <IconButton
-                          aria-label='add to favorites'
-                          onClick={() => {
-                            addedAFavorite = true;
-                            handleAddFavorite(activity);
-                          }}>
-                          <AddToQueueOutlinedIcon />
-                        </IconButton>
                       </Box>
                       <Box
                         alignSelf='center'
@@ -829,27 +744,22 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 </GridListTile>
               ))}
               <GridListTile cols={1}>
-                <Box>
-                  <Typography variant='caption' noWrap>
-                    {'***AVA v21.6.9***'}
-                  </Typography>
-                </Box>
-                <Paper
-                  display={!activities || activities.length < limit ? 'none' : 'block'}
-                  component={Box}
-                  py={2}
-                  px={2}
-                  textAlign='start'
-                  variant='outlined'
-                  onClick={onShowMore}
-                  square>
-                  {loading ? <CircularProgress /> : <Typography variant='h5'>Click for more</Typography>}
-                </Paper>
+                <Typography variant='caption' noWrap={true}>
+                  {'***AVA v21.7.22***'}
+                </Typography>
               </GridListTile>
             </GridList>
           </Grid>
         </Grid>
+        {loading ? 
+          <div style={{display: 'flex', justifyContent: 'center'}}>
+            <CircularProgress />
+          </div> 
+          : null
+        }
       </Box>
+    
+      {/* Launch Children */}
       {open ? (
         <NewFactDialog
           fact={selected}
@@ -858,11 +768,15 @@ export default ({ patient, session, newFact, setNewFact }) => {
           fromHome={homeState}
           onClose={() => {
             setOpen(false);
+            actionCancelled = true; 
+            if (!selected.code.startsWith('list.')) { enqueueSnackbar(`${selected.name} cancelled`, {variant: 'warning', persist: false}) }
           }}
           onSave={onSaveFact}
           onNext={onNextFact}
         />
       ) : null}
+
+      {/* When pressed "home" after entering diary data, this dialog lets you review the data and confirm it */}
       <Dialog
         open={showSummary && homeState === 'event'}
         onClose={handleSummaryBack}
@@ -909,6 +823,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Some activities require review and confirmation before writing in Facts table */}
       <Dialog
         open={showConfirmation}
         onClose={handleSummaryBack}
@@ -921,7 +837,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         </DialogTitle>
         <DialogContent dividers={true} className={classes.descriptionText}>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
-            {newFact && newFact.value && newFact.value.selected
+            {newFact?.value?.selected
               ? newFact.value.selected.map(selectedValue => (
                   <Typography key={selectedValue}>
                     {newFact.value.freeText[selectedValue] ? null : (
@@ -941,7 +857,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               : null}
           </DialogContentText>
           <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
-            {newFact && newFact.value && newFact.value.freeText
+            {newFact?.value?.freeText
               ? Object.keys(newFact.value.freeText).map(selectedValue =>
                   !selectedValue.startsWith('%filter%') ? (
                     <Typography key={selectedValue}>

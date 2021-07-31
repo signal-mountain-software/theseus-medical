@@ -2,6 +2,8 @@ import React from 'react';
 import { AmplifyAuthenticator, AmplifyContainer, AmplifySignIn } from '@aws-amplify/ui-react';
 import { Auth, appendToCognitoUserAgent } from '@aws-amplify/auth';
 import { onAuthUIStateChange, AuthState } from '@aws-amplify/ui-components';
+import { createPutFact } from '../graphql/mutations';
+import { API, graphqlOperation } from 'aws-amplify';
 
 export default Component => props => {
   const [signedIn, setSignedIn] = React.useState(false);
@@ -11,11 +13,28 @@ export default Component => props => {
 
     return onAuthUIStateChange(authState => {
       if (authState === AuthState.SignedIn) {
+        logSession();
         setSignedIn(true);
       } else if (authState === AuthState.SignedOut) {
         setSignedIn(false);
       }
     });
+  };
+
+  const logSession = async () => {
+    try {
+      const data = await Auth.currentSession();
+      if (data) {
+        logAVAAccess(
+          data.idToken.payload['cognito:username'], 
+          data.accessToken.payload.sub,
+          `Version=v21.7.22 ~ TimeRef=${data.idToken.payload['auth_time']}`
+        );
+      };
+    } catch (err) {
+      console.error(err);
+    }
+    return;
   };
 
   const setUser = async () => {
@@ -25,6 +44,19 @@ export default Component => props => {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const logAVAAccess = async (pUser, pSession, pMessage) => {
+    let instruction = {
+      patient_id: pUser,
+      activity_key: 'event.logusage',
+      value: pMessage,
+      session: {
+        user_id: pUser,
+        session_id: pSession,
+      },
+    };    
+    await API.graphql(graphqlOperation(createPutFact, { input: instruction }));
   };
 
   React.useEffect(() => {
@@ -42,7 +74,8 @@ export default Component => props => {
         </AmplifyAuthenticator>
       </AmplifyContainer>
     );
-  } else {
+  } 
+  else {
     return <Component {...props} />;
   }
 };
