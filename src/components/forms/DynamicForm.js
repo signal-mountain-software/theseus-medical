@@ -920,7 +920,6 @@ export default ({
             open={qualifierOpen}
             className={classes.qualDialog}
             fullWidth
-            onClose={handleQClose}
             aria-labelledby='qualifier-dialog'>
             <Box display='flex' flexDirection='row' width='95%'>
               <Box display='flex' flexDirection='column' width='95%'>
@@ -937,89 +936,88 @@ export default ({
                 ) : null}
               </Box>
               {qualifierData.image_url ? (
-                <Avatar variant="rounded" src={qualifierImage} className={classes.picture}>
+                <Avatar src={qualifierImage} className={classes.picture}>
                   <FaceIcon className={classes.picture} />
                 </Avatar>
               ) : null}
             </Box>
-            {qualifierOpen ? (
-              <DialogContent pt={0}>
-                <FormControl>
-                  <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
-                    {qualifiers
-                      ? qualifiers.map((qualifier, qIndex) =>
-                          qualifier.startsWith('~~') ? (
-                            <ListItem
-                              key={value + qIndex.toString()}
-                              role={undefined}
-                              className={classes.defaultButton}
-                              dense>
-                              <ListItemText
-                                id={'qhead' + value}
-                                classes={{ primary: classes.subHeader }}
-                                primary={qualifier.substr(2)}
-                              />
-                            </ListItem>
-                          ) : (
-                            <ListItem
-                              key={qualifier + qIndex.toString()}
-                              role={undefined}
-                              dense
-                              button
-                              className={classes.defaultButton}
-                              onClick={handleToggleQual(qualifier)}>
-                              <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
-                                <Checkbox
-                                  edge='start'
-                                  checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
-                                  name={qualifier}
-                                  disableRipple
-                                  inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
+            <DialogContent pt={0}>
+              <FormControl>
+                <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
+                  {qualifiers
+                    ? qualifiers.map((qualifier, qIndex) =>
+                        qualifier.startsWith('~~') ? (
+                          <ListItem
+                            key={value + qIndex.toString()}
+                            role={undefined}
+                            className={classes.defaultButton}
+                            dense>
+                            <ListItemText
+                              id={'qhead' + value}
+                              classes={{ primary: classes.subHeader }}
+                              primary={qualifier.substr(2)}
+                            />
+                          </ListItem>
+                        ) : (
+                          <ListItem
+                            key={qualifier + qIndex.toString()}
+                            role={undefined}
+                            dense
+                            button
+                            className={classes.defaultButton}
+                            onClick={handleToggleQual(qualifier)}>
+                            <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
+                              { checkBoxOn ?
+                              <Checkbox
+                                edge='start'
+                                checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
+                                name={qualifier}
+                                disableRipple
+                                inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
+                              /> : null }
+                              {!qualifier.startsWith('~other') ? (
+                                <ListItemText
+                                  id={`qlabelid-${qualifier}`}
+                                  fullWidth
+                                  primary={<Typography noWrap={true}>{qualifier}</Typography>}
                                 />
-                                {!qualifier.startsWith('~other') ? (
-                                  <ListItemText
-                                    id={`qlabelid-${qualifier}`}
-                                    fullWidth
-                                    primary={<Typography noWrap={true}>{qualifier}</Typography>}
-                                  />
-                                ) : (
-                                  <FormControl fullWidth>
-                                    <Grid
-                                      container
-                                      alignItems='center'
-                                      justifyContent='flex-start'
-                                      className={classes.defaultButton}>
-                                      <Grid item marginRight={1} paddingRight={2}>
-                                        <Typography noWrap={true} marginRight={1}>
-                                          {qualifier.split(':')[1] + ':'}
-                                        </Typography>
-                                      </Grid>
-                                      <Grid item>
-                                        <Typography>
-                                          <span>&nbsp;&nbsp;</span>
-                                        </Typography>
-                                      </Grid>
-                                      <Grid item>
-                                        <TextField
-                                          value={freeText}
-                                          onChange={onChangeQualText}
-                                          InputLabelProps={{ shrink: true }}
-                                          InputProps={{ marginLeft: '2' }}
-                                          fullWidth
-                                        />
-                                      </Grid>
+                              ) : (
+                                <FormControl fullWidth>
+                                  <Grid
+                                    container
+                                    alignItems='center'
+                                    justifyContent='flex-start'
+                                    className={classes.defaultButton}>
+                                    <Grid item marginRight={1} paddingRight={2}>
+                                      <Typography noWrap={true} marginRight={1}>
+                                        {qualifier.split(':')[1] + ':'}
+                                      </Typography>
                                     </Grid>
-                                  </FormControl>
-                                )}
-                              </React.Fragment>
-                            </ListItem>
-                          )
+                                    <Grid item>
+                                      <Typography>
+                                        <span>&nbsp;&nbsp;</span>
+                                      </Typography>
+                                    </Grid>
+                                    <Grid item>
+                                      <TextField
+                                        value={freeText}
+                                        onChange={onChangeQualText}
+                                        InputLabelProps={{ shrink: true }}
+                                        InputProps={{ marginLeft: '2' }}
+                                        fullWidth
+                                      />
+                                    </Grid>
+                                  </Grid>
+                                </FormControl>
+                              )}
+                            </React.Fragment>
+                          </ListItem>
                         )
-                      : null}
-                  </FormGroup>
-                </FormControl>
-              </DialogContent>
-            ) : null}
+                      )
+                    : null}
+                </FormGroup>
+              </FormControl>
+            </DialogContent>
             <DialogActions>
               <Button onClick={handleQClose} color='inherit' size='small' variant='contained'>
                 Back
