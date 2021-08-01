@@ -33,7 +33,7 @@ const menu = [
   { label: 'Chat', path: '/chat', icon: <ChatIcon />, screen: <ChatScreen /> },
 ];
 
-const HOME = '/theseus';
+const HOME = '/refresh';
 var hasError = false;
 
 class ErrorBoundary extends React.Component {

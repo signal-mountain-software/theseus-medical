@@ -12,7 +12,7 @@ export default () => {
     return (  
     <Box mt={3}>
         <Typography align='center'>
-        Re-Loading AVA...
+        Loading AVA version 21.8.1
         </Typography>
     </Box>
 )
