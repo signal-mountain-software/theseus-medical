@@ -5,6 +5,9 @@ import Typography from '@material-ui/core/Typography';
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
 
+import Box from '@material-ui/core/Box';
+import Paper from '@material-ui/core/Paper';
+
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { createPutFact } from '../../graphql/mutations';
@@ -134,6 +137,7 @@ export default ({ session, profile, loginID }) => {
 
   const [changes, setChanges] = React.useState(false);
 
+  const s3Bucket = 'https://theseus-medical-storage.s3.amazonaws.com/public/patients/';
   // const [newFact, setNewFact] = React.useState({});
 
   React.useEffect(() => {
@@ -172,16 +176,14 @@ export default ({ session, profile, loginID }) => {
         setVoice(newVoice);
       }
       
-      //if (profile.person_id === loginID) {
         setFirstName(profile.name.first);
         setLastName(profile.name.last);
         setLocation(profile.location);
-      //}
 
       setChanges(false);
     }
   }, [loginID, profile]);
-
+/*
   const handleNew = async () => {
     let updatePerson = {
       person_id: loginID,
@@ -210,7 +212,7 @@ export default ({ session, profile, loginID }) => {
       console.log(error);
     });
   };
-
+*/
   const handleUpdate = async () => {
     let updatePerson = {
       person_id: loginID,
@@ -305,6 +307,18 @@ export default ({ session, profile, loginID }) => {
             </Typography>
           ) : null}
           {profile ? (
+            <Box m={2}>
+            <Paper
+              component={Box}
+              p={3}
+              variant='outlined'
+              display='flex'
+              flexDirection='row'
+              justifyContent='center'
+              alignItems='center'>
+              <Box flexGrow={1} mr={3}>
+                <img src={s3Bucket + profile.person_id + '.jpg'} alt={'Upload?'} />
+              </Box>
             <form className={classes.root} noValidate autoComplete='off'>
               <div>
                 <TextField
@@ -320,18 +334,20 @@ export default ({ session, profile, loginID }) => {
               <div>
                 <TextField
                   id='eMail'
-                  label='Contact Info'
                   value={email}
+                  fullWidth
                   onChange={handleChangeEmail}
                   helperText='e-Mail'
                   marginRight={10}
                 />
+              </div>
+              <div>
                 <TextField id='cell' label=' ' value={cell} onChange={handleChangeCell} helperText='cell phone' />
-                <TextField id='cell' label=' ' value={voice} onChange={handleChangeVoice} helperText='home phone' />
+                <TextField id='home' label=' ' value={voice} onChange={handleChangeVoice} helperText='home phone' />
               </div>
               <div>
                 <TextField
-                  id='eMail'
+                  id='address'
                   label='Address'
                   value={location}
                   onChange={handleChangeLocation}
@@ -339,24 +355,16 @@ export default ({ session, profile, loginID }) => {
                   marginRight={10}
                 />
               </div>
-              {profile.person_id === loginID ? (
                 <Button
                   onClick={handleUpdate}
                   disabled={!changes}
                   className={classes.defaultButton}
                   variant='contained'>
-                  Update my Info
+                Update this Info
                 </Button>
-              ) : (
-                <Button
-                  onClick={handleNew}
-                  disabled={!firstName || !lastName || !(email || cell || voice) || !location}
-                  className={classes.defaultButton}
-                  variant='contained'>
-                  Complete setup
-                </Button>
-              )}
             </form>
+            </Paper>
+      </Box>
           ) : null}
         </>
       ) : null}

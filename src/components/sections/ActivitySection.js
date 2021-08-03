@@ -144,8 +144,15 @@ export default ({ patient, session, newFact, setNewFact }) => {
   const s3 = new AWS.S3({
     accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
     secretAccessKey: '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',
-    Bucket: 'smsoftware-reports'
+ //   Bucket: 'smsoftware-reports'
   });
+/*
+  const s3Theseus = new AWS.S3({
+    accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
+    secretAccessKey: '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',
+    Bucket: 'theseus-medical-storage'
+  });
+  */
 
   var elastictranscoder = new AWS.ElasticTranscoder(
     {
@@ -348,7 +355,27 @@ export default ({ patient, session, newFact, setNewFact }) => {
       [, constructedValue] = newFact.value.replace('.', '^').split('^');
     } else {
       if (newFact.hasOwnProperty('value') && newFact.value) {
-        if (newFact.value.hasOwnProperty('selected')) {
+        if (newFact.value.hasOwnProperty('mediaData')) {
+          if (newFact.value.mediaData.ContentType === 'video/webm' && !actionCancelled) {
+            const finalFilename = await putVideo(newFact.value);
+            const vName = newFact.value.tag;
+            newFact.value = `file_details.s3file=${finalFilename} ~ userTag=${vName}`;
+            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
+              .catch(error => {
+                console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`)
+              });
+            setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+          } else {
+            const finalFilename = await putFile(newFact.value);
+            newFact.value = `file_details.s3file=${finalFilename} ~ userTag=${newFact.value.tag}`;
+            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
+              .catch(error => {
+                console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`)
+              });
+            setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+          }
+        }
+        else if (newFact.value.hasOwnProperty('selected')) {
           let valueSelectedObject = newFact.value.selected;
           let qualObject = newFact.value.qualifiers;
           let freeTextObject = newFact.value.freeText;
@@ -413,16 +440,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
               }
             }
-          }
-        } else if (newFact.value.hasOwnProperty('ContentType')) {
-          if (newFact.value.ContentType === 'video/webm' && !actionCancelled) {
-            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
-              .catch(error => {
-                console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`)
-              });
-            setLastWrittenFact(writtenFact?.data?.createPutFact || null);
-            await putFile(newFact.value);
-          }
+          } 
         } else if (newFact.value.hasOwnProperty('event_code')) {      // for "reservation" type activities
           constructedValue = '';
           let link = '';
@@ -499,34 +517,50 @@ export default ({ patient, session, newFact, setNewFact }) => {
     }
     selectedActivityName = '';
 
-    async function putFile(params) {// Uploading files to the bucket
-      let warning = newFact.value.Key.includes('_partial.webm') ? 'Your recording was interrupted.  AVA will save everything up to that point. ' : '';
-      enqueueSnackbar(`${warning}AVA is preparing your video.  We'll name it ${newFact.activity_key.replace('.','^').split('^')[1]}`,
+    async function putVideo(params) {// Uploading files to the bucket
+      let mediaData = newFact.value.mediaData;
+      let warning = mediaData.Key.includes('_partial.webm') ? 'Your recording was interrupted.  AVA will save everything up to that point. ' : '';
+      let vName = newFact.value.tag;
+      var videoKeyName = newFact.activity_key.replace('.','^').split('^')[1] + '_' + new Date().getTime() + '.mp4';
+      enqueueSnackbar(`${warning}AVA is preparing your video named "${vName}"`,
         {variant: (warning !== '' ? 'warning' : 'info'), persist: true})
-      s3.upload(params, function(err, data) {
+      s3.upload(mediaData, function(err, data) {
         if (err) {enqueueSnackbar (`Uh oh!  AVA couldn't save your video.  The reason is ${JSON.stringify(err)}`,
           {variant: 'error', persist: true})}
         else {
           var converterParms = {
             PipelineId: '1626108726566-cv5z9u', /* required */
             Input: {
-              Key: params.Key,
+              Key: mediaData.Key,
             },
             Output: {
-              Key: newFact.activity_key.replace('.','^').split('^')[1] +'.mp4',
+              Key: videoKeyName,
               PresetId: '1351620000001-000001',
             },
           };
           elastictranscoder.createJob(converterParms, function(err, data) {
             if (err) alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.','^').split('^')[1] +'.mp4'}`); // an error occurred
             else {
-              enqueueSnackbar(`Your video named ${newFact.activity_key.replace('.','^').split('^')[1]} is now being prepared for viewing in AVA.`,
+              enqueueSnackbar(`Your video named "${vName}" is saved, and is now being prepared for viewing in AVA.`,
                 {variant: 'info', persist: true});           // successful response
             }
           });
         }
-      });
+      })
+      return videoKeyName;
     }
+
+    async function putFile(params) {    // Uploading files to the bucket
+      let mediaData = newFact.value.mediaData;
+      console.log(mediaData);
+      s3.upload(mediaData, function(err, data) {
+        if (err) {
+          enqueueSnackbar (`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, {variant: 'error', persist: true})
+        }
+      });
+      return mediaData.Key;
+    }
+    
   };
 
   const onNextFact = async newFact => {
@@ -591,15 +625,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
               variant: 'error',
             });
           });
-        //  setLastEvent(event);
-        //  setLastType(type);
-        //  setLastPerson(patient.person_id)
-        //  setLastLimit(limit);
-//        } else {
-  //        result = {
-    //        data: { getActivityData: activities },
-      //    };
-    //    }
 
         if (mounted) {
           setLoading(false);
