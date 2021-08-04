@@ -246,12 +246,12 @@ export default ({ patient, picture, open, onClose }) => {
               ref={hiddenFileInput}
               onChange={async (target) => 
                 {
-                  let fObj = target.target.files[0];
-                  let oName = fObj.name.toLowerCase().split('.');
-                  let oType = oName.pop();
+                  // let fObj = target.target.files[0];
+                  // let oName = fObj.name.toLowerCase().split('.');
+                  // let oType = oName.pop();
                   const pFile = {
                     Bucket: 'theseus-medical-storage',
-                    Key: 'public/patients/' + patient.person_id + '.' + oType, 
+                    Key: 'public/patients/' + patient.person_id + '.jpg', 
                     Body: target.target.files[0],
                     ACL: 'public-read-write',
                   };

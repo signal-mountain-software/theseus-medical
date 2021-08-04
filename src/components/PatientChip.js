@@ -21,7 +21,7 @@ export default ({ patient, roles, session }) => {
     if (session.patient_id) {
       setOpen(true);
     } else {
-      history.push('/profile');
+      history.push('/theseus');
     }
   };
 
@@ -41,16 +41,12 @@ export default ({ patient, roles, session }) => {
 
   return (
     <Box>
-      {patient && roles && session ? (
+      {patient && session ? (
         <>
           <Tooltip
             title={
               <Typography variant='subtitle1'>
-                {session.patient_id
-                  ? roles.includes('patient_with_partner')
-                    ? 'View current account info'
-                    : 'View current account info'
-                  : 'View your profile'}
+                {'View/Update this Profile'}
               </Typography>
             }
             placement='bottom-start'>
