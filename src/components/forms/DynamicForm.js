@@ -654,7 +654,10 @@ export default ({
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <br />
-            {!freeText ? setFreeText(current_user_display_name.split(',')[1] + "'s video - " + new Date().toLocaleString()) : null}
+            {!freeText ? 
+            setFreeText((current_user_display_name.split(',')[1] || current_user_display_name.split(' ')[0]) + "'s video - " 
+              + new Date().toLocaleString()) 
+            : null}
             <FreeTextForm
               open={true}
               label='Name your video'
