@@ -1,16 +1,16 @@
 import React from 'react';
 import Box from '@material-ui/core/Box';
-import AccountCircleIcon from '@material-ui/icons/AccountCircle';
+// import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 import AssignmentIcon from '@material-ui/icons/Assignment';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
-import ChatIcon from '@material-ui/icons/Chat';
+// import ChatIcon from '@material-ui/icons/Chat';
 
 import withA2HS from './wrappers/withA2HS';
 import withRecoil from './wrappers/withRecoil';
 import withRoot from './wrappers/withRoot';
 import hocFactory from './util/hocFactory';
-import ChatScreen from './screens/ChatScreen';
-import ProfileScreen from './screens/ProfileScreen';
+// import ChatScreen from './screens/ChatScreen';
+// import ProfileScreen from './screens/ProfileScreen';
 import TheseusScreen from './screens/TheseusScreen';
 import Reloader from './screens/Reloader';
 import RootNavigation from './navigation/RootNavigation';
@@ -27,10 +27,10 @@ import { createPutFact } from './graphql/mutations';
 import { API, graphqlOperation } from 'aws-amplify';
 
 const menu = [
-  { label: 'Profile', path: '/profile', icon: <AccountCircleIcon />, screen: <ProfileScreen /> },
+//  { label: 'Profile', path: '/profile', icon: <AccountCircleIcon />, screen: <ProfileScreen /> },
   { label: 'AVA', path: '/theseus', icon: <AssignmentIcon />, screen: <TheseusScreen /> },
   { label: 'Refresh', path: '/refresh', icon: <AutorenewIcon />, screen: <Reloader /> },
-  { label: 'Chat', path: '/chat', icon: <ChatIcon />, screen: <ChatScreen /> },
+//  { label: 'Chat', path: '/chat', icon: <ChatIcon />, screen: <ChatScreen /> },
 ];
 
 const HOME = '/refresh';

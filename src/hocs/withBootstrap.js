@@ -31,6 +31,7 @@ export default Component => props => {
       let getPatientResult;
       var getPeopleByGroupResult;
       let getRolesResult;
+      let usingDefaultSession = false;
 
       // get the session for the current user 
       // SessionsV2 delivers information about the current user environment.  Specifically...
@@ -41,13 +42,14 @@ export default Component => props => {
       // That user_id will persist throughout the session and be used to determine which users you are allowed to work on behalf of (responsible_for)
       // The current user that you are working on behalf of (often and typically yourself), is stored in patient_id
       getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(error => {
-        enqueueSnackbar(`Welcome to AVA, ${user.username}!  \nPlease select the "Associate my Account..." option and answer a couple of questions.
-                We'll get your account finalized right away.\nNo worries, though.  You can use AVA in the meantime while we personalize things for you.`, {
+        enqueueSnackbar(`Welcome to AVA, ${user.username}! Please tap the Welcome button (the oval toward the top left of your screen).  That's where you'll be able to complete your account setup.
+                Once that's complete, we'll get your account finalized right away.  No worries, though!  You can use many AVA features in the meantime while we personalize things for you.`, {
               variant: 'info', persist: true,
-            });
+            })
       });
       var session;
       if (!getSessionResult) {
+        usingDefaultSession = true;
         getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: 'SMSoft~default' }));
         session = getSessionResult.data.getSession;
         // session.user_id = user.username;
@@ -62,9 +64,9 @@ export default Component => props => {
       }
 
       // get person's Account information
-      getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: session.user_id }))
+      getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (usingDefaultSession ? user.username : session.user_id) }))
         .catch(error => {
-            enqueueSnackbar(`You are assigned to ${session.user_id}, but we couldn't get their info.  The problem is: ${error.errors[0].message}`, {
+            enqueueSnackbar(`You are assigned to ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get their info.  The problem is: ${error.errors[0].message}`, {
               variant: 'error', persist: true,
             });
           console.log('using default user...');
@@ -96,7 +98,7 @@ export default Component => props => {
       const roles = getRolesResult ? getRolesResult.data.getRoles : null;
 
       // get the current patient information for a user; if the user does not have a current patient, use the user's id
-      const patient_id = session.patient_id;
+      const patient_id = usingDefaultSession ? user.username : session.patient_id;
       const person_id = patient_id || session.user_id;
       getPatientResult = await API.graphql(graphqlOperation(getPerson, { person_id: person_id }));
       const patient = getPatientResult.data.getPerson;

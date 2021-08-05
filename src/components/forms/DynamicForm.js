@@ -469,15 +469,15 @@ export default ({
       });
       qualifierTable[value].value = value;
       qualifierTable[value].qualifiers[0] = '~~' + result.data.getPerson.location;
-      if (result.data.getPerson.messaging.email) {qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email)};
-      if (result.data.getPerson.messaging.sms) {
+      if (result?.data?.getPerson?.messaging?.email) {qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email)};
+      if (result?.data?.getPerson?.messaging?.sms) {
         let cleaned = ('' + result.data.getPerson.messaging.sms).replace(/\D/g, '');
         let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         let phoneNumber = result.data.getPerson.messaging.sms;
         if (match) { phoneNumber =  ['(', match[2], ') ', match[3], '-', match[4]].join('') }
         qualifierTable[value].qualifiers.push('~~cell: ' + phoneNumber)
       };
-      if (result.data.getPerson.messaging.voice) {
+      if (result?.data?.getPerson?.messaging?.voice) {
         let cleaned = ('' + result.data.getPerson.messaging.voice).replace(/\D/g, '');
         let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         let phoneNumber = result.data.getPerson.messaging.voice;
@@ -613,35 +613,88 @@ export default ({
           onError={onError}
         />
       );
+    case 'upload_file':
+      recordingStatus = 'none';
+      return (
+        <FormControl fullWidth>
+          <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
+            <br />
+            <FreeTextForm
+              open={true}
+              label='Name your file'
+              value={freeText}
+              onChange={onChangeQualText}
+              onError={onError}
+            />
+            <br />
+            <input 
+              type="file" 
+              onChange={async (target) => {
+                let fObj = target.target.files[0];
+                let oName = fObj.name.toLowerCase().split('.');
+                let oType = oName.pop();
+                let fName = freeText ? (freeText + '.' + oType) : fObj.name;
+                const pFile = {
+                  Bucket: 'theseus-medical-storage',
+                  Key: 'public/documents/' + fName, 
+                  Body: fObj,
+                  ACL: 'public-read-write',
+                };
+                newFact.value.tag = freeText || oName;
+                newFact.value.mediaData = pFile;
+                }
+              } 
+            />
+          </FormGroup>
+        </FormControl>
+      );
     case 'record_video':
       recordingStatus = 'none';
       return (
-        <VideoRecorder
-          isOnInitially
-          isFlipped
-          showReplayControls
-          replayVideoAutoplayAndLoopOff
-          onRecordingComplete={async (videoBlob) => 
-            {
-              const pVideo = {
-                Bucket: 'smsoftware-reports',
-                Key: newFact.activity_key.replace('.','^').split('^')[1] + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm', 
-                Body: videoBlob,
-                ACL: 'public-read-write',
-                ContentType: 'video/webm'
-              };
-              newFact.value = pVideo;
-              if (recordingStatus !== 'stopped') {
-                recordingStatus = 'aborted';
-                onSave();
-              };
-            }
-          }          
-          onStopRecording={() => {
-            recordingStatus = 'stopped';
-          }}  
-          onStartRecording={() => {recordingStatus = 'started'}} 
-        />
+        <FormControl fullWidth>
+          <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
+            <br />
+            {!freeText ? 
+            setFreeText((current_user_display_name.split(',')[1] || current_user_display_name.split(' ')[0]) + "'s video - " 
+              + new Date().toLocaleString()) 
+            : null}
+            <FreeTextForm
+              open={true}
+              label='Name your video'
+              value={freeText}
+              onChange={onChangeQualText}
+              onError={onError}
+            />
+            <br />
+            <VideoRecorder
+              isOnInitially
+              isFlipped
+              showReplayControls
+              replayVideoAutoplayAndLoopOff
+              onRecordingComplete={async (videoBlob) => 
+                {
+                  const pVideo = {
+                    Bucket: 'smsoftware-reports',
+                    Key: newFact.activity_key.replace('.','^').split('^')[1] + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm', 
+                    Body: videoBlob,
+                    ACL: 'public-read-write',
+                    ContentType: 'video/webm'
+                  };
+                  newFact.value.tag = freeText;
+                  newFact.value.mediaData = pVideo;
+                  if (recordingStatus !== 'stopped') {
+                    recordingStatus = 'aborted';
+                    onSave();
+                  };
+                }
+              }          
+              onStopRecording={() => {
+                recordingStatus = 'stopped';
+              }}  
+              onStartRecording={() => {recordingStatus = 'started'}} 
+            />
+          </FormGroup>
+        </FormControl>
       );
     case 'play_video':
       return (
