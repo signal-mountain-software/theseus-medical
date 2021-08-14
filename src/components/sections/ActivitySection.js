@@ -565,17 +565,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onNextFact = async newFact => {
     await onSaveFact(newFact);
-    let aL = activities.length;
-    let a = 0;
-    for (a; a < aL; a++) {
-      if (activities[a].code === selected.code) {
-        break;
-      }
-    }
-    a++;
-    if (a < aL) {
-      onChooseActivity(activities[a]);
-    }
+    let a = ((activities.findIndex(c => { return c.code === selected.code })) + 1 || 0); 
+    if ( a > 0 ) { onChooseActivity(activities[a]); }
   };
 
   // build the event and activity lists for drop downs
@@ -604,7 +595,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
       let result;
       if (rowOpen[0]) {console.log('this is here to force a reload')};
       if (patient && session) {
-  //      if (event !== lastEvent || type !== lastType || limit !== lastLimit || patient.person_id !== lastPerson) {
           result = await API.graphql(
             graphqlOperation(getActivityData, { 
               input: {
