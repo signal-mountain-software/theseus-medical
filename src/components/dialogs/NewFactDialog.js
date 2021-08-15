@@ -285,7 +285,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
           if (fact.prompt) {
             eString = fact.prompt;
           } else {
-            eString = 'Select one';
+            eString = ' ';
           }
         }
       }
