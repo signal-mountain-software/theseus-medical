@@ -129,6 +129,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   const { enqueueSnackbar } = useSnackbar();
 
   const [searchText, setSearchText] = React.useState('');
+  const [factIOClass, setFactIOClass] = React.useState(false);
+  const [factMessageClass, setFactMessageClass] = React.useState(false);
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
@@ -227,6 +229,15 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
           session_id: session.session_id,
         },
       });
+      var factCode = fact?.code?.split('.')[0];
+      switch (factCode) {
+        case 'document':
+        case 'render': 
+        case 'query':
+        case 'list': { break }   // leave both IOClass and MessageClass as false
+        case 'message': { setFactMessageClass(true); setFactIOClass(true); break }
+        default: { setFactIOClass(true); }
+      }
       let eString;
       switch (fact.type) {
         case 'characteristic_num2': {
@@ -358,21 +369,17 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
-          {fact?.code?.startsWith('list.') ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
+          {!factIOClass ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
         </Button>
-        { (fact?.code?.startsWith('document.') || fact?.code?.startsWith('render.') || (fact?.code?.startsWith('list.')))  
-          ? null 
-          : (<Button variant='contained' color='primary' size='small' onClick={handleSave}>
-              { fact?.code?.startsWith('message.') ? 'Send' : 'Save' }
+        { factIOClass  
+          ? (<Button variant='contained' color='primary' size='small' onClick={handleSave}>
+              { factMessageClass ? 'Send' : 'Save' }
             </Button>
             )
+          : null
         }
-        {fromHome !== 'event' 
-          || fact.code?.startsWith('document.') 
-          || fact.code?.startsWith('render.') 
-          || fact.code?.startsWith('form.') 
-          || fact.type === 'reservation' 
-          ? null : (
+        {((fromHome === 'event') && factIOClass && (fact.type !== 'reservation'))
+          ? (
             <React.Fragment>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
                 {isMobile ? 'Save +' : 'Save & Next'}
@@ -381,7 +388,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
                 Skip
               </Button>
             </React.Fragment>
-        )}
+        ) : null }
       </DialogActions>
     </Dialog>
   );

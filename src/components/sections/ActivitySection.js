@@ -760,7 +760,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {'***AVA v21.8.5***'}
+                  {'***AVA v21.8.15***'}
                 </Typography>
               </GridListTile>
             </GridList>
@@ -784,7 +784,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
           onClose={() => {
             setOpen(false);
             actionCancelled = true; 
-            if (!selected.code.startsWith('list.')) { enqueueSnackbar(`${selected.name} cancelled`, {variant: 'warning', persist: false}) }
           }}
           onSave={onSaveFact}
           onNext={onNextFact}
