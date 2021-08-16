@@ -25,14 +25,16 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
-import ActivityCustomizationsSection from '../sections/ActivityCustomizationsSection';
 import ClientsSection from '../sections/ClientsSection';
 import RelationshipSection from '../sections/RelationshipSection';
+
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   title: {
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
+    flexGrow: 1
   },
   formControl: {
     margin: 0,
@@ -63,16 +65,20 @@ const useStyles = makeStyles(theme => ({
     verticalAlign: 'end',
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
+  topButton: {
+    variant: 'outlined',
+    backgroundColor: theme.palette.confirm[theme.palette.type],
+  },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
-    marginLeft: 0,    
+    marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 10,
   },
   radioButton: {
     marginTop: 0,
     marginRight: 0,
-    marginLeft: 0,    
+    marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 5,
   },
@@ -87,17 +93,21 @@ export default ({ patient, picture, open, onClose }) => {
   const [lastName, setLastName] = React.useState();
   const [email, setEmail] = React.useState();
   const [cell, setCell] = React.useState();
+  const [surrogate, setSurrogate] = React.useState();
   const [voice, setVoice] = React.useState();
   const [location, setLocation] = React.useState();
   const [prefMethod, setMethod] = React.useState();
+  const [patientGroups, setPatientGroups] = React.useState();
 
   const [changes, setChanges] = React.useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
 
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+
   const AWS = require('aws-sdk');
-  AWS.config.update({region:'us-east-1'});
-  
+  AWS.config.update({ region: 'us-east-1' });
+
   const s3 = new AWS.S3({
     accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
     secretAccessKey: 'EAeexsTiS8cxKgfuhoFKEuAkr6tPG7my1Z1VDLXA',
@@ -107,8 +117,8 @@ export default ({ patient, picture, open, onClose }) => {
     var match = '' + pNumber.replace(/\D/g, '').substr(-10);
     let formatted = '';
     if (match.length > 0) { formatted += '(' + match.substr(0, 3); }
-    if (match.length > 3) { formatted += ') ' + match.substr(3, 3);}
-    if (match.length > 6) { formatted += '-' + match.substr(6, 4);}
+    if (match.length > 3) { formatted += ') ' + match.substr(3, 3); }
+    if (match.length > 6) { formatted += '-' + match.substr(6, 4); }
     return formatted;
   }
 
@@ -121,11 +131,18 @@ export default ({ patient, picture, open, onClose }) => {
       setEmail(patient.messaging?.email || '');
       setLocation(patient.location || '');
       setMethod(patient.preferred_method);
+      if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
+      else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
+      let foundAt;
+      const groupFound = patient.clients.some((e, i) => { foundAt = i; return (e.id === patient.client_id); });
+      if (groupFound) {
+        setPatientGroups(patient.clients[foundAt].groups.map(e => { return (`${patient.client_id}~${e}`); }));
+      }
     }
   }, [patient]);
 
   const hiddenFileInput = React.useRef(null);
-  
+
   const handlePhotoUpload = event => {
     hiddenFileInput.current.click();
   };
@@ -138,6 +155,9 @@ export default ({ patient, picture, open, onClose }) => {
       email: email,
       sms: cell ? '+1' + cell.replace(/\D/g, '') : null,
       voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
+      surrogate: surrogate,
+      prefMethod: prefMethod || 'AVA',
+      groups: patientGroups,
       location: location,
     };
     let updateString = 'newData.' + JSON.stringify(updatePerson);
@@ -156,10 +176,11 @@ export default ({ patient, picture, open, onClose }) => {
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
       console.log(error);
     });
-    enqueueSnackbar(`Profile information updated!`, {variant: 'success', persist: false});
+    enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
     patient.name.first = firstName;
     patient.name.last = lastName;
     setChanges(false);
+    onClose();
   };
 
   const handleChangeFirstName = event => {
@@ -186,7 +207,14 @@ export default ({ patient, picture, open, onClose }) => {
     setVoice(formatPhone('' + event.target.value.replace(/\D/g, '')));
     setChanges(true);
   };
-  
+
+  const handleChangeSurrogate = event => {
+    let checkNum = event.target.value.replace(/[\d\s\-()]/g, '');
+    if (checkNum) { setSurrogate(event.target.value); }
+    else { setSurrogate(formatPhone('' + event.target.value.replace(/\D/g, ''))); }
+    setChanges(true);
+  };
+
   const handleChangeMethod = event => {
     setMethod(event.target.value);
     setChanges(true);
@@ -197,9 +225,15 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+  const handleChangeGroups = updatedGroupArray => {
+    setPatientGroups(updatedGroupArray);
+    setChanges(true);
+  };
+
 
   return (
-      <Dialog open={open} onClose={onClose} TransitionComponent={Transition} fullScreen>
+    open ?
+    <Dialog open={open} onClose={onClose} TransitionComponent={Transition} fullScreen>
       <AppBar>
         <Toolbar>
           <IconButton color='inherit' edge='start' onClick={onClose}>
@@ -208,6 +242,17 @@ export default ({ patient, picture, open, onClose }) => {
           <Typography variant='h6' className={classes.title}>
             {patient?.name?.first} {patient?.name?.last}
           </Typography>
+          {changes ?
+          <Button
+            onClick={handleUpdate}
+            disabled={!changes}
+            hidden={!changes}
+            variant='contained'
+            className={classes.topButton}
+          >
+            {isMobile ? 'Save' : 'Save Changes'}
+          </Button>
+          : null}
         </Toolbar>
       </AppBar>
       <Toolbar />
@@ -228,7 +273,7 @@ export default ({ patient, picture, open, onClose }) => {
           justifyContent='center'
           alignItems='center'>
           <Box flexGrow={1} mr={3}
-            display="flex" 
+            display="flex"
             flexDirection='column'
             alignItems="center"
             justifyContent="center"
@@ -240,29 +285,28 @@ export default ({ patient, picture, open, onClose }) => {
             <Button className={classes.photoButton} variant='outlined' color='primary' size='small' startIcon={<CloudUploadIcon />} onClick={handlePhotoUpload}>
               <Typography>Update photo?</Typography>
             </Button>
-            <input 
-              type="file" 
-              style={{display: 'none'}}
+            <input
+              type="file"
+              style={{ display: 'none' }}
               ref={hiddenFileInput}
-              onChange={async (target) => 
-                {
-                  // let fObj = target.target.files[0];
-                  // let oName = fObj.name.toLowerCase().split('.');
-                  // let oType = oName.pop();
-                  const pFile = {
-                    Bucket: 'theseus-medical-storage',
-                    Key: 'public/patients/' + patient.person_id + '.jpg', 
-                    Body: target.target.files[0],
-                    ACL: 'public-read-write',
-                  };
-                  enqueueSnackbar(`Your photo is being updated!`, {variant: 'success', persist: false});
-                  s3.upload(pFile, function(err, data) {
-                    if (err) {
-                      enqueueSnackbar (`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, {variant: 'error', persist: true})
-                    }
-                  });
-                }
-              } 
+              onChange={async (target) => {
+                // let fObj = target.target.files[0];
+                // let oName = fObj.name.toLowerCase().split('.');
+                // let oType = oName.pop();
+                const pFile = {
+                  Bucket: 'theseus-medical-storage',
+                  Key: 'public/patients/' + patient.person_id + '.jpg',
+                  Body: target.target.files[0],
+                  ACL: 'public-read-write',
+                };
+                enqueueSnackbar(`Your photo is being updated!`, { variant: 'success', persist: false });
+                s3.upload(pFile, function (err, data) {
+                  if (err) {
+                    enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, { variant: 'error', persist: true });
+                  }
+                });
+              }
+              }
             />
           </Box>
           <Box flexGrow={2} display='flex' flexDirection='column'>
@@ -272,7 +316,7 @@ export default ({ patient, picture, open, onClose }) => {
                 {'    '}
                 <TextField id='LastName' onChange={handleChangeLastName} value={lastName} helperText='Last' />
               </div>
-         
+
               <div>
                 <TextField id='eMail' value={email} fullWidth onChange={handleChangeEmail} helperText='e-Mail' />
               </div>
@@ -282,21 +326,26 @@ export default ({ patient, picture, open, onClose }) => {
                 <TextField id='home' value={voice} onChange={handleChangeVoice} helperText='home phone' />
               </div>
               <div>
-              <Box 
-        display="flex" 
-        flexDirection='column'
-        height={80} 
-        justifyContent="center"
-      >
-        <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
-              <FormControl className={classes.formControl} component="fieldset">
-                <RadioGroup row defaultValue={prefMethod} aria-label="PrefMethod" name="method" value={prefMethod} onChange={handleChangeMethod}>
-                  <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!cell} disableRipple className={classes.radioButton} size='small'/>} label={<Typography className={classes.radioText}>text</Typography>} />
-                  <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!email} disableRipple className={classes.radioButton} size='small'/>} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
-                  <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!voice} disableRipple className={classes.radioButton} size='small'/>} label={<Typography className={classes.radioText}>phone</Typography>} />                  
-                </RadioGroup>
-              </FormControl>
-              </Box>
+                <TextField id='surrogate' value={surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
+              </div>
+              <div>
+                <Box
+                  display="flex"
+                  flexDirection='column'
+                  height={80}
+                  justifyContent="center"
+                >
+                  <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup row defaultValue={prefMethod} aria-label="PrefMethod" name="method" value={prefMethod} onChange={handleChangeMethod}>
+                    <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!cell} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>phone</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
               </div>
               <div>
                 <TextField id='address' value={location} onChange={handleChangeLocation} helperText='Apartment location' />
@@ -305,23 +354,16 @@ export default ({ patient, picture, open, onClose }) => {
                 display="flex"
                 flexDirection='row'
                 alignItems="center"
-                justifyContent="flex-end" 
+                justifyContent="flex-end"
               >
-                <Button
-                  onClick={handleUpdate}
-                  disabled={!changes}
-                  className={classes.defaultButton}
-                  variant='contained'>
-                    Save my changes
-                </Button>
               </Box>
             </form>
           </Box>
         </Paper>
       </Box>
       <RelationshipSection person={patient} />
-      <ActivityCustomizationsSection person={patient} />
-      <ClientsSection person={patient} />
+      <ClientsSection person={patient} updateGroups={handleChangeGroups}/>
     </Dialog>
+    : null
   );
 };

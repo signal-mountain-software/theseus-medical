@@ -137,6 +137,7 @@ export const getPerson = /* GraphQL */ `
       roles
       messaging {
         email
+        surrogate
         sms
         voice
       }
