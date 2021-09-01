@@ -378,7 +378,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
             )
           : null
         }
-        {((fromHome === 'event') && factIOClass && (fact.type !== 'reservation'))
+        {((fromHome === 'event') && factIOClass && (fact.type !== 'reservation') && (fact.type !== 'form'))
           ? (
             <React.Fragment>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>

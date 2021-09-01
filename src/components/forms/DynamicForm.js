@@ -319,11 +319,11 @@ export default ({
     if (newFact.value.slot[slotIndex].owner !== null) {
       newFact.value.slot[slotIndex].owner = null;
       newFact.value.slot[slotIndex].display_name = null;
-      newFact.value.slot[slotIndex].action = 'relinquished';
+      newFact.value.slot[slotIndex].action = 'relinquished.' + newFact.value.version;
     } else {
       newFact.value.slot[slotIndex].owner = newFact.patient_id;
       newFact.value.slot[slotIndex].display_name = current_user_display_name;
-      newFact.value.slot[slotIndex].action = 'reserved';
+      newFact.value.slot[slotIndex].action = 'reserved.' + newFact.value.version;
     }
     setNewFact(newFact);
     var resetter = formState + 1;

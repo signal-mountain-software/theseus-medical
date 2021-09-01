@@ -205,6 +205,7 @@ export const getReservation = /* GraphQL */ `
         identifier
         type
         owner
+        notification
       }
       expires_after
       event_code
