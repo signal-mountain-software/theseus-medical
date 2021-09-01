@@ -1,6 +1,7 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { createPutFact } from '../../graphql/mutations';
+import useSession from '../../hooks/useSession';
 
 import { useSnackbar } from 'notistack';
 
@@ -26,7 +27,7 @@ import FormControl from '@material-ui/core/FormControl';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import ClientsSection from '../sections/ClientsSection';
-import RelationshipSection from '../sections/RelationshipSection';
+// import RelationshipSection from '../sections/RelationshipSection';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -102,6 +103,8 @@ export default ({ patient, picture, open, onClose }) => {
   const [changes, setChanges] = React.useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
+  const { state } = useSession();
+
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
@@ -134,9 +137,12 @@ export default ({ patient, picture, open, onClose }) => {
       if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
       else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
       let foundAt;
-      const groupFound = patient.clients.some((e, i) => { foundAt = i; return (e.id === patient.client_id); });
-      if (groupFound) {
-        setPatientGroups(patient.clients[foundAt].groups.map(e => { return (`${patient.client_id}~${e}`); }));
+      let groupFound;
+      if (Array.isArray(patient.clients)) {
+        groupFound = patient.clients.some((e, i) => { foundAt = i; return (e.id === patient.client_id); })     
+        if (groupFound) {
+          setPatientGroups(patient.clients[foundAt].groups.map(e => { return (`${patient.client_id}~${e}`); }));
+        }
       }
     }
   }, [patient]);
@@ -169,7 +175,7 @@ export default ({ patient, picture, open, onClose }) => {
       qualifier: null,
       status: 'requested',
       session: {
-        user_id: patient.person_id,
+        user_id: state.session.user_id,
         session_id: 'PatientDialog.js',
       },
     };
@@ -361,7 +367,6 @@ export default ({ patient, picture, open, onClose }) => {
           </Box>
         </Paper>
       </Box>
-      <RelationshipSection person={patient} />
       <ClientsSection person={patient} updateGroups={handleChangeGroups}/>
     </Dialog>
     : null
