@@ -322,7 +322,9 @@ export default ({ patient, picture, open, onClose }) => {
                 {'    '}
                 <TextField id='LastName' onChange={handleChangeLastName} value={lastName} helperText='Last' />
               </div>
-
+              <div>
+                <TextField id='address' value={location} onChange={handleChangeLocation} helperText='Apartment location' />
+              </div>
               <div>
                 <TextField id='eMail' value={email} fullWidth onChange={handleChangeEmail} helperText='e-Mail' />
               </div>
@@ -337,14 +339,14 @@ export default ({ patient, picture, open, onClose }) => {
               <div>
                 <Box
                   display="flex"
+                  pt={2}
                   flexDirection='column'
-                  height={80}
                   justifyContent="center"
                 >
                   <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
                   <FormControl className={classes.formControl} component="fieldset">
                     <RadioGroup row defaultValue={prefMethod} aria-label="PrefMethod" name="method" value={prefMethod} onChange={handleChangeMethod}>
-                    <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!cell} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>phone</Typography>} />
@@ -353,9 +355,7 @@ export default ({ patient, picture, open, onClose }) => {
                   </FormControl>
                 </Box>
               </div>
-              <div>
-                <TextField id='address' value={location} onChange={handleChangeLocation} helperText='Apartment location' />
-              </div>
+              
               <Box flexGrow={1} mr={3}
                 display="flex"
                 flexDirection='row'
