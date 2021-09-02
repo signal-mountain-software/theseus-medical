@@ -101,7 +101,7 @@ export default Component => props => {
       var roles;
   //    if (session.responsible_for === 'ALL') { roles = ['admin'] }
   //    else {
-        const client_group_id = session.client_id + '~' + (session.responsible_for || session.assigned_to);
+        const client_group_id = session.client_id + '~' + session.assigned_to;
         getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: session.user_id, client_group_id })).catch(
           error => {
             console.log('security record not found for user ' + session.user_id  + ' (' + client_group_id + ')');
@@ -132,21 +132,52 @@ export default Component => props => {
       if (usingDefaultSession) { patient.person_id = user.username }
 
       // get a group of patients a user is responsible for
-      let patients = null;
+      let patients = [];
       if (session.responsible_for) {
-        getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id })).catch(
-          error => {
-            enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${client_group_id} group.  
-              Tell AVA support that the error is: ${error.errors[0].message}`, {
-            variant: 'warning', persist: true,
-          });
-            console.log(error.errors[0].message);
+        let respArray = [];
+        if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for) }
+        else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g,'').split(',') }
+        if (respArray.length > 0) {
+          for (let r = 0; r < respArray.length; r++) {
+            let pRec = await API.graphql(graphqlOperation(getPerson, { person_id: respArray[r] })).catch(
+              error => {
+                enqueueSnackbar(`You have ${session.responsible_for[r]} listed in your profile, but we can't get their info.  
+                  Tell AVA support that the error is: ${error.message}`, {
+                variant: 'warning', persist: true,
+              })});
+            let pObj = {
+              display_name: `${pRec.data.getPerson.name.first} ${pRec.data.getPerson.name.last}`,
+              person_id: pRec.data.getPerson.person_id,
+              roles: ['patient'],
+              client_group_id: 'na'
+            }
+            patients.push(pObj);
+          };
+        }
+        else {
+          getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id })).catch(
+            error => {
+              enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${client_group_id} group.  
+                Tell AVA support that the error is: ${error.errors[0].message}`, {
+              variant: 'warning', persist: true,
+            });
+              console.log(error.errors[0].message);
+            }
+          );
+          if (getPeopleByGroupResult) {
+            patients = getPeopleByGroupResult.data.getGroup;
           }
-        );
-        if (getPeopleByGroupResult) {
-          patients = getPeopleByGroupResult.data.getGroup;
         }
       }
+      if (patients.length > 0) { 
+        patients.unshift({
+          display_name: `(me) ${profile.name.first} ${profile.name.last}`,
+          person_id: profile.person_id,
+          roles: ['patient'],
+          client_group_id: 'na'
+        })
+        roles.push('responsible_for'); 
+      };
 
       if (mounted) {
         dispatch({ type: SET_SESSION, payload: session });
