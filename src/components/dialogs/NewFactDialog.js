@@ -201,6 +201,14 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
           enqueueSnackbar(oopsie, {variant: 'error', persist: true});
           setMessage('!!!!! ' + oopsie + ' !!!!!');
       }
+      else {
+        if (fact.type === 'upload_file' && !newFact.value.mediaData) { 
+          badData = true;
+          oopsie = 'You must choose a file to upload before pressing SAVE';
+          enqueueSnackbar(oopsie, {variant: 'error', persist: true});
+          setMessage('!!!!! ' + oopsie + ' !!!!!');
+        }
+      }
     }
     if (!badData) {
       setMessage('');
@@ -305,7 +313,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
   }, [fact]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    // <Dialog open={open} fullWidth={true} onClose={onClose}>
     <Dialog open={open} fullWidth={true}>
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
