@@ -90,7 +90,7 @@ export default () => {
 
   React.useEffect(() => {
     if (roles) {
-      setHide(roles.includes('patient') && !roles.includes('patient_with_partner'));
+      setHide(!roles.includes('responsible_for'));
     }
   }, [roles]);
 

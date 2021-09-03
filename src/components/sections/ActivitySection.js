@@ -451,7 +451,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 constructedValue += link + newFact.value.slot[s].identifier + ' ' + newFact.value.slot[s].action;
                 link =  ' ~ ';
               }
-              delete newFact.value.slot[s].action;
+              // delete newFact.value.slot[s].action;
             }
           }
           if (constructedValue) {
@@ -481,6 +481,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               onChooseActivity(chosenActivity);
             }
             else {
+              newFact.activity_key = 'update.reservation';
               let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
               writtenFact.data.createPutFact.value = 'update.' + constructedValue;
               setLastWrittenFact(writtenFact.data.createPutFact);
@@ -760,7 +761,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {'***AVA v21.8.15***'}
+                  {'***AVA v21.9.2***'}
                 </Typography>
               </GridListTile>
             </GridList>

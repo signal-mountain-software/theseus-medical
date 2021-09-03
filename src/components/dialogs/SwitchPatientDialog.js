@@ -113,7 +113,7 @@ export default ({ open, roles, onClose }) => {
                 <PatientListItem
                   patient={{
                     patient_id: null,
-                    patient_display_name: roles.includes('patient_with_partner') ? 'No partner' : 'No patient',
+                    patient_display_name: roles.includes('responsible_for') ? 'No group' : 'No patient',
                   }}
                   selected={selected}
                   onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}

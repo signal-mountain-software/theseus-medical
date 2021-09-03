@@ -14,10 +14,9 @@ export default Component => props => {
   React.useEffect(() => {
     (async () => {
       const user = await Auth.currentAuthenticatedUser();
-
       dispatch({ type: SET_USER, payload: user });
     })().catch(error => {
-      enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.errors[0].message}`, {
+      enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message}`, {
         variant: 'error',
       });
     });
@@ -47,13 +46,20 @@ export default Component => props => {
               variant: 'info', persist: true,
             })
       });
+
       var session;
+      
+      var userInfo = await Auth.currentUserInfo();
+      const default_client_id = userInfo.attributes['custom:client'] || 'SMSoft';
+
       if (!getSessionResult) {
         usingDefaultSession = true;
-        getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: 'SMSoft~default' }));
+        getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: `${default_client_id}~default` }))
+          .catch(error => {
+            enqueueSnackbar(`Contact AVA support.  There is no default Session`, { variant: 'error', persist: true, });
+          });
         session = getSessionResult.data.getSession;
-        // session.user_id = user.username;
-        session.user_display_name = 'Username ' + user.username;
+        session.user_display_name = 'Welcome ' + user.username;
       } else {
         session = getSessionResult.data.getSession;
         if ( session.user_id !== user.username ) {
@@ -64,61 +70,114 @@ export default Component => props => {
       }
 
       // get person's Account information
-      getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (usingDefaultSession ? user.username : session.user_id) }))
+      getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (session.user_id) }))
+ //   getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (!usingDefaultSession ? user.username : session.user_id) }))
         .catch(error => {
-            enqueueSnackbar(`You are assigned to ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get their info.  The problem is: ${error.errors[0].message}`, {
+            enqueueSnackbar(`You are user ID is ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get your info.  The problem is: ${error.errors[0].message}`, {
               variant: 'error', persist: true,
             });
           console.log('using default user...');
       });
 
       if (!getProfileResult) {
-        getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: 'SMSoft~default' }));
+        getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: `${default_client_id}~default` }));
+        usingDefaultSession = true;
+      }
+
+      if (usingDefaultSession) {
         getProfileResult.data.getPerson.messaging.email = user.attributes.email || null;
         getProfileResult.data.getPerson.messaging.sms = user.attributes.phone_number || null;
         getProfileResult.data.getPerson.messaging.voice = null;
-        getProfileResult.data.getPerson.messaging.location = null;
+        getProfileResult.data.getPerson.location = null;
         getProfileResult.data.getPerson.name.first = user.username;
-        getProfileResult.data.getPerson.name.last = 'Username';
+        getProfileResult.data.getPerson.name.last = 'Welcome';
       }
+
       let profile = getProfileResult.data.getPerson;
+      profile.groups = getProfileResult.data.getPerson.clients[0].groups;
       // var user_id = profile.person_id;
 
       // get the roles for the current user
-      const client_group_id = session.client_id + '~' + (session.responsible_for || session.assigned_to);
-      getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: session.user_id, client_group_id })).catch(
-        error => {
-          enqueueSnackbar(`Warning! We couldn't get a security record for ${session.user_id} in ${client_group_id}.  
-              Tell AVA support that the error is: ${error.errors[0].message}`, {
-            variant: 'warning', persist: true,
-          });
-          console.log('security record not found (' + client_group_id + ')');
-        }
-      );
-      const roles = getRolesResult ? getRolesResult.data.getRoles : null;
-
-      // get the current patient information for a user; if the user does not have a current patient, use the user's id
-      const patient_id = usingDefaultSession ? user.username : session.patient_id;
-      const person_id = patient_id || session.user_id;
-      getPatientResult = await API.graphql(graphqlOperation(getPerson, { person_id: person_id }));
-      const patient = getPatientResult.data.getPerson;
-
-      // get a group of patients a user is responsible for
-      let patients = null;
-      if (session.responsible_for) {
-        getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id })).catch(
+      var roles;
+  //    if (session.responsible_for === 'ALL') { roles = ['admin'] }
+  //    else {
+        const client_group_id = session.client_id + '~' + session.assigned_to;
+        getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: session.user_id, client_group_id })).catch(
           error => {
-            enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${client_group_id} group.  
-              Tell AVA support that the error is: ${error.errors[0].message}`, {
-            variant: 'warning', persist: true,
-          });
-            console.log(error.errors[0].message);
+            console.log('security record not found for user ' + session.user_id  + ' (' + client_group_id + ')');
           }
         );
-        if (getPeopleByGroupResult) {
-          patients = getPeopleByGroupResult.data.getGroup;
+        roles = getRolesResult?.data?.getRoles || ['patient'];
+  //    }
+
+      // get the current patient information for a user; if the user does not have a current patient, use the user's id
+      // const patient_id = usingDefaultSession ? user.username : session.patient_id;
+      var patient = {};
+      if (profile.person_id === (session.patient_id || session.user_id)) { 
+        Object.assign(patient, profile);
+      }
+      else {
+        getPatientResult = await API.graphql(graphqlOperation(getPerson, { person_id: (session.patient_id || session.user_id) }));
+        patient = getPatientResult.data.getPerson;
+        if (usingDefaultSession) {
+          patient.messaging.email = user.attributes.email || null;
+          patient.messaging.sms = user.attributes.phone_number || null;
+          patient.messaging.voice = null;
+          patient.location = null;
+          patient.name.first = user.username;
+          patient.name.last = 'Welcome';
         }
       }
+      patient.groups = patient.clients[0].groups;
+      if (usingDefaultSession) { patient.person_id = user.username }
+
+      // get a group of patients a user is responsible for
+      let patients = [];
+      if (session.responsible_for) {
+        let respArray = [];
+        if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for) }
+        else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g,'').split(',') }
+        if (respArray.length > 0) {
+          for (let r = 0; r < respArray.length; r++) {
+            let pRec = await API.graphql(graphqlOperation(getPerson, { person_id: respArray[r] })).catch(
+              error => {
+                enqueueSnackbar(`You have ${session.responsible_for[r]} listed in your profile, but we can't get their info.  
+                  Tell AVA support that the error is: ${error.message}`, {
+                variant: 'warning', persist: true,
+              })});
+            let pObj = {
+              display_name: `${pRec.data.getPerson.name.first} ${pRec.data.getPerson.name.last}`,
+              person_id: pRec.data.getPerson.person_id,
+              roles: ['patient'],
+              client_group_id: 'na'
+            }
+            patients.push(pObj);
+          };
+        }
+        else {
+          getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id })).catch(
+            error => {
+              enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${client_group_id} group.  
+                Tell AVA support that the error is: ${error.errors[0].message}`, {
+              variant: 'warning', persist: true,
+            });
+              console.log(error.errors[0].message);
+            }
+          );
+          if (getPeopleByGroupResult) {
+            patients = getPeopleByGroupResult.data.getGroup;
+          }
+        }
+      }
+      if (patients.length > 0) { 
+        patients.unshift({
+          display_name: `(me) ${profile.name.first} ${profile.name.last}`,
+          person_id: profile.person_id,
+          roles: ['patient'],
+          client_group_id: 'na'
+        })
+        roles.push('responsible_for'); 
+      };
 
       if (mounted) {
         dispatch({ type: SET_SESSION, payload: session });
