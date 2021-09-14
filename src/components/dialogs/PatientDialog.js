@@ -27,7 +27,7 @@ import FormControl from '@material-ui/core/FormControl';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import ClientsSection from '../sections/ClientsSection';
-// import RelationshipSection from '../sections/RelationshipSection';
+import RelationshipSection from '../sections/RelationshipSection';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -323,7 +323,7 @@ export default ({ patient, picture, open, onClose }) => {
                 <TextField id='LastName' onChange={handleChangeLastName} value={lastName} helperText='Last' />
               </div>
               <div>
-                <TextField id='address' value={location} onChange={handleChangeLocation} helperText='Apartment location' />
+                <TextField id='address' value={location} fullWidth onChange={handleChangeLocation} helperText='Location' />
               </div>
               <div>
                 <TextField id='eMail' value={email} fullWidth onChange={handleChangeEmail} helperText='e-Mail' />
@@ -367,6 +367,7 @@ export default ({ patient, picture, open, onClose }) => {
           </Box>
         </Paper>
       </Box>
+      <RelationshipSection person={patient}/>
       <ClientsSection person={patient} updateGroups={handleChangeGroups}/>
     </Dialog>
     : null
