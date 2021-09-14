@@ -373,6 +373,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`)
               });
             setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+            showMessage = false;
           }
         }
         else if (newFact.value.hasOwnProperty('selected')) {
@@ -554,9 +555,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
     async function putFile(params) {    // Uploading files to the bucket
       let mediaData = newFact.value.mediaData;
       console.log(mediaData);
-      s3.upload(mediaData, function(err, data) {
+      await s3.upload(mediaData, function(err, data) {
         if (err) {
-          enqueueSnackbar (`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, {variant: 'error', persist: true})
+          enqueueSnackbar (`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, {variant: 'error', persist: true});
+          return 'File not written';
+        }
+        else {
+          enqueueSnackbar (`AVA completed the upload of your file.  Technical details: Bucket is ${data.Bucket}, Key is ${data.Key}`, {variant: 'success', persist: true});
         }
       });
       return mediaData.Key;

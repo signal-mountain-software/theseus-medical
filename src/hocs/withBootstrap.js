@@ -146,7 +146,7 @@ export default Component => props => {
                 variant: 'warning', persist: true,
               })});
             let pObj = {
-              display_name: `${pRec.data.getPerson.name.first} ${pRec.data.getPerson.name.last}`,
+              display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
               person_id: pRec.data.getPerson.person_id,
               roles: ['patient'],
               client_group_id: 'na'
@@ -171,7 +171,7 @@ export default Component => props => {
       }
       if (patients.length > 0) { 
         patients.unshift({
-          display_name: `(me) ${profile.name.first} ${profile.name.last}`,
+          display_name: `${profile.name.last}, ${profile.name.first}`,
           person_id: profile.person_id,
           roles: ['patient'],
           client_group_id: 'na'
