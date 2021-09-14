@@ -96,6 +96,7 @@ export const getPeopleByGroup = /* GraphQL */ `
         mi
         suffix
       }
+      groups
       roles
       messaging {
         email
@@ -134,6 +135,7 @@ export const getPerson = /* GraphQL */ `
         mi
         suffix
       }
+      groups
       roles
       messaging {
         email
