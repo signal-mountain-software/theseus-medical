@@ -59,15 +59,21 @@ export default ({ person, updateGroups }) => {
             },
           })
         ).catch(error => {
-          console.log(`Whoops! Something went wrong when fetching activity data: ${error.errors[0].message}`);
+          console.log(`Whoops! Something went wrong when fetching list of groups: ${error.errors[0].message}`);
         });
       };
       let gKeys = [...new Set(result?.data?.getActivityData[0]?.valid_values_list.sort())];
       gNames = [];
       gCodes = [];
-      gKeys.forEach(e => { let [n, c] = e.split(':group='); gNames.push(n); gCodes.push(c); });
-      // setAllGroupNames(gNames);
-      // setAllGroupCodes(gCodes);
+      gKeys.forEach(e => { 
+        let [n, c] = e.split(':group='); 
+        gNames.push(n); 
+        gCodes.push(c); 
+      });
+      setPatientGroups(person.groups.map(e => { return (`${person.client_id}~${e}`); }));
+      /*
+      setAllGroupNames(gNames);
+      setAllGroupCodes(gCodes);
       let foundAt;
       let groupFound;
       if (Array.isArray(person.clients)) {
@@ -76,6 +82,7 @@ export default ({ person, updateGroups }) => {
           setPatientGroups(person.clients[foundAt].groups.map(e => { return (`${person.client_id}~${e}`); }));
         }
       }
+      */
     }
   }, [notMyFirstTime, person, state.session.user_id]);
 
