@@ -1,6 +1,6 @@
 import React from 'react';
 import Button from '@material-ui/core/Button';
-import { fade, withStyles, makeStyles } from '@material-ui/core/styles';
+import { makeStyles } from '@material-ui/core/styles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { useSnackbar } from 'notistack';
@@ -10,8 +10,8 @@ import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
 
-import InputBase from '@material-ui/core/InputBase';
-import FormControl from '@material-ui/core/FormControl';
+// import InputBase from '@material-ui/core/InputBase';
+// import FormControl from '@material-ui/core/FormControl';
 
 import DynamicForm from '../forms/DynamicForm';
 
@@ -23,7 +23,7 @@ import DynamicForm from '../forms/DynamicForm';
 // const region = 'us-east-1';
 
 // var fileStream;
-
+/*
 const BootstrapInput = withStyles(theme => ({
   root: {
     marginTop: '0',
@@ -43,7 +43,7 @@ const BootstrapInput = withStyles(theme => ({
     },
   },
 }))(InputBase);
-
+*/
 const useStyles = makeStyles(theme => ({
   appBar: {
     position: 'relative',
@@ -120,7 +120,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
+export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSelected }) => {
   const [newFact, setNewFact] = React.useState(null);
   const [message, setMessage] = React.useState('enter an initial value');
   const [statusMessage, setStatusMessage] = React.useState('');
@@ -128,8 +128,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const [searchText, setSearchText] = React.useState('');
+  // const [searchText, setSearchText] = React.useState('');
+  const searchText = '';
   const [factIOClass, setFactIOClass] = React.useState(false);
+  const [factPromoClass, setFactPromoClass] = React.useState(false);
   const [factMessageClass, setFactMessageClass] = React.useState(false);
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
@@ -154,9 +156,28 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
     handleExit();
   };
 
+  const handlePromoSignup = () => {
+    withNext = false;
+    onSelected(fact.valid_values_list[1]);
+  };
+
+  const handlePromoMore = () => {
+    withNext = false;
+    window.open(fact.valid_values_list[2]);
+  };
+  
+  const handlePromoNext = () => {
+    withNext = false;
+    onSelected(fact.valid_values_list[3]);
+    open = false;
+    onClose();  
+  };
+
+  /*
   const onSearchInput = event => {
     setSearchText(event.target.value.toLowerCase());
   };
+  */
 
   const handleExit = () => {
     let badData = false;
@@ -242,8 +263,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
         case 'document':
         case 'render': 
         case 'query':
-        case 'list': { break }   // leave both IOClass and MessageClass as false
+        case 'list': { break }   // leave both PromoClass, IOClass, and MessageClass as false
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break }
+        case 'promo': { setFactPromoClass(true); break }
         default: { setFactIOClass(true); }
       }
       let eString;
@@ -324,16 +346,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
       {statusMessage ? (
         <DialogContentText className={classes.subDescriptionText}>{statusMessage}</DialogContentText>
       ) : null}
-      {fact.type === 'DEPRECIATE - list_multiple' ? (
-        <FormControl className={classes.margin}>
-          <BootstrapInput
-            placeholder='Search/Filter'
-            onChange={onSearchInput}
-            value={searchText}
-            id='bootstrap-input'
-          />
-        </FormControl>
-      ) : null}
       <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
         {fact ? (
           <DynamicForm
@@ -383,6 +395,20 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext }) => {
               { factMessageClass ? 'Send' : 'Save' }
             </Button>
             )
+          : null
+        }
+        { factPromoClass  
+          ? (<React.Fragment>
+              <Button variant='contained' color='green' size='small' onClick={handlePromoSignup}>
+                Sign-up
+              </Button>
+              <Button variant='contained' color='blue' size='small' onClick={handlePromoMore}>
+                More info
+              </Button>
+              <Button variant='contained' color='blue' size='small' onClick={handlePromoNext}>
+                Next
+              </Button>
+            </React.Fragment>)
           : null
         }
         {((fromHome === 'event') && factIOClass && (fact.type !== 'reservation') && (fact.type !== 'form'))

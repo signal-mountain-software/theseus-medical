@@ -266,11 +266,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onChooseActivity = async activity => {
     actionCancelled = false;
-    if (addedAFavorite || activity.code.startsWith('document')) {
+    if (addedAFavorite || activity?.code?.startsWith('document')) {
       addedAFavorite = false;
       return;
     }
-    if (activity.code.startsWith('event')) {
+    if (activity?.code?.startsWith('event')) {
       if (!toggledRow) {       
         setType(DEFAULT_TYPE);
         // setLimit(DEFAULT_LIMIT);
@@ -286,7 +286,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             client_id: session.client_id,
             person_id: patient.person_id,
             event_id: '',
-            activity_type: '$$' + activity.code,
+            activity_type: '$$' + (activity?.code || activity),
             limit: limit,
             fact_data: true,
             includeEvents: true,
@@ -301,8 +301,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
       });
       let selectedActivity = result.data.getActivityData[0];
       selectedActivityName = activity.name;
-      if (activity.type === 'reservation') { 
-        let reservationKey = activity.code.replace('.','^').split('^')[1];
+      if (selectedActivity.type === 'reservation') { 
+        let reservationKey = selectedActivity.code.replace('.','^').split('^')[1];
         result = await API.graphql(
           graphqlOperation(getReservation, {
             client_id: session.client_id,
@@ -793,6 +793,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
           }}
           onSave={onSaveFact}
           onNext={onNextFact}
+          onSelected={(nextActivity) => {
+            setLimit(limit);
+            setOpen(false);
+            selectedActivityName = '';
+            onChooseActivity(nextActivity);
+          }}
         />
       ) : null}
 

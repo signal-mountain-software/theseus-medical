@@ -24,6 +24,7 @@
     "react-date-picker": "^8.2.0",
     "react-dom": "^16.13.1",
     "react-file-viewer": "^1.1.0",
+    "react-images": "^1.2.0-beta.7",
     "react-pdf": "^5.2.0",
     "react-player": "^2.9.0",
     "react-router-dom": "^5.2.0",
