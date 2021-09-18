@@ -223,8 +223,8 @@ export default ({
     setOGvalue(value);
   }
 
-  if (firstTime) {
-    console.log('initializing');
+  if (firstTime || !newFact.value) {
+    console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
     if (valueQualifiers && valueQualifiers.length > 0) {
       valueQualifiers.forEach(vQual => {
         if (vQual && Object.keys(vQual).length > 0) {
