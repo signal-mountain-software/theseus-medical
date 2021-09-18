@@ -766,7 +766,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {'***AVA v21.9.2***'}
+                  {'***AVA v21.9.18***'}
                 </Typography>
               </GridListTile>
             </GridList>
