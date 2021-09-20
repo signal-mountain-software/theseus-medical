@@ -90,7 +90,7 @@ export default Component => props => {
         getProfileResult.data.getPerson.location = null;
         getProfileResult.data.getPerson.name.first = user.username;
         getProfileResult.data.getPerson.name.last = 'Welcome';
-        getProfileResult.data.getPerson.clients = [ {"id": default_client_id, "groups": [`${default_client_id}_all`] }
+        getProfileResult.data.getPerson.clients = [ {"id": default_client_id, "groups": [`${default_client_id}_all`] } ];
       }
 
       let profile = getProfileResult.data.getPerson;
