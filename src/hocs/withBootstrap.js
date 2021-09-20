@@ -71,7 +71,6 @@ export default Component => props => {
 
       // get person's Account information
       getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (session.user_id) }))
- //   getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (!usingDefaultSession ? user.username : session.user_id) }))
         .catch(error => {
             enqueueSnackbar(`You are user ID is ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get your info.  The problem is: ${error.errors[0].message}`, {
               variant: 'error', persist: true,
@@ -91,6 +90,7 @@ export default Component => props => {
         getProfileResult.data.getPerson.location = null;
         getProfileResult.data.getPerson.name.first = user.username;
         getProfileResult.data.getPerson.name.last = 'Welcome';
+        getProfileResult.data.getPerson.clients = [ {"id": default_client_id, "groups": [`${default_client_id}_all`] }
       }
 
       let profile = getProfileResult.data.getPerson;
