@@ -570,6 +570,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onNextFact = async newFact => {
+    newFact.status = 'confirmed';
     await onSaveFact(newFact);
     let a = ((activities.findIndex(c => { return c.code === selected.code })) + 1 || 0); 
     if ( a > 0 ) { onChooseActivity(activities[a]); }
