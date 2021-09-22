@@ -155,9 +155,10 @@ export default Component => props => {
           };
         }
         else {
-          getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id })).catch(
+          let respFor = session.client_id + '~' + session.responsible_for;
+          getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id: respFor })).catch(
             error => {
-              enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${client_group_id} group.  
+              enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${respFor} group.  
                 Tell AVA support that the error is: ${error.errors[0].message}`, {
               variant: 'warning', persist: true,
             });
