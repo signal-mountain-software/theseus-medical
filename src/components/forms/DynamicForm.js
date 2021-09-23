@@ -7,7 +7,7 @@ import FormGroup from '@material-ui/core/FormGroup';
 
 import TextField from '@material-ui/core/TextField';
 
-import Grid from '@material-ui/core/Grid';
+import Grid from '@material-ui/core/Grid'; 
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -223,8 +223,8 @@ export default ({
     setOGvalue(value);
   }
 
-  if (firstTime) {
-    console.log('initializing');
+  if (firstTime || !newFact.value) {
+    console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
     if (valueQualifiers && valueQualifiers.length > 0) {
       valueQualifiers.forEach(vQual => {
         if (vQual && Object.keys(vQual).length > 0) {
@@ -705,6 +705,13 @@ export default ({
           height='100%'
           playing={true}
         />
+      );
+    case 'show_image':
+      return (
+        <Box alignItems="center" justifyContent="center" width="1">
+          <img src={defaultValue} width='100%'
+          height='100%' alt=""/>
+        </Box>
       );
     case 'characteristic_num2':
       return (

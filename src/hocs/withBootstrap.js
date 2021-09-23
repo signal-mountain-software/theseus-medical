@@ -71,7 +71,6 @@ export default Component => props => {
 
       // get person's Account information
       getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (session.user_id) }))
- //   getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (!usingDefaultSession ? user.username : session.user_id) }))
         .catch(error => {
             enqueueSnackbar(`You are user ID is ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get your info.  The problem is: ${error.errors[0].message}`, {
               variant: 'error', persist: true,
@@ -91,6 +90,7 @@ export default Component => props => {
         getProfileResult.data.getPerson.location = null;
         getProfileResult.data.getPerson.name.first = user.username;
         getProfileResult.data.getPerson.name.last = 'Welcome';
+        getProfileResult.data.getPerson.clients = [ {"id": default_client_id, "groups": [`${default_client_id}_all`] } ];
       }
 
       let profile = getProfileResult.data.getPerson;
@@ -146,7 +146,7 @@ export default Component => props => {
                 variant: 'warning', persist: true,
               })});
             let pObj = {
-              display_name: `${pRec.data.getPerson.name.first} ${pRec.data.getPerson.name.last}`,
+              display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
               person_id: pRec.data.getPerson.person_id,
               roles: ['patient'],
               client_group_id: 'na'
@@ -155,9 +155,10 @@ export default Component => props => {
           };
         }
         else {
-          getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id })).catch(
+          let respFor = session.client_id + '~' + session.responsible_for;
+          getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id: respFor })).catch(
             error => {
-              enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${client_group_id} group.  
+              enqueueSnackbar(`Warning! We couldn't get the names of the people in the ${respFor} group.  
                 Tell AVA support that the error is: ${error.errors[0].message}`, {
               variant: 'warning', persist: true,
             });
@@ -171,7 +172,7 @@ export default Component => props => {
       }
       if (patients.length > 0) { 
         patients.unshift({
-          display_name: `(me) ${profile.name.first} ${profile.name.last}`,
+          display_name: `${profile.name.last}, ${profile.name.first}`,
           person_id: profile.person_id,
           roles: ['patient'],
           client_group_id: 'na'

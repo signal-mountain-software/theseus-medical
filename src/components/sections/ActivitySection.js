@@ -266,11 +266,11 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const onChooseActivity = async activity => {
     actionCancelled = false;
-    if (addedAFavorite || activity.code.startsWith('document')) {
+    if (addedAFavorite || activity?.code?.startsWith('document')) {
       addedAFavorite = false;
       return;
     }
-    if (activity.code.startsWith('event')) {
+    if (activity?.code?.startsWith('event')) {
       if (!toggledRow) {       
         setType(DEFAULT_TYPE);
         // setLimit(DEFAULT_LIMIT);
@@ -286,7 +286,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             client_id: session.client_id,
             person_id: patient.person_id,
             event_id: '',
-            activity_type: '$$' + activity.code,
+            activity_type: '$$' + (activity?.code || activity),
             limit: limit,
             fact_data: true,
             includeEvents: true,
@@ -301,8 +301,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
       });
       let selectedActivity = result.data.getActivityData[0];
       selectedActivityName = activity.name;
-      if (activity.type === 'reservation') { 
-        let reservationKey = activity.code.replace('.','^').split('^')[1];
+      if (selectedActivity.type === 'reservation') { 
+        let reservationKey = selectedActivity.code.replace('.','^').split('^')[1];
         result = await API.graphql(
           graphqlOperation(getReservation, {
             client_id: session.client_id,
@@ -373,6 +373,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`)
               });
             setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+            showMessage = false;
           }
         }
         else if (newFact.value.hasOwnProperty('selected')) {
@@ -554,9 +555,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
     async function putFile(params) {    // Uploading files to the bucket
       let mediaData = newFact.value.mediaData;
       console.log(mediaData);
-      s3.upload(mediaData, function(err, data) {
+      await s3.upload(mediaData, function(err, data) {
         if (err) {
-          enqueueSnackbar (`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, {variant: 'error', persist: true})
+          enqueueSnackbar (`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, {variant: 'error', persist: true});
+          return 'File not written';
+        }
+        else {
+          enqueueSnackbar (`AVA completed the upload of your file.  Technical details: Bucket is ${data.Bucket}, Key is ${data.Key}`, {variant: 'success', persist: true});
         }
       });
       return mediaData.Key;
@@ -565,6 +570,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onNextFact = async newFact => {
+    newFact.status = 'confirmed';
     await onSaveFact(newFact);
     let a = ((activities.findIndex(c => { return c.code === selected.code })) + 1 || 0); 
     if ( a > 0 ) { onChooseActivity(activities[a]); }
@@ -720,7 +726,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                       <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
                         {activity.type === 'document' ? 
-                          <a href={activity.default_value} style={{color: 'inherit', textDecoration: 'none'}} target="_blank" rel="noopener noreferrer">
+                          <a href={activity.default_value + '?a=' + new Date().getTime()} style={{color: 'inherit', textDecoration: 'none'}} target="_blank" rel="noopener noreferrer">
                             <Typography variant='h5'>{activity.name}</Typography>
                           </a> 
                           :
@@ -761,7 +767,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {'***AVA v21.9.2***'}
+                  {'***AVA v21.9.18***'}
                 </Typography>
               </GridListTile>
             </GridList>
@@ -788,6 +794,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
           }}
           onSave={onSaveFact}
           onNext={onNextFact}
+          onSelected={(nextActivity) => {
+            setLimit(limit);
+            setOpen(false);
+            selectedActivityName = '';
+            onChooseActivity(nextActivity);
+          }}
         />
       ) : null}
 
