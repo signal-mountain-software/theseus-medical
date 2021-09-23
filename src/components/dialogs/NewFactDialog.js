@@ -242,6 +242,14 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     }
     return badData;
   };
+  
+  const handleClose = () => {
+    if (factIOClass) {
+      oopsie = `You pressed CANCEL. ${fact.name} was not completed.`;
+      enqueueSnackbar(oopsie, {variant: 'error', persist: true});
+    }
+    onClose();
+  };
 
   const disableSave = value => {
     //   setDisable(value);
@@ -387,7 +395,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         ) : null}
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
+        <Button className={classes.reject} size='small' variant='contained' onClick={handleClose}>
           {!factIOClass ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
         </Button>
         { factIOClass  
