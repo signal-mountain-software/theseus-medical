@@ -109,6 +109,13 @@ export const getPeopleByGroup = /* GraphQL */ `
         type
       }
       preferred_method
+      time_based_rules {
+        time_to
+        time_from
+        comment
+        method
+        day
+      }
       activity_customizations {
         activity_key
         baseline
@@ -149,6 +156,13 @@ export const getPerson = /* GraphQL */ `
         type
       }
       preferred_method
+      time_based_rules {
+        time_to
+        time_from
+        comment
+        method
+        day
+      }
       activity_customizations {
         activity_key
         baseline

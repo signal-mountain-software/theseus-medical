@@ -28,6 +28,7 @@ import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import ClientsSection from '../sections/ClientsSection';
 import RelationshipSection from '../sections/RelationshipSection';
+import MessageRouting from '../sections/MessageRouting';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -70,6 +71,12 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
+  infoButton: {
+    variant: 'outlined',
+    backgroundColor: theme.palette.info[theme.palette.type],
+    marginRight: 10,
+    paddingRight: 10,
+  },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: 0,
@@ -98,13 +105,14 @@ export default ({ patient, picture, open, onClose }) => {
   const [voice, setVoice] = React.useState();
   const [location, setLocation] = React.useState();
   const [prefMethod, setMethod] = React.useState();
+  const [timeBasedRules, setTimeBasedRules] = React.useState();
   const [patientGroups, setPatientGroups] = React.useState();
 
   const [changes, setChanges] = React.useState(false);
+  const [resettingPwd, setResettingPwd] = React.useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
-
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
@@ -134,6 +142,7 @@ export default ({ patient, picture, open, onClose }) => {
       setEmail(patient.messaging?.email || '');
       setLocation(patient.location || '');
       setMethod(patient.preferred_method);
+      setTimeBasedRules(patient.time_based_rules);
       if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
       else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
       let foundAt;
@@ -163,8 +172,10 @@ export default ({ patient, picture, open, onClose }) => {
       voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
       surrogate: surrogate,
       prefMethod: prefMethod || 'AVA',
+      time_based_rules: timeBasedRules,
       groups: patientGroups,
       location: location,
+      pwdReset: resettingPwd
     };
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
@@ -187,6 +198,14 @@ export default ({ patient, picture, open, onClose }) => {
     patient.name.last = lastName;
     setChanges(false);
     onClose();
+  };
+
+  const handleResetPassword1 = event => {
+    setResettingPwd(true);
+  };
+
+  const handleResetPassword2 = event => {
+    setChanges(true);
   };
 
   const handleChangeFirstName = event => {
@@ -236,6 +255,26 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+  const updateRoutingDay = (tableRow, dayValue, removeEntry) => {
+    if (removeEntry) { patient.time_based_rules[tableRow].day.replace(dayValue, '') }
+    else { patient.time_based_rules[tableRow].day += dayValue };
+    setTimeBasedRules(patient.time_based_rules);
+  }
+/*
+  const onChangeFromTime = tableRow => event => {
+      patient.time_based_rules[tableRow].from_time = event.target.value;
+      setTimeBasedRules(patient.time_based_rules);
+  }
+*/
+  const onChangeToTime = tableRow => event => {
+      patient.time_based_rules[tableRow].from_time = event.target.value;
+      setTimeBasedRules(patient.time_based_rules);
+  }
+
+  const onChangeMethod = tableRow => event => {
+      patient.time_based_rules[tableRow].from_time = event.target.value;
+      setTimeBasedRules(patient.time_based_rules);
+  }
 
   return (
     open ?
@@ -351,11 +390,11 @@ export default ({ patient, picture, open, onClose }) => {
                       <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>phone</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>time-based</Typography>} />
                     </RadioGroup>
                   </FormControl>
                 </Box>
               </div>
-              
               <Box flexGrow={1} mr={3}
                 display="flex"
                 flexDirection='row'
@@ -367,8 +406,40 @@ export default ({ patient, picture, open, onClose }) => {
           </Box>
         </Paper>
       </Box>
-      <RelationshipSection person={patient}/>
+      { prefMethod === 'time_based' ? 
+        <MessageRouting 
+          person={patient}
+          updateRoutingDay={updateRoutingDay} 
+ //         onChangeFromTime={onChangeFromTime} 
+          onChangeToTime={onChangeToTime} 
+          onChangeMethod={onChangeMethod}
+          numberRows={patient.time_based_rules.length}
+        /> 
+      : null }
       <ClientsSection person={patient} updateGroups={handleChangeGroups}/>
+      <RelationshipSection person={patient}/>
+      <Toolbar>
+      <Button
+        onClick={handleResetPassword1}
+        disabled={resettingPwd}
+        variant='contained'
+        className={classes.infoButton}
+      >
+        Reset Pwd
+      </Button>
+      {" "}
+      { resettingPwd ? 
+        <Button
+          onClick={handleResetPassword2}
+          disabled={!resettingPwd}
+          hidden={!resettingPwd}
+          variant='contained'
+          className={classes.topButton}
+        >
+          Confirm
+        </Button>
+      : null }
+      </Toolbar>
     </Dialog>
     : null
   );
