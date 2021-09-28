@@ -8,12 +8,13 @@ import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import TimePicker from 'react-time-picker';
+
 import Typography from '@material-ui/core/Typography';
 import Radio from '@material-ui/core/Radio';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 
-import TextField from '@material-ui/core/TextField';
 import Checkbox from '@material-ui/core/Checkbox';
 import Button from '@material-ui/core/Button';
 import RadioGroup from '@material-ui/core/RadioGroup';
@@ -80,19 +81,36 @@ import Section from '../Section';
     },
   }));
 
-export default ({ person, updateRoutingDay, onChangeToTime, onChangeMethod, numRows }) => {
+export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
     const classes = useStyles();
     let prefMethod; 
 
-    const [ruleRows, setRuleRows] = React.useState(person.time_based_rules);
-    const [lastEntry, setLastEntry] = React.useState(person.time_based_rules.length - 1)
+    let l = person.time_based_rules?.length || 0;
+    if ( l === 0 ) {
+      person.time_based_rules = [ 
+        {
+          'time_to': null, 
+          'method': ' ', 
+          'time_from': null, 
+          'day': ''
+        },
+        { 
+          'method': person.preferred_method 
+        }
+      ];
+      
+    }
+
+    const [ruleRows, setRuleRows] = React.useState(person.time_based_rules || []);
+    const [lastEntry, setLastEntry] = React.useState((person.time_based_rules?.length || 1) - 1)
+    const [viewVersion, setViewVersion] = React.useState(1);
 
     const handleAddRule = () => {
         person.time_based_rules.splice(lastEntry, 0, 
           {
-            'time_to': '?', 
-            'method': '?', 
-            'time_from': '?', 
+            'time_to': null, 
+            'method': ' ', 
+            'time_from': null, 
             'day': ''
           });
         setLastEntry(lastEntry + 1);
@@ -100,26 +118,26 @@ export default ({ person, updateRoutingDay, onChangeToTime, onChangeMethod, numR
     }
     
     const onChangeFromTime = tableRow => event => {
-      person.time_based_rules[tableRow].from_time = event.target.value;
-      setLastEntry(lastEntry - 0.1);
+      person.time_based_rules[tableRow].time_from = event;
       setRuleRows(person.time_based_rules);
+      setViewVersion(viewVersion + 1);
+      updateSetChange();
     }
-
-    function formatTimeOut(inTime, fromTime) {
-        if (!inTime) { return ( fromTime ? 'midnight' : '11:59pm' ) }
-        let tNum = Number(inTime);
-        if (isNaN(tNum)) {return inTime};
-        let amPM;
-        if (tNum > 1159) {
-            amPM = 'pm';
-            if (tNum > 1259) {tNum -= 1200}
-        } 
-        else {
-            amPM = 'am'
-            if (tNum < 100) {tNum += 1200}
-        }
-        return ((tNum/100).toFixed(2).replace('.',':') + amPM);
+    
+    const onChangeToTime = tableRow => event => {
+      person.time_based_rules[tableRow].time_to = event;
+      setRuleRows(person.time_based_rules);
+      setViewVersion(viewVersion + 1);
+      updateSetChange();
     }
+    
+  const updateRoutingDay = (tableRow, dayValue, removeEntry) => {
+    if (removeEntry) { person.time_based_rules[tableRow].day.replace(dayValue, '') }
+    else { person.time_based_rules[tableRow].day += dayValue };
+    setRuleRows(person.time_based_rules);
+    setViewVersion(viewVersion + 1);
+    updateSetChange();
+  }
 
   return (
     <Section title='Message Delivery' outlined>
@@ -138,23 +156,27 @@ export default ({ person, updateRoutingDay, onChangeToTime, onChangeMethod, numR
               <TableCell style={{ width: 20 }}>Sa</TableCell>
             </TableRow>
           </TableHead>
-          { person ? 
+          { ( person && viewVersion > 0 ) ? 
             <TableBody>
               { ruleRows.map((route, i) => (
                 i < lastEntry ?  
                 <React.Fragment>
                 <TableRow key={`message_routing_${i}`} style={{borderBottom: 'none'}}>
                   <TableCell style={{ width: 200, borderBottom: 'none' }}>
-                    <TextField
-                        id={`message_routing_${i}_from`}
-                        value={formatTimeOut(route.time_from, true) || ''}
+                    <TimePicker
+                        value={route.time_from}
+                        clearIcon={null}
+                        clockIcon={null}
+                        disableClock={true}
                         onChange={onChangeFromTime(i)}
                     />
                   </TableCell>
                   <TableCell style={{ width: 200, borderBottom: 'none' }}>
-                    <TextField
-                        id={`message_routing_${i}_to`}
-                        value={formatTimeOut(route.time_to, false) || ''}
+                  <TimePicker
+                        value={route.time_to}
+                        clearIcon={null}
+                        clockIcon={null}
+                        disableClock={true}
                         onChange={onChangeToTime(i)}
                     />
                   </TableCell>
@@ -188,8 +210,9 @@ export default ({ person, updateRoutingDay, onChangeToTime, onChangeMethod, numR
                         checked={route.day && route.day.includes('2')}
                         name={`message_routing_${i}_2`}
                         disableRipple
-                        onChange={ (event) => {
-                            updateRoutingDay(i, '2', route.day.includes('2'))
+                        onClick={ (event) => {
+                          console.log('checkbox 2 tapped')
+                          updateRoutingDay(i, '2', route.day.includes('2'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_2` }}
                       />
@@ -201,7 +224,8 @@ export default ({ person, updateRoutingDay, onChangeToTime, onChangeMethod, numR
                         name={`message_routing_${i}_3`}
                         disableRipple
                         onChange={ (event) => {
-                            updateRoutingDay(i, '3', route.day.includes('3'))
+                          console.log('checkbox 3 tapped')
+                          updateRoutingDay(i, '3', route.day.includes('3'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_3` }}
                       />

@@ -255,11 +255,6 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
-  const updateRoutingDay = (tableRow, dayValue, removeEntry) => {
-    if (removeEntry) { patient.time_based_rules[tableRow].day.replace(dayValue, '') }
-    else { patient.time_based_rules[tableRow].day += dayValue };
-    setTimeBasedRules(patient.time_based_rules);
-  }
 /*
   const onChangeFromTime = tableRow => event => {
       patient.time_based_rules[tableRow].from_time = event.target.value;
@@ -272,7 +267,7 @@ export default ({ patient, picture, open, onClose }) => {
   }
 
   const onChangeMethod = tableRow => event => {
-      patient.time_based_rules[tableRow].from_time = event.target.value;
+      patient.time_based_rules[tableRow].method = event.target.value;
       setTimeBasedRules(patient.time_based_rules);
   }
 
@@ -409,11 +404,9 @@ export default ({ patient, picture, open, onClose }) => {
       { prefMethod === 'time_based' ? 
         <MessageRouting 
           person={patient}
-          updateRoutingDay={updateRoutingDay} 
- //         onChangeFromTime={onChangeFromTime} 
-          onChangeToTime={onChangeToTime} 
+          updateSetChange={() => {setChanges(true)}}
           onChangeMethod={onChangeMethod}
-          numberRows={patient.time_based_rules.length}
+          numberRows={patient.time_based_rules?.length || 1}
         /> 
       : null }
       <ClientsSection person={patient} updateGroups={handleChangeGroups}/>
