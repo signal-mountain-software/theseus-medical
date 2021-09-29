@@ -261,12 +261,12 @@ export default ({ patient, picture, open, onClose }) => {
       patient.time_based_rules[tableRow].from_time = event.target.value;
       setTimeBasedRules(patient.time_based_rules);
   }
-*/
+
   const onChangeToTime = tableRow => event => {
       patient.time_based_rules[tableRow].from_time = event.target.value;
       setTimeBasedRules(patient.time_based_rules);
   }
-
+*/
   const onChangeMethod = tableRow => event => {
       patient.time_based_rules[tableRow].method = event.target.value;
       setTimeBasedRules(patient.time_based_rules);

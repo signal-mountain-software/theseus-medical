@@ -181,6 +181,7 @@ export default Component => props => {
       };
 
       if (mounted) {
+        session.session_id = process.env.REACT_APP_AVA_VERSION + '~' + session.session_id;
         dispatch({ type: SET_SESSION, payload: session });
         dispatch({ type: SET_ROLES, payload: roles });
         dispatch({ type: SET_PROFILE, payload: profile });

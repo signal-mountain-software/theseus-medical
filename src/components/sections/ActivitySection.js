@@ -186,7 +186,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       qualifier: [],
       session: {
         user_id: session.user_id,
-        session_id: (state.version + '~' + session.session_id),
+        session_id: `${process.env.REACT_APP_AVA_VERSION}~${session.user_id}`,
       },
     };
     if (event) {

@@ -263,7 +263,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         value: (fact.type === 'reservation') ? fact.default_value : null,
         session: {
           user_id: session.user_id,
-          session_id: (state.version + '~' + session.session_id),
+          session_id: session.session_id,
         },
       });
       var factCode = fact?.code?.split('.')[0];
