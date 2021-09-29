@@ -191,7 +191,7 @@ export default ({ session, profile, loginID }) => {
             status: 'requested',
             session: {
                 user_id: loginID,
-                session_id: session.session_id,
+                session_id: (state.version + '~' + session.session_id),
             },
         };
         // setNewFact(newFactData);
@@ -220,7 +220,7 @@ export default ({ session, profile, loginID }) => {
             status: 'requested',
             session: {
                 user_id: loginID,
-                session_id: session.session_id,
+                session_id: (state.version + '~' + session.session_id),
             },
         };
         // setNewFact(newFactData);

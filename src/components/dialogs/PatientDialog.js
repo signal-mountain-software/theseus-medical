@@ -96,6 +96,7 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ patient, picture, open, onClose }) => {
   const classes = useStyles();
+  console.log(process.env.REACT_APP_AVA_VERSION);
 
   const [firstName, setFirstName] = React.useState();
   const [lastName, setLastName] = React.useState();
@@ -187,7 +188,7 @@ export default ({ patient, picture, open, onClose }) => {
       status: 'requested',
       session: {
         user_id: state.session.user_id,
-        session_id: 'PatientDialog.js',
+        session_id: state.version + '~' + JSON.stringify(state),
       },
     };
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {

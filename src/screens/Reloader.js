@@ -12,7 +12,7 @@ export default () => {
     return (  
     <Box mt={3}>
         <Typography align='center'>
-        Loading AVA version 21.9.23
+            { `Loading AVA version ${process.env.REACT_APP_AVA_VERSION}` }
         </Typography>
     </Box>
 )

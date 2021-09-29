@@ -28,7 +28,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'], 
           data.accessToken.payload.sub,
-          `Version=v21.9.23 ~ TimeRef=${data.idToken.payload['auth_time']}`
+          `Version=${process.env.REACT_APP_AVA_VERSION} ~ TimeRef=${data.idToken.payload['auth_time']}`
         );
       };
     } catch (err) {
@@ -56,7 +56,7 @@ export default Component => props => {
         session_id: pSession,
       },
     };    
-    await API.graphql(graphqlOperation(createPutFact, { input: instruction }));
+    // await API.graphql(graphqlOperation(createPutFact, { input: instruction }));
   };
 
   React.useEffect(() => {

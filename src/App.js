@@ -63,7 +63,7 @@ const handleWriteError = async message => {
     value: message,
     session: {
       user_id: 'no user logged',
-      session_id: 'no session logged',
+      session_id: (state.version + '~' + JSON(stringify(state))),
     },
   };
   await API.graphql(graphqlOperation(createPutFact, { input: instruction }));

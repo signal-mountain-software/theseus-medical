@@ -186,7 +186,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       qualifier: [],
       session: {
         user_id: session.user_id,
-        session_id: session.session_id,
+        session_id: (state.version + '~' + session.session_id),
       },
     };
     if (event) {
@@ -767,7 +767,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {'***AVA v21.9.23***'}
+                  {`***AVA ${process.env.REACT_APP_AVA_VERSION}***`}
                 </Typography>
               </GridListTile>
             </GridList>
