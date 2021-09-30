@@ -143,7 +143,7 @@ export default Component => props => {
             let pRec = await API
               .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
               .catch(
-                () => { console.log(`${session.responsible_for[r]} not found.  Trying Group table`) });
+                () => { console.log(`${respArray[r]} not found.  Trying Group table`) });
             if (pRec?.data?.getPerson) { 
               patients.push({
                 display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,

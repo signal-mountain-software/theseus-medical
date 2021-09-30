@@ -96,7 +96,6 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ patient, picture, open, onClose }) => {
   const classes = useStyles();
-  console.log(process.env.REACT_APP_AVA_VERSION);
 
   const [firstName, setFirstName] = React.useState();
   const [lastName, setLastName] = React.useState();
@@ -106,7 +105,6 @@ export default ({ patient, picture, open, onClose }) => {
   const [voice, setVoice] = React.useState();
   const [location, setLocation] = React.useState();
   const [prefMethod, setMethod] = React.useState();
-  const [timeBasedRules, setTimeBasedRules] = React.useState();
   const [patientGroups, setPatientGroups] = React.useState();
 
   const [changes, setChanges] = React.useState(false);
@@ -143,7 +141,7 @@ export default ({ patient, picture, open, onClose }) => {
       setEmail(patient.messaging?.email || '');
       setLocation(patient.location || '');
       setMethod(patient.preferred_method);
-      setTimeBasedRules(patient.time_based_rules);
+//      setTimeBasedRules(patient.time_based_rules);
       if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
       else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
       let foundAt;
@@ -173,7 +171,7 @@ export default ({ patient, picture, open, onClose }) => {
       voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
       surrogate: surrogate,
       prefMethod: prefMethod || 'AVA',
-      time_based_rules: timeBasedRules,
+      time_based_rules: patient.time_based_rules,
       groups: patientGroups,
       location: location,
       pwdReset: resettingPwd
@@ -188,7 +186,7 @@ export default ({ patient, picture, open, onClose }) => {
       status: 'requested',
       session: {
         user_id: state.session.user_id,
-        session_id: state.version + '~' + JSON.stringify(state),
+        session_id: state.session.session_id,
       },
     };
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
@@ -256,20 +254,9 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
-/*
-  const onChangeFromTime = tableRow => event => {
-      patient.time_based_rules[tableRow].from_time = event.target.value;
-      setTimeBasedRules(patient.time_based_rules);
-  }
-
-  const onChangeToTime = tableRow => event => {
-      patient.time_based_rules[tableRow].from_time = event.target.value;
-      setTimeBasedRules(patient.time_based_rules);
-  }
-*/
   const onChangeMethod = tableRow => event => {
       patient.time_based_rules[tableRow].method = event.target.value;
-      setTimeBasedRules(patient.time_based_rules);
+      setChanges(true);
   }
 
   return (

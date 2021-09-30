@@ -162,18 +162,18 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
                 i < lastEntry ?  
                 <React.Fragment>
                 <TableRow key={`message_routing_${i}`} style={{borderBottom: 'none'}}>
-                  <TableCell style={{ width: 200, borderBottom: 'none' }}>
+                  <TableCell style={{ width: 200, borderBottom: 'none' }} key={`message_routing_${i}_from`}>
                     <TimePicker
-                        value={route.time_from}
+                        value={route.time_from || '0:00'}
                         clearIcon={null}
                         clockIcon={null}
                         disableClock={true}
                         onChange={onChangeFromTime(i)}
                     />
                   </TableCell>
-                  <TableCell style={{ width: 200, borderBottom: 'none' }}>
+                  <TableCell style={{ width: 200, borderBottom: 'none' }} key={`message_routing_${i}_to`}>
                   <TimePicker
-                        value={route.time_to}
+                        value={route.time_to || '23:59'}
                         clearIcon={null}
                         clockIcon={null}
                         disableClock={true}
