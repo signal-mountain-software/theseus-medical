@@ -1,6 +1,7 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { createPutFact } from '../../graphql/mutations';
+import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
 
 import { useSnackbar } from 'notistack';
@@ -76,6 +77,8 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: theme.palette.info[theme.palette.type],
     marginRight: 10,
     paddingRight: 10,
+    marginLeft: 10,
+    paddingLeft: 10,
   },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -162,10 +165,28 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const handleUpdate = async () => {
+    if (patient.person_id.startsWith('*NEW~')) {
+      let tryAgain;
+      let namePart = firstName.substr(0,1).toLowerCase() + lastName.toLowerCase();
+      let numberPart = 1;
+      patient.person_id = namePart;
+      do {
+        tryAgain = false;
+        let getSessionResult = await API
+          .graphql(graphqlOperation(getSession, { session_id: patient.person_id }))
+          .catch(() => {});
+        if (getSessionResult) {
+          numberPart++;
+          patient.person_id = namePart + numberPart.toString();
+          tryAgain = true;
+        }
+      } while (tryAgain)
+      enqueueSnackbar(`User ID ${patient.person_id} assigned`, { variant: 'success', persist: true });
+    } 
     let updatePerson = {
       person_id: patient.person_id,
-      first: firstName,
-      last: lastName,
+      first: firstName.substr(0).toUpperCase() + firstName.substr(1),
+      last: lastName.substr(0).toUpperCase() + lastName.substr(1),
       email: email,
       sms: cell ? '+1' + cell.replace(/\D/g, '') : null,
       voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
@@ -310,9 +331,19 @@ export default ({ patient, picture, open, onClose }) => {
               <FaceIcon className={classes.picture} />
             </Avatar>
             <br />
-            <Button className={classes.photoButton} variant='outlined' color='primary' size='small' startIcon={<CloudUploadIcon />} onClick={handlePhotoUpload}>
-              <Typography>Update photo?</Typography>
-            </Button>
+            {!patient.person_id.startsWith('*NEW~') ?
+              <Button 
+              className={classes.photoButton} 
+              variant='outlined' 
+              color='primary' 
+              hidden={patient.person_id.startsWith('*NEW~')}
+              size='small' 
+              startIcon={<CloudUploadIcon />} 
+              onClick={handlePhotoUpload}
+              >
+                <Typography>Update photo?</Typography>
+              </Button>
+            : null }
             <input
               type="file"
               style={{ display: 'none' }}
@@ -406,7 +437,7 @@ export default ({ patient, picture, open, onClose }) => {
         variant='contained'
         className={classes.infoButton}
       >
-        Reset Pwd
+        Reset Acct
       </Button>
       {" "}
       { resettingPwd ? 
