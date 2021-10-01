@@ -8,6 +8,7 @@ const initialState = {
   roles: null,
   session: null,
   user: null,
+  version: process.env.REACT_APP_AVA_VERSION
 };
 
 export const SessionContext = React.createContext(initialState);

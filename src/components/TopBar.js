@@ -14,10 +14,11 @@ import Toolbar from '@material-ui/core/Toolbar';
 import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
-//import useScrollTrigger from '@material-ui/core/useScrollTrigger';
 import AssignmentIndIcon from '@material-ui/icons/AssignmentInd';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import GetAppIcon from '@material-ui/icons/GetApp';
+import PersonAddIcon from '@material-ui/icons/PersonAdd';
+import PatientDialog from './dialogs/PatientDialog';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 
@@ -36,6 +37,8 @@ export default () => {
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hide, setHide] = React.useState(true);
   const [open, setOpen] = React.useState(false);
+  const [addAccount, setAddAccount] = React.useState(false);
+  const [templatePatient, setTemplatePatient] = React.useState({});
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const isStandalone = useMediaQuery('(display-mode: standalone)');
@@ -70,6 +73,33 @@ export default () => {
       serviceWorker.unregister();
       window.location.reload();
     });
+  };
+
+  const onAddAccount = () => {
+    setTemplatePatient({
+      "person_id": "*NEW~" + new Date().getTime().toString(),
+      "location": "",
+      "client_id": session.client_id,
+      "search_data": "",
+      "clients": [
+       {
+        "groups": [ session.responsible_for ],
+        "id": session.client_id
+       }
+      ],
+      "name": {
+       "last": "",
+       "first": ""
+      },
+      "display_name": "",
+      "groups": [ session.responsible_for ],
+      "preferred_method": "AVA",
+      "relationships": null,
+      "roles": [ "patient" ],
+      "messaging": {},
+      "time_offset": -5,
+    });
+    setAddAccount(true);
   };
 
   const onInstall = () => {
@@ -145,6 +175,14 @@ export default () => {
                   </ListItemIcon>
                   <ListItemText primary='Sign Out' />
                 </MenuItem>
+                {session?.responsible_for && (
+                  <MenuItem onClick={onAddAccount}>
+                    <ListItemIcon>
+                      <PersonAddIcon />
+                    </ListItemIcon>
+                    <ListItemText primary='Create Account' />
+                  </MenuItem>
+                )}
                 {showInstall() && (
                   <MenuItem onClick={onInstall}>
                     <ListItemIcon>
@@ -165,6 +203,16 @@ export default () => {
         }}
       />
       <IosInstall open={showIOSDialog} onClose={onIOSInstallClose} />
+      {addAccount && ( 
+        <PatientDialog
+          patient={templatePatient}
+          picture={''}
+          open={addAccount}
+          onClose={() => {
+            setAddAccount(false);
+          }}
+        /> 
+      )}
     </Box>
   );
 };

@@ -1,6 +1,7 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { createPutFact } from '../../graphql/mutations';
+import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
 
 import { useSnackbar } from 'notistack';
@@ -28,6 +29,7 @@ import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import ClientsSection from '../sections/ClientsSection';
 import RelationshipSection from '../sections/RelationshipSection';
+import MessageRouting from '../sections/MessageRouting';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -70,6 +72,14 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
+  infoButton: {
+    variant: 'outlined',
+    backgroundColor: theme.palette.info[theme.palette.type],
+    marginRight: 10,
+    paddingRight: 10,
+    marginLeft: 10,
+    paddingLeft: 10,
+  },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: 0,
@@ -101,10 +111,10 @@ export default ({ patient, picture, open, onClose }) => {
   const [patientGroups, setPatientGroups] = React.useState();
 
   const [changes, setChanges] = React.useState(false);
+  const [resettingPwd, setResettingPwd] = React.useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
-
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
@@ -134,6 +144,7 @@ export default ({ patient, picture, open, onClose }) => {
       setEmail(patient.messaging?.email || '');
       setLocation(patient.location || '');
       setMethod(patient.preferred_method);
+//      setTimeBasedRules(patient.time_based_rules);
       if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
       else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
       let foundAt;
@@ -154,17 +165,37 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const handleUpdate = async () => {
+    if (patient.person_id.startsWith('*NEW~')) {
+      let tryAgain;
+      let namePart = firstName.substr(0,1).toLowerCase() + lastName.toLowerCase();
+      let numberPart = 1;
+      patient.person_id = namePart;
+      do {
+        tryAgain = false;
+        let getSessionResult = await API
+          .graphql(graphqlOperation(getSession, { session_id: patient.person_id }))
+          .catch(() => {});
+        if (getSessionResult) {
+          numberPart++;
+          patient.person_id = namePart + numberPart.toString();
+          tryAgain = true;
+        }
+      } while (tryAgain)
+      enqueueSnackbar(`User ID ${patient.person_id} assigned`, { variant: 'success', persist: true });
+    } 
     let updatePerson = {
       person_id: patient.person_id,
-      first: firstName,
-      last: lastName,
+      first: firstName.substr(0).toUpperCase() + firstName.substr(1),
+      last: lastName.substr(0).toUpperCase() + lastName.substr(1),
       email: email,
       sms: cell ? '+1' + cell.replace(/\D/g, '') : null,
       voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
       surrogate: surrogate,
       prefMethod: prefMethod || 'AVA',
+      time_based_rules: patient.time_based_rules,
       groups: patientGroups,
       location: location,
+      pwdReset: resettingPwd
     };
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
@@ -176,7 +207,7 @@ export default ({ patient, picture, open, onClose }) => {
       status: 'requested',
       session: {
         user_id: state.session.user_id,
-        session_id: 'PatientDialog.js',
+        session_id: state.session.session_id,
       },
     };
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
@@ -187,6 +218,14 @@ export default ({ patient, picture, open, onClose }) => {
     patient.name.last = lastName;
     setChanges(false);
     onClose();
+  };
+
+  const handleResetPassword1 = event => {
+    setResettingPwd(true);
+  };
+
+  const handleResetPassword2 = event => {
+    setChanges(true);
   };
 
   const handleChangeFirstName = event => {
@@ -236,6 +275,10 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+  const onChangeMethod = tableRow => event => {
+      patient.time_based_rules[tableRow].method = event.target.value;
+      setChanges(true);
+  }
 
   return (
     open ?
@@ -288,9 +331,19 @@ export default ({ patient, picture, open, onClose }) => {
               <FaceIcon className={classes.picture} />
             </Avatar>
             <br />
-            <Button className={classes.photoButton} variant='outlined' color='primary' size='small' startIcon={<CloudUploadIcon />} onClick={handlePhotoUpload}>
-              <Typography>Update photo?</Typography>
-            </Button>
+            {!patient.person_id.startsWith('*NEW~') ?
+              <Button 
+              className={classes.photoButton} 
+              variant='outlined' 
+              color='primary' 
+              hidden={patient.person_id.startsWith('*NEW~')}
+              size='small' 
+              startIcon={<CloudUploadIcon />} 
+              onClick={handlePhotoUpload}
+              >
+                <Typography>Update photo?</Typography>
+              </Button>
+            : null }
             <input
               type="file"
               style={{ display: 'none' }}
@@ -351,11 +404,11 @@ export default ({ patient, picture, open, onClose }) => {
                       <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>phone</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>time-based</Typography>} />
                     </RadioGroup>
                   </FormControl>
                 </Box>
               </div>
-              
               <Box flexGrow={1} mr={3}
                 display="flex"
                 flexDirection='row'
@@ -367,8 +420,38 @@ export default ({ patient, picture, open, onClose }) => {
           </Box>
         </Paper>
       </Box>
-      <RelationshipSection person={patient}/>
+      { prefMethod === 'time_based' ? 
+        <MessageRouting 
+          person={patient}
+          updateSetChange={() => {setChanges(true)}}
+          onChangeMethod={onChangeMethod}
+          numberRows={patient.time_based_rules?.length || 1}
+        /> 
+      : null }
       <ClientsSection person={patient} updateGroups={handleChangeGroups}/>
+      <RelationshipSection person={patient}/>
+      <Toolbar>
+      <Button
+        onClick={handleResetPassword1}
+        disabled={resettingPwd}
+        variant='contained'
+        className={classes.infoButton}
+      >
+        Reset Acct
+      </Button>
+      {" "}
+      { resettingPwd ? 
+        <Button
+          onClick={handleResetPassword2}
+          disabled={!resettingPwd}
+          hidden={!resettingPwd}
+          variant='contained'
+          className={classes.topButton}
+        >
+          Confirm
+        </Button>
+      : null }
+      </Toolbar>
     </Dialog>
     : null
   );

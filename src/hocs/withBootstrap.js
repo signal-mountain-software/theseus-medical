@@ -137,23 +137,37 @@ export default Component => props => {
         let respArray = [];
         if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for) }
         else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g,'').split(',') }
+        else { respArray.push(session.responsible_for) }
         if (respArray.length > 0) {
           for (let r = 0; r < respArray.length; r++) {
-            let pRec = await API.graphql(graphqlOperation(getPerson, { person_id: respArray[r] })).catch(
-              error => {
-                enqueueSnackbar(`You have ${session.responsible_for[r]} listed in your profile, but we can't get their info.  
-                  Tell AVA support that the error is: ${error.message}`, {
-                variant: 'warning', persist: true,
-              })});
-            let pObj = {
-              display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
-              person_id: pRec.data.getPerson.person_id,
-              roles: ['patient'],
-              client_group_id: 'na'
+            let pRec = await API
+              .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
+              .catch(
+                () => { console.log(`${respArray[r]} not found.  Trying Group table`) });
+            if (pRec?.data?.getPerson) { 
+              patients.push({
+                display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
+                person_id: pRec.data.getPerson.person_id,
+                roles: ['patient'],
+                client_group_id: 'na'
+              });
+              continue;
             }
-            patients.push(pObj);
+            if (!respArray[r].includes('~')) { respArray[r] = session.client_id + '~' + respArray[r] }
+            getPeopleByGroupResult = await API
+              .graphql(graphqlOperation(getGroup, { client_group_id: respArray[r] }))
+              .catch(
+                error => {
+                  console.log(`Warning! We couldn't get the names of the people in the ${respArray[r]} group.  
+                    Error is: ${error.errors[0].message}`);
+                }
+              );
+            if (getPeopleByGroupResult) {
+              patients.push(...getPeopleByGroupResult.data.getGroup);
+            }
           };
         }
+        /*
         else {
           let respFor = session.client_id + '~' + session.responsible_for;
           getPeopleByGroupResult = await API.graphql(graphqlOperation(getGroup, { client_group_id: respFor })).catch(
@@ -169,6 +183,7 @@ export default Component => props => {
             patients = getPeopleByGroupResult.data.getGroup;
           }
         }
+        */
       }
       if (patients.length > 0) { 
         patients.unshift({
@@ -181,6 +196,7 @@ export default Component => props => {
       };
 
       if (mounted) {
+        session.session_id = process.env.REACT_APP_AVA_VERSION + '~' + session.session_id;
         dispatch({ type: SET_SESSION, payload: session });
         dispatch({ type: SET_ROLES, payload: roles });
         dispatch({ type: SET_PROFILE, payload: profile });
