@@ -185,8 +185,8 @@ export default ({ patient, picture, open, onClose }) => {
     } 
     let updatePerson = {
       person_id: patient.person_id,
-      first: firstName.substr(0).toUpperCase() + firstName.substr(1),
-      last: lastName.substr(0).toUpperCase() + lastName.substr(1),
+      first: firstName.substr(0,1).toUpperCase() + firstName.substr(1),
+      last: lastName.substr(0,1).toUpperCase() + lastName.substr(1),
       email: email,
       sms: cell ? '+1' + cell.replace(/\D/g, '') : null,
       voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
