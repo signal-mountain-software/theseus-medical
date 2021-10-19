@@ -15,6 +15,7 @@ import IconButton from '@material-ui/core/IconButton';
 import Paper from '@material-ui/core/Paper';
 import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
+import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import FaceIcon from '@material-ui/icons/Face';
@@ -194,7 +195,7 @@ export default ({ patient, picture, open, onClose }) => {
       prefMethod: prefMethod || 'AVA',
       time_based_rules: patient.time_based_rules,
       groups: patientGroups,
-      location: location,
+      location: location ? location.replace(/,/g, '') : null,
       pwdReset: resettingPwd
     };
     let updateString = 'newData.' + JSON.stringify(updatePerson);
@@ -217,6 +218,7 @@ export default ({ patient, picture, open, onClose }) => {
     patient.name.first = firstName;
     patient.name.last = lastName;
     setChanges(false);
+    setResettingPwd(false);
     onClose();
   };
 
@@ -431,6 +433,7 @@ export default ({ patient, picture, open, onClose }) => {
       <ClientsSection person={patient} updateGroups={handleChangeGroups}/>
       <RelationshipSection person={patient}/>
       <Toolbar>
+      <Tooltip title={<Typography variant='caption'>{patient.person_id}</Typography>} placement='bottom-end'>
       <Button
         onClick={handleResetPassword1}
         disabled={resettingPwd}
@@ -439,6 +442,7 @@ export default ({ patient, picture, open, onClose }) => {
       >
         Reset Acct
       </Button>
+      </Tooltip>
       {" "}
       { resettingPwd ? 
         <Button

@@ -133,7 +133,7 @@ export default () => {
           </Box>
           {!isMobile && !hide && (
                 <Box >
-                  <Tooltip title={<Typography variant='subtitle1'>Change Account</Typography>} placement='bottom-end'>
+                  <Tooltip title={<Typography variant='caption'>{session.responsible_for}</Typography>} placement='bottom-end'>
                     <Button
                       color='primary'
                       size='small'

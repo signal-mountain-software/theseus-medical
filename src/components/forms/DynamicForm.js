@@ -7,6 +7,8 @@ import FormGroup from '@material-ui/core/FormGroup';
 
 import TextField from '@material-ui/core/TextField';
 
+import TimePicker from 'react-time-picker';
+
 import Grid from '@material-ui/core/Grid'; 
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -59,6 +61,14 @@ const useStyles = makeStyles(theme => ({
   inputText: {
     paddingRight: '45px',
   },
+  clockText: {
+    paddingRight: '5px',
+    marginLeft: 0,
+    marginBottom: '5px',
+    marginTop: '5px',
+    paddingLeft: 0,
+    verticalAlign: 'middle'
+  },
   leftButton: {
     minWidth: '30px',
   },
@@ -96,13 +106,36 @@ const useStyles = makeStyles(theme => ({
   },
   freeInput: {
     marginLeft: 0,
+    marginBottom: '10px',
     paddingLeft: 0,
     paddingRight: 0,
-    marginBottom: 15,
     width: '95%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
     height: theme.typography.fontSize * 2.8,
+  },
+  clockBox: {
+    marginLeft: 0,
+    marginBottom: 0,
+    marginTop: '5px',
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    width: '95%',
+    justifyContent: 'center',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
+    height: theme.typography.fontSize * 2.8,
+  },
+  clockInput: {
+    marginLeft: 10,
+    marginTop: '10px',
+    marginBottom: 0,
+    paddingLeft: 0,
+    paddingRight: 0,
+    width: '25%',
+    fontSize: theme.typography.fontSize,
+    verticalAlign: 'middle',
   },
   valueLine: {
     marginBottom: 0,
@@ -124,6 +157,7 @@ const useStyles = makeStyles(theme => ({
   },
   factTitle: {
     fontSize: '1.2rem',
+    marginTop: theme.spacing(1.5),
     marginLeft: 0,
     paddingLeft: 0,
     fontWeight: 'fontWeightBold',
@@ -399,6 +433,17 @@ export default ({
     setNewFact(newFact);
     if (event.target.id === messageField) {
       setMessage(event.target.value);
+    }
+    var resetter = formState + 1;
+    setFormState(resetter);
+  };
+
+  
+  const onChangeFreeTime = tableRow => event => {
+    newFact.value.freeText[tableRow] = event;
+    setNewFact(newFact);
+    if (tableRow === messageField) {
+      setMessage(event);
     }
     var resetter = formState + 1;
     setFormState(resetter);
@@ -838,8 +883,8 @@ export default ({
                   /*                             | on;  text turns off, key2 turns off)
 
                   /* prompt for text response...
-                  /* ~other:<text>               | prompt for text response with <text>     | ~other:What time would you like your meal?                */
-                  
+                  /* ~other:<text>               | prompt for text response with <text>     | ~other:What is your name?                                */
+                  /* ~time:<text>                | prompt for time response with <text>     | ~time:What time would you like your meal?                */
                   /* special cases...
                   /* ~+<key>~<value>             | use value only when <key> is selected    | ~+Filet Mignon:How would you like your filet cooked?      */
                   /* ~includeObservations.<code> | use CLIENT_ID~<code> to get one or more  | ~includeObservations.entree_today
@@ -866,7 +911,9 @@ export default ({
                   if (value.startsWith('~+')) {
                     let checkMe = value.substr(2).replace('~','?').split('?');
                     if (checked.indexOf(checkMe[0]) === -1) {return null}
-                    else {value = checkMe[1]}
+                    else {
+                      value = checkMe[1];
+                    }
                   }    
   /* Headers */   return value.startsWith('~~') ? (
                     <ListItem key={value + vIndex.toString()} role={undefined} dense className={classes.factTitle}>
@@ -886,7 +933,7 @@ export default ({
                       role={undefined}
                       dense
                       className={classes.defaultButton}>
-                      {(!value.includes('other:') && !value.includes('~day:')) ? (
+                      {(!value.includes('other:') && !value.includes('~time:')) ? (
   /* Check Box */       <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
                           {checkBoxOn ? 
                             <Checkbox
@@ -917,19 +964,40 @@ export default ({
                           />
                         </React.Fragment>
                       ) : !value.includes('~%') && !value.includes('~^') ? (
-                          <FormControl className={classes.freeInput}>
-                          {value.includes('~day:') ? 
-  /* Date prompt */        null : 
-  /* Text prompt */       <TextField
-                            id={value.split(':')[1]}
-                            helperText={value.split(':')[1]}
-                            value={newFact?.value?.freeText?.[value.split(':')[1]] || ''}
-                            InputLabelProps={{ shrink: true }}
-                            InputProps={{ noWrap: true }}
-                            onChange={onChangeFreeText}
-                          />
-                          }
-                        </FormControl>
+                          <FormControl className={classes.clockBox}>
+                            {value.includes('~time:') ?
+  /* Time prompt */           <React.Fragment>
+                                <Box
+                                  flexDirection='row'
+                                  display='flex'
+                                  grow={1}                    
+                                  justifyContent='flex-start'
+                                  alignItems='baseline'>
+                                  <Typography variant={'body2'} className={classes.clockText}>
+                                    {value.split(':')[1]}
+                                  </Typography>
+                                  <TimePicker
+                                    value={newFact?.value?.freeText[value.split(':')[1]] || '0:00'}
+                                    clearIcon={null}
+                                    clockIcon={null}
+                                    className={classes.clockInput}
+                                    disableClock={true}
+                                    onChange={onChangeFreeTime(value.split(':')[1])}
+                                  />
+                                </Box>
+                              </React.Fragment>
+                            :
+  /* Text prompt */           <TextField
+                                className={classes.freeInput}
+                                id={value.split(':')[1]}
+                                helperText={value.split(':')[1]}
+                                value={newFact?.value?.freeText?.[value.split(':')[1]] || ''}
+                                InputLabelProps={{ shrink: true }}
+                                InputProps={{ noWrap: true }}
+                                onChange={onChangeFreeText}
+                              />
+                            }
+                          </FormControl>
                       ) : value.includes('~%') ? (
   /* Prompt for filter */ <FormControl className={classes.freeInput}>
                           <Input
