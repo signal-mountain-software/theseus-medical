@@ -222,6 +222,18 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           enqueueSnackbar(oopsie, {variant: 'error', persist: true});
           setMessage('!!!!! ' + oopsie + ' !!!!!');
       }
+      else if (factMessageClass ) {
+        let goodMessage = false;
+        for (let e in newFact.value.freeText) {
+          goodMessage = (e.slice(0,1) !== '%') || goodMessage
+        }
+        if (!goodMessage) { 
+          badData = true;
+          oopsie = 'Enter your message text before pressing SEND';
+          enqueueSnackbar(oopsie, {variant: 'error', persist: true});
+          setMessage('!!!!! ' + oopsie + ' !!!!!');
+        }
+      }
       else {
         if (fact.type === 'upload_file' && !newFact.value.mediaData) { 
           badData = true;

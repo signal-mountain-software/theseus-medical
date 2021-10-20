@@ -386,12 +386,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
           let separator = '';
           //          let qualSeparator = '';
           let fOL = valueSelectedObject.length;
-          if (newFact.activity_key.startsWith('form.')) {
+          if (newFact.activity_key.startsWith('form.') || newFact.activity_key.startsWith('message.')) {
             if (newFact.status && newFact.status === 'confirmed') {
               for (let f = 0; f < fOL; f++) {
                 mVal = valueSelectedObject[f];
                 if (!freeTextObject.hasOwnProperty(mVal)) {
-                  constructedValue += separator + mVal;
+                  constructedValue += separator + (mVal.split(':')[0]);
                   separator = ' ~ ';
                   if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
                     constructedQualifier.push(mVal + ':' + qualObject[mVal]);

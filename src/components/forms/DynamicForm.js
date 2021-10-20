@@ -881,6 +881,8 @@ export default ({
                   /*                             | off... and vice versa)
                   /*                             | ~-- identical (text turns on, key2 turns 
                   /*                             | on;  text turns off, key2 turns off)
+                  /* ~[checkbox=off]             | Stop rendering check boxes, render value only
+                  /* ~[checkbox=on]              | Begin rendering check boxes AND values
 
                   /* prompt for text response...
                   /* ~other:<text>               | prompt for text response with <text>     | ~other:What is your name?                                */
