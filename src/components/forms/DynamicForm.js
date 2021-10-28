@@ -957,7 +957,8 @@ export default ({
                           <ListItemText
                             id={labelId}
                             classes={{ root: classes.inputText }}
-                            primary={value.split(':')[0].split('~-')[0]}
+              primary={value.split(':')[0].split('~-')[0]}
+              onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : null}
                             secondary={
                               newFact && newFact.value && newFact.value.qualifiers && newFact.value.qualifiers[value]
                                 ? newFact.value.qualifiers[value].join(' ~ ')
