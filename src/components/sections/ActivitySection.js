@@ -391,7 +391,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               for (let f = 0; f < fOL; f++) {
                 mVal = valueSelectedObject[f];
                 if (!freeTextObject.hasOwnProperty(mVal)) {
-                  constructedValue += separator + (mVal.split(':')[0]);
+                  constructedValue += separator + mVal;
                   separator = ' ~ ';
                   if (qualObject && qualObject[mVal] && qualObject[mVal] !== '') {
                     constructedQualifier.push(mVal + ':' + qualObject[mVal]);
@@ -503,7 +503,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
         }
       }
     }
-    sVal = constructedValue || (actionCancelled ? 'cancelled' : 'completed');
+    let segments = constructedValue.split('~');
+    let enqueueOut = '';
+    segments.forEach(segment => {
+      enqueueOut += segment.trim().split(':')[0] + ' - ';
+    })
+    sVal = enqueueOut.slice(0, (enqueueOut.length - 2)) || (actionCancelled ? 'cancelled' : 'completed');
 
     setNewFact(newFact);
     setLimit(limit);
@@ -514,7 +519,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         selectedActivityName = selected.name;
       }
       if (selectedActivityName) {
-        enqueueSnackbar(`${selectedActivityName} is ${sVal}`, {variant: 'success'});
+        enqueueSnackbar(`${selectedActivityName} - ${sVal}`, {variant: 'success'});
       }
     }
     selectedActivityName = '';
