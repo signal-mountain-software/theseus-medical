@@ -299,7 +299,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           variant: 'error',
         });
       });
-      let selectedActivity = result.data.getActivityData[0];
+      let selectedActivity = result?.data?.getActivityData?.[0];
       selectedActivityName = activity.name;
       if (selectedActivity.type === 'reservation') { 
         let reservationKey = selectedActivity.code.replace('.','^').split('^')[1];
@@ -575,10 +575,19 @@ export default ({ patient, session, newFact, setNewFact }) => {
   };
 
   const onNextFact = async newFact => {
-    newFact.status = 'confirmed';
-    await onSaveFact(newFact);
-    let a = ((activities.findIndex(c => { return c.code === selected.code })) + 1 || 0); 
-    if ( a > 0 ) { onChooseActivity(activities[a]); }
+    if (newFact.activity_key.startsWith('search.') && selected.normal_value) {      
+      if (newFact.value.selected) { newFact.value.freeText.selected = newFact.value.selected; };
+      onChooseActivity(
+        selected.normal_value
+        + '%%'
+        + (newFact.value.freeText && JSON.stringify(newFact.value.freeText)));
+    }
+    else {
+      newFact.status = 'confirmed';
+      await onSaveFact(newFact);
+      let a = ((activities.findIndex(c => { return c.code === selected.code; })) + 1 || 0);
+      if (a > 0) { onChooseActivity(activities[a]); }
+    }
   };
 
   // build the event and activity lists for drop downs
@@ -881,7 +890,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     !newFact.value.freeText[selectedValue] &&
                     newFact.value.qualifiers.hasOwnProperty(selectedValue) ? (
                       <Box key={selectedValue + '.qualifier'} pl={2} fontSize='0.8rem'>
-                        {newFact.value.qualifiers[selectedValue].join(' ~ ')}
+                        {(newFact.value.qualifiers[selectedValue].map(x => { return x.replace(/~\[.*\]=/, ''); })).join(' ~ ')}
                       </Box>
                     ) : null}
                   </Typography>
@@ -897,7 +906,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                         {selectedValue}
                       </Box>
                       <Box key={selectedValue + '.value'} pl={2} fontSize='0.8rem'>
-                        {newFact.value.freeText[selectedValue]}
+                        {newFact.value.freeText[selectedValue].replace(/[~[\]]/g, '')}
                       </Box>
                     </Typography>
                   ) : null
