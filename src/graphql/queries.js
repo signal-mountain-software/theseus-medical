@@ -42,6 +42,18 @@ export const getActivityData = /* GraphQL */ `
     }
   }
 `;
+
+export const resourceRequest = /* GraphQL */ `
+  query resourceRequest($input: ResourceRequest) {
+    resourceRequest(input: $input) {
+        resource_id
+        resource_name
+        offer_date
+        time_from
+    }
+  }
+`;
+
 export const getActivityTypes = /* GraphQL */ `
   query GetActivityTypes($client_id: String!) {
     getActivityTypes(client_id: $client_id) {

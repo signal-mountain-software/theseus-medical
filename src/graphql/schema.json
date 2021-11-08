@@ -336,8 +336,35 @@
               },
               "isDeprecated": false,
               "deprecationReason": null
-            }
-          ],
+            },          
+            {
+              "name": "resourceRequest",
+              "description": null,
+              "args": [
+                  {
+                      "name": "input",
+                      "description": null,
+                      "type": {
+                          "kind": "INPUT_OBJECT",
+                          "name": "ResourceRequest",
+                          "ofType": null
+                      },
+                      "defaultValue": null
+                  }
+              ],
+              "type": {
+                  "kind": "LIST",
+                  "name": null,
+                  "ofType": {
+                      "kind": "OBJECT",
+                      "name": "ResourceRequestResponse",
+                      "ofType": null
+                  }
+              },
+              "isDeprecated": false,
+              "deprecationReason": null
+          }
+        ],
           "inputFields": null,
           "interfaces": [],
           "enumValues": null,
@@ -922,6 +949,205 @@
               },
               "defaultValue": null
             }
+          ],
+          "interfaces": null,
+          "enumValues": null,
+          "possibleTypes": null
+        },
+        {
+          "kind": "OBJECT",
+          "name": "ResourceRequestResponse",
+          "description": null,
+          "fields": [
+              {
+                  "name": "resource_id",
+                  "description": null,
+                  "args": [],
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "isDeprecated": false,
+                  "deprecationReason": null
+              },
+              {
+                  "name": "resource_name",
+                  "description": null,
+                  "args": [],
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "isDeprecated": false,
+                  "deprecationReason": null
+              },
+              {
+                  "name": "offer_date",
+                  "description": null,
+                  "args": [],
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "isDeprecated": false,
+                  "deprecationReason": null
+              },
+              {
+                  "name": "time_from",
+                  "description": null,
+                  "args": [],
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "isDeprecated": false,
+                  "deprecationReason": null
+              }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "enumValues": null,
+          "possibleTypes": null
+        },
+        {
+          "kind": "INPUT_OBJECT",
+          "name": "ResourceRequest",
+          "description": null,
+          "fields": null,
+          "inputFields": [
+              {
+                  "name": "request_requestor",
+                  "description": null,
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "request_client",
+                  "description": null,
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "request_timeOffset",
+                  "description": null,
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "request_resources_to_check",
+                  "description": null,
+                  "type": {
+                      "kind": "LIST",
+                      "name": null,
+                      "ofType": {
+                          "kind": "SCALAR",
+                          "name": "String",
+                          "ofType": null
+                      }
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "request_event_length",
+                  "description": null,
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "Int",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "request_window",
+                  "description": null,
+                  "type": {
+                      "kind": "INPUT_OBJECT",
+                      "name": "ResourceRequestWindow",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              }
+          ],
+          "interfaces": null,
+          "enumValues": null,
+          "possibleTypes": null
+        },
+        {
+          "kind": "INPUT_OBJECT",
+          "name": "ResourceRequestWindow",
+          "description": null,
+          "fields": null,
+          "inputFields": [
+              {
+                  "name": "days",
+                  "description": null,
+                  "type": {
+                      "kind": "LIST",
+                      "name": null,
+                      "ofType": {
+                          "kind": "SCALAR",
+                          "name": "String",
+                          "ofType": null
+                      }
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "date_from",
+                  "description": null,
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "date_to",
+                  "description": null,
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "time_from",
+                  "description": null,
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              },
+              {
+                  "name": "time_to",
+                  "description": null,
+                  "type": {
+                      "kind": "SCALAR",
+                      "name": "String",
+                      "ofType": null
+                  },
+                  "defaultValue": null
+              }
           ],
           "interfaces": null,
           "enumValues": null,

@@ -45,7 +45,7 @@ export default ({ patient, roles, session }) => {
         <>
           <Tooltip
             title={
-              <Typography variant='subtitle1'>
+              <Typography variant='caption'>
                 {'View/Update this Profile'}
               </Typography>
             }

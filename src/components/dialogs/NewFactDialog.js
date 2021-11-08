@@ -132,6 +132,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   const searchText = '';
   const [factIOClass, setFactIOClass] = React.useState(false);
   const [factPromoClass, setFactPromoClass] = React.useState(false);
+  const [factEventClass, setFactEventClass] = React.useState(false);
   const [factMessageClass, setFactMessageClass] = React.useState(false);
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
@@ -222,6 +223,18 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           enqueueSnackbar(oopsie, {variant: 'error', persist: true});
           setMessage('!!!!! ' + oopsie + ' !!!!!');
       }
+      else if (factMessageClass ) {
+        let goodMessage = false;
+        for (let e in newFact.value.freeText) {
+          goodMessage = (e.slice(0,1) !== '%') || goodMessage
+        }
+        if (!goodMessage) { 
+          badData = true;
+          oopsie = 'Enter your message text before pressing SEND';
+          enqueueSnackbar(oopsie, {variant: 'error', persist: true});
+          setMessage('!!!!! ' + oopsie + ' !!!!!');
+        }
+      }
       else {
         if (fact.type === 'upload_file' && !newFact.value.mediaData) { 
           badData = true;
@@ -267,14 +280,19 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         },
       });
       var factCode = fact?.code?.split('.')[0];
+      setFactEventClass(false);
       switch (factCode) {
         case 'document':
         case 'render': 
         case 'query':
         case 'list': { break }   // leave both PromoClass, IOClass, and MessageClass as false
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break }
-        case 'promo': { setFactPromoClass(true); break }
+        case 'promo': { setFactPromoClass(true); break; }
+        case 'search': { setFactEventClass(true); break }
         default: { setFactIOClass(true); }
+      }
+      if (factIOClass && (fromHome === 'event')) {
+        setFactEventClass(true);
       }
       let eString;
       switch (fact.type) {
@@ -330,6 +348,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           }
           break;
         }
+        case 'reservation':
+        case 'form': {
+          setFactEventClass(false);
+          break;
+          }
         default: {
           if (fact.prompt) {
             eString = fact.prompt;
@@ -419,7 +442,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             </React.Fragment>)
           : null
         }
-        {((fromHome === 'event') && factIOClass && (fact.type !== 'reservation') && (fact.type !== 'form'))
+        { factEventClass
           ? (
             <React.Fragment>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
