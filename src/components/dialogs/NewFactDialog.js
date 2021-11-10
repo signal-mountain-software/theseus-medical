@@ -289,10 +289,12 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break }
         case 'promo': { setFactPromoClass(true); break; }
         case 'search': { setFactEventClass(true); break }
-        default: { setFactIOClass(true); }
-      }
-      if (factIOClass && (fromHome === 'event')) {
-        setFactEventClass(true);
+        default: {
+          setFactIOClass(true);
+          if (fromHome === 'event') {
+            setFactEventClass(true);
+          }
+        }
       }
       let eString;
       switch (fact.type) {

@@ -28,7 +28,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'], 
           data.accessToken.payload.sub,
-          `Version=${process.env.REACT_APP_AVA_VERSION}`
+          `Version=v21.11.9`
         );
       };
     } catch (err) {
@@ -63,7 +63,7 @@ export default Component => props => {
     await API
       .graphql(graphqlOperation(
           updateSession, 
-          { input: { session_id: pUser, status: `${process.env.REACT_APP_AVA_VERSION}~${timeOut}` } }
+          { input: { session_id: pUser, status: `v21.11.9~${timeOut}` } }
         ))
       .catch(error => { console.log(`Can't update session in logusage: ${error.errors[0].message}`) });
   };

@@ -162,18 +162,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
   );
 
   const doneWithEvent = () => {
-    if ( activities.some(aObj => { return aObj.observation_expires > timeNow }) ) {   
-      setSummary(true);   // if ANY activity has an expiration date that is in the future (it isn't expired yet), show the summary
+    setSummary(false);
+    setConfirmation(false);
+    if (homeState === 'home') {
+      serviceWorker.unregister()
+      window.location.reload();
     }
-    else {
-      setSummary(false);
-      setConfirmation(false);
-      if (homeState === 'home') {
-        serviceWorker.unregister()
-        window.location.reload();
-      }
-      returnToHome();
-    } 
+    returnToHome();
   };
 
   const handleSummarySubmit = () => {
@@ -186,7 +181,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       qualifier: [],
       session: {
         user_id: session.user_id,
-        session_id: `${process.env.REACT_APP_AVA_VERSION}~${session.user_id}`,
+        session_id: `v21.11.9~${session.user_id}`,
       },
     };
     if (event) {
@@ -586,7 +581,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
       newFact.status = 'confirmed';
       await onSaveFact(newFact);
       let a = ((activities.findIndex(c => { return c.code === selected.code; })) + 1 || 0);
-      if (a > 0) { onChooseActivity(activities[a]); }
+      if ((a > 0) && (a < activities.length)) { onChooseActivity(activities[a]); }
+      else { doneWithEvent() }
     }
   };
 
@@ -781,7 +777,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {`***AVA ${process.env.REACT_APP_AVA_VERSION}***`}
+                  {`***AVA v21.11.9***`}
                 </Typography>
               </GridListTile>
             </GridList>
