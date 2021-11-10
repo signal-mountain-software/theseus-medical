@@ -10,10 +10,10 @@ export default () => {
     // alert(`starting ${jumpTo}`);
     window.location.replace(jumpTo);
     return (  
-    <Box mt={3}>
-        <Typography align='center'>
-            { `Loading AVA version ${process.env.REACT_APP_AVA_VERSION}` }
-        </Typography>
-    </Box>
-)
+        <Box mt={3}>
+            <Typography align='center'>
+                { `Loading AVA version v21.11.9` }
+            </Typography>
+        </Box>
+    )
 };
