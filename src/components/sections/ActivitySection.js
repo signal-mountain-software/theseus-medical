@@ -181,7 +181,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       qualifier: [],
       session: {
         user_id: session.user_id,
-        session_id: `v21.11.9~${session.user_id}`,
+        session_id: `v21.11.12~${session.user_id}`,
       },
     };
     if (event) {
@@ -777,7 +777,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {`***AVA v21.11.9***`}
+                  {`***AVA v21.11.12***`}
                 </Typography>
               </GridListTile>
             </GridList>

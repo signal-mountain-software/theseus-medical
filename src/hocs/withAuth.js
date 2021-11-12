@@ -28,7 +28,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'], 
           data.accessToken.payload.sub,
-          `Version=v21.11.9`
+          `Version=v21.11.12`
         );
       };
     } catch (err) {
@@ -63,15 +63,13 @@ export default Component => props => {
     await API
       .graphql(graphqlOperation(
           updateSession, 
-          { input: { session_id: pUser, status: `v21.11.9~${timeOut}` } }
+          { input: { session_id: pUser, status: `v21.11.12~${timeOut}` } }
         ))
       .catch(error => { console.log(`Can't update session in logusage: ${error.errors[0].message}`) });
   };
 
   React.useEffect(() => {
     appendToCognitoUserAgent('withAuthenticator');
-
-    // checkUser returns an "unsubscribe" function to stop side-effects
     return checkUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -8,7 +8,7 @@ const initialState = {
   roles: null,
   session: null,
   user: null,
-  version: 'v21.11.9'
+  version: 'v21.11.12'
 };
 
 export const SessionContext = React.createContext(initialState);

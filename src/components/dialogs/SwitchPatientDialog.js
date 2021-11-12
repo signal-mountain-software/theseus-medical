@@ -101,7 +101,7 @@ export default ({ open, roles, onClose }) => {
             <CloseIcon />
           </IconButton>
           <Typography variant='h6' className={classes.title}>
-            Change Account
+            Switch Account
           </Typography>
         </Toolbar>
       </AppBar>

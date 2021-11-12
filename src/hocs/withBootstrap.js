@@ -134,6 +134,7 @@ export default Component => props => {
       // get a group of patients a user is responsible for
       let patients = [];
       if (session.responsible_for) {
+        let pArray = [];
         let respArray = [];
         if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for) }
         else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g,'').split(',') }
@@ -145,7 +146,7 @@ export default Component => props => {
               .catch(
                 () => { console.log(`${respArray[r]} not found.  Trying Group table`) });
             if (pRec?.data?.getPerson) { 
-              patients.push({
+              pArray.push({
                 display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
                 person_id: pRec.data.getPerson.person_id,
                 roles: ['patient'],
@@ -163,9 +164,13 @@ export default Component => props => {
                 }
               );
             if (getPeopleByGroupResult) {
-              patients.push(...getPeopleByGroupResult.data.getGroup);
+              pArray.push(...getPeopleByGroupResult.data.getGroup);
             }
           };
+          // sort resulting array and remove duplicates
+          patients = [...new Set(pArray.sort((a, b) => {
+            return (a.display_name > b.display_name ? 1 : -1);
+          }))]
         }
         /*
         else {
@@ -196,7 +201,7 @@ export default Component => props => {
       };
 
       if (mounted) {
-        session.session_id = 'v21.11.9~' + session.session_id;
+        session.session_id = 'v21.11.12~' + session.session_id;
         dispatch({ type: SET_SESSION, payload: session });
         dispatch({ type: SET_ROLES, payload: roles });
         dispatch({ type: SET_PROFILE, payload: profile });

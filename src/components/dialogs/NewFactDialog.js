@@ -353,6 +353,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         case 'reservation':
         case 'form': {
           setFactEventClass(false);
+          if (fact.prompt) {
+            eString = fact.prompt;
+          } else {
+            eString = ' ';
+          }
           break;
           }
         default: {
@@ -372,7 +377,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
       </DialogContentText>
-      { message.startsWith('!!!') 
+      { message?.startsWith('!!!') 
       ? <DialogContentText className={classes.warningText}>{message}</DialogContentText> 
       : <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
       }      
