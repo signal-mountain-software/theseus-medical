@@ -372,7 +372,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
       </DialogContentText>
-      { message.startsWith('!!!') 
+      { message?.startsWith('!!!') 
       ? <DialogContentText className={classes.warningText}>{message}</DialogContentText> 
       : <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
       }      
