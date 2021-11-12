@@ -201,7 +201,7 @@ export default Component => props => {
       };
 
       if (mounted) {
-        session.session_id = 'v21.11.9~' + session.session_id;
+        session.session_id = 'v21.11.12~' + session.session_id;
         dispatch({ type: SET_SESSION, payload: session });
         dispatch({ type: SET_ROLES, payload: roles });
         dispatch({ type: SET_PROFILE, payload: profile });
