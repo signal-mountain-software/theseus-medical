@@ -141,7 +141,7 @@ export default () => {
                       startIcon={<AssignmentIndIcon />}
                       endIcon={<SwapHorizIcon />}
                       onClick={onSwitchPatient}>
-                      Change Account
+                      Switch Account
                     </Button>
                   </Tooltip>
                 </Box>
@@ -166,7 +166,7 @@ export default () => {
                     <ListItemIcon>
                       <SwapHorizIcon />
                     </ListItemIcon>
-                    <ListItemText primary={'Change Account'} />
+                    <ListItemText primary={'Switch Account'} />
                   </MenuItem>
                 )}
                 <MenuItem onClick={onSignOut}>

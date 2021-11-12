@@ -70,8 +70,6 @@ export default Component => props => {
 
   React.useEffect(() => {
     appendToCognitoUserAgent('withAuthenticator');
-
-    // checkUser returns an "unsubscribe" function to stop side-effects
     return checkUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
