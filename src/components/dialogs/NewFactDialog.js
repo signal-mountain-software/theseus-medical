@@ -353,6 +353,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         case 'reservation':
         case 'form': {
           setFactEventClass(false);
+          if (fact.prompt) {
+            eString = fact.prompt;
+          } else {
+            eString = ' ';
+          }
           break;
           }
         default: {
