@@ -14,7 +14,7 @@ export default Component => props => {
   return (
     <SnackbarProvider
       ref={notistackRef}
-      maxSnack={3}
+      maxSnack={1}
       dense={isMobile}
       anchorOrigin={{
         vertical: 'top',

@@ -119,9 +119,9 @@ export default ({ open, roles, onClose }) => {
                   onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
                 />
               ) : null}
-              {patients.map(patient => (
+              {patients.map((patient, x) => (
                 <PatientListItem
-                  key={patient.person_id}
+                  key={patient.person_id + x}
                   patient={parsePersonObject(patient)}
                   selected={selected}
                   onClick={handlePatientClick(parsePersonObject(patient))}

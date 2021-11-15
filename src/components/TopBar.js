@@ -183,7 +183,7 @@ export default () => {
                     <ListItemText primary='Create Account' />
                   </MenuItem>
                 )}
-                {showInstall() && (
+                {false && showInstall() && (
                   <MenuItem onClick={onInstall}>
                     <ListItemIcon>
                       <GetAppIcon />

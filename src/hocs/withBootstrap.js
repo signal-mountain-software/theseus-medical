@@ -144,7 +144,7 @@ export default Component => props => {
             let pRec = await API
               .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
               .catch(
-                () => { console.log(`${respArray[r]} not found.  Trying Group table`) });
+                () => { /* console.log(`${respArray[r]} not found.  Trying Group table`) */ });
             if (pRec?.data?.getPerson) { 
               pArray.push({
                 display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
@@ -168,9 +168,15 @@ export default Component => props => {
             }
           };
           // sort resulting array and remove duplicates
-          patients = [...new Set(pArray.sort((a, b) => {
+          let pSet = pArray.sort((a, b) => {
+            return (a.person_id > b.person_id ? 1 : -1);
+          });
+          let aSet = pSet.filter((e, x, a) => {
+            return (x === 0 || e.person_id !== a[x-1].person_id);
+          });
+          patients = aSet.sort((a, b) => {
             return (a.display_name > b.display_name ? 1 : -1);
-          }))]
+          });
         }
         /*
         else {
@@ -201,7 +207,7 @@ export default Component => props => {
       };
 
       if (mounted) {
-        session.session_id = 'v21.11.12~' + session.session_id;
+        session.session_id = `v21.11.15${process.env.NODE_ENV.slice(0,1)}~` + session.session_id;
         dispatch({ type: SET_SESSION, payload: session });
         dispatch({ type: SET_ROLES, payload: roles });
         dispatch({ type: SET_PROFILE, payload: profile });
