@@ -5,7 +5,7 @@ import AssignmentIcon from '@material-ui/icons/Assignment';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 // import ChatIcon from '@material-ui/icons/Chat';
 
-import withA2HS from './wrappers/withA2HS';
+// import withA2HS from './wrappers/withA2HS';
 import withRecoil from './wrappers/withRecoil';
 import withRoot from './wrappers/withRoot';
 import hocFactory from './util/hocFactory';
@@ -37,7 +37,7 @@ class ErrorBoundary extends React.Component {
     super(props);
     hasError = false;
   }
-  
+
   componentDidCatch(error, info) {
     hasError = true;
     handleWriteError(error.message);
@@ -47,13 +47,13 @@ class ErrorBoundary extends React.Component {
     if (hasError) {
       return <h3>Whoops! We had a problem. Contact support please.</h3>;
     }
-    return this.props.children
+    return this.props.children;
   }
-  
+
 }
 
 const handleWriteError = async message => {
-    let instruction = {
+  let instruction = {
     patient_id: 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: message,
@@ -77,15 +77,17 @@ const App = () => (
   </ErrorBoundary>
 );
 
-export default hocFactory(App, [
-  withRecoil,
-  withRoot,
-  withRouter,
-  withDarkMode,
-  withTheme,
-  withSnackbar,
-  withSession,
-  withAuth,
-  withBootstrap,
-  withA2HS,
-]);
+export default hocFactory(
+  App,
+  [
+    withRecoil,
+    withRoot,
+    withRouter,
+    withDarkMode,
+    withTheme,
+    withSnackbar,
+    withSession,
+    withAuth,
+    withBootstrap,
+    // withA2HS,
+  ]);
