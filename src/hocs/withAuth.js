@@ -1,9 +1,8 @@
 import React from 'react';
 import {
   AmplifyAuthenticator,
-  AmplifyFormSection,
-  AmplifyFormField,
-  AmplifySignIn
+  AmplifySignIn,
+  AmplifyForgotPassword
 } from '@aws-amplify/ui-react';
 import {
   Auth,
@@ -30,8 +29,8 @@ import Button from '@material-ui/core/Button';
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
-import { IconButton } from '@material-ui/core';
-import ArrowBack from '@material-ui/icons/ArrowBack';
+
+import TopBar from '../components/TopBar';
 
 export default Component => props => {
   const [signedIn, setSignedIn] = React.useState(false);
@@ -97,7 +96,7 @@ export default Component => props => {
       return (
         <React-Fragment>
           <Box>
-            <Typography variant='caption'>(v21.11.15{process.env.NODE_ENV.slice(0, 1)})</Typography>
+            <Typography variant='caption'>(v21.11.15{window.location.href.split('//')[1].slice(0, 1)})</Typography>
           </Box >
         </React-Fragment>
       );
@@ -129,7 +128,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v21.11.15${process.env.NODE_ENV.slice(0, 1)}`
+          `Version=v21.11.15${window.location.href.split('//')[1].slice(0, 1)}`
         );
       };
     } catch (err) {
@@ -149,37 +148,37 @@ export default Component => props => {
 
   const logChangeRequest = async (pUser, pLoc, pData) => {
     let invokeFailed = false;
-      var payload =
-      {
-        person: pUser,
-        locationTest: pLoc,
-        newP: pData
-      };
-      let params = {
-        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validatePRequest',
-        InvocationType: 'RequestResponse',
-        LogType: 'Tail',
-        Payload: JSON.stringify(payload)
-      };
-      const fResp = await lambda
-        .invoke(params)
-        .promise()
-        .catch(err => {
-          console.log('call for activity details failed.  Error is', JSON.stringify(err));
-          setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
-          invokeFailed = true;
-        });
-      if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
-        enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
-          variant: 'success'
-        });
-        Auth.signOut();
-        setSignedIn(false);
-      }
-      else {
-        setMessages(JSON.parse(fResp.Payload).body);
-      }
-    
+    var payload =
+    {
+      person: pUser,
+      locationTest: pLoc,
+      newP: pData
+    };
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validatePRequest',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log('call for activity details failed.  Error is', JSON.stringify(err));
+        setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
+        invokeFailed = true;
+      });
+    if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
+      enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
+        variant: 'success'
+      });
+      Auth.signOut();
+      setSignedIn(false);
+    }
+    else {
+      setMessages(JSON.parse(fResp.Payload).body);
+    }
+
   };
 
   const logAVAAccess = async (pUser, pSession, pMessage) => {
@@ -189,7 +188,7 @@ export default Component => props => {
         updateSession, {
         input: {
           session_id: pUser,
-          status: `v21.11.15${process.env.NODE_ENV.slice(0, 1)}~${timeOut}`
+          status: `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}~${timeOut}`
         }
       }
       ))
@@ -246,28 +245,15 @@ export default Component => props => {
 
   if (!signedIn) {
     return (
-      <Paper component={Box}
-        p={3}
-        variant='outlined'
-        display='flex'
-        flexDirection='column'
-        justifyContent='center'
-        alignItems='center'>
-        <Box flexGrow={1} marginBottom={5}>
-          <Typography variant='h6'>Welcome to AVA!</Typography>
-        </Box>
-        <Box flexGrow={1}
-          display="flex"
-          flexDirection='column'
-          alignItems="center"
-          justifyContent="center"
-        >
+      <React-Fragment>
+        <TopBar />
+        <Paper component={Box} width={1} >
           <AmplifyAuthenticator
+            
             hideToast
           >
-            <AmplifySignIn headerText='Sign-in'
-              slot='sign-in'
-              hideToast
+            <AmplifySignIn slot='sign-in' hideSignUp
+              headerText='Welcome to AVA!'
               formFields={[
                 {
                   type: "username",
@@ -290,7 +276,6 @@ export default Component => props => {
                   inputProps: { required: true, type: "text", autocomplete: "off" },
                 },
               ]}
-              key={'signIn'}
               handleSubmit={
                 async (event) => {
                   console.log(`inputName is ${inputName}`);
@@ -310,11 +295,11 @@ export default Component => props => {
                   }
                 }
               }
-              hideSignUp />
-            <AmplifyFormSection headerText="Password Reset request"
+            />
+            <AmplifyForgotPassword headerText="Password Reset request"
               slot="forgot-password"
               sendButtonText="Confirm"
-              handleSubmit={
+              handleSend={
                 async (event) => {
                   console.log(`inputName is ${inputName}`);
                   console.log(`inputLocationNumbers is ${inputLocationNumbers}`);
@@ -322,70 +307,48 @@ export default Component => props => {
                   event.preventDefault();
                   await logChangeRequest(inputName, inputLocationNumbers, inputPassword);
                 }
-              } >
-              <AmplifyFormField fieldId='changeUser'
-                label='Username'
-                placeholder='Enter the Username to reset'
-                required={
-                  true
-                }
-                type='username'
-                value={
-                  inputName
-                }
-                handleInputChange={
-                  (event, cb) => {
-                    setInputName(event.target.value);
-                    // cb(event);
-                  }
-                } >
-              </AmplifyFormField>
-              <AmplifyFormField fieldId='userLocation'
-                label='Location'
-                placeholder='Apartment or Location Address numbers'
-                required={
-                  true
-                }
-                type='username'
-                value={
-                  inputLocationNumbers
-                }
-                handleInputChange={
-                  (event, cb) => {
-                    setInputLocationNumbers(event.target.value);
-                    // cb(event);
-                  }
-                } >
-              </AmplifyFormField>
-              <AmplifyFormField fieldId='userLocation'
-                label='New Password'
-                placeholder='Password'
-                required={
-                  true
-                }
-                type='text'
-                value={
-                  inputPassword
-                }
-                handleInputChange={
-                  (event, cb) => {
-                    setInputPassword(event.target.value);
-                  }
-                } >
-              </AmplifyFormField>
-              <IconButton onClick={() => {
-                Auth.signOut();
-                setSignedIn(false);
-              }}>
-                <ArrowBack />
-              </IconButton>
-            </AmplifyFormSection>
+              }
+              formFields={[
+                {
+                  type: "username",
+                  label: "Username / ID",
+                  value: inputName,
+                  handleInputChange:
+                    (e) => {
+                      console.log(`inputName is ${e.target.value}`);
+                      setInputName(e.target.value);
+                    },
+                  inputProps: { autocomplete: "off" },
+                },
+                {
+                  type: "email",
+                  label: "Location",
+                  placeholder: 'Apartment or Location Address numbers',
+                  value: inputLocationNumbers,
+                  handleInputChange:
+                    (e) => {
+                      console.log(`location is ${e.target.value}`);
+                      setInputLocationNumbers(e.target.value);
+                    },
+                  inputProps: { required: true, type: "text", autocomplete: "off" },
+                },
+                {
+                  type: "password",
+                  label: "New Password",
+                  placeholder: 'Change my password to...',
+                  value: inputPassword,
+                  handleInputChange:
+                    (e) => {
+                      console.log(`newP is ${e.target.value}`);
+                      setInputPassword(e.target.value);
+                    },
+                  inputProps: { required: true, type: "text", autocomplete: "off" },
+                },
+              ]}
+            />
           </AmplifyAuthenticator>
-
-
-        </Box>
-      </Paper>
-
+        </Paper >
+      </React-Fragment>
     );
   } else {
     return <Component {
