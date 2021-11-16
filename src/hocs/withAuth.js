@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   AmplifyAuthenticator,
-  AmplifyContainer,
   AmplifyFormSection,
   AmplifyFormField,
   AmplifySignIn
@@ -149,40 +148,7 @@ export default Component => props => {
   };
 
   const logChangeRequest = async (pUser, pLoc, pData) => {
-    /*
-    let result;
-    try {
-      result = await Auth
-        .signIn(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP);
-    } catch (e) {
-      console.log(e);
-    }
-    console.log(result);
-    let instruction = {
-      patient_id: pUser,
-      activity_key: 'event.pChange',
-      value: {
-        pLoc,
-        pData
-      },
-      session: {
-        user_id: pUser,
-        session_id: 'withAuth',
-      },
-    };
-    let resp = await API
-      .graphql(graphqlOperation(
-        createPutFact,
-        {
-          input: instruction,
-        }))
-      .catch(error => {
-        console.log(`Can't put Fact pChange: ${error}`);
-      });
-    console.log(JSON.stringify(resp));
-    */
     let invokeFailed = false;
-    if (pUser !== '%abort%') {
       var payload =
       {
         person: pUser,
@@ -203,21 +169,17 @@ export default Component => props => {
           setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
           invokeFailed = true;
         });
-
       if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
         enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
           variant: 'success'
         });
+        Auth.signOut();
+        setSignedIn(false);
       }
       else {
         setMessages(JSON.parse(fResp.Payload).body);
       }
-    }
-    else {
-      invokeFailed = true;
-    }
-    Auth.signOut();
-    setSignedIn(false);
+    
   };
 
   const logAVAAccess = async (pUser, pSession, pMessage) => {
@@ -235,71 +197,7 @@ export default Component => props => {
         console.log(`Can't update session in logusage: ${error.errors[0].message}`);
       });
   };
-  /*
-    const listener = (data) => {
-      switch (data.payload.event) {
-        case 'signIn': {
-          console.log('user signed in');
-          break;
-        }
-        case 'signUp': {
-          console.log('user signed up');
-          break;
-        }
-        case 'signOut': {
-          console.log(`You successfully signed out!`);
-          break;
-        }
-        case 'signIn_failure': {
-          switch (data.payload.data.code) {
-            case 'NotAuthorizedException': {
-              setMessages(`That's not the correct password for ${data.payload.message.split(' ')[0]}`);
-              console.log(`user ${data.payload.message.split(' ')[0]} OK, bad password`);
-              break;
-            }
-            case 'InvalidParameterException': {
-              let rawLength = data.payload.message.length;
-              let splitMessage = data.payload.message.replace(' ', '%%').split('%%');
-              let trimLength = (splitMessage[0].length || 1) + splitMessage[1].trim().length + 1;
-              if (rawLength !== trimLength) {
-                setMessages(`There are blank spaces ${splitMessage[0] ? 'after' : 'before'} the username you entered.  Please try again.`);
-              } else {
-                setMessages(data.payload.message);
-              }
-              console.log(data.payload.message);
-              break;
-            }
-            case 'UserNotFoundException': {
-              setMessages(`The username ${data.payload.message.split(' ')[0]} does not exist`);
-              console.log('bad user, password entered');
-              break;
-            }
-            default: {
-              setMessages(`An error occurred at login.  It is... ${data.payload.message}`);
-              console.log('unknown error at login');
-            }
-          }
-          break;
-        }
-        case 'tokenRefresh': {
-          console.log('token refresh succeeded');
-          break;
-        }
-        case 'tokenRefresh_failure': {
-          console.log('token refresh failed');
-          break;
-        }
-        case 'configured': {
-          //  console.log('the Auth module is configured');
-          break;
-        }
-        default: {
-          setMessages(`Password reset requested for ${data.payload.message.split(' ')[0]}`);
-          console.log('password reset requested');
-        }
-      }
-    };
-  */
+
   const eHandler = (data) => {
     switch (data.code) {
       case 'NotAuthorizedException': {
@@ -318,7 +216,12 @@ export default Component => props => {
         break;
       }
       default: {
-        setMessages(`An error occurred at login.  It is... ${data.message}`);
+        if (!inputName) {
+          setMessages(`You left the Username blank!`);
+        }
+        else {
+          setMessages(`An error occurred at login.  It is... ${data.message}`);
+        }
         console.log('unknown error at login');
       }
     }
@@ -347,10 +250,13 @@ export default Component => props => {
         p={3}
         variant='outlined'
         display='flex'
-        flexDirection='row'
+        flexDirection='column'
         justifyContent='center'
         alignItems='center'>
-        <Box flexGrow={1} mr={3}
+        <Box flexGrow={1} marginBottom={5}>
+          <Typography variant='h6'>Welcome to AVA!</Typography>
+        </Box>
+        <Box flexGrow={1}
           display="flex"
           flexDirection='column'
           alignItems="center"
@@ -359,7 +265,7 @@ export default Component => props => {
           <AmplifyAuthenticator
             hideToast
           >
-            <AmplifySignIn headerText='Welcome to AVA!'
+            <AmplifySignIn headerText='Sign-in'
               slot='sign-in'
               hideToast
               formFields={[
@@ -405,16 +311,13 @@ export default Component => props => {
                 }
               }
               hideSignUp />
-            <AmplifyFormSection headerText="AVA Password Reset request"
+            <AmplifyFormSection headerText="Password Reset request"
               slot="forgot-password"
               sendButtonText="Confirm"
               handleSubmit={
                 async (event) => {
                   console.log(`inputName is ${inputName}`);
                   console.log(`inputLocationNumbers is ${inputLocationNumbers}`);
-                  enqueueSnackbar('Changing AVA password', {
-                    variant: 'info'
-                  });
                   setCount(0);
                   event.preventDefault();
                   await logChangeRequest(inputName, inputLocationNumbers, inputPassword);
@@ -470,7 +373,10 @@ export default Component => props => {
                   }
                 } >
               </AmplifyFormField>
-              <IconButton onClick={async () => { await logChangeRequest('%abort%', null, null); }}>
+              <IconButton onClick={() => {
+                Auth.signOut();
+                setSignedIn(false);
+              }}>
                 <ArrowBack />
               </IconButton>
             </AmplifyFormSection>
