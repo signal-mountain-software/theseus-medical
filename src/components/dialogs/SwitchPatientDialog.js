@@ -62,7 +62,7 @@ export default ({ open, roles, onClose }) => {
     (async () => {
       if (session) {
         const result1 = await API.graphql(
-          graphqlOperation(updateSession, { input: { session_id: session.session_id.replace(/(.*)~/,''), ...selected } })
+          graphqlOperation(updateSession, { input: { session_id: session.user_id, ...selected } })
         ).catch(error => {
           enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.errors[0].message}`, {
             variant: 'error',
@@ -82,7 +82,9 @@ export default ({ open, roles, onClose }) => {
         dispatch({ type: SET_SESSION, payload: result1.data.updateSession });
         dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
       }
-      onClose();
+      let jumpTo = window.location.href.replace('refresh', 'theseus');
+      window.location.replace(jumpTo);
+  //    onClose();
     })();
   };
 
