@@ -10,7 +10,7 @@ import TextField from '@material-ui/core/TextField';
 import TimePicker from 'react-time-picker';
 
 import Grid from '@material-ui/core/Grid';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+import {isMobile} from 'react-device-detect';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -204,7 +204,7 @@ export default ({
   newFact,
   setNewFact,
   type,
-  current_user_display_name,
+  session,
   message,
   statusMessage,
   values,
@@ -223,8 +223,6 @@ export default ({
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [formState, setFormState] = React.useState(1);
@@ -242,6 +240,9 @@ export default ({
   const [qMessage, setQMessage] = React.useState('');
   const [OGmessage, setOGmessage] = React.useState('');
   const [OGvalue, setOGvalue] = React.useState('');
+
+  const [peopleMode, setPeopleMode] = React.useState(false);
+  const [saveMode, setSaveMode] = React.useState(false);
 
   const [listValues, setListValues] = React.useState([]);
 
@@ -365,7 +366,7 @@ export default ({
       newFact.value.slot[slotIndex].action = 'relinquished.' + newFact.value.version;
     } else {
       newFact.value.slot[slotIndex].owner = newFact.patient_id;
-      newFact.value.slot[slotIndex].display_name = current_user_display_name;
+      newFact.value.slot[slotIndex].display_name = session.patient_display_name;
       newFact.value.slot[slotIndex].action = 'reserved.' + newFact.value.version;
     }
     setNewFact(newFact);
@@ -486,6 +487,7 @@ export default ({
 
   const onChangeQMessage = event => {
     setQMessage(event.target.value);
+    setSaveMode(true)
   };
 
   const handleQClose = event => {
@@ -499,13 +501,13 @@ export default ({
     await API
       .graphql(graphqlOperation(createPutFact, {
         input: {
-          patient_id: newFact.patient_id,
+          patient_id: session.patient_id,
           activity_key: 'form.send_message',
           value: `form.selections.${selectedQualifier} ~ MessageText = ${messageToSend}`,
           qualifier: [],
           session: {
-            user_id: newFact.patient_id,
-            session_id: `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}~${person_id}`,
+            user_id: session.patient_id,
+            session_id: session.session_id
           },
         }
       }))
@@ -537,14 +539,11 @@ export default ({
     if (qMessage) { handleSendMessage(qMessage, selectedFact); }
     setOGQualifiers('');
     setQualifierOpen(false);
+    setSaveMode(false);
   };
 
   const handleQualSelected = value => async () => {
     if (qualifierTable[value].qualifiers[0].startsWith('~people:')) {
-      let testMode = false;
-      if (testMode) {
-
-      }
       let person_id = qualifierTable[value].qualifiers[0].split(':')[1];
       let result = await API.graphql(
         graphqlOperation(getPerson, {
@@ -577,9 +576,11 @@ export default ({
       setQMessage('');
       qualifierTable[value].image_url = 'patients/' + person_id + '.jpg';
       setDialogImage(response);
+      setPeopleMode(true);
     }
     else {
       getImage((!(qualifierTable[value]?.image_url?.includes('/')) ? 'observation_images/' : '') + qualifierTable[value].image_url);
+      setPeopleMode(false);
     }
 
     setQualifierData(qualifierTable[value]);
@@ -612,6 +613,7 @@ export default ({
     setQualChecked(qualChecked);
     var resetter = formState + 1;
     setFormState(resetter);
+    setSaveMode(true);
     // if (newChecked.length === 0) {
     //   setQualMessage('');
     // } else {
@@ -739,6 +741,7 @@ export default ({
       );
     case 'record_video':
       recordingStatus = 'none';
+      var dateOptions = { month: 'short', day: 'numeric' };
       return (
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
@@ -1173,14 +1176,19 @@ export default ({
                               </IconButton>
                             ) : null}
                             {qualifier === '~~Message:' ? (
-                              <TextField
-                                value={qMessage}
-                                variant={'outlined'}
-                                label='Send a message with AVA'
-                                onChange={onChangeQMessage}
-                                InputProps={{ marginLeft: '2', marginTop: '2' }}
-                                fullWidth
-                              />
+                              <React-Fragment>
+                                <ListItemText
+                                  id={'qhead' + value}
+                                  classes={{ primary: classes.subHeader }}
+                                  primary={qualifier.substr(2)}
+                                />
+                                <TextField
+                                  value={qMessage}
+                                  onChange={onChangeQMessage}
+                                  InputProps={{ marginLeft: '2', marginTop: '2' }}
+                                  fullWidth
+                                />
+                              </React-Fragment>
                             ) : (
                               <ListItemText
                                 id={'qhead' + value}
@@ -1198,7 +1206,7 @@ export default ({
                             className={classes.defaultButton}
                             onClick={handleToggleQual(qualifier)}>
                             <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
-                              {(checkBoxOn && !qualifier.startsWith('~[nocheck]=')) ?
+                              {(!qualifier.startsWith('~[nocheck]=')) ?
                                 <Checkbox
                                   edge='start'
                                   checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
@@ -1254,14 +1262,17 @@ export default ({
               <Button onClick={handleQClose} color='inherit' size='small' variant='contained'>
                 Back
               </Button>
-              <Button
-                onClick={handleQSave}
-                className={classes.confirm}
-                variant='contained'
-                color='primary'
-                size='small'>
-                Save
-              </Button>
+              {peopleMode || saveMode ?
+                <Button
+                  onClick={handleQSave}
+                  disabled={!peopleMode && !saveMode}
+                  className={classes.confirm}
+                  variant='contained'
+                  color='primary'
+                  size='small'>
+                  {peopleMode ? 'Send Msg' : 'Save'}
+                </Button>
+                : null}
             </DialogActions>
           </Dialog>
         </React.Fragment >

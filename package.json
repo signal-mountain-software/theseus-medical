@@ -22,6 +22,7 @@
     "notistack": "^1.0.0",
     "react": "^16.13.1",
     "react-date-picker": "^8.2.0",
+    "react-device-detect": "^2.1.2",
     "react-dom": "^16.13.1",
     "react-file-viewer": "^1.1.0",
     "react-images": "^1.2.0-beta.7",
