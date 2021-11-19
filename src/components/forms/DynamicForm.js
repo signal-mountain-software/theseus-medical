@@ -9,7 +9,8 @@ import TextField from '@material-ui/core/TextField';
 
 import TimePicker from 'react-time-picker';
 
-import Grid from '@material-ui/core/Grid'; 
+import Grid from '@material-ui/core/Grid';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -27,7 +28,8 @@ import DialogContent from '@material-ui/core/DialogContent';
 import Typography from '@material-ui/core/Typography';
 import Button from '@material-ui/core/Button';
 
-import { useSnackbar } from 'notistack'
+import { createPutFact } from '../../graphql/mutations';
+import { useSnackbar } from 'notistack';
 
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
@@ -35,11 +37,15 @@ import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
 import ListItemText from '@material-ui/core/ListItemText';
 import ListItemIcon from '@material-ui/core/ListItemIcon';
 
+
 import Input from '@material-ui/core/Input';
 import InputAdornment from '@material-ui/core/InputAdornment';
 import IconButton from '@material-ui/core/IconButton';
 import SearchIcon from '@material-ui/icons/Search';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
+import CallIcon from '@material-ui/icons/Call';
+import EmailIcon from '@material-ui/icons/Email';
+import TextSMSIcon from '@material-ui/icons/Textsms';
 
 import { getPerson } from '../../graphql/queries';
 
@@ -217,7 +223,9 @@ export default ({
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
 
-  const { closeSnackbar } = useSnackbar();
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+
+  const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [formState, setFormState] = React.useState(1);
   const [firstTime, setFirstTime] = React.useState(true);
@@ -231,6 +239,7 @@ export default ({
   const [checked, setChecked] = React.useState([]);
   const [qualifierOpen, setQualifierOpen] = React.useState(false);
   const [qualifierData, setQualifierData] = React.useState({});
+  const [qMessage, setQMessage] = React.useState('');
   const [OGmessage, setOGmessage] = React.useState('');
   const [OGvalue, setOGvalue] = React.useState('');
 
@@ -368,7 +377,7 @@ export default ({
     // noToggle ignores the whole function code (used when handleToggle is fired by the OS)
     if (!noToggle) {
       closeSnackbar();   // close any persistent snackbars on the screen
-      
+
       let checkedItems = value.split('~-');
       const currentIndex = checked.indexOf(checkedItems[0]);
       const newChecked = [...checked];
@@ -378,9 +387,9 @@ export default ({
         if (checkedItems.length > 1) {
           for (let i = 1; i < checkedItems.length; i++) {
             let inverse = true;
-            if (checkedItems[i].substr(0,1) === '-') {
+            if (checkedItems[i].substr(0, 1) === '-') {
               inverse = false;
-              checkedItems[i] = checkedItems[i].substr(1)
+              checkedItems[i] = checkedItems[i].substr(1);
             }
             // key in value was just checked ON; 
             //    if this checkedItems[i] was a '~-' then it must turn OFF
@@ -390,7 +399,7 @@ export default ({
               newChecked.splice(foundAt, 1);
             }
             else if (foundAt === -1 && !inverse) {    // was NOT previously checked and identical is on (inverse off)...  add it
-              newChecked.push(checkedItems[i].replace('-',''));
+              newChecked.push(checkedItems[i].replace('-', ''));
             }
           }
         }
@@ -399,9 +408,9 @@ export default ({
         if (checkedItems.length > 1) {
           for (let i = 1; i < checkedItems.length; i++) {
             let inverse = true;
-            if (checkedItems[i].substr(0,1) === '-') {
+            if (checkedItems[i].substr(0, 1) === '-') {
               inverse = false;
-              checkedItems[i] = checkedItems[i].substr(1)
+              checkedItems[i] = checkedItems[i].substr(1);
             }
             // key in value was just turned OFF; 
             //    if this checkedItems[i] was a '~-' then it must turn ON
@@ -438,7 +447,7 @@ export default ({
     setFormState(resetter);
   };
 
-  
+
   const onChangeFreeTime = tableRow => event => {
     newFact.value.freeText[tableRow] = event;
     setNewFact(newFact);
@@ -448,10 +457,10 @@ export default ({
     var resetter = formState + 1;
     setFormState(resetter);
   };
-  
+
   const onCheckEnter = event => {
-    if (event.key === 'Enter') {handleFilterText(event.target.value)}
-  }
+    if (event.key === 'Enter') { handleFilterText(event.target.value); }
+  };
 
   const onChangeFilterText = event => {
     setFilterText(event.target.value);
@@ -460,11 +469,11 @@ export default ({
   };
 
   const handleFilterText = keyValue => {
-    if (filterText) { 
-      newFact.value.freeText['%filter%'] = filterText 
+    if (filterText) {
+      newFact.value.freeText['%filter%'] = filterText;
     }
-    else if (keyValue) { 
-      newFact.value.freeText['%filter%'] = newFact.value.freeText[keyValue] 
+    else if (keyValue) {
+      newFact.value.freeText['%filter%'] = newFact.value.freeText[keyValue];
     }
     setNewFact(newFact);
     var resetter = formState + 1;
@@ -475,10 +484,37 @@ export default ({
     setFreeText(event.target.value);
   };
 
+  const onChangeQMessage = event => {
+    setQMessage(event.target.value);
+  };
+
   const handleQClose = event => {
     setQualChecked(OGqualifiers);
     setOGQualifiers('');
     setQualifierOpen(false);
+  };
+
+  const handleSendMessage = async (messageToSend, selectedQualifier) => {
+    let [recipient, person_id] = selectedQualifier.split(':');
+    await API
+      .graphql(graphqlOperation(createPutFact, {
+        input: {
+          patient_id: newFact.patient_id,
+          activity_key: 'form.send_message',
+          value: `form.selections.${selectedQualifier} ~ MessageText = ${messageToSend}`,
+          qualifier: [],
+          session: {
+            user_id: newFact.patient_id,
+            session_id: `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}~${person_id}`,
+          },
+        }
+      }))
+      .catch(error => {
+        enqueueSnackbar(`AVA had a problem sending a Message to ${recipient}.  (${JSON.stringify(error)})`, { variant: 'error' });
+      })
+      .then(message => {
+        enqueueSnackbar(`AVA Message sent to ${recipient}`, { variant: 'success' });
+      });
   };
 
   const handleQSave = () => {
@@ -498,13 +534,18 @@ export default ({
     }
     setNewFact(newFact);
     setChecked(newFact.value.selected);
+    if (qMessage) { handleSendMessage(qMessage, selectedFact); }
     setOGQualifiers('');
     setQualifierOpen(false);
   };
 
   const handleQualSelected = value => async () => {
     if (qualifierTable[value].qualifiers[0].startsWith('~people:')) {
-      let person_id = qualifierTable[value].qualifiers[0].split(':')[1]; 
+      let testMode = false;
+      if (testMode) {
+
+      }
+      let person_id = qualifierTable[value].qualifiers[0].split(':')[1];
       let result = await API.graphql(
         graphqlOperation(getPerson, {
           person_id: person_id,
@@ -514,33 +555,35 @@ export default ({
       });
       qualifierTable[value].value = value;
       qualifierTable[value].qualifiers[0] = '~~' + result.data.getPerson.location;
-      if (result?.data?.getPerson?.messaging?.email) {qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email)};
+      if (result?.data?.getPerson?.messaging?.email) { qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email); };
       if (result?.data?.getPerson?.messaging?.sms) {
         let cleaned = ('' + result.data.getPerson.messaging.sms).replace(/\D/g, '');
         let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         let phoneNumber = result.data.getPerson.messaging.sms;
-        if (match) { phoneNumber =  ['(', match[2], ') ', match[3], '-', match[4]].join('') }
-        qualifierTable[value].qualifiers.push('~~cell: ' + phoneNumber)
+        if (match) { phoneNumber = ['(', match[2], ') ', match[3], '-', match[4]].join(''); }
+        qualifierTable[value].qualifiers.push('~~cell: ' + phoneNumber);
       };
       if (result?.data?.getPerson?.messaging?.voice) {
         let cleaned = ('' + result.data.getPerson.messaging.voice).replace(/\D/g, '');
         let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         let phoneNumber = result.data.getPerson.messaging.voice;
-        if (match) { phoneNumber =  ['(', match[2], ') ', match[3], '-', match[4]].join('') }
-        qualifierTable[value].qualifiers.push('~~home: ' + phoneNumber)
+        if (match) { phoneNumber = ['(', match[2], ') ', match[3], '-', match[4]].join(''); }
+        qualifierTable[value].qualifiers.push('~~home: ' + phoneNumber);
       };
       let response = await Storage.get('patients/' + person_id + '.jpg').catch(error => {
         console.log(`Whoops! Something went wrong getting picture from s3: ${error.message}`);
       });
+      qualifierTable[value].qualifiers.push('~~Message:');
+      setQMessage('');
       qualifierTable[value].image_url = 'patients/' + person_id + '.jpg';
       setDialogImage(response);
     }
-    else { 
-      getImage((!(qualifierTable[value]?.image_url?.includes('/')) ? 'observation_images/' : '') + qualifierTable[value].image_url); 
+    else {
+      getImage((!(qualifierTable[value]?.image_url?.includes('/')) ? 'observation_images/' : '') + qualifierTable[value].image_url);
     }
 
     setQualifierData(qualifierTable[value]);
-    let qualData = qualifierTable[value].qualifiers; 
+    let qualData = qualifierTable[value].qualifiers;
     setQualifiers(qualData);
     setSelectedFact(value);
     if (!qualChecked.hasOwnProperty(value)) {
@@ -549,7 +592,7 @@ export default ({
       setQualChecked(qualChecked);
     }
     setOGQualifiers(qualChecked);
-    
+
     var resetter = formState + 1;
     setFormState(resetter);
     setQualifierOpen(true);
@@ -673,8 +716,8 @@ export default ({
               onError={onError}
             />
             <br />
-            <input 
-              type="file" 
+            <input
+              type="file"
               onChange={async (target) => {
                 let fObj = target.target.files[0];
                 let oName = fObj.name.toLowerCase().split('.');
@@ -682,14 +725,14 @@ export default ({
                 let fName = freeText ? (freeText + '.' + oType) : fObj.name;
                 const pFile = {
                   Bucket: 'theseus-medical-storage',
-                  Key: 'public/documents/' + fName, 
+                  Key: 'public/documents/' + fName,
                   Body: fObj,
                   ACL: 'public-read-write',
                 };
                 newFact.value.tag = freeText || oName;
                 newFact.value.mediaData = pFile;
-                }
-              } 
+              }
+              }
             />
           </FormGroup>
         </FormControl>
@@ -700,10 +743,10 @@ export default ({
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <br />
-            {!freeText ? 
-            setFreeText((current_user_display_name.split(',')[1] || current_user_display_name.split(' ')[0]) + "'s video - " 
-              + new Date().toLocaleString()) 
-            : null}
+            {!freeText ?
+              setFreeText((current_user_display_name.split(',')[1] || current_user_display_name.split(' ')[0]) + "'s video - "
+                + new Date().toLocaleString())
+              : null}
             <FreeTextForm
               open={true}
               label='Name your video'
@@ -717,35 +760,34 @@ export default ({
               isFlipped
               showReplayControls
               replayVideoAutoplayAndLoopOff
-              onRecordingComplete={async (videoBlob) => 
-                {
-                  const pVideo = {
-                    Bucket: 'smsoftware-reports',
-                    Key: newFact.activity_key.replace('.','^').split('^')[1] + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm', 
-                    Body: videoBlob,
-                    ACL: 'public-read-write',
-                    ContentType: 'video/webm'
-                  };
-                  newFact.value.tag = freeText;
-                  newFact.value.mediaData = pVideo;
-                  if (recordingStatus !== 'stopped') {
-                    recordingStatus = 'aborted';
-                    onSave();
-                  };
-                }
-              }          
+              onRecordingComplete={async (videoBlob) => {
+                const pVideo = {
+                  Bucket: 'smsoftware-reports',
+                  Key: newFact.activity_key.replace('.', '^').split('^')[1] + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
+                  Body: videoBlob,
+                  ACL: 'public-read-write',
+                  ContentType: 'video/webm'
+                };
+                newFact.value.tag = freeText;
+                newFact.value.mediaData = pVideo;
+                if (recordingStatus !== 'stopped') {
+                  recordingStatus = 'aborted';
+                  onSave();
+                };
+              }
+              }
               onStopRecording={() => {
                 recordingStatus = 'stopped';
-              }}  
-              onStartRecording={() => {recordingStatus = 'started'}} 
+              }}
+              onStartRecording={() => { recordingStatus = 'started'; }}
             />
           </FormGroup>
         </FormControl>
       );
     case 'play_video':
       return (
-        <ReactPlayer 
-          url={defaultValue} 
+        <ReactPlayer
+          url={defaultValue}
           controls={true}
           width='100%'
           height='100%'
@@ -756,7 +798,7 @@ export default ({
       return (
         <Box alignItems="center" justifyContent="center" width="1">
           <img src={defaultValue} width='100%'
-          height='100%' alt=""/>
+            height='100%' alt="" />
         </Box>
       );
     case 'characteristic_num2':
@@ -773,7 +815,7 @@ export default ({
       );
     case 'reservation':
       var availableSlots = 0;
-      newFact.value.slot.forEach((curVal) => {if (!curVal.owner) {availableSlots++}; return});
+      newFact.value.slot.forEach((curVal) => { if (!curVal.owner) { availableSlots++; }; return; });
       var unownedSlotFound = false;
       return (
         <FormControl fullWidth>
@@ -783,29 +825,29 @@ export default ({
                 {availableSlots > 0 ? "Choose any open check box to reserve your place!" : "I'm sorry, this event is full"}
               </Typography>
               {newFact.value.slot.flatMap((currentSlot, vX) => {
-                if (!newFact?.value?.show_slots?.includes('first_available') || !unownedSlotFound) { 
+                if (!newFact?.value?.show_slots?.includes('first_available') || !unownedSlotFound) {
                   const labelId = `checkbox-list-label-${currentSlot.identifier}#${vX.toString()}`;
                   const owned = !!currentSlot.owner;
                   const ownedByMe = owned && (currentSlot.owner === newFact.patient_id || newFact.value.owner.includes(newFact.patient_id));
-                  var slotValue = 
-                    currentSlot.identifier 
-                    || 
-                    (owned ? '' : 
-                      ( newFact?.value?.show_slots?.includes('first_available') ? availableSlots + ' ' : '' )
-                        + 'available - click to reserve');
+                  var slotValue =
+                    currentSlot.identifier
+                    ||
+                    (owned ? '' :
+                      (newFact?.value?.show_slots?.includes('first_available') ? availableSlots + ' ' : '')
+                      + 'available - click to reserve');
                   var freeName = currentSlot.display_name;
-                  if (!owned) { 
-                    unownedSlotFound = true 
+                  if (!owned) {
+                    unownedSlotFound = true;
                   };
-                  if (newFact.value?.show_slots === 'no_names') { freeName = '' }
-                  else if (newFact.value?.show_slots === 'hide_names' && !ownedByMe) { freeName = 'taken' }
+                  if (newFact.value?.show_slots === 'no_names') { freeName = ''; }
+                  else if (newFact.value?.show_slots === 'hide_names' && !ownedByMe) { freeName = 'taken'; }
                   return (
                     <ListItem key={'key-' + labelId} role={undefined} dense button>
                       <ListItemIcon classes={{ root: classes.leftButton }}>
                         {!owned || ownedByMe ? (
                           <Checkbox
-                            edge='start' 
-                            onClick={handleReserve(vX)}                         
+                            edge='start'
+                            onClick={handleReserve(vX)}
                             checked={owned}
                             tabIndex={-1}
                             disabled={owned && !ownedByMe}
@@ -815,14 +857,14 @@ export default ({
                         ) : null}
                       </ListItemIcon>
                       <ListItemText classes={{ root: classes.listItemAVA }} id={'id-' + labelId} primary={slotValue} />
-                          <TextField
-                            classes={{ root: classes.idText }}
-                            id={'val-' + labelId}
-                            value={freeName || ''}
-                            disabled={!ownedByMe}
-                            InputLabelProps={{ shrink: true }}
-                            onChange={onChangeFreeName}
-                          />
+                      <TextField
+                        classes={{ root: classes.idText }}
+                        id={'val-' + labelId}
+                        value={freeName || ''}
+                        disabled={!ownedByMe}
+                        InputLabelProps={{ shrink: true }}
+                        onChange={onChangeFreeName}
+                      />
                     </ListItem>
                   );
                 }
@@ -849,7 +891,7 @@ export default ({
         />
       );
     default:
-      if (checked.length === 0) { 
+      if (checked.length === 0) {
         setStatusMessage('');
       } else {
         let stopAt = checked.length - 1;
@@ -868,13 +910,13 @@ export default ({
               <List className={classes.valueLine}>
                 {listValues.map((value, vIndex) => {
                   const labelId = `checkbox-list-label-${value}`;
-                  
+
                   /* value                       | meaning                                  | example                                                   */
                   /* ---------                   | ----------                               | -------------                                             */
-                  
+
                   /* headers...
                   /* ~~<displayThis>             | section header                           | ~~Entree Choices                                          */
-                  
+
                   /* check boxes...
                   /* <textOnly>                  | selection/check box                      | Filet Mignon                                              */
                   /*                             |                                          | Club Sandwich                                             */
@@ -897,7 +939,7 @@ export default ({
 
                   /* ~^<useTextBoxforThis>       | text entered will be shown in the        |                                                           */
                   /*                             | message area (just below the title)      |                                                           */
-                  
+
 
 
                   /* */
@@ -907,25 +949,25 @@ export default ({
                   /* ~% means suppress all lines after this one that do not include 
                       the freetext attached to this line 
                       (prompt for freeText with ~%other:<prompt text>) */
-                  
-                  
+
+
                   let freeTextFieldName = value.split(':')[1];
 
                   if (value.startsWith('~+')) {
-                    let checkMe = value.substr(2).replace('~','%%').split('%%');
+                    let checkMe = value.substr(2).replace('~', '%%').split('%%');
                     if (checked.includes(checkMe[0]) || newFact?.value?.freeText?.[checkMe[0]]) {
                       value = checkMe[1];
                     }
-                    else { return null }
+                    else { return null; }
                   }
 
                   if (value === '~[checkbox=off]') { checkBoxOn = false; return null; }
                   else if (value === '~[checkbox=on]') { checkBoxOn = true; return null; }
-                  
+
                   if (value === '~[display=off]') { suppressDisplay = true; return null; }
                   else if (value === '~[display=on]') { suppressDisplay = false; return null; }
-                  
-                  if (suppressDisplay) { return null }
+
+                  if (suppressDisplay) { return null; }
 
   /* Headers */   return value.startsWith('~~') ? (
                     <ListItem key={value + vIndex.toString()} role={undefined} dense className={classes.factTitle}>
@@ -947,7 +989,7 @@ export default ({
                       className={classes.defaultButton}>
                       {(!value.includes('other:') && !value.includes('~time:')) ? (
   /* Check Box */       <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
-                          {checkBoxOn ? 
+                          {checkBoxOn ?
                             <Checkbox
                               edge='start'
                               checked={checked.indexOf(value.split('~-')[0]) !== -1}
@@ -967,68 +1009,68 @@ export default ({
                           <ListItemText
                             id={labelId}
                             classes={{ root: classes.inputText }}
-              primary={value.split(/:(?!\d)/g)[0].split('~-')[0]}
-              onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : null}
+                            primary={value.split(/:(?!\d)/g)[0].split('~-')[0]}
+                            onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : null}
                             secondary={
                               newFact?.value?.qualifiers?.[value]
-                                ? newFact.value.qualifiers[value].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, '') } ).join(' ~ ')
+                                ? newFact.value.qualifiers[value].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')
                                 : null
                             }
                           />
                         </React.Fragment>
                       ) : !value.includes('~%') && !value.includes('~^') ? (
-                          <FormControl className={classes.clockBox}>
-                            {value.includes('~time:') ?
-                /* Time prompt */
-                <React.Fragment>
-                  <Box
-                    flexDirection='row'
-                    display='flex'
-                    grow={1}
-                    justifyContent='flex-start'
-                    alignItems='baseline'>
-                    <Typography variant={'body2'} className={classes.clockText}>
-                      {freeTextFieldName}
-                    </Typography>
-                    <TimePicker
-                      value={newFact?.value?.freeText?.[freeTextFieldName] || '0:00'}                                    clearIcon={null}
-                      clockIcon={null}
-                      // className={classes.freeInput}
-                      className={classes.clockInput}
-                      disableClock={true}
-                      onChange={onChangeFreeTime(freeTextFieldName)}
-                    />
-                  </Box>
-                </React.Fragment>
-                :
-                /* Text prompt */
-                <React.Fragment>
-                  <Box
-                    flexDirection='row'
-                    display='flex'
-                    grow={1}                    
-                    justifyContent='flex-start'
-                    alignItems='baseline'
-                  >
-                    <Typography
-                      variant={'body2'}
-                      className={classes.clockText}
-                      noWrap
-                      flexGrow={1}
-                    >
-                      {freeTextFieldName}
-                    </Typography>
-                    <TextField
-                      className={classes.freeInput}
-                      id={freeTextFieldName}
-                      value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
-                      // InputLabelProps={{ shrink: true }}
-                      onChange={onChangeFreeText}
-                    />
-                  </Box>
-                </React.Fragment>
-                            }
-                          </FormControl>
+                        <FormControl className={classes.clockBox}>
+                          {value.includes('~time:') ?
+                            /* Time prompt */
+                            <React.Fragment>
+                              <Box
+                                flexDirection='row'
+                                display='flex'
+                                grow={1}
+                                justifyContent='flex-start'
+                                alignItems='baseline'>
+                                <Typography variant={'body2'} className={classes.clockText}>
+                                  {freeTextFieldName}
+                                </Typography>
+                                <TimePicker
+                                  value={newFact?.value?.freeText?.[freeTextFieldName] || '0:00'} clearIcon={null}
+                                  clockIcon={null}
+                                  // className={classes.freeInput}
+                                  className={classes.clockInput}
+                                  disableClock={true}
+                                  onChange={onChangeFreeTime(freeTextFieldName)}
+                                />
+                              </Box>
+                            </React.Fragment>
+                            :
+                            /* Text prompt */
+                            <React.Fragment>
+                              <Box
+                                flexDirection='row'
+                                display='flex'
+                                grow={1}
+                                justifyContent='flex-start'
+                                alignItems='baseline'
+                              >
+                                <Typography
+                                  variant={'body2'}
+                                  className={classes.clockText}
+                                  noWrap
+                                  flexGrow={1}
+                                >
+                                  {freeTextFieldName}
+                                </Typography>
+                                <TextField
+                                  className={classes.freeInput}
+                                  id={freeTextFieldName}
+                                  value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
+                                  // InputLabelProps={{ shrink: true }}
+                                  onChange={onChangeFreeText}
+                                />
+                              </Box>
+                            </React.Fragment>
+                          }
+                        </FormControl>
                       ) : value.includes('~%') ? (
   /* Prompt for filter */ <FormControl className={classes.freeInput}>
                           <Input
@@ -1036,12 +1078,11 @@ export default ({
                             type='search'
                             onChange={onChangeFilterText}
                             onKeyPress={onCheckEnter}
-                            placeholder={ newFact?.value?.freeText?.[freeTextFieldName] || freeTextFieldName }
-                            helperText={freeTextFieldName}
+                            placeholder={newFact?.value?.freeText?.[freeTextFieldName] || freeTextFieldName}
                             value={filterText}
                             endAdornment={
                               <InputAdornment position='end'>
-                                <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => {handleFilterText(freeTextFieldName)}} >                                 <SearchIcon />
+                                <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => { handleFilterText(freeTextFieldName); }} >                                 <SearchIcon />
                                 </IconButton>
                               </InputAdornment>
                             }
@@ -1056,7 +1097,7 @@ export default ({
                           rows={5}
                           type='text'
                           variant='outlined'
-                          value={ newFact?.value?.freeText?.[freeTextFieldName] || '' }
+                          value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
                           InputLabelProps={{ shrink: true }}
                           onChange={onChangeFreeText}
                         />
@@ -1082,7 +1123,7 @@ export default ({
                 ) : null}
                 {qualChecked?.[selectedFact]?.length > 0 ? (
                   <DialogContentText className={classes.qualSubDescription}>
-                    You selected: {qualChecked[selectedFact].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, '') } ).join(' ~ ')}
+                    You selected: {qualChecked[selectedFact].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')}
                   </DialogContentText>
                 ) : null}
               </Box>
@@ -1095,19 +1136,58 @@ export default ({
             <DialogContent pt={0}>
               <FormControl>
                 <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
-                  {qualifiers
-                    ? qualifiers.map((qualifier, qIndex) =>
+                  <List>
+                    {qualifiers
+                      ? qualifiers.map((qualifier, qIndex) =>
                         qualifier.startsWith('~~') ? (
                           <ListItem
                             key={value + qIndex.toString()}
                             role={undefined}
                             className={classes.defaultButton}
-                            dense>
-                            <ListItemText
-                              id={'qhead' + value}
-                              classes={{ primary: classes.subHeader }}
-                              primary={qualifier.substr(2)}
-                            />
+                          >
+                            {qualifier.startsWith('~~e') ? (
+                              <IconButton
+                                edge='start'
+                                aria-label='action'
+                                href={`mailto:${qualifier.substr(9)}`}
+                              >
+                                <EmailIcon />
+                              </IconButton>
+                            ) : null}
+                            {isMobile && (qualifier.startsWith('~~c') || qualifier.startsWith('~~h')) ? (
+                              <IconButton
+                                edge='start'
+                                aria-label='action'
+                                href={`tel:${qualifier.substr(7)}`}
+                              >
+                                <CallIcon />
+                              </IconButton>
+                            ) : null}
+                            {isMobile && qualifier.startsWith('~~c') ? (
+                              <IconButton
+                                edge='start'
+                                aria-label='actionsms'
+                                href={`sms:${qualifier.substr(7)}&subject = Subject&body = ${qMessage}`}
+                              >
+                                <TextSMSIcon />
+                              </IconButton>
+                            ) : null}
+                            {qualifier === '~~Message:' ? (
+                              <TextField
+                                value={qMessage}
+                                variant={'outlined'}
+                                label='Send a message with AVA'
+                                onChange={onChangeQMessage}
+                                InputProps={{ marginLeft: '2', marginTop: '2' }}
+                                fullWidth
+                              />
+                            ) : (
+                              <ListItemText
+                                id={'qhead' + value}
+                                classes={{ primary: classes.subHeader }}
+                                primary={qualifier.substr(2)}
+                              />)
+                            }
                           </ListItem>
                         ) : (
                           <ListItem
@@ -1118,14 +1198,14 @@ export default ({
                             className={classes.defaultButton}
                             onClick={handleToggleQual(qualifier)}>
                             <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
-                              { (checkBoxOn && !qualifier.startsWith('~[nocheck]=')) ?
-                              <Checkbox
-                                edge='start'
-                                checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
-                                name={qualifier}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
-                              /> : null }
+                              {(checkBoxOn && !qualifier.startsWith('~[nocheck]=')) ?
+                                <Checkbox
+                                  edge='start'
+                                  checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
+                                  name={qualifier}
+                                  disableRipple
+                                  inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
+                                /> : null}
                               {!qualifier.startsWith('~other') ? (
                                 <ListItemText
                                   id={`qlabelid-${qualifier}`}
@@ -1165,7 +1245,8 @@ export default ({
                           </ListItem>
                         )
                       )
-                    : null}
+                      : null}
+                  </List>
                 </FormGroup>
               </FormControl>
             </DialogContent>
@@ -1183,7 +1264,7 @@ export default ({
               </Button>
             </DialogActions>
           </Dialog>
-        </React.Fragment>
+        </React.Fragment >
       );
   }
 };
