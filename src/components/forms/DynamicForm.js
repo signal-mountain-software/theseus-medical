@@ -744,8 +744,8 @@ export default ({
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <br />
             {!freeText ?
-              setFreeText((current_user_display_name.split(',')[1] || current_user_display_name.split(' ')[0]) + "'s video - "
-                + new Date().toLocaleString())
+              setFreeText((session.patient_display_name.split(',')[1] || session.patient_display_name.split(' ')[0]) + "'s video - "
+                + new Date().toLocaleDateString('en-US', dateOptions))
               : null}
             <FreeTextForm
               open={true}
