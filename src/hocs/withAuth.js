@@ -92,15 +92,6 @@ export default Component => props => {
         </React-Fragment >
       );
     }
-    else {
-      return (
-        <React-Fragment>
-          <Box>
-            <Typography variant='caption'>(v21.11.15{window.location.href.split('//')[1].slice(0, 1)})</Typography>
-          </Box >
-        </React-Fragment>
-      );
-    }
   };
 
   const setMessages = (mText) => {

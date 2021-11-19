@@ -8,7 +8,7 @@ const initialState = {
   roles: null,
   session: null,
   user: null,
-  version: `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}`
+  version: null
 };
 
 export const SessionContext = React.createContext(initialState);

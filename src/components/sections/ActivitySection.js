@@ -181,7 +181,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       qualifier: [],
       session: {
         user_id: session.user_id,
-        session_id: `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}~${session.user_id}`,
+        session_id: session.session_id,
       },
     };
     if (event) {
@@ -777,7 +777,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {`***AVA v21.11.15${window.location.href.split('//')[1].slice(0, 1)}***`}
+                  {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
                 </Typography>
               </GridListTile>
             </GridList>
@@ -814,7 +814,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       ) : null}
 
       {/* When pressed "home" after entering diary data, this dialog lets you review the data and confirm it 
-        ***** NOTE: This code is a candidate for depreciation, as it is unused as of v21.11.8 *****/}
+        ***** NOTE: This code is a candidate for depreciation, as it is unused as of version 21 11 8 *****/}
       <Dialog
         open={showSummary && homeState === 'event'}
         onClose={handleSummaryBack}
