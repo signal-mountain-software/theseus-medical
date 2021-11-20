@@ -40,16 +40,15 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(error.message);
+    handleWriteError(error);
   }
 
   render() {
     if (hasError) {
-      return <h3>Whoops! We had a problem. Contact support please.</h3>;
+      return <h3>AVA eFact written</h3>;
     }
     return this.props.children;
   }
-
 }
 
 const handleWriteError = async message => {

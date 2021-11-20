@@ -233,7 +233,7 @@ export default ({ session, profile, loginID }) => {
       status: 'requested',
       session: {
         user_id: loginID,
-        session_id: ession.session_id,
+        session_id: session.session_id,
       },
     };
     // setNewFact(newFactData);
