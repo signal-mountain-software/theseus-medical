@@ -348,6 +348,8 @@ export default ({
     setChecked(type !== 'reservation' ? newFact.value.selected : {});
     setNewFact(newFact);
     setFirstTime(false);
+    setPeopleMode(false);
+    setSaveMode(false);
   }
 
   const onChangeFreeName = event => {
@@ -543,6 +545,7 @@ export default ({
   };
 
   const handleQualSelected = value => async () => {
+    setQMessage('');
     if (qualifierTable[value].qualifiers[0].startsWith('~people:')) {
       let person_id = qualifierTable[value].qualifiers[0].split(':')[1];
       let result = await API.graphql(
@@ -573,7 +576,6 @@ export default ({
         console.log(`Whoops! Something went wrong getting picture from s3: ${error.message}`);
       });
       qualifierTable[value].qualifiers.push('~~Message:');
-      setQMessage('');
       qualifierTable[value].image_url = 'patients/' + person_id + '.jpg';
       setDialogImage(response);
       setPeopleMode(true);
@@ -1262,10 +1264,9 @@ export default ({
               <Button onClick={handleQClose} color='inherit' size='small' variant='contained'>
                 Back
               </Button>
-              {peopleMode || saveMode ?
+              {saveMode ?
                 <Button
                   onClick={handleQSave}
-                  disabled={!peopleMode && !saveMode}
                   className={classes.confirm}
                   variant='contained'
                   color='primary'
