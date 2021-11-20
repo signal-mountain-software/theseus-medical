@@ -1,12 +1,57 @@
 import React from 'react';
-import { AmplifyAuthenticator, AmplifyContainer, AmplifySignIn } from '@aws-amplify/ui-react';
-import { Auth, appendToCognitoUserAgent } from '@aws-amplify/auth';
-import { onAuthUIStateChange, AuthState } from '@aws-amplify/ui-components';
-import { updateSession } from '../graphql/mutations';
-import { API, graphqlOperation } from 'aws-amplify';
+import {
+  AmplifyAuthenticator,
+  AmplifySignIn,
+  AmplifyForgotPassword
+} from '@aws-amplify/ui-react';
+import {
+  Auth,
+  appendToCognitoUserAgent
+} from '@aws-amplify/auth';
+import {
+  onAuthUIStateChange,
+  AuthState
+} from '@aws-amplify/ui-components';
+import {
+  updateSession
+} from '../graphql/mutations';
+import {
+  API,
+  graphqlOperation
+} from 'aws-amplify';
+import {
+  Lambda
+} from 'aws-sdk';
+import {
+  useSnackbar
+} from 'notistack';
+import Button from '@material-ui/core/Button';
+import Box from '@material-ui/core/Box';
+import Paper from '@material-ui/core/Paper';
+import Typography from '@material-ui/core/Typography';
+
+import TopBar from '../components/TopBar';
 
 export default Component => props => {
   const [signedIn, setSignedIn] = React.useState(false);
+  const {
+    enqueueSnackbar, closeSnackbar
+  } = useSnackbar();
+
+  let calledFrom = '';
+
+  const [count, setCount] = React.useState(0);
+  const [messageOut, setMessageOut] = React.useState('');
+  const [inputName, setInputName] = React.useState('');
+  const [inputLocationNumbers, setInputLocationNumbers] = React.useState('');
+  const [inputPassword, setInputPassword] = React.useState('');
+  const [inputCP, setInputCP] = React.useState('');
+
+  const lambda = new Lambda({
+    region: 'us-east-1',
+    accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
+    secretAccessKey: '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',
+  });
 
   const checkUser = () => {
     setUser();
@@ -21,14 +66,60 @@ export default Component => props => {
     });
   };
 
+  const action = key => {
+    if (calledFrom !== 'signIn') {
+      return (
+        <React-Fragment>
+          <Button onClick={async () => {
+            let result;
+            closeSnackbar(key);
+            try {
+              result = await Auth
+                .signIn(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP);
+            } catch (e) {
+              console.log(e);
+            }
+            console.log(result);
+          }}>
+            Guest Sign-in
+          </Button>
+          <Button onClick={() => {
+            console.log(key);
+            closeSnackbar(key);
+          }}>
+            Try Again
+          </Button>
+        </React-Fragment >
+      );
+    }
+  };
+
+  const setMessages = (mText) => {
+    if (count > 2) {
+      calledFrom = 'failure';
+      enqueueSnackbar(`${mText.trim()}.  It seems you're having trouble.  Would you like to use AVA as a guest?  As a guest, you can perform basic tasks and use "Send a Message" to get help with your account.`, {
+        variant: 'error',
+        persist: true,
+        preventDuplicate: true,
+        action
+      });
+    }
+    else {
+      setCount(count + 1);
+      if (messageOut === mText) { mText += ' '; }
+      setMessageOut(mText);
+    }
+    console.log(count, mText);
+  };
+
   const logSession = async () => {
     try {
       const data = await Auth.currentSession();
       if (data) {
         logAVAAccess(
-          data.idToken.payload['cognito:username'], 
+          data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v21.11.12`
+          `Version=v21.11.15${window.location.href.split('//')[1].slice(0, 1)}`
         );
       };
     } catch (err) {
@@ -46,43 +137,214 @@ export default Component => props => {
     }
   };
 
+  const logChangeRequest = async (pUser, pLoc, pData) => {
+    let invokeFailed = false;
+    var payload =
+    {
+      person: pUser,
+      locationTest: pLoc,
+      newP: pData
+    };
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validatePRequest',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log('call for activity details failed.  Error is', JSON.stringify(err));
+        setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
+        invokeFailed = true;
+      });
+    if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
+      enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
+        variant: 'success'
+      });
+      Auth.signOut();
+      setSignedIn(false);
+    }
+    else {
+      setMessages(JSON.parse(fResp.Payload).body);
+    }
+
+  };
+
   const logAVAAccess = async (pUser, pSession, pMessage) => {
-    /*
-      let instruction = {
-        patient_id: pUser,
-        activity_key: 'event.logusage',
-        value: pMessage,
-        session: {
-          user_id: pUser,
-          session_id: pSession,
-        },
-      };    
-      await API.graphql(graphqlOperation(createPutFact, { input: instruction }));
-    */
     let timeOut = new Date().toString();
     await API
       .graphql(graphqlOperation(
-          updateSession, 
-          { input: { session_id: pUser, status: `v21.11.12~${timeOut}` } }
-        ))
-      .catch(error => { console.log(`Can't update session in logusage: ${error.errors[0].message}`) });
+        updateSession, {
+        input: {
+          session_id: pUser,
+          status: `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}~${timeOut}`
+        }
+      }
+      ))
+      .catch(error => {
+        console.log(`Can't update session in logusage: ${error.errors[0].message}`);
+      });
   };
+
+  const eHandler = (data) => {
+    switch (data.code) {
+      case 'NotAuthorizedException': {
+        setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
+        console.log(`user ${data.message.split(' ')[0]} OK, bad password`);
+        break;
+      }
+      case 'InvalidParameterException': {
+        setMessages(`There are invalid characters in the Username "${inputName.trim()}".  Please try again.`);
+        console.log(data.message);
+        break;
+      }
+      case 'UserNotFoundException': {
+        setMessages(`The Username "${inputName.trim()}" does not exist`);
+        console.log('bad user, password entered');
+        break;
+      }
+      default: {
+        if (!inputName) {
+          setMessages(`You left the Username blank!`);
+        }
+        else {
+          setMessages(`An error occurred at login.  It is... ${data.message}`);
+        }
+        console.log('unknown error at login');
+      }
+    }
+  };
+
+  // Hub.listen('auth', listener);
 
   React.useEffect(() => {
     appendToCognitoUserAgent('withAuthenticator');
     return checkUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+
+  React.useEffect(() => {
+    if (messageOut) {
+      console.log(`>${messageOut}<`);
+      enqueueSnackbar(messageOut.trim(), {
+        variant: 'error'
+      });
+    }
+  }, [messageOut, enqueueSnackbar]);
+
   if (!signedIn) {
     return (
-      <AmplifyContainer>
-        <AmplifyAuthenticator>
-          <AmplifySignIn headerText='Welcome to AVA!' slot='sign-in' />
-        </AmplifyAuthenticator>
-      </AmplifyContainer>
+      <React-Fragment>
+        <TopBar />
+        <Paper component={Box} width={1} >
+          <AmplifyAuthenticator
+            
+            hideToast
+          >
+            <AmplifySignIn slot='sign-in' hideSignUp
+              headerText='Welcome to AVA!'
+              formFields={[
+                {
+                  type: "username",
+                  label: "Username / ID",
+                  value: inputName,
+                  handleInputChange:
+                    (e) => {
+                      setInputName(e.target.value);
+                    },
+                  inputProps: { autocomplete: "off" },
+                },
+                {
+                  type: "password",
+                  label: "Password",
+                  value: inputCP,
+                  handleInputChange:
+                    (e) => {
+                      setInputCP(e.target.value);
+                    },
+                  inputProps: { required: true, type: "text", autocomplete: "off" },
+                },
+              ]}
+              handleSubmit={
+                async (event) => {
+                  console.log(`inputName is ${inputName}`);
+                  console.log(`inputCP is ${inputCP}`);
+                  event.preventDefault();
+                  try {
+                    await Auth.signIn(inputName.trim(), inputCP.trim());
+                    calledFrom = 'signIn';
+                    enqueueSnackbar(`Signing into AVA`, {
+                      variant: 'info',
+                      action
+                    });
+                  }
+                  catch (e) {
+                    console.log(e);
+                    eHandler(e);
+                  }
+                }
+              }
+            />
+            <AmplifyForgotPassword headerText="Password Reset request"
+              slot="forgot-password"
+              sendButtonText="Confirm"
+              handleSend={
+                async (event) => {
+                  console.log(`inputName is ${inputName}`);
+                  console.log(`inputLocationNumbers is ${inputLocationNumbers}`);
+                  setCount(0);
+                  event.preventDefault();
+                  await logChangeRequest(inputName, inputLocationNumbers, inputPassword);
+                }
+              }
+              formFields={[
+                {
+                  type: "username",
+                  label: "Username / ID",
+                  value: inputName,
+                  handleInputChange:
+                    (e) => {
+                      console.log(`inputName is ${e.target.value}`);
+                      setInputName(e.target.value);
+                    },
+                  inputProps: { autocomplete: "off" },
+                },
+                {
+                  type: "email",
+                  label: "Location",
+                  placeholder: 'Apartment or Location Address numbers',
+                  value: inputLocationNumbers,
+                  handleInputChange:
+                    (e) => {
+                      console.log(`location is ${e.target.value}`);
+                      setInputLocationNumbers(e.target.value);
+                    },
+                  inputProps: { required: true, type: "text", autocomplete: "off" },
+                },
+                {
+                  type: "password",
+                  label: "New Password",
+                  placeholder: 'Change my password to...',
+                  value: inputPassword,
+                  handleInputChange:
+                    (e) => {
+                      console.log(`newP is ${e.target.value}`);
+                      setInputPassword(e.target.value);
+                    },
+                  inputProps: { required: true, type: "text", autocomplete: "off" },
+                },
+              ]}
+            />
+          </AmplifyAuthenticator>
+        </Paper >
+      </React-Fragment>
     );
-  } 
-  else {
-    return <Component {...props} />;
+  } else {
+    return <Component {
+      ...props
+    }
+    />;
   }
 };

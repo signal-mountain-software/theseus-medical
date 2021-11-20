@@ -20,9 +20,6 @@ import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import FaceIcon from '@material-ui/icons/Face';
 
-import Visibility from '@material-ui/icons/Visibility';
-import VisibilityOff from '@material-ui/icons/VisibilityOff';
-
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
 import RadioGroup from '@material-ui/core/RadioGroup';
@@ -127,8 +124,6 @@ export default ({ patient, picture, open, onClose }) => {
   const [prefMethod, setMethod] = React.useState();
   const [patientGroups, setPatientGroups] = React.useState();
 
-  const [showPassword, setShowPassword] = React.useState(false);
-
   const [changes, setChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(false);
 
@@ -186,7 +181,6 @@ export default ({ patient, picture, open, onClose }) => {
 
   const handleAbort = () => {
     setResettingPwd(false);
-    setShowPassword(false);
     setInputPWD('password');
     setChanges(false);
     onClose()
@@ -497,14 +491,11 @@ export default ({ patient, picture, open, onClose }) => {
                   id='password'
                   value={inputPWD}
                   autoComplete='off'
-                  type={showPassword ? 'text' : 'password'}
+                  type='text'
                   onChange={handleChangePassword}
                   helperText={inputPWD === 'password' ? 'temporary password' : 'password'}
                 />
-              </div>
-              <IconButton edge='end' aria-label='comments' onClick={() => { setShowPassword(!showPassword); }}>
-                {showPassword ? <VisibilityOff /> : <Visibility />}
-              </IconButton>
+              </div>              
             </React.Fragment>
             : null}
         </Toolbar>

@@ -391,7 +391,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             newFact={newFact}
             setNewFact={setNewFact}
             type={fact.type}
-            current_user_display_name={session.patient_display_name}
+            session={session}
             message={message}
             statusMessage={statusMessage}
             values={fact.valid_values_list}

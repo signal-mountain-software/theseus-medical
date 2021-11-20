@@ -43,12 +43,12 @@ export default Component => props => {
       getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(error => {
         enqueueSnackbar(`Welcome to AVA, ${user.username}! Please tap the Welcome button (the oval toward the top left of your screen).  That's where you'll be able to complete your account setup.
                 Once that's complete, we'll get your account finalized right away.  No worries, though!  You can use many AVA features in the meantime while we personalize things for you.`, {
-              variant: 'info', persist: true,
-            })
+          variant: 'info', persist: true,
+        });
       });
 
       var session;
-      
+
       var userInfo = await Auth.currentUserInfo();
       const default_client_id = userInfo.attributes['custom:client'] || 'SMSoft';
 
@@ -58,25 +58,28 @@ export default Component => props => {
           .catch(error => {
             enqueueSnackbar(`Contact AVA support.  There is no default Session`, { variant: 'error', persist: true, });
           });
-        session = getSessionResult.data.getSession;
         session.user_display_name = 'Welcome ' + user.username;
-      } else {
+      }
+      else {
         session = getSessionResult.data.getSession;
-        if ( session.user_id !== user.username ) {
+        session.session_id = `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}`;
+        if (session.user_id !== user.username) {
           enqueueSnackbar(`You are emulating ${session.user_id}`, {
             variant: 'info',
           });
         }
       }
 
+
+
       // get person's Account information
       getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (session.user_id) }))
         .catch(error => {
-            enqueueSnackbar(`You are user ID is ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get your info.  The problem is: ${error.errors[0].message}`, {
-              variant: 'error', persist: true,
-            });
+          enqueueSnackbar(`You are user ID is ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get your info.  The problem is: ${error.errors[0].message}`, {
+            variant: 'error', persist: true,
+          });
           console.log('using default user...');
-      });
+        });
 
       if (!getProfileResult) {
         getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: `${default_client_id}~default` }));
@@ -90,7 +93,7 @@ export default Component => props => {
         getProfileResult.data.getPerson.location = null;
         getProfileResult.data.getPerson.name.first = user.username;
         getProfileResult.data.getPerson.name.last = 'Welcome';
-        getProfileResult.data.getPerson.clients = [ {"id": default_client_id, "groups": [`${default_client_id}_all`] } ];
+        getProfileResult.data.getPerson.clients = [{ "id": default_client_id, "groups": [`${default_client_id}_all`] }];
       }
 
       let profile = getProfileResult.data.getPerson;
@@ -99,21 +102,21 @@ export default Component => props => {
 
       // get the roles for the current user
       var roles;
-  //    if (session.responsible_for === 'ALL') { roles = ['admin'] }
-  //    else {
-        const client_group_id = session.client_id + '~' + session.assigned_to;
-        getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: session.user_id, client_group_id })).catch(
-          error => {
-            console.log('security record not found for user ' + session.user_id  + ' (' + client_group_id + ')');
-          }
-        );
-        roles = getRolesResult?.data?.getRoles || ['patient'];
-  //    }
+      //    if (session.responsible_for === 'ALL') { roles = ['admin'] }
+      //    else {
+      const client_group_id = session.client_id + '~' + session.assigned_to;
+      getRolesResult = await API.graphql(graphqlOperation(getRoles, { person_id: session.user_id, client_group_id })).catch(
+        error => {
+          console.log('security record not found for user ' + session.user_id + ' (' + client_group_id + ')');
+        }
+      );
+      roles = getRolesResult?.data?.getRoles || ['patient'];
+      //    }
 
       // get the current patient information for a user; if the user does not have a current patient, use the user's id
       // const patient_id = usingDefaultSession ? user.username : session.patient_id;
       var patient = {};
-      if (profile.person_id === (session.patient_id || session.user_id)) { 
+      if (profile.person_id === (session.patient_id || session.user_id)) {
         Object.assign(patient, profile);
       }
       else {
@@ -129,23 +132,23 @@ export default Component => props => {
         }
       }
       patient.groups = patient.clients[0].groups;
-      if (usingDefaultSession) { patient.person_id = user.username }
+      if (usingDefaultSession) { patient.person_id = user.username; }
 
       // get a group of patients a user is responsible for
       let patients = [];
       if (session.responsible_for) {
         let pArray = [];
         let respArray = [];
-        if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for) }
-        else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g,'').split(',') }
-        else { respArray.push(session.responsible_for) }
+        if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
+        else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+        else { respArray.push(session.responsible_for); }
         if (respArray.length > 0) {
           for (let r = 0; r < respArray.length; r++) {
             let pRec = await API
               .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
               .catch(
-                () => { console.log(`${respArray[r]} not found.  Trying Group table`) });
-            if (pRec?.data?.getPerson) { 
+                () => { /* console.log(`${respArray[r]} not found.  Trying Group table`) */ });
+            if (pRec?.data?.getPerson) {
               pArray.push({
                 display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
                 person_id: pRec.data.getPerson.person_id,
@@ -154,7 +157,7 @@ export default Component => props => {
               });
               continue;
             }
-            if (!respArray[r].includes('~')) { respArray[r] = session.client_id + '~' + respArray[r] }
+            if (!respArray[r].includes('~')) { respArray[r] = session.client_id + '~' + respArray[r]; }
             getPeopleByGroupResult = await API
               .graphql(graphqlOperation(getGroup, { client_group_id: respArray[r] }))
               .catch(
@@ -168,9 +171,15 @@ export default Component => props => {
             }
           };
           // sort resulting array and remove duplicates
-          patients = [...new Set(pArray.sort((a, b) => {
+          let pSet = pArray.sort((a, b) => {
+            return (a.person_id > b.person_id ? 1 : -1);
+          });
+          let aSet = pSet.filter((e, x, a) => {
+            return (x === 0 || e.person_id !== a[x - 1].person_id);
+          });
+          patients = aSet.sort((a, b) => {
             return (a.display_name > b.display_name ? 1 : -1);
-          }))]
+          });
         }
         /*
         else {
@@ -190,18 +199,17 @@ export default Component => props => {
         }
         */
       }
-      if (patients.length > 0) { 
+      if (patients.length > 0) {
         patients.unshift({
           display_name: `${profile.name.last}, ${profile.name.first}`,
           person_id: profile.person_id,
           roles: ['patient'],
           client_group_id: 'na'
-        })
-        roles.push('responsible_for'); 
+        });
+        roles.push('responsible_for');
       };
 
       if (mounted) {
-        session.session_id = 'v21.11.12~' + session.session_id;
         dispatch({ type: SET_SESSION, payload: session });
         dispatch({ type: SET_ROLES, payload: roles });
         dispatch({ type: SET_PROFILE, payload: profile });

@@ -133,7 +133,7 @@ export default () => {
           </Box>
           {!isMobile && !hide && (
                 <Box >
-                  <Tooltip title={<Typography variant='caption'>{session.responsible_for}</Typography>} placement='bottom-end'>
+              <Tooltip enterDelay={2000} title={<Typography variant='caption'>{session.responsible_for}</Typography>} placement='bottom-end'>
                     <Button
                       color='primary'
                       size='small'
@@ -183,7 +183,7 @@ export default () => {
                     <ListItemText primary='Create Account' />
                   </MenuItem>
                 )}
-                {showInstall() && (
+                {false && showInstall() && (
                   <MenuItem onClick={onInstall}>
                     <ListItemIcon>
                       <GetAppIcon />

@@ -1,11 +1,11 @@
 import React from 'react';
 import { SnackbarProvider } from 'notistack';
 import Button from '@material-ui/core/Button';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 export default Component => props => {
   const notistackRef = React.createRef();
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  // const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const onCLickDismiss = key => () => {
     notistackRef.current.closeSnackbar(key);
@@ -14,10 +14,10 @@ export default Component => props => {
   return (
     <SnackbarProvider
       ref={notistackRef}
-      maxSnack={3}
-      dense={isMobile}
+      maxSnack={1}
+      dense={false}
       anchorOrigin={{
-        vertical: 'top',
+        vertical: 'bottom',
         horizontal: 'center',
       }}
       action={key => (

@@ -181,7 +181,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       qualifier: [],
       session: {
         user_id: session.user_id,
-        session_id: `v21.11.12~${session.user_id}`,
+        session_id: session.session_id,
       },
     };
     if (event) {
@@ -777,7 +777,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
-                  {`***AVA v21.11.12***`}
+                  {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
                 </Typography>
               </GridListTile>
             </GridList>
@@ -813,7 +813,8 @@ export default ({ patient, session, newFact, setNewFact }) => {
         />
       ) : null}
 
-      {/* When pressed "home" after entering diary data, this dialog lets you review the data and confirm it */}
+      {/* When pressed "home" after entering diary data, this dialog lets you review the data and confirm it 
+        ***** NOTE: This code is a candidate for depreciation, as it is unused as of version 21 11 8 *****/}
       <Dialog
         open={showSummary && homeState === 'event'}
         onClose={handleSummaryBack}
@@ -864,7 +865,6 @@ export default ({ patient, session, newFact, setNewFact }) => {
       {/* Some activities require review and confirmation before writing in Facts table */}
       <Dialog
         open={showConfirmation}
-        onClose={handleSummaryBack}
         scroll='paper'
         fullWidth={true}
         aria-labelledby='scroll-dialog-title'
