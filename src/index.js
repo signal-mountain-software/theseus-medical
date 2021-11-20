@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import Amplify from 'aws-amplify';
-// import 'fontsource-roboto';
+import 'fontsource-roboto';
 
 import config from './config/amplify.json';
 import App from './App';
