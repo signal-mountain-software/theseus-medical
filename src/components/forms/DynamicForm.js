@@ -10,7 +10,7 @@ import TextField from '@material-ui/core/TextField';
 import TimePicker from 'react-time-picker';
 
 import Grid from '@material-ui/core/Grid';
-import {isMobile} from 'react-device-detect';
+import { isMobile } from 'react-device-detect';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -489,7 +489,7 @@ export default ({
 
   const onChangeQMessage = event => {
     setQMessage(event.target.value);
-    setSaveMode(true)
+    setSaveMode(true);
   };
 
   const handleQClose = event => {
@@ -499,7 +499,7 @@ export default ({
   };
 
   const handleSendMessage = async (messageToSend, selectedQualifier) => {
-    let [recipient, person_id] = selectedQualifier.split(':');
+    let [recipient, ] = selectedQualifier.split(':');
     await API
       .graphql(graphqlOperation(createPutFact, {
         input: {
@@ -1080,14 +1080,16 @@ export default ({
   /* Prompt for filter */ <FormControl className={classes.freeInput}>
                           <Input
                             id='%filter-input%'
-                            type='search'
+                            type='text'
                             onChange={onChangeFilterText}
                             onKeyPress={onCheckEnter}
+                            autoComplete='off'
                             placeholder={newFact?.value?.freeText?.[freeTextFieldName] || freeTextFieldName}
                             value={filterText}
                             endAdornment={
                               <InputAdornment position='end'>
-                                <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => { handleFilterText(freeTextFieldName); }} >                                 <SearchIcon />
+                                <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => { handleFilterText(freeTextFieldName); }} >
+                                  <SearchIcon />
                                 </IconButton>
                               </InputAdornment>
                             }
@@ -1261,7 +1263,7 @@ export default ({
               </FormControl>
             </DialogContent>
             <DialogActions>
-              <Button onClick={handleQClose} color='inherit' size='small' variant='contained'>
+              <Button onClick={handleQClose} className={classes.reject} size='small' variant='contained'>
                 Back
               </Button>
               {saveMode ?
