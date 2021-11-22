@@ -62,7 +62,7 @@ export default Component => props => {
       }
       else {
         session = getSessionResult.data.getSession;
-        session.session_id = `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `v21.11.22${window.location.href.split('//')[1].slice(0, 1)}`;
         if (session.user_id !== user.username) {
           enqueueSnackbar(`You are emulating ${session.user_id}`, {
             variant: 'info',

@@ -499,7 +499,7 @@ export default ({
   };
 
   const handleSendMessage = async (messageToSend, selectedQualifier) => {
-    let [recipient, ] = selectedQualifier.split(':');
+    let [recipient,] = selectedQualifier.split(':');
     await API
       .graphql(graphqlOperation(createPutFact, {
         input: {
@@ -1054,22 +1054,23 @@ export default ({
                                 flexDirection='row'
                                 display='flex'
                                 grow={1}
-                                justifyContent='flex-start'
+                                justifyContent='stretch'
                                 alignItems='baseline'
                               >
                                 <Typography
                                   variant={'body2'}
                                   className={classes.clockText}
                                   noWrap
-                                  flexGrow={1}
                                 >
                                   {freeTextFieldName}
                                 </Typography>
                                 <TextField
                                   className={classes.freeInput}
-                                  id={freeTextFieldName}
+                      id={freeTextFieldName}
+                      autoComplete='off'
+                                  // fullWidth={true}
                                   value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
-                                  // InputLabelProps={{ shrink: true }}
+                                  InputLabelProps={{ shrink: true }}
                                   onChange={onChangeFreeText}
                                 />
                               </Box>
