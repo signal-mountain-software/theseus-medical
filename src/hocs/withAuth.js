@@ -26,7 +26,7 @@ import {
   useSnackbar
 } from 'notistack';
 import Button from '@material-ui/core/Button';
-import Box from '@material-ui/core/Box';
+// import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 // import Typography from '@material-ui/core/Typography';
 
@@ -238,11 +238,8 @@ export default Component => props => {
     return (
       <React-Fragment>
         <TopBar />
-        <Paper component={Box} width={1} >
-          <AmplifyAuthenticator
-            
-            hideToast
-          >
+        <Paper  >
+          <AmplifyAuthenticator hideToast style={{ '--box-shadow' : 'none' }}>
             <AmplifySignIn slot='sign-in' hideSignUp
               headerText='Welcome to AVA!'
               formFields={[
@@ -273,12 +270,12 @@ export default Component => props => {
                   console.log(`inputCP is ${inputCP}`);
                   event.preventDefault();
                   try {
-                    await Auth.signIn(inputName.trim(), inputCP.trim());
                     calledFrom = 'signIn';
                     enqueueSnackbar(`Signing into AVA`, {
                       variant: 'info',
                       action
                     });
+                    await Auth.signIn(inputName.trim(), inputCP.trim());
                   }
                   catch (e) {
                     console.log(e);
