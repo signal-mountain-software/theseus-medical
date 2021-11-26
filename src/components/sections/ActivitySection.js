@@ -343,8 +343,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     let constructedQualifier = [];
     setConfirmation(false);
     let showMessage = true;
-    let dataType = typeof newFact.value;
-    if (dataType === 'string') {
+    if (typeof newFact.value === 'string') {
       let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
       setLastWrittenFact(writtenFact.data.createPutFact);
       [, constructedValue] = newFact.value.replace('.', '^').split('^');
@@ -384,7 +383,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
           if (newFact.activity_key.startsWith('form.') || newFact.activity_key.startsWith('message.')) {
             if (newFact.status && newFact.status === 'confirmed') {
               for (let f = 0; f < fOL; f++) {
-                mVal = valueSelectedObject[f];
+                mVal = valueSelectedObject[f].split(':', 2).join(':');  // this trick removes any data after a SECOND ":"
                 if (!freeTextObject.hasOwnProperty(mVal)) {
                   constructedValue += separator + mVal;
                   separator = ' ~ ';
