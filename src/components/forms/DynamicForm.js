@@ -208,9 +208,9 @@ export default ({
   message,
   statusMessage,
   values,
-  valueQualifiers,
+  qualifierTable,
   defaultValue,
-  lastQualifier,
+  qualCheckedParam,
   searchText,
   setMessage,
   setStatusMessage,
@@ -228,7 +228,7 @@ export default ({
   const [formState, setFormState] = React.useState(1);
   const [firstTime, setFirstTime] = React.useState(true);
 
-  const [qualifierTable, setQualifierTable] = React.useState({});
+  // const [qualifierTable, setQualifierTable] = React.useState({});
   const [associationsTable, setAssociationsTable] = React.useState({});
   const [qualifiers, setQualifiers] = React.useState([]);
   const [selectedFact, setSelectedFact] = React.useState('');
@@ -246,7 +246,7 @@ export default ({
 
   const [listValues, setListValues] = React.useState([]);
 
-  const [qualChecked, setQualChecked] = React.useState({});
+  const [qualChecked, setQualChecked] = React.useState(qualCheckedParam);
   // const [qualMessage, setQualMessage] = React.useState('');
   const [OGqualifiers, setOGQualifiers] = React.useState([]);
 
@@ -266,7 +266,7 @@ export default ({
   if (OGvalue === '' && type === 'document') {
     setOGvalue(value);
   }
-
+/*
   if (firstTime || !newFact.value) {
     console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
     if (valueQualifiers && valueQualifiers.length > 0) {
@@ -314,9 +314,9 @@ export default ({
         defaultSelections = dValues.split('~');
       }
       if (defaultSelections.length > 0) {
-        setValue(defaultSelections[0].trim()); /* this line handles numeric & text defaults */
-        setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
-        /* the rest handles selection screen defaults */
+        setValue(defaultSelections[0].trim()); // this line handles numeric & text defaults 
+        setNums(defaultSelections[0].trim().split(' over ')); // two numbers
+        // the rest handles selection screen defaults
         defaultSelections.forEach(nfValue => {
           let [value, freeText] = nfValue.trim().split('=');
           value = value.trim();
@@ -351,7 +351,7 @@ export default ({
     setPeopleMode(false);
     setSaveMode(false);
   }
-
+*/
   const onChangeFreeName = event => {
     let slotIndex = event.target.id.substr(event.target.id.indexOf('#') + 1);
     newFact.value.slot[slotIndex].display_name = event.target.value;

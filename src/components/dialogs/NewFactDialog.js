@@ -23,27 +23,7 @@ import DynamicForm from '../forms/DynamicForm';
 // const region = 'us-east-1';
 
 // var fileStream;
-/*
-const BootstrapInput = withStyles(theme => ({
-  root: {
-    marginTop: '0',
-  },
-  input: {
-    borderRadius: 4,
-    marginLeft: theme.spacing(2),
-    marginTop: '0',
-    marginBottom: '0',
-    border: '1px solid #ced4da',
-    fontSize: '0.8rem',
-    width: 'auto',
-    padding: '5px 6px',
-    '&:focus': {
-      boxShadow: `${fade(theme.palette.primary.main, 0.25)} 0 0 0 0.2rem`,
-      borderColor: theme.palette.primary.main,
-    },
-  },
-}))(InputBase);
-*/
+
 const useStyles = makeStyles(theme => ({
   appBar: {
     position: 'relative',
@@ -128,7 +108,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   const { enqueueSnackbar } = useSnackbar();
 
-  // const [searchText, setSearchText] = React.useState('');
   const searchText = '';
   const [factIOClass, setFactIOClass] = React.useState(false);
   const [factPromoClass, setFactPromoClass] = React.useState(false);
@@ -136,6 +115,44 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   const [factMessageClass, setFactMessageClass] = React.useState(false);
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+
+  // From DynamicForm
+  //const [lastQualifier, setLastQualifier] = React.useState('');
+  const [value, setValue] = React.useState('');
+  const [nums, setNums] = React.useState(['', '']);
+  const [mOut, setMOut] = React.useState(message || 'enter something here');
+
+  const [formState, setFormState] = React.useState(1);
+  const [firstTime, setFirstTime] = React.useState(true);
+
+  const [qualifierTable, setQualifierTable] = React.useState({});
+  const [associationsTable, setAssociationsTable] = React.useState({});
+  const [qualifiers, setQualifiers] = React.useState([]);
+  const [selectedFact, setSelectedFact] = React.useState('');
+
+  const [qualifierImage, setDialogImage] = React.useState('');
+  const [checked, setChecked] = React.useState([]);
+  const [qualifierOpen, setQualifierOpen] = React.useState(false);
+  const [qualifierData, setQualifierData] = React.useState({});
+  const [qMessage, setQMessage] = React.useState('');
+  const [OGmessage, setOGmessage] = React.useState('');
+  const [OGvalue, setOGvalue] = React.useState('');
+
+  const [peopleMode, setPeopleMode] = React.useState(false);
+  const [saveMode, setSaveMode] = React.useState(false);
+
+  const [listValues, setListValues] = React.useState([]);
+
+  const [qualChecked, setQualChecked] = React.useState({});
+  // const [qualMessage, setQualMessage] = React.useState('');
+  const [OGqualifiers, setOGQualifiers] = React.useState([]);
+
+  const [freeText, setFreeText] = React.useState('');
+  const [filterText, setFilterText] = React.useState('');
+  const [messageField, setMessageField] = React.useState('');
+
+  let type, values;
+  // ***END
 
   var withNext;
   var oopsie;
@@ -166,12 +183,12 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     withNext = false;
     window.open(fact.valid_values_list[2]);
   };
-  
+
   const handlePromoNext = () => {
     withNext = false;
     onSelected(fact.valid_values_list[3]);
     open = false;
-    onClose();  
+    onClose();
   };
 
   /*
@@ -204,42 +221,42 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       }
     } else {
       if (fact.numeric_minimum
-      && (!fact.type.startsWith('characteristic_num'))
-      && newFact.value.selected  
-      && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10) ) {
-          badData = true;
-          if (newFact.value.selected.length === 0) {
-            oopsie = `Ooops!  I don't see that you made any selections before pressing SAVE.
+        && (!fact.type.startsWith('characteristic_num'))
+        && newFact.value.selected
+        && newFact.value.selected.length < parseInt(fact.numeric_minimum, 10)) {
+        badData = true;
+        if (newFact.value.selected.length === 0) {
+          oopsie = `Ooops!  I don't see that you made any selections before pressing SAVE.
               You need to make at least ${fact.numeric_minimum} selection${fact.numerica_minimum === '1' ? '' : 's'}, please.`;
-          }
-          else if (newFact.value.selected.length === 1) {
-            oopsie = `Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
+        }
+        else if (newFact.value.selected.length === 1) {
+          oopsie = `Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
               but I only see 1... ${newFact.value.selected.join(', ')}`;
-          }
-          else {
-            oopsie = `Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
+        }
+        else {
+          oopsie = `Ooops!  Did you forget something?  We expected at least ${fact.numeric_minimum} selections, 
               but I only see ${newFact.value.selected.length}.  They are: ${newFact.value.selected.join(', ')}`;
-          }
-          enqueueSnackbar(oopsie, {variant: 'error', persist: true});
-          setMessage('!!!!! ' + oopsie + ' !!!!!');
+        }
+        enqueueSnackbar(oopsie, { variant: 'error', persist: true });
+        setMessage('!!!!! ' + oopsie + ' !!!!!');
       }
-      else if (factMessageClass ) {
+      else if (factMessageClass) {
         let goodMessage = false;
         for (let e in newFact.value.freeText) {
-          goodMessage = (e.slice(0,1) !== '%') || goodMessage
+          goodMessage = (e.slice(0, 1) !== '%') || goodMessage;
         }
-        if (!goodMessage) { 
+        if (!goodMessage) {
           badData = true;
           oopsie = 'Enter your message text before pressing SEND';
-          enqueueSnackbar(oopsie, {variant: 'error', persist: true});
+          enqueueSnackbar(oopsie, { variant: 'error', persist: true });
           setMessage('!!!!! ' + oopsie + ' !!!!!');
         }
       }
       else {
-        if (fact.type === 'upload_file' && !newFact.value.mediaData) { 
+        if (fact.type === 'upload_file' && !newFact.value.mediaData) {
           badData = true;
           oopsie = 'You must choose a file to upload before pressing SAVE';
-          enqueueSnackbar(oopsie, {variant: 'error', persist: true});
+          enqueueSnackbar(oopsie, { variant: 'error', persist: true });
           setMessage('!!!!! ' + oopsie + ' !!!!!');
         }
       }
@@ -255,11 +272,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     }
     return badData;
   };
-  
+
   const handleClose = () => {
     if (factIOClass) {
       oopsie = `You pressed CANCEL. ${fact.name} was not completed.`;
-      enqueueSnackbar(oopsie, {variant: 'error', persist: true});
+      enqueueSnackbar(oopsie, { variant: 'error', persist: true });
     }
     onClose();
   };
@@ -270,25 +287,17 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   React.useEffect(() => {
     if (fact && session) {
-      setNewFact({
-        patient_id: session.patient_id || session.user_id,
-        activity_key: fact.code,
-        value: (fact.type === 'reservation') ? fact.default_value : null,
-        session: {
-          user_id: session.user_id,
-          session_id: session.session_id,
-        },
-      });
+            
       var factCode = fact?.code?.split('.')[0];
       setFactEventClass(false);
       switch (factCode) {
         case 'document':
-        case 'render': 
+        case 'render':
         case 'query':
-        case 'list': { break }   // leave both PromoClass, IOClass, and MessageClass as false
-        case 'message': { setFactMessageClass(true); setFactIOClass(true); break }
+        case 'list': { break; }   // leave both PromoClass, IOClass, and MessageClass as false
+        case 'message': { setFactMessageClass(true); setFactIOClass(true); break; }
         case 'promo': { setFactPromoClass(true); break; }
-        case 'search': { setFactEventClass(true); break }
+        case 'search': { setFactEventClass(true); break; }
         default: {
           setFactIOClass(true);
           if (fromHome === 'event') {
@@ -359,7 +368,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             eString = ' ';
           }
           break;
-          }
+        }
         default: {
           if (fact.prompt) {
             eString = fact.prompt;
@@ -370,6 +379,121 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       }
       setMessage(eString);
     }
+    let defaultValue = (
+      fact.fact_history &&
+        fact.fact_history[0].value &&
+        !fact.observation_status.includes('(exp)') &&
+        !fact.code.startsWith('form.')
+        ? fact.fact_history[0].value
+        : fact.default_value
+    );
+    let lQ = (
+      fact.fact_history &&
+        fact.fact_history[0].qualifier &&
+        fact.fact_history[0].qualifier.length > 0 &&
+        !fact.code.startsWith('form.')
+        ? fact.fact_history[0].qualifier
+        : []
+    );
+    // if (!newFact.value) {
+    let qT = {};
+    setValue(defaultValue);
+    // console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
+    if (fact.value_qualifiers && fact.value_qualifiers.length > 0) {
+      fact.value_qualifiers.forEach(vQual => {
+        if (vQual && Object.keys(vQual).length > 0) {
+          qT[vQual.value] = vQual;
+          if (vQual.associated_activity) {
+            associationsTable[vQual.value] = vQual.associated_activity;
+          }
+        }
+      });
+    }
+    setQualifierTable(qT);
+    setAssociationsTable(associationsTable);
+
+    var mF = '';
+    let vL = Array.isArray(fact.valid_values_list) ? fact.valid_values_list.length : 0;
+    if (vL > 0) {
+      let v = 0;
+      do {
+        if (fact.valid_values_list[v].includes('~^')) {     // ~^ indicates free form text box 
+          [, mF] = fact.valid_values_list[v].split(':');    // prompt with the string after the ":"
+        }
+        v++;
+      } while (v < vL && !mF);
+    }
+    setMessageField(mF);
+
+    
+
+    setQualChecked({});
+
+    let nF = {
+      patient_id: session.patient_id || session.user_id,
+      activity_key: fact.code,
+      value: (fact.type === 'reservation')
+        ? fact.default_value
+        : {
+        selected: [],
+        associations: associationsTable,
+        freeText: {},
+      },
+      session: {
+        user_id: session.user_id,
+        session_id: session.session_id,
+      },
+    };
+
+    if (defaultValue && fact.type !== 'reservation') {
+      let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
+      let defaultSelections;
+      if (!dValues) {
+        defaultSelections = [dBase];
+      } else {
+        defaultSelections = dValues.split('~');
+      }
+      if (defaultSelections.length > 0) {
+        setValue(defaultSelections[0].trim()); /* this line handles numeric & text defaults */
+        setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
+        /* the rest handles selection screen defaults */
+        defaultSelections.forEach(nfValue => {
+          let [value, freeText] = nfValue.trim().split('=');
+          value = value.trim();
+          if (freeText) {
+            freeText = freeText.trim();
+            nF.value.freeText[value] = freeText;
+            if (value === mF) {
+              setMessage(freeText);
+            } else {
+              if (value === '%filter%') {
+                setFilterText(freeText);
+              }
+            }
+          } else {
+            nF.value.selected.push(value);
+          }
+        });
+      }
+
+      if (lQ.length > 0) {
+        nF.value.qualifiers = {};
+        lQ.forEach(qStr => {
+          let [value, qArr] = qStr.split(':');
+          nF.value.qualifiers[value] = [...qArr.split(',')];
+        });
+        setQualChecked(nF.value.qualifiers);
+      }
+    }
+    
+    setChecked(fact.type !== 'reservation' ? nF.value.selected : {});
+    setNewFact(nF);
+    setFirstTime(false);
+    setPeopleMode(false);
+    setSaveMode(false);
+    //setLastQualifier(lQ);
+    //  }
+
   }, [fact]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -377,10 +501,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
       </DialogContentText>
-      { message?.startsWith('!!!') 
-      ? <DialogContentText className={classes.warningText}>{message}</DialogContentText> 
-      : <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
-      }      
+      {message?.startsWith('!!!')
+        ? <DialogContentText className={classes.warningText}>{message}</DialogContentText>
+        : <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
+      }
       {statusMessage ? (
         <DialogContentText className={classes.subDescriptionText}>{statusMessage}</DialogContentText>
       ) : null}
@@ -395,25 +519,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             message={message}
             statusMessage={statusMessage}
             values={fact.valid_values_list}
-            valueQualifiers={fact.value_qualifiers}
-            defaultValue={
-              fact.fact_history &&
-              fact.fact_history[0].value &&
-              !fact.observation_status.includes('(exp)') &&
-              newFact &&
-              !newFact.activity_key.startsWith('form.')
-                ? fact.fact_history[0].value
-                : fact.default_value
-            }
-            lastQualifier={
-              fact.fact_history &&
-              fact.fact_history[0].qualifier &&
-              fact.fact_history[0].qualifier.length > 0 &&
-              newFact &&
-              !newFact.activity_key.startsWith('form.')
-                ? fact.fact_history[0].qualifier
-                : []
-            }
+            qualifierTable={qualifierTable}
+            defaultValue={value}
+            qualCheckedParam={qualChecked}
             searchText={searchText}
             setMessage={setMessage}
             setStatusMessage={setStatusMessage}
@@ -428,28 +536,28 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         <Button className={classes.reject} size='small' variant='contained' onClick={handleClose}>
           {!factIOClass ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
         </Button>
-        { factIOClass  
+        {factIOClass
           ? (<Button variant='contained' color='primary' size='small' onClick={handleSave}>
-              { factMessageClass ? 'Send' : 'Save' }
-            </Button>
-            )
+            {factMessageClass ? 'Send' : 'Save'}
+          </Button>
+          )
           : null
         }
-        { factPromoClass  
+        {factPromoClass
           ? (<React.Fragment>
-              <Button variant='contained' color='green' size='small' onClick={handlePromoSignup}>
-                Sign-up
-              </Button>
-              <Button variant='contained' color='blue' size='small' onClick={handlePromoMore}>
-                More info
-              </Button>
-              <Button variant='contained' color='blue' size='small' onClick={handlePromoNext}>
-                Next
-              </Button>
-            </React.Fragment>)
+            <Button variant='contained' color='green' size='small' onClick={handlePromoSignup}>
+              Sign-up
+            </Button>
+            <Button variant='contained' color='blue' size='small' onClick={handlePromoMore}>
+              More info
+            </Button>
+            <Button variant='contained' color='blue' size='small' onClick={handlePromoNext}>
+              Next
+            </Button>
+          </React.Fragment>)
           : null
         }
-        { factEventClass
+        {factEventClass
           ? (
             <React.Fragment>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
@@ -459,7 +567,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
                 Skip
               </Button>
             </React.Fragment>
-        ) : null }
+          ) : null}
       </DialogActions>
     </Dialog>
   );
