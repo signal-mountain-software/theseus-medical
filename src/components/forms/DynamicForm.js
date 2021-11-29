@@ -226,10 +226,10 @@ export default ({
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [formState, setFormState] = React.useState(1);
-  const [firstTime, setFirstTime] = React.useState(true);
+  //const [firstTime, setFirstTime] = React.useState(true);
 
   // const [qualifierTable, setQualifierTable] = React.useState({});
-  const [associationsTable, setAssociationsTable] = React.useState({});
+  //const [associationsTable, setAssociationsTable] = React.useState({});
   const [qualifiers, setQualifiers] = React.useState([]);
   const [selectedFact, setSelectedFact] = React.useState('');
 
@@ -252,7 +252,7 @@ export default ({
 
   const [freeText, setFreeText] = React.useState('');
   const [filterText, setFilterText] = React.useState('');
-  const [messageField, setMessageField] = React.useState('');
+  //const [messageField, setMessageField] = React.useState('');
 
   var noToggle = false;
   var recordingStatus;
@@ -443,9 +443,6 @@ export default ({
   const onChangeFreeText = event => {
     newFact.value.freeText[event.target.id] = event.target.value;
     setNewFact(newFact);
-    if (event.target.id === messageField) {
-      setMessage(event.target.value);
-    }
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -454,9 +451,6 @@ export default ({
   const onChangeFreeTime = tableRow => event => {
     newFact.value.freeText[tableRow] = event;
     setNewFact(newFact);
-    if (tableRow === messageField) {
-      setMessage(event);
-    }
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -879,9 +873,9 @@ export default ({
         </FormControl>
       );
     case 'document':
-      if (firstTime) {
+     // if (firstTime) {
         window.open(defaultValue, message);
-      }
+      //}
     // intentionally fall through to the message case
 
     case 'message':

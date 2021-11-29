@@ -119,39 +119,39 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   // From DynamicForm
   //const [lastQualifier, setLastQualifier] = React.useState('');
   const [value, setValue] = React.useState('');
-  const [nums, setNums] = React.useState(['', '']);
-  const [mOut, setMOut] = React.useState(message || 'enter something here');
+  //const [nums, setNums] = React.useState(['', '']);
+  //const [mOut, setMOut] = React.useState(message || 'enter something here');
 
-  const [formState, setFormState] = React.useState(1);
-  const [firstTime, setFirstTime] = React.useState(true);
+  //const [formState, setFormState] = React.useState(1);
+  //const [firstTime, setFirstTime] = React.useState(true);
 
   const [qualifierTable, setQualifierTable] = React.useState({});
   const [associationsTable, setAssociationsTable] = React.useState({});
-  const [qualifiers, setQualifiers] = React.useState([]);
-  const [selectedFact, setSelectedFact] = React.useState('');
+  //const [qualifiers, setQualifiers] = React.useState([]);
+  //const [selectedFact, setSelectedFact] = React.useState('');
 
-  const [qualifierImage, setDialogImage] = React.useState('');
-  const [checked, setChecked] = React.useState([]);
-  const [qualifierOpen, setQualifierOpen] = React.useState(false);
-  const [qualifierData, setQualifierData] = React.useState({});
-  const [qMessage, setQMessage] = React.useState('');
-  const [OGmessage, setOGmessage] = React.useState('');
-  const [OGvalue, setOGvalue] = React.useState('');
+  //const [qualifierImage, setDialogImage] = React.useState('');
+  //const [checked, setChecked] = React.useState([]);
+  //const [qualifierOpen, setQualifierOpen] = React.useState(false);
+  //const [qualifierData, setQualifierData] = React.useState({});
+  //const [qMessage, setQMessage] = React.useState('');
+  //const [OGmessage, setOGmessage] = React.useState('');
+  //const [OGvalue, setOGvalue] = React.useState('');
 
-  const [peopleMode, setPeopleMode] = React.useState(false);
-  const [saveMode, setSaveMode] = React.useState(false);
+  //const [peopleMode, setPeopleMode] = React.useState(false);
+  //const [saveMode, setSaveMode] = React.useState(false);
 
-  const [listValues, setListValues] = React.useState([]);
+  //const [listValues, setListValues] = React.useState([]);
 
   const [qualChecked, setQualChecked] = React.useState({});
   // const [qualMessage, setQualMessage] = React.useState('');
-  const [OGqualifiers, setOGQualifiers] = React.useState([]);
+  //const [OGqualifiers, setOGQualifiers] = React.useState([]);
 
-  const [freeText, setFreeText] = React.useState('');
-  const [filterText, setFilterText] = React.useState('');
-  const [messageField, setMessageField] = React.useState('');
+  //const [freeText, setFreeText] = React.useState('');
+  //const [filterText, setFilterText] = React.useState('');
+  //const [messageField, setMessageField] = React.useState('');
 
-  let type, values;
+  //let type, values;
   // ***END
 
   var withNext;
@@ -423,7 +423,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         v++;
       } while (v < vL && !mF);
     }
-    setMessageField(mF);
+    //setMessageField(mF);
 
     
 
@@ -455,7 +455,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       }
       if (defaultSelections.length > 0) {
         setValue(defaultSelections[0].trim()); /* this line handles numeric & text defaults */
-        setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
+        //setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
           let [value, freeText] = nfValue.trim().split('=');
@@ -467,7 +467,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
               setMessage(freeText);
             } else {
               if (value === '%filter%') {
-                setFilterText(freeText);
+                //setFilterText(freeText);
               }
             }
           } else {
@@ -486,11 +486,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       }
     }
     
-    setChecked(fact.type !== 'reservation' ? nF.value.selected : {});
+    //setChecked(fact.type !== 'reservation' ? nF.value.selected : {});
     setNewFact(nF);
-    setFirstTime(false);
-    setPeopleMode(false);
-    setSaveMode(false);
+    //setFirstTime(false);
+    //setPeopleMode(false);
+    //setSaveMode(false);
     //setLastQualifier(lQ);
     //  }
 
