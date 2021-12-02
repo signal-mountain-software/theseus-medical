@@ -429,6 +429,14 @@ export default ({
         }
       }
       setChecked(newChecked);
+      if (newChecked.length > 0) {
+        let stopAt = newChecked.length - 1;
+        let sMess = 'You selected: ';
+        newChecked.forEach((entry, index) => {
+          sMess += entry.split(':')[0] + (index < stopAt ? ' ~ ' : '');
+        });
+        setStatusMessage(sMess);
+      }
 
       if (!newFact.value.hasOwnProperty('selected')) {
         newFact.value.selected = {};
@@ -890,16 +898,6 @@ export default ({
         />
       );
     default:
-      if (checked.length === 0) {
-        setStatusMessage('');
-      } else {
-        let stopAt = checked.length - 1;
-        let sMess = 'You selected: ';
-        checked.forEach((entry, index) => {
-          sMess += entry.split(':')[0] + (index < stopAt ? ' ~ ' : '');
-        });
-        setStatusMessage(sMess);
-      }
       let checkBoxOn = true;
       let suppressDisplay = false;
       return (
