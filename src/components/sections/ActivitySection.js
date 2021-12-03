@@ -24,7 +24,7 @@ import Dialog from '@material-ui/core/Dialog';
 import DialogTitle from '@material-ui/core/DialogTitle';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
-import DialogContentText from '@material-ui/core/DialogContentText';
+// import DialogContentText from '@material-ui/core/DialogContentText';
 
 import { createPutFact } from '../../graphql/mutations';
 import { updateReservation } from '../../graphql/mutations';
@@ -93,8 +93,10 @@ const DEFAULT_TYPE = 'My_activities';
 var DEFAULT_LIMIT = 100;
 
 
-export default ({ patient, session, newFact, setNewFact }) => {
+export default ({ patient, session }) => {
   DEFAULT_LIMIT++;
+
+  const [newFact, setNewFact] = React.useState(null);
 
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
   const [events, setEvents] = React.useState([]); // populates the events dropdown list
@@ -110,7 +112,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
   //const [lastLimit, setLastLimit] = React.useState(0); // stores the current limit of activity buttons displayed
 
   const [loading, setLoading] = React.useState(true); // a flag that shows/hides loading spinner
-  const [open, setOpen] = React.useState(false); // a flag that shows/hides the NewFactDialog
+  const [showNewFactDialog, setShowNewFactDialog] = React.useState(false); // a flag that shows/hides the NewFactDialog
   // const [actionCancelled, setActionCancelled] = React.useState(false);
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [homeState, setHomeState] = React.useState('home');
@@ -120,14 +122,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
 
   const [rowOpen, setRowOpen] = React.useState([]);
 
-  const [showSummary, setSummary] = React.useState(false);
-  const [showConfirmation, setConfirmation] = React.useState(false);
+  // const [showSummary, setSummary] = React.useState(false);
+  const [showConfirmation, needsConfirmation] = React.useState(false);
   // eslint-disable-next-line
   const [showFreeText, setFreeText] = React.useState({});
 
   const [lastWrittenFact, setLastWrittenFact] = React.useState({});
 
-  var timeNow = new Date().getTime();
+  // var timeNow = new Date().getTime();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar } = useSnackbar();
@@ -139,20 +141,20 @@ export default ({ patient, session, newFact, setNewFact }) => {
   var toggledRow = false;
 
   const AWS = require('aws-sdk');
-  AWS.config.update({region:'us-east-1'});
-  
+  AWS.config.update({ region: 'us-east-1' });
+
   const s3 = new AWS.S3({
     accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
     secretAccessKey: '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',
- //   Bucket: 'smsoftware-reports'
+    //   Bucket: 'smsoftware-reports'
   });
-/*
-  const s3Theseus = new AWS.S3({
-    accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
-    secretAccessKey: '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',
-    Bucket: 'theseus-medical-storage'
-  });
-  */
+  /*
+    const s3Theseus = new AWS.S3({
+      accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
+      secretAccessKey: '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',
+      Bucket: 'theseus-medical-storage'
+    });
+    */
 
   var elastictranscoder = new AWS.ElasticTranscoder(
     {
@@ -162,56 +164,58 @@ export default ({ patient, session, newFact, setNewFact }) => {
   );
 
   const doneWithEvent = () => {
-    setSummary(false);
-    setConfirmation(false);
+    // setSummary(false);
+    needsConfirmation(false);
     if (homeState === 'home') {
-      serviceWorker.unregister()
+      serviceWorker.unregister();
       window.location.reload();
     }
     returnToHome();
   };
 
-  const handleSummarySubmit = () => {
-    setSummary(false);
-    setConfirmation(false);
-    newFact = {
-      patient_id: session.patient_id || session.user_id,
-      activity_key: 'confirmation.' + (event ? event : selected.code),
-      value: 'action.confirmed',
-      qualifier: [],
-      session: {
-        user_id: session.user_id,
-        session_id: session.session_id,
-      },
+  /*  
+    const handleSummarySubmit = () => {
+      // setSummary(false);
+      needsConfirmation(false);
+      newFact = {
+        patient_id: session.patient_id || session.user_id,
+        activity_key: 'confirmation.' + (event ? event : selected.code),
+        value: 'action.confirmed',
+        qualifier: [],
+        session: {
+          user_id: session.user_id,
+          session_id: session.session_id,
+        },
+      };
+      if (event) {
+        selectedActivityName = activities[0].reason.substr(0, activities[0].reason.length - 6);
+      } else {
+        selectedActivityName = selected.name;
+      }
+      setNewFact(newFact);
+      onSaveFact(newFact);
+      returnToHome();
     };
-    if (event) {
-      selectedActivityName = activities[0].reason.substr(0, activities[0].reason.length - 6);
-    } else {
-      selectedActivityName = selected.name;
-    }
-    setNewFact(newFact);
-    onSaveFact(newFact);
-    returnToHome();
-  };
+  */
 
   const handleConfirmSubmit = () => {
-    setSummary(false);
-    setConfirmation(false);
+    // setSummary(false);
+    needsConfirmation(false);
     newFact.status = 'confirmed';
     selectedActivityName = selected.name;
     setNewFact(newFact);
     onSaveFact(newFact);
     //    returnToHome();
   };
-
-  const handleSummaryBack = () => {
-    setSummary(false);
-    setConfirmation(false);
-  };
-
+  /*
+    const handleSummaryBack = () => {
+      // setSummary(false);
+      needsConfirmation(false);
+    };
+  */
   const handleConfirmBack = () => {
-    setSummary(false);
-    setConfirmation(false);
+    // setSummary(false);
+    needsConfirmation(false);
     if (newFact.value.hasOwnProperty('selected')) {
       let valueSelectedObject = newFact.value.selected;
       let qualObject = newFact.value.qualifiers;
@@ -240,15 +244,15 @@ export default ({ patient, session, newFact, setNewFact }) => {
       selected.default_value = 'defaults.' + constructedValue;
     }
     setSelected(selected);
-    setOpen(true);
+    setShowNewFactDialog(true);
   };
-
-  const handleSummaryExit = () => {
-    setSummary(false);
-    setConfirmation(false);
-    returnToHome();
-  };
-
+  /*
+    const handleSummaryExit = () => {
+      // setSummary(false);
+      needsConfirmation(false);
+      returnToHome();
+    };
+  */
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
     // setLimit(DEFAULT_LIMIT);
@@ -266,7 +270,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       return;
     }
     if (activity?.code?.startsWith('event')) {
-      if (!toggledRow) {       
+      if (!toggledRow) {
         setType(DEFAULT_TYPE);
         // setLimit(DEFAULT_LIMIT);
         setEvent(activity.code.split('.')[1]);
@@ -296,19 +300,19 @@ export default ({ patient, session, newFact, setNewFact }) => {
       });
       let selectedActivity = result?.data?.getActivityData?.[0];
       selectedActivityName = activity.name;
-      if (selectedActivity.type === 'reservation') { 
-        let reservationKey = selectedActivity.code.replace('.','^').split('^')[1];
+      if (selectedActivity.type === 'reservation') {
+        let reservationKey = selectedActivity.code.replace('.', '^').split('^')[1];
         result = await API.graphql(
           graphqlOperation(getReservation, {
             client_id: session.client_id,
             event_code: reservationKey,
           })
-        ).catch(error => {console.log('error on first get with ', reservationKey)});
+        ).catch(error => { console.log('error on first get with ', reservationKey); });
         if (!result.data.getReservation) {
           result = await API.graphql(
             graphqlOperation(getReservation, {
               client_id: session.client_id,
-              event_code: activity.code.replace('.','^').split('^')[1],
+              event_code: activity.code.replace('.', '^').split('^')[1],
             })
           ).catch(error => {
             enqueueSnackbar(`We had a problem getting that event: ${error.errors[0].message}`, {
@@ -331,7 +335,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
         selectedActivity.default_value = result.data.getReservation;
       }
       setSelected(selectedActivity);
-      if (!toggledRow) { setOpen(true) }
+      if (!toggledRow) { setShowNewFactDialog(true); }
       toggledRow = false;
     }
   };
@@ -341,7 +345,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
     let mVal = '';
     let constructedValue = '';
     let constructedQualifier = [];
-    setConfirmation(false);
+    needsConfirmation(false);
     let showMessage = true;
     if (typeof newFact.value === 'string') {
       let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
@@ -356,7 +360,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             newFact.value = `file_details.s3file=${finalFilename} ~ userTag=${vName}`;
             let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
               .catch(error => {
-                console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`)
+                console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`);
               });
             setLastWrittenFact(writtenFact?.data?.createPutFact || null);
           } else {
@@ -364,7 +368,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             newFact.value = `file_details.s3file=${finalFilename} ~ userTag=${newFact.value.tag}`;
             let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
               .catch(error => {
-                console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`)
+                console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`);
               });
             setLastWrittenFact(writtenFact?.data?.createPutFact || null);
             showMessage = false;
@@ -410,7 +414,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
               let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
               setLastWrittenFact(writtenFact.data.createPutFact);
             } else {
-              setConfirmation(true);
+              needsConfirmation(true);
               showMessage = false;
             }
           } else {
@@ -435,7 +439,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                 await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
               }
             }
-          } 
+          }
         } else if (newFact.value.hasOwnProperty('event_code')) {      // for "reservation" type activities
           constructedValue = '';
           let link = '';
@@ -444,7 +448,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
             if (newFact.value.slot[s].hasOwnProperty('action')) {
               if (newFact.value.slot[s].action) {
                 constructedValue += link + newFact.value.slot[s].identifier + ' ' + newFact.value.slot[s].action;
-                link =  ' ~ ';
+                link = ' ~ ';
               }
               // delete newFact.value.slot[s].action;
             }
@@ -465,13 +469,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
               enqueueSnackbar(
                 `Uh oh! Someone else may have been in the sign-up sheet for ${newFact.value.event_name}, 
                 and made a change before you pressed SAVE.  Please try again`,
-                {variant: 'error', persist: true}
+                { variant: 'error', persist: true }
               );
               let selectedActivity = selected;
-              let chosenActivity = selected; 
+              let chosenActivity = selected;
               selectedActivity.default_value = result.data.getReservation;
               setSelected(selectedActivity);
-              setOpen(true);
+              setShowNewFactDialog(true);
               showMessage = false;
               onChooseActivity(chosenActivity);
             }
@@ -501,19 +505,19 @@ export default ({ patient, session, newFact, setNewFact }) => {
     let enqueueOut = '';
     segments.forEach(segment => {
       enqueueOut += segment.trim().split(':')[0] + ' - ';
-    })
+    });
     sVal = enqueueOut.slice(0, (enqueueOut.length - 2)) || (actionCancelled ? 'cancelled' : 'completed');
 
     setNewFact(newFact);
     setLimit(limit);
-    setOpen(false);
+    setShowNewFactDialog(false);
 
     if (showMessage) {
       if (!selectedActivityName && selected.hasOwnProperty('name')) {
         selectedActivityName = selected.name;
       }
       if (selectedActivityName) {
-        enqueueSnackbar(`${selectedActivityName} - ${sVal}`, {variant: 'success'});
+        enqueueSnackbar(`${selectedActivityName} - ${sVal}`, { variant: 'success' });
       }
     }
     selectedActivityName = '';
@@ -522,12 +526,14 @@ export default ({ patient, session, newFact, setNewFact }) => {
       let mediaData = newFact.value.mediaData;
       let warning = mediaData.Key.includes('_partial.webm') ? 'Your recording was interrupted.  AVA will save everything up to that point. ' : '';
       let vName = newFact.value.tag;
-      var videoKeyName = newFact.activity_key.replace('.','^').split('^')[1] + '_' + new Date().getTime() + '.mp4';
+      var videoKeyName = newFact.activity_key.replace('.', '^').split('^')[1] + '_' + new Date().getTime() + '.mp4';
       enqueueSnackbar(`${warning}AVA is preparing your video named "${vName}"`,
-        {variant: (warning !== '' ? 'warning' : 'info'), persist: true})
-      s3.upload(mediaData, function(err, data) {
-        if (err) {enqueueSnackbar (`Uh oh!  AVA couldn't save your video.  The reason is ${JSON.stringify(err)}`,
-          {variant: 'error', persist: true})}
+        { variant: (warning !== '' ? 'warning' : 'info'), persist: true });
+      s3.upload(mediaData, function (err, data) {
+        if (err) {
+          enqueueSnackbar(`Uh oh!  AVA couldn't save your video.  The reason is ${JSON.stringify(err)}`,
+            { variant: 'error', persist: true });
+        }
         else {
           var converterParms = {
             PipelineId: '1626108726566-cv5z9u', /* required */
@@ -539,37 +545,37 @@ export default ({ patient, session, newFact, setNewFact }) => {
               PresetId: '1351620000001-000001',
             },
           };
-          elastictranscoder.createJob(converterParms, function(err, data) {
-            if (err) alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.','^').split('^')[1] +'.mp4'}`); // an error occurred
+          elastictranscoder.createJob(converterParms, function (err, data) {
+            if (err) alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.', '^').split('^')[1] + '.mp4'}`); // an error occurred
             else {
               enqueueSnackbar(`Your video named "${vName}" is saved, and is now being prepared for viewing in AVA.`,
-                {variant: 'info', persist: true});           // successful response
+                { variant: 'info', persist: true });           // successful response
             }
           });
         }
-      })
+      });
       return videoKeyName;
     }
 
     async function putFile(params) {    // Uploading files to the bucket
       let mediaData = newFact.value.mediaData;
       console.log(mediaData);
-      await s3.upload(mediaData, function(err, data) {
+      await s3.upload(mediaData, function (err, data) {
         if (err) {
-          enqueueSnackbar (`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, {variant: 'error', persist: true});
+          enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, { variant: 'error', persist: true });
           return 'File not written';
         }
         else {
-          enqueueSnackbar (`AVA completed the upload of your file.  Technical details: Bucket is ${data.Bucket}, Key is ${data.Key}`, {variant: 'success', persist: true});
+          enqueueSnackbar(`AVA completed the upload of your file.  Technical details: Bucket is ${data.Bucket}, Key is ${data.Key}`, { variant: 'success', persist: true });
         }
       });
       return mediaData.Key;
     }
-    
+
   };
 
   const onNextFact = async newFact => {
-    if (newFact.activity_key.startsWith('search.') && selected.normal_value) {      
+    if (newFact.activity_key.startsWith('search.') && selected.normal_value) {
       if (newFact.value.selected) { newFact.value.freeText.selected = newFact.value.selected; };
       onChooseActivity(
         selected.normal_value
@@ -581,7 +587,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       await onSaveFact(newFact);
       let a = ((activities.findIndex(c => { return c.code === selected.code; })) + 1 || 0);
       if ((a > 0) && (a < activities.length)) { onChooseActivity(activities[a]); }
-      else { doneWithEvent() }
+      else { doneWithEvent(); }
     }
   };
 
@@ -609,28 +615,28 @@ export default ({ patient, session, newFact, setNewFact }) => {
     let mounted = true;
     (async () => {
       let result;
-      if (rowOpen[0]) {console.log('this is here to force a reload')};
+      if (rowOpen[0]) { console.log('this is here to force a reload'); };
       if (patient && session) {
-          result = await API.graphql(
-            graphqlOperation(getActivityData, { 
-              input: {
-                client_id: session.client_id,
-                person_id: patient.person_id,
-                event_id: event,
-                activity_type: type,
-                limit: limit,
-                fact_data: true,
-                includeEvents: true,
-                history_only: false,
-                use_short_date: isMobile,
-              },
-            })
-          ).catch(error => {
-            setLoading(false);
-            enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.errors[0].message}`, {
-              variant: 'error',
-            });
+        result = await API.graphql(
+          graphqlOperation(getActivityData, {
+            input: {
+              client_id: session.client_id,
+              person_id: patient.person_id,
+              event_id: event,
+              activity_type: type,
+              limit: limit,
+              fact_data: true,
+              includeEvents: true,
+              history_only: false,
+              use_short_date: isMobile,
+            },
+          })
+        ).catch(error => {
+          setLoading(false);
+          enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.errors[0].message}`, {
+            variant: 'error',
           });
+        });
 
         if (mounted) {
           setLoading(false);
@@ -638,12 +644,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
             // getActivityData is list of options that displays on the user's screen 
             // If we just wrote a fact, attempt to drop information about that fact into getActivityData 
             let [findAKey] = lastWrittenFact.activity_key.split('#');       // fact keys are in the form activity_type.activity_code#time_stamp
-            result.data.getActivityData.some((checkObj, aIndex) => {         
+            result.data.getActivityData.some((checkObj, aIndex) => {
               if (checkObj.code !== findAKey) {                             // if the current activity_code is NOT the one that was most recently recorded
                 return false;                                               //    leave this iteration, but keep the loop alive (return false)
               }
               // A match! put info about the recently recorded fact into getActivityData 
-              result.data.getActivityData[aIndex].fact_history = [lastWrittenFact];   
+              result.data.getActivityData[aIndex].fact_history = [lastWrittenFact];
               result.data.getActivityData[aIndex].observation_status = '';
               [, result.data.getActivityData[aIndex].most_recent_observation] = lastWrittenFact.value
                 .replace('.', '^')
@@ -700,13 +706,13 @@ export default ({ patient, session, newFact, setNewFact }) => {
             </Typography>
           </Box>
           <Box pl={2} display={homeState === 'event' ? 'flex' : 'none'}>
-              <Button
-                color='secondary'
-                size='small'
-                variant='contained'
-                onClick={doneWithEvent}>
-                Home
-              </Button>
+            <Button
+              color='secondary'
+              size='small'
+              variant='contained'
+              onClick={doneWithEvent}>
+              Home
+            </Button>
           </Box>
         </Box>
       </AppBar>
@@ -727,6 +733,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     component={Box}
                     p={2}
                     variant='outlined'
+                    style={{ background: 'yellow' }}
                     textAlign='left'
                     onClick={() => {
                       onChooseActivity(activity);
@@ -734,12 +741,12 @@ export default ({ patient, session, newFact, setNewFact }) => {
                     square>
                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                       <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
-                        {activity.type === 'document' ? 
-                          <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{color: 'inherit', textDecoration: 'none'}} target="_blank" rel="noopener noreferrer">
+                        {activity.type === 'document' ?
+                          <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
                             <Typography variant='h5'>{activity.name}</Typography>
-                          </a> 
+                          </a>
                           :
-                          <React.Fragment key={`act_box_${activity.name}`}>                            
+                          <React.Fragment key={`act_box_${activity.name}`}>
                             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                               <Typography variant='h5'>{activity.name}</Typography>
                             </Box>
@@ -747,7 +754,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                               {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
                                 <Typography key={activity.name + 'h' + hNdx} variant='body2'>
                                   {hNdx > 0 ? <br /> : null}
-                                  {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.','^').split('^')[1]} 
+                                  {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
                                 </Typography>
                               )) : null}
                             </Box>
@@ -767,7 +774,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
                             newRowOpen[index] = !newRowOpen[index];
                             setRowOpen(newRowOpen);
                           }}>
-                          { rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon /> }
+                          {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                         </IconButton>
                       </Box>
                     </Box>
@@ -782,30 +789,30 @@ export default ({ patient, session, newFact, setNewFact }) => {
             </GridList>
           </Grid>
         </Grid>
-        {loading ? 
-          <div style={{display: 'flex', justifyContent: 'center'}}>
+        {loading ?
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
             <CircularProgress />
-          </div> 
+          </div>
           : null
         }
       </Box>
-    
+
       {/* Launch Children */}
-      {open ? (
+      {showNewFactDialog ? (
         <NewFactDialog
           fact={selected}
           session={session}
-          open={open}
+          open={showNewFactDialog}
           fromHome={homeState}
           onClose={() => {
-            setOpen(false);
-            actionCancelled = true; 
+            setShowNewFactDialog(false);
+            actionCancelled = true;
           }}
           onSave={onSaveFact}
           onNext={onNextFact}
           onSelected={(nextActivity) => {
             setLimit(limit);
-            setOpen(false);
+            setShowNewFactDialog(false);
             selectedActivityName = '';
             onChooseActivity(nextActivity);
           }}
@@ -813,7 +820,7 @@ export default ({ patient, session, newFact, setNewFact }) => {
       ) : null}
 
       {/* When pressed "home" after entering diary data, this dialog lets you review the data and confirm it 
-        ***** NOTE: This code is a candidate for depreciation, as it is unused as of version 21 11 8 *****/}
+  ***** NOTE: This code is a candidate for depreciation, as it is unused as of version 21 11 8 *****
       <Dialog
         open={showSummary && homeState === 'event'}
         onClose={handleSummaryBack}
@@ -860,64 +867,87 @@ export default ({ patient, session, newFact, setNewFact }) => {
           </Button>
         </DialogActions>
       </Dialog>
-      
+***** NOTE: This code is a candidate for depreciation, as it is unused as of version 21 11 8 *****/}
+
       {/* Some activities require review and confirmation before writing in Facts table */}
-      <Dialog
-        open={showConfirmation}
-        scroll='paper'
-        fullWidth={true}
-        aria-labelledby='scroll-dialog-title'
-        aria-describedby='scroll-dialog-description'>
-        <DialogTitle id='scroll-dialog-title' className={classes.descriptionText}>
-          {selected ? selected.name : null}
-        </DialogTitle>
-        <DialogContent dividers={true} className={classes.descriptionText}>
-          <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
+      {showConfirmation ?
+        <Dialog
+          open={showConfirmation}
+          scroll='paper'
+          fullWidth={true}
+          aria-labelledby='scroll-dialog-title'
+          aria-describedby='scroll-dialog-description'>
+          <DialogTitle id='scroll-dialog-title' className={classes.descriptionText}>
+            {selected ? selected.name : null}
+          </DialogTitle>
+          <DialogContent dividers={true} className={classes.descriptionText}>
             {newFact?.value?.selected
-              ? newFact.value.selected.map(selectedValue => (
-                  <Typography key={selectedValue}>
-                    {newFact.value.freeText[selectedValue] ? null : (
-                      <Box key={selectedValue + '.value'} pt={2} fontWeight='fontWeightBold'>
-                        {selectedValue.split(':')[0]}
-                      </Box>
-                    )}
-                    {newFact.value.qualifiers &&
-                    !newFact.value.freeText[selectedValue] &&
-                    newFact.value.qualifiers.hasOwnProperty(selectedValue) ? (
-                      <Box key={selectedValue + '.qualifier'} pl={2} fontSize='0.8rem'>
-                        {(newFact.value.qualifiers[selectedValue].map(x => { return x.replace(/~\[.*\]=/, ''); })).join(' ~ ')}
-                      </Box>
-                    ) : null}
-                  </Typography>
+              ?
+              newFact.value.selected
+                .map(selectedValue => (
+                  !newFact.value.freeText?.[selectedValue]
+                    ?
+                    (
+                      <React-Fragment key={`${selectedValue}_frag`}>
+                        <Box display='flex' flexDirection='row' key={`${selectedValue}`} justifyContent='flex-start' alignItems='center'>
+                          <Typography style={{ fontWeight: 'bold' }} key={`${selectedValue}_b`}>
+                            {selectedValue.split(':')[0]}
+                          </Typography>
+                          <Typography key={`${selectedValue}_sp`}>
+                            <span>&nbsp;&nbsp;</span>
+                          </Typography>
+                          <Typography key={`${selectedValue}_q`}>
+                            {newFact.value.qualifiers?.hasOwnProperty(selectedValue)
+                              ? newFact.value.qualifiers[selectedValue]
+                                .map(x => { return x.replace(/~\[.*\]=/, ''); })
+                                .join(' ~ ')
+                              : null
+                            }
+                          </Typography>
+                        </Box>
+                      </React-Fragment>
+                    )
+                    : null
                 ))
-              : null}
-          </DialogContentText>
-          <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
+              : null
+            }
             {newFact?.value?.freeText
-              ? Object.keys(newFact.value.freeText).map(selectedValue =>
-                  !selectedValue.startsWith('%filter%') ? (
-                    <Typography key={selectedValue}>
-                      <Box key={selectedValue + '.name'} pt={2} fontWeight='fontWeightBold'>
-                        {selectedValue}
-                      </Box>
-                      <Box key={selectedValue + '.value'} pl={2} fontSize='0.8rem'>
-                        {newFact.value.freeText[selectedValue].replace(/[~[\]]/g, '')}
-                      </Box>
-                    </Typography>
-                  ) : null
-                )
-              : null}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button className={classes.reject} size='small' variant='contained' onClick={handleConfirmBack}>
-            Back
-          </Button>
-          <Button variant='contained' className={classes.confirm} size='small' onClick={handleConfirmSubmit}>
-            Submit
-          </Button>
-        </DialogActions>
-      </Dialog>
+              ?
+              Object.keys(newFact.value.freeText)
+                .map(selectedValue => (
+                  !selectedValue.startsWith('%filter%')
+                    ?
+                    (
+                      <React-Fragment key={`${selectedValue}_frag1`}>
+                        <Box display='flex' flexGrow={1} key={`${selectedValue}_f`} flexWrap='wrap' flexDirection='row' justifyContent='flex-start'>
+                          <Typography style={{ fontWeight: 'bold' }} key={`${selectedValue}_t1`}>
+                            {selectedValue}
+                          </Typography>
+                          <Typography key={`${selectedValue}_fsp`}>
+                            <span>&nbsp;</span>
+                          </Typography>
+                          <Typography key={`${selectedValue}_t2`}>
+                            {newFact.value.freeText[selectedValue].replace(/[~[\]]/g, '')}
+                          </Typography>
+                        </Box >
+                      </React-Fragment>
+                    )
+                    :
+                    null
+                ))
+              : null
+            }
+          </DialogContent>
+          <DialogActions>
+            <Button className={classes.reject} size='small' variant='contained' onClick={handleConfirmBack}>
+              Back
+            </Button>
+            <Button variant='contained' className={classes.confirm} size='small' onClick={handleConfirmSubmit}>
+              Submit
+            </Button>
+          </DialogActions>
+        </Dialog>
+        : null}
     </Paper>
   );
 };

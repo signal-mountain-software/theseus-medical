@@ -211,6 +211,7 @@ export default ({
   qualifierTable,
   defaultValue,
   qualCheckedParam,
+  checkedParm,
   searchText,
   setMessage,
   setStatusMessage,
@@ -222,7 +223,7 @@ export default ({
   const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
-
+  const [searchKey, setSearchKey] = React.useState(null);
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [formState, setFormState] = React.useState(1);
@@ -234,7 +235,7 @@ export default ({
   const [selectedFact, setSelectedFact] = React.useState('');
 
   const [qualifierImage, setDialogImage] = React.useState('');
-  const [checked, setChecked] = React.useState([]);
+  const [checked, setChecked] = React.useState(checkedParm);
   const [qualifierOpen, setQualifierOpen] = React.useState(false);
   const [qualifierData, setQualifierData] = React.useState({});
   const [qMessage, setQMessage] = React.useState('');
@@ -266,92 +267,92 @@ export default ({
   if (OGvalue === '' && type === 'document') {
     setOGvalue(value);
   }
-/*
-  if (firstTime || !newFact.value) {
-    console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
-    if (valueQualifiers && valueQualifiers.length > 0) {
-      valueQualifiers.forEach(vQual => {
-        if (vQual && Object.keys(vQual).length > 0) {
-          qualifierTable[vQual.value] = vQual;
-          if (vQual.associated_activity) {
-            associationsTable[vQual.value] = vQual.associated_activity;
-          }
-        }
-      });
-    }
-    setQualifierTable(qualifierTable);
-    setAssociationsTable(associationsTable);
-
-    var mF = '';
-    let vL = Array.isArray(values) ? values.length : 0;
-    if (vL > 0) {
-      let v = 0;
-      do {
-        if (values[v].includes('~^')) {     // ~^ indicates free form text box 
-          [, mF] = values[v].split(':');    // prompt with the string after the ":"
-        }
-        v++;
-      } while (v < vL && !mF);
-    }
-    setMessageField(mF);
-
-    if (type !== 'reservation') {
-      newFact.value = {
-        selected: [],
-        associations: associationsTable,
-        freeText: {},
-      };
-    }
-
-    setQualChecked({});
-
-    if (defaultValue && type !== 'reservation') {
-      let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
-      let defaultSelections;
-      if (!dValues) {
-        defaultSelections = [dBase];
-      } else {
-        defaultSelections = dValues.split('~');
-      }
-      if (defaultSelections.length > 0) {
-        setValue(defaultSelections[0].trim()); // this line handles numeric & text defaults 
-        setNums(defaultSelections[0].trim().split(' over ')); // two numbers
-        // the rest handles selection screen defaults
-        defaultSelections.forEach(nfValue => {
-          let [value, freeText] = nfValue.trim().split('=');
-          value = value.trim();
-          if (freeText) {
-            freeText = freeText.trim();
-            newFact.value.freeText[value] = freeText;
-            if (value === mF) {
-              setMessage(freeText);
-            } else {
-              if (value === '%filter%') {
-                setFilterText(freeText);
-              }
+  /*
+    if (firstTime || !newFact.value) {
+      console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
+      if (valueQualifiers && valueQualifiers.length > 0) {
+        valueQualifiers.forEach(vQual => {
+          if (vQual && Object.keys(vQual).length > 0) {
+            qualifierTable[vQual.value] = vQual;
+            if (vQual.associated_activity) {
+              associationsTable[vQual.value] = vQual.associated_activity;
             }
-          } else {
-            newFact.value.selected.push(value);
           }
         });
       }
-      if (lastQualifier.length > 0) {
-        newFact.value.qualifiers = {};
-        lastQualifier.forEach(qStr => {
-          let [value, qArr] = qStr.split(':');
-          newFact.value.qualifiers[value] = [...qArr.split(',')];
-        });
-        setQualChecked(newFact.value.qualifiers);
+      setQualifierTable(qualifierTable);
+      setAssociationsTable(associationsTable);
+  
+      var mF = '';
+      let vL = Array.isArray(values) ? values.length : 0;
+      if (vL > 0) {
+        let v = 0;
+        do {
+          if (values[v].includes('~^')) {     // ~^ indicates free form text box 
+            [, mF] = values[v].split(':');    // prompt with the string after the ":"
+          }
+          v++;
+        } while (v < vL && !mF);
       }
+      setMessageField(mF);
+  
+      if (type !== 'reservation') {
+        newFact.value = {
+          selected: [],
+          associations: associationsTable,
+          freeText: {},
+        };
+      }
+  
+      setQualChecked({});
+  
+      if (defaultValue && type !== 'reservation') {
+        let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
+        let defaultSelections;
+        if (!dValues) {
+          defaultSelections = [dBase];
+        } else {
+          defaultSelections = dValues.split('~');
+        }
+        if (defaultSelections.length > 0) {
+          setValue(defaultSelections[0].trim()); // this line handles numeric & text defaults 
+          setNums(defaultSelections[0].trim().split(' over ')); // two numbers
+          // the rest handles selection screen defaults
+          defaultSelections.forEach(nfValue => {
+            let [value, freeText] = nfValue.trim().split('=');
+            value = value.trim();
+            if (freeText) {
+              freeText = freeText.trim();
+              newFact.value.freeText[value] = freeText;
+              if (value === mF) {
+                setMessage(freeText);
+              } else {
+                if (value === '%filter%') {
+                  setFilterText(freeText);
+                }
+              }
+            } else {
+              newFact.value.selected.push(value);
+            }
+          });
+        }
+        if (lastQualifier.length > 0) {
+          newFact.value.qualifiers = {};
+          lastQualifier.forEach(qStr => {
+            let [value, qArr] = qStr.split(':');
+            newFact.value.qualifiers[value] = [...qArr.split(',')];
+          });
+          setQualChecked(newFact.value.qualifiers);
+        }
+      }
+  
+      setChecked(type !== 'reservation' ? newFact.value.selected : {});
+      setNewFact(newFact);
+      setFirstTime(false);
+      setPeopleMode(false);
+      setSaveMode(false);
     }
-
-    setChecked(type !== 'reservation' ? newFact.value.selected : {});
-    setNewFact(newFact);
-    setFirstTime(false);
-    setPeopleMode(false);
-    setSaveMode(false);
-  }
-*/
+  */
   const onChangeFreeName = event => {
     let slotIndex = event.target.id.substr(event.target.id.indexOf('#') + 1);
     newFact.value.slot[slotIndex].display_name = event.target.value;
@@ -481,6 +482,7 @@ export default ({
       newFact.value.freeText['%filter%'] = newFact.value.freeText[keyValue];
     }
     setNewFact(newFact);
+    setSearchKey(newFact.value.freeText['%filter%']);
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -673,9 +675,7 @@ export default ({
     if (values) {
       let filtering = false;
       let search1 = null;
-      if (newFact?.value?.freeText?.['%filter%']) {
-        search1 = newFact.value.freeText['%filter%'].toLowerCase();
-      }
+      if (searchKey) { search1 = searchKey.toLowerCase(); }
       let search2 = searchText.toLowerCase();
       let listDisplay;
 
@@ -684,17 +684,20 @@ export default ({
           filtering = true;
           return true;
         }
-        return (
+        let theValue = (
           ((!search2 || word.toLowerCase().includes(search2)) &&
-            (!filtering || (search1 && word.toLowerCase().includes(search1)))) ||
+            (!filtering || (search1 && word.toLowerCase().includes(search1)))));
+        if (theValue) { return true; }
+        theValue = (
           word.includes('~!') ||
-          checked.includes(word)
+          checked.some((checkItem) => { return checkItem.includes(word.split(':', 2)[1].split(':')[0] + ':'); })
         );
+        return theValue;
       });
 
       setListValues(listDisplay);
     }
-  }, [checked, formState, newFact, searchText, values]);
+  }, [checked, formState, searchKey, searchText, values]);
 
   switch (type) {
     case 'characteristic_num':
@@ -881,9 +884,9 @@ export default ({
         </FormControl>
       );
     case 'document':
-     // if (firstTime) {
-        window.open(defaultValue, message);
-      //}
+      // if (firstTime) {
+      window.open(defaultValue, message);
+    //}
     // intentionally fall through to the message case
 
     case 'message':
@@ -989,7 +992,11 @@ export default ({
                           {checkBoxOn ?
                             <Checkbox
                               edge='start'
-                              checked={checked.indexOf(value.split('~-')[0]) !== -1}
+                              checked={
+                                  checked.some((checkItem) => {
+                                    return checkItem.split(':')[0] === value.split('~-')[0].split(':')[0];
+                                  })
+                              }
                               disableRipple
                               onClick={handleToggle(value)}
                               inputProps={{ 'aria-labelledby': labelId }}
@@ -1058,8 +1065,8 @@ export default ({
                                 </Typography>
                                 <TextField
                                   className={classes.freeInput}
-                      id={freeTextFieldName}
-                      autoComplete='off'
+                                  id={freeTextFieldName}
+                                  autoComplete='off'
                                   // fullWidth={true}
                                   value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
                                   InputLabelProps={{ shrink: true }}

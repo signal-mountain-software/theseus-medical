@@ -131,7 +131,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   //const [selectedFact, setSelectedFact] = React.useState('');
 
   //const [qualifierImage, setDialogImage] = React.useState('');
-  //const [checked, setChecked] = React.useState([]);
+  const [checked, setChecked] = React.useState([]);
   //const [qualifierOpen, setQualifierOpen] = React.useState(false);
   //const [qualifierData, setQualifierData] = React.useState({});
   //const [qMessage, setQMessage] = React.useState('');
@@ -486,7 +486,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       }
     }
     
-    //setChecked(fact.type !== 'reservation' ? nF.value.selected : {});
+    setChecked(fact.type !== 'reservation' ? nF.value.selected : {});
     setNewFact(nF);
     //setFirstTime(false);
     //setPeopleMode(false);
@@ -522,6 +522,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             qualifierTable={qualifierTable}
             defaultValue={value}
             qualCheckedParam={qualChecked}
+            checkedParm={checked}
             searchText={searchText}
             setMessage={setMessage}
             setStatusMessage={setStatusMessage}
