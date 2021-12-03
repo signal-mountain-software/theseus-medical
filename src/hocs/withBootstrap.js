@@ -50,7 +50,7 @@ export default Component => props => {
       var session;
 
       var userInfo = await Auth.currentUserInfo();
-      const default_client_id = userInfo.attributes['custom:client'] || 'SMSoft';
+      const default_client_id = userInfo?.attributes['custom:client'] || 'SMSoft';
 
       if (!getSessionResult) {
         usingDefaultSession = true;
@@ -62,7 +62,7 @@ export default Component => props => {
       }
       else {
         session = getSessionResult.data.getSession;
-        session.session_id = `v21.11.22${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `v21.12.3${window.location.href.split('//')[1].slice(0, 1)}`;
         if (session.user_id !== user.username) {
           enqueueSnackbar(`You are emulating ${session.user_id}`, {
             variant: 'info',
