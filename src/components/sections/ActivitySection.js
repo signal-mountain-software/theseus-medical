@@ -733,7 +733,7 @@ export default ({ patient, session }) => {
                     component={Box}
                     p={2}
                     variant='outlined'
-                    style={{ background: 'yellow' }}
+                    // style={{ background: 'yellow' }}
                     textAlign='left'
                     onClick={() => {
                       onChooseActivity(activity);
@@ -761,11 +761,7 @@ export default ({ patient, session }) => {
                           </React.Fragment>
                         }
                       </Box>
-                      <Box
-                        alignSelf='center'
-                        flexDirection='row'
-                        color='white'
-                        display={activity.fact_history ? 'flex' : 'none'}>
+                      {activity.fact_history ?
                         <IconButton
                           aria-label='showHistory'
                           onClick={() => {
@@ -775,8 +771,7 @@ export default ({ patient, session }) => {
                             setRowOpen(newRowOpen);
                           }}>
                           {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                        </IconButton>
-                      </Box>
+                        </IconButton> : null}
                     </Box>
                   </Paper>
                 </GridListTile>
@@ -818,56 +813,6 @@ export default ({ patient, session }) => {
           }}
         />
       ) : null}
-
-      {/* When pressed "home" after entering diary data, this dialog lets you review the data and confirm it 
-  ***** NOTE: This code is a candidate for depreciation, as it is unused as of version 21 11 8 *****
-      <Dialog
-        open={showSummary && homeState === 'event'}
-        onClose={handleSummaryBack}
-        scroll='paper'
-        fullWidth={true}
-        aria-labelledby='scroll-dialog-title'
-        aria-describedby='scroll-dialog-description'>
-        <DialogTitle id='scroll-dialog-title' className={classes.descriptionText}>
-          {activities && activities[0] && activities[0].reason
-            ? activities[0].reason.substr(0, activities[0].reason.length - 6)
-            : null}
-        </DialogTitle>
-        <DialogContent dividers={true} className={classes.descriptionText}>
-          <DialogContentText id='scroll-dialog-description' tabIndex={-1}>
-            {!activities || activities.length === 0 ? null : activities.map(activity =>
-              activity.observation_expires && activity.observation_expires < timeNow ? (
-                <Typography key={activity.name}>
-                  <Box key={activity.name + '.name'} pt={2}>
-                    {activity.name + ':  (no data)'}
-                  </Box>
-                </Typography>
-              ) : (
-                <Typography key={activity.name}>
-                  <Box key={activity.name + '.name'} pt={2}>
-                    {activity.name + ':'}
-                  </Box>
-                  <Box key={activity.name + '.value'} fontWeight='fontWeightBold'>
-                    {activity.most_recent_observation}
-                  </Box>
-                </Typography>
-              )
-            )}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button className={classes.reject} size='small' variant='contained' onClick={handleSummaryBack}>
-            Back
-          </Button>
-          <Button color='secondary' size='small' variant='contained' onClick={handleSummaryExit}>
-            Exit
-          </Button>
-          <Button variant='contained' className={classes.confirm} size='small' onClick={handleSummarySubmit}>
-            Confirm
-          </Button>
-        </DialogActions>
-      </Dialog>
-***** NOTE: This code is a candidate for depreciation, as it is unused as of version 21 11 8 *****/}
 
       {/* Some activities require review and confirmation before writing in Facts table */}
       {showConfirmation ?
