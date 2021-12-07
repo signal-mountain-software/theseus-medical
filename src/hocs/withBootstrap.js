@@ -50,7 +50,7 @@ export default Component => props => {
       var session;
 
       var userInfo = await Auth.currentUserInfo();
-      const default_client_id = userInfo?.attributes['custom:client'] || 'SMSoft';
+      const default_client_id = userInfo?.attributes?.['custom:client'] || 'SMSoft';
 
       if (!getSessionResult) {
         usingDefaultSession = true;

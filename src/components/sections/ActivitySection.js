@@ -1,5 +1,7 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
+import IdleTimer from 'react-idle-timer'
+import avaAlert from '../../ava_alert.mp3';
 import { useSnackbar } from 'notistack';
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
@@ -132,13 +134,14 @@ export default ({ patient, session }) => {
   // var timeNow = new Date().getTime();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-  const { enqueueSnackbar } = useSnackbar();
+  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const classes = useStyles();
 
   var priorReason = '';
   var selectedActivityName = '';
   var addedAFavorite = false;
   var toggledRow = false;
+  var currentAlertSnack = null;
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
@@ -162,6 +165,8 @@ export default ({ patient, session }) => {
       secretAccessKey: 'EAeexsTiS8cxKgfuhoFKEuAkr6tPG7my1Z1VDLXA',
     }
   );
+
+  var idleTimer = null;
 
   const doneWithEvent = () => {
     // setSummary(false);
@@ -260,8 +265,32 @@ export default ({ patient, session }) => {
   };
 
   const onWildClick = () => {
+    closeSnackbar();
     // alert ('you clicked in space');
   };
+
+  const checkRecentMessages = async () => {
+    let result = await API.graphql(
+      graphqlOperation(getActivityData, {
+        input: {
+          client_id: session.client_id,
+          person_id: patient.person_id,
+          event_id: '',
+          activity_type: '$$query.get_messages',
+          limit: limit,
+          fact_data: true,
+          includeEvents: true,
+          history_only: false,
+          use_short_date: isMobile,
+        },
+      })
+    ).catch(error => {
+      console.log(error);
+    });
+    let messageData = result?.data?.getActivityData?.[0];
+    if (!messageData) { return [0, '']; }
+    else { return [messageData.most_recent_observation, messageData.observation_status]; }
+  }
 
   const onChooseActivity = async activity => {
     actionCancelled = false;
@@ -682,6 +711,25 @@ export default ({ patient, session }) => {
 
   return (
     <Paper component={Box} onClick={onWildClick} m={2}>
+      <IdleTimer
+        ref={ref => { idleTimer = ref; }}
+        timeout={1000 * 60 * 30}   // every 15 minutes
+        onIdle={async () => {
+          console.log('inline', idleTimer.getLastActiveTime());
+          let [latestMessage, messageTimeText] = await checkRecentMessages();
+          if (latestMessage > idleTimer.getLastActiveTime()) {
+            if (currentAlertSnack) { closeSnackbar(currentAlertSnack); }
+            currentAlertSnack = enqueueSnackbar(
+              `You received a message... ${messageTimeText}`,
+              { variant: 'info', persist: true }
+            );
+            try { new Audio(avaAlert).play(); }
+            catch (err) { console.log('play sound failed due to browser'); }
+          }
+          idleTimer.reset();
+        }}       
+        debounce={250}
+      />
       <AppBar className={classes.appBar}>
         <Box
           px={3}
