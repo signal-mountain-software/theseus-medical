@@ -894,7 +894,7 @@ export default ({ patient, session }) => {
                               ? newFact.value.qualifiers[selectedValue]
                                 .map(x => { return x.replace(/~\[.*\]=/, ''); })
                                 .join(' ~ ')
-                              : null
+                              : ((selectedValue.split(':')[0].charAt(selectedValue.split(':')[0].length - 1) === '?') ? 'YES' : null)
                             }
                           </Typography>
                         </Box>
