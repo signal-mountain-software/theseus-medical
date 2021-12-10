@@ -9,7 +9,6 @@ import TextField from '@material-ui/core/TextField';
 
 import TimePicker from 'react-time-picker';
 
-import Grid from '@material-ui/core/Grid';
 import { isMobile } from 'react-device-detect';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -993,9 +992,9 @@ export default ({
                             <Checkbox
                               edge='start'
                               checked={
-                                  checked.some((checkItem) => {
-                                    return checkItem.split(':')[0] === value.split('~-')[0].split(':')[0];
-                                  })
+                                checked.some((checkItem) => {
+                                  return checkItem.split(':')[0] === value.split('~-')[0].split(':')[0];
+                                })
                               }
                               disableRipple
                               onClick={handleToggle(value)}
@@ -1023,10 +1022,9 @@ export default ({
                           />
                         </React.Fragment>
                       ) : !value.includes('~%') && !value.includes('~^') ? (
-                        <FormControl className={classes.clockBox}>
+                        <FormControl fullWidth className={classes.clockBox}>
                           {value.includes('~time:') ?
-                            /* Time prompt */
-                            <React.Fragment>
+/* Time prompt */ <React.Fragment>
                               <Box
                                 flexDirection='row'
                                 display='flex'
@@ -1047,37 +1045,23 @@ export default ({
                               </Box>
                             </React.Fragment>
                             :
-                            /* Text prompt */
-                            <React.Fragment>
-                              <Box
-                                flexDirection='row'
-                                display='flex'
-                                grow={1}
-                                justifyContent='stretch'
-                                alignItems='baseline'
-                              >
-                                <Typography
-                                  variant={'body2'}
-                                  className={classes.clockText}
-                                  noWrap
-                                >
-                                  {freeTextFieldName}
-                                </Typography>
-                                <TextField
-                                  className={classes.freeInput}
-                                  id={freeTextFieldName}
-                                  autoComplete='off'
-                                  // fullWidth={true}
-                                  value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
-                                  InputLabelProps={{ shrink: true }}
-                                  onChange={onChangeFreeText}
-                                />
-                              </Box>
-                            </React.Fragment>
+/* Text prompt */ <TextField
+                              className={classes.freeInput}
+                              id={freeTextFieldName}
+                              label={freeTextFieldName}
+                              variant='standard'
+                              autoComplete='off'
+                              // fullWidth={true}
+                              value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
+                              // InputLabelProps={{ shrink: true }}
+                              onChange={onChangeFreeText}
+                            />
+
+
                           }
                         </FormControl>
                       ) : value.includes('~%') ? (
-  /* Prompt for filter */ <FormControl className={classes.freeInput}>
+  /* Prompt for filter */ <FormControl fullWidth className={classes.freeInput}>
                           <Input
                             id='%filter-input%'
                             type='text'
@@ -1133,6 +1117,108 @@ export default ({
                     You selected: {qualChecked[selectedFact].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')}
                   </DialogContentText>
                 ) : null}
+                <DialogContent pt={0}>
+                  <FormControl fullWidth>
+                    <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
+                      <List>
+                        {qualifiers
+                          ? qualifiers.map((qualifier, qIndex) =>
+                            qualifier.startsWith('~~') ? (
+                              <ListItem
+                                key={value + qIndex.toString()}
+                                role={undefined}
+                                className={classes.defaultButton}
+                              >
+                                {qualifier.startsWith('~~e') ? (
+                                  <IconButton
+                                    edge='start'
+                                    aria-label='action'
+                                    href={`mailto:${qualifier.substr(9)}`}
+                                  >
+                                    <EmailIcon />
+                                  </IconButton>
+                                ) : null}
+                                {isMobile && (qualifier.startsWith('~~c') || qualifier.startsWith('~~h')) ? (
+                                  <IconButton
+                                    edge='start'
+                                    aria-label='action'
+                                    href={`tel:${qualifier.substr(7)}`}
+                                  >
+                                    <CallIcon />
+                                  </IconButton>
+                                ) : null}
+                                {isMobile && qualifier.startsWith('~~c') ? (
+                                  <IconButton
+                                    edge='start'
+                                    aria-label='actionsms'
+                                    href={`sms:${qualifier.substr(7)}&subject = Subject&body = ${qMessage}`}
+                                  >
+                                    <TextSMSIcon />
+                                  </IconButton>
+                                ) : null}
+                                {qualifier === '~~Message:' ? (
+                                  <TextField
+                                    value={qMessage}
+                                    id='PersonMessageText'
+                                    label='Message'
+                                    variant='standard'
+                                    autoComplete='off'
+                                    onChange={onChangeQMessage}
+                                    //InputProps={{ marginLeft: '2', marginTop: '2' }}
+                                  />
+                                ) : (
+                                  <ListItemText
+                                    id={'qhead' + value}
+                                    classes={{ primary: classes.subHeader }}
+                                    primary={qualifier.substr(2)}
+                                  />)
+                                }
+                              </ListItem>
+                            ) : (
+                              <ListItem
+                                key={qualifier + qIndex.toString()}
+                                role={undefined}
+                                dense
+                                button
+                                className={classes.defaultButton}
+                                onClick={handleToggleQual(qualifier)}>
+                                <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
+                                  {(!qualifier.startsWith('~[nocheck]=')) ?
+                                    <Checkbox
+                                      edge='start'
+                                      checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
+                                      name={qualifier}
+                                      disableRipple
+                                      inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
+                                    /> : null}
+                                  {!qualifier.startsWith('~other') ? (
+                                    <ListItemText
+                                      id={`qlabelid-${qualifier}`}
+                                      // fullWidth
+                                      primary={<Typography noWrap={true}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
+                                    />
+                                  ) : (
+                                    <TextField
+                                      id={qualifier.split(':')[1] + '_in'}
+                                      label={qualifier.split(':')[1]}
+                                      variant='standard'
+                                      value={freeText}
+                                      onChange={onChangeQualText}
+                                      // InputLabelProps={{ shrink: true }}
+                                      // InputProps={{ marginLeft: '2' }}
+                                      fullWidth
+                                    />
+                                  )}
+                                </React.Fragment>
+                              </ListItem>
+                            )
+                          )
+                          : null}
+                      </List>
+                    </FormGroup>
+                  </FormControl>
+                </DialogContent>
+
               </Box>
               {qualifierData.image_url ? (
                 <Avatar src={qualifierImage} className={classes.picture}>
@@ -1140,128 +1226,6 @@ export default ({
                 </Avatar>
               ) : null}
             </Box>
-            <DialogContent pt={0}>
-              <FormControl>
-                <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
-                  <List>
-                    {qualifiers
-                      ? qualifiers.map((qualifier, qIndex) =>
-                        qualifier.startsWith('~~') ? (
-                          <ListItem
-                            key={value + qIndex.toString()}
-                            role={undefined}
-                            className={classes.defaultButton}
-                          >
-                            {qualifier.startsWith('~~e') ? (
-                              <IconButton
-                                edge='start'
-                                aria-label='action'
-                                href={`mailto:${qualifier.substr(9)}`}
-                              >
-                                <EmailIcon />
-                              </IconButton>
-                            ) : null}
-                            {isMobile && (qualifier.startsWith('~~c') || qualifier.startsWith('~~h')) ? (
-                              <IconButton
-                                edge='start'
-                                aria-label='action'
-                                href={`tel:${qualifier.substr(7)}`}
-                              >
-                                <CallIcon />
-                              </IconButton>
-                            ) : null}
-                            {isMobile && qualifier.startsWith('~~c') ? (
-                              <IconButton
-                                edge='start'
-                                aria-label='actionsms'
-                                href={`sms:${qualifier.substr(7)}&subject = Subject&body = ${qMessage}`}
-                              >
-                                <TextSMSIcon />
-                              </IconButton>
-                            ) : null}
-                            {qualifier === '~~Message:' ? (
-                              <React-Fragment>
-                                <ListItemText
-                                  id={'qhead' + value}
-                                  classes={{ primary: classes.subHeader }}
-                                  primary={qualifier.substr(2)}
-                                />
-                                <TextField
-                                  value={qMessage}
-                                  onChange={onChangeQMessage}
-                                  InputProps={{ marginLeft: '2', marginTop: '2' }}
-                                  fullWidth
-                                />
-                              </React-Fragment>
-                            ) : (
-                              <ListItemText
-                                id={'qhead' + value}
-                                classes={{ primary: classes.subHeader }}
-                                primary={qualifier.substr(2)}
-                              />)
-                            }
-                          </ListItem>
-                        ) : (
-                          <ListItem
-                            key={qualifier + qIndex.toString()}
-                            role={undefined}
-                            dense
-                            button
-                            className={classes.defaultButton}
-                            onClick={handleToggleQual(qualifier)}>
-                            <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
-                              {(!qualifier.startsWith('~[nocheck]=')) ?
-                                <Checkbox
-                                  edge='start'
-                                  checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
-                                  name={qualifier}
-                                  disableRipple
-                                  inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
-                                /> : null}
-                              {!qualifier.startsWith('~other') ? (
-                                <ListItemText
-                                  id={`qlabelid-${qualifier}`}
-                                  fullWidth
-                                  primary={<Typography noWrap={true}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
-                                />
-                              ) : (
-                                <FormControl fullWidth>
-                                  <Grid
-                                    container
-                                    alignItems='center'
-                                    justifyContent='flex-start'
-                                    className={classes.defaultButton}>
-                                    <Grid item marginRight={1} paddingRight={2}>
-                                      <Typography noWrap={true} marginRight={1}>
-                                        {qualifier.split(':')[1] + ':'}
-                                      </Typography>
-                                    </Grid>
-                                    <Grid item>
-                                      <Typography>
-                                        <span>&nbsp;&nbsp;</span>
-                                      </Typography>
-                                    </Grid>
-                                    <Grid item>
-                                      <TextField
-                                        value={freeText}
-                                        onChange={onChangeQualText}
-                                        InputLabelProps={{ shrink: true }}
-                                        InputProps={{ marginLeft: '2' }}
-                                        fullWidth
-                                      />
-                                    </Grid>
-                                  </Grid>
-                                </FormControl>
-                              )}
-                            </React.Fragment>
-                          </ListItem>
-                        )
-                      )
-                      : null}
-                  </List>
-                </FormGroup>
-              </FormControl>
-            </DialogContent>
             <DialogActions>
               <Button onClick={handleQClose} className={classes.reject} size='small' variant='contained'>
                 Back
@@ -1277,6 +1241,7 @@ export default ({
                 </Button>
                 : null}
             </DialogActions>
+
           </Dialog>
         </React.Fragment >
       );
