@@ -35,7 +35,7 @@ const ITEM_HEIGHT = 48;
 
 export default () => {
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
-  const [hide, setHide] = React.useState(true);
+  const [hideSwitchAccountButton, setHideSwitchAccountButton] = React.useState(true);
   const [open, setOpen] = React.useState(false);
   const [addAccount, setAddAccount] = React.useState(false);
   const [templatePatient, setTemplatePatient] = React.useState({});
@@ -82,20 +82,20 @@ export default () => {
       "client_id": session.client_id,
       "search_data": "",
       "clients": [
-       {
-        "groups": [ session.responsible_for ],
-        "id": session.client_id
-       }
+        {
+          "groups": [session.responsible_for],
+          "id": session.client_id
+        }
       ],
       "name": {
-       "last": "",
-       "first": ""
+        "last": "",
+        "first": ""
       },
       "display_name": "",
-      "groups": [ session.responsible_for ],
+      "groups": [session.responsible_for],
       "preferred_method": "AVA",
       "relationships": null,
-      "roles": [ "patient" ],
+      "roles": ["patient"],
       "messaging": {},
       "time_offset": -5,
     });
@@ -120,7 +120,7 @@ export default () => {
 
   React.useEffect(() => {
     if (roles) {
-      setHide(!roles.includes('responsible_for'));
+      setHideSwitchAccountButton(!roles.includes('responsible_for'));
     }
   }, [roles]);
 
@@ -131,67 +131,69 @@ export default () => {
           <Box flexGrow={1}>
             <PatientChip patient={patient} roles={roles} session={session} />
           </Box>
-          {!isMobile && !hide && (
-                <Box >
-              <Tooltip enterDelay={2000} title={<Typography variant='caption'>{session.responsible_for}</Typography>} placement='bottom-end'>
-                    <Button
-                      color='primary'
-                      size='small'
-                      variant='contained'
-                      startIcon={<AssignmentIndIcon />}
-                      endIcon={<SwapHorizIcon />}
-                      onClick={onSwitchPatient}>
-                      Switch Account
-                    </Button>
-                  </Tooltip>
-                </Box>
-              )}
-               
-              <IconButton aria-controls='hidden-menu' aria-haspopup='true' onClick={handleClick}>
-                <MoreVertIcon />
-              </IconButton>
-              <Menu
-                id='hidden-menu'
-                anchorEl={anchorEl}
-                open={Boolean(anchorEl)}
-                onClose={handleClose}
-                PaperProps={{
-                  style: {
-                    maxHeight: ITEM_HEIGHT * 4.5,
-                  },
-                }}
-                keepMounted>
-                {isMobile && !hide && (
-                  <MenuItem onClick={onSwitchPatient}>
-                    <ListItemIcon>
-                      <SwapHorizIcon />
-                    </ListItemIcon>
-                    <ListItemText primary={'Switch Account'} />
-                  </MenuItem>
-                )}
-                <MenuItem onClick={onSignOut}>
-                  <ListItemIcon>
-                    <ExitToAppIcon />
-                  </ListItemIcon>
-                  <ListItemText primary='Sign Out' />
-                </MenuItem>
-                {session?.responsible_for && (
-                  <MenuItem onClick={onAddAccount}>
-                    <ListItemIcon>
-                      <PersonAddIcon />
-                    </ListItemIcon>
-                    <ListItemText primary='Create Account' />
-                  </MenuItem>
-                )}
-                {false && showInstall() && (
-                  <MenuItem onClick={onInstall}>
-                    <ListItemIcon>
-                      <GetAppIcon />
-                    </ListItemIcon>
-                    <ListItemText primary='Install' />
-                  </MenuItem>
-                )}
-              </Menu>
+          {!isMobile && !hideSwitchAccountButton && (
+            <Box >
+              <Tooltip
+                enterDelay={2000}
+                title={<Typography variant='caption'>{session.responsible_for}</Typography>}
+                placement='bottom-end'>
+                <Button
+                  color='primary'
+                  size='small'
+                  variant='contained'
+                  startIcon={<AssignmentIndIcon />}
+                  endIcon={<SwapHorizIcon />}
+                  onClick={onSwitchPatient}>
+                  Switch Account
+                </Button>
+              </Tooltip>
+            </Box>
+          )}
+          <IconButton aria-controls='hidden-menu' aria-haspopup='true' onClick={handleClick}>
+            <MoreVertIcon />
+          </IconButton>
+          <Menu
+            id='hidden-menu'
+            anchorEl={anchorEl}
+            open={Boolean(anchorEl)}
+            onClose={handleClose}
+            PaperProps={{
+              style: {
+                maxHeight: ITEM_HEIGHT * 4.5,
+              },
+            }}
+            keepMounted>
+            {isMobile && !hideSwitchAccountButton && (
+              <MenuItem onClick={onSwitchPatient}>
+                <ListItemIcon>
+                  <SwapHorizIcon />
+                </ListItemIcon>
+                <ListItemText primary={'Switch Account'} />
+              </MenuItem>
+            )}
+            <MenuItem onClick={onSignOut}>
+              <ListItemIcon>
+                <ExitToAppIcon />
+              </ListItemIcon>
+              <ListItemText primary='Sign Out' />
+            </MenuItem>
+            {session?.responsible_for && (
+              <MenuItem onClick={onAddAccount}>
+                <ListItemIcon>
+                  <PersonAddIcon />
+                </ListItemIcon>
+                <ListItemText primary='Create Account' />
+              </MenuItem>
+            )}
+            {false && showInstall() && (
+              <MenuItem onClick={onInstall}>
+                <ListItemIcon>
+                  <GetAppIcon />
+                </ListItemIcon>
+                <ListItemText primary='Install' />
+              </MenuItem>
+            )}
+          </Menu>
         </Toolbar>
       </AppBar>
       <Toolbar />
@@ -203,7 +205,7 @@ export default () => {
         }}
       />
       <IosInstall open={showIOSDialog} onClose={onIOSInstallClose} />
-      {addAccount && ( 
+      {addAccount && (
         <PatientDialog
           patient={templatePatient}
           picture={''}
@@ -211,7 +213,7 @@ export default () => {
           onClose={() => {
             setAddAccount(false);
           }}
-        /> 
+        />
       )}
     </Box>
   );

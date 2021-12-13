@@ -274,11 +274,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   };
 
   const handleClose = () => {
-    if (factIOClass) {
-      oopsie = `You pressed CANCEL. ${fact.name} was not completed.`;
-      enqueueSnackbar(oopsie, { variant: 'error', persist: true });
-    }
-    onClose();
+    onClose(factIOClass ? `You pressed CANCEL. ${fact.name} was not completed.` : null);
   };
 
   const disableSave = value => {

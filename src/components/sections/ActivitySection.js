@@ -1,6 +1,6 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
-import IdleTimer from 'react-idle-timer'
+import IdleTimer from 'react-idle-timer';
 import avaAlert from '../../ava_alert.mp3';
 import { useSnackbar } from 'notistack';
 import AppBar from '@material-ui/core/AppBar';
@@ -56,6 +56,8 @@ const useStyles = makeStyles(theme => ({
   },
   gridList: {
     // maxHeight: 400,
+  },
+  mainPaper: {
   },
   defaultButton: {
     borderRadius: 50,
@@ -266,9 +268,8 @@ export default ({ patient, session }) => {
 
   const onWildClick = () => {
     closeSnackbar();
-    // alert ('you clicked in space');
   };
-
+/*
   const checkRecentMessages = async () => {
     let result = await API.graphql(
       graphqlOperation(getActivityData, {
@@ -290,8 +291,8 @@ export default ({ patient, session }) => {
     let messageData = result?.data?.getActivityData?.[0];
     if (!messageData) { return [0, '']; }
     else { return [messageData.most_recent_observation, messageData.observation_status]; }
-  }
-
+  };
+*/
   const onChooseActivity = async activity => {
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
@@ -709,15 +710,31 @@ export default ({ patient, session }) => {
     };
   }, [patient, event, type]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  let idleSince = null;
+  let idleString = '';
+
   return (
-    <Paper component={Box} onClick={onWildClick} m={2}>
+    <Paper className={classes.mainPaper} onClick={() => onWildClick} >
       <IdleTimer
         ref={ref => { idleTimer = ref; }}
-        timeout={1000 * 60 * 30}   // every 15 minutes
+        timeout={1000 * 60 * 30}   // every "n" minutes
+        onAction={() => {
+          if(idleSince) {
+            console.log(`Active at ${new Date().toLocaleString()}`);
+            idleSince = null;
+          }
+        }}
         onIdle={async () => {
-          console.log('inline', idleTimer.getLastActiveTime());
-          let [latestMessage, messageTimeText] = await checkRecentMessages();
-          if (latestMessage > idleTimer.getLastActiveTime()) {
+          if (!idleSince) {
+            idleSince = idleTimer.getLastActiveTime();
+            idleString = new Date(idleSince).toLocaleString();
+            console.log(`Idle since ${idleString}`);
+            //let [latestMessage, messageTimeText] = await checkRecentMessages();
+          }
+          else { console.log(`Still idle (${idleString})`);}
+          let latestMessage = 0;
+          let messageTimeText = 1;
+          if (latestMessage > idleSince) {
             if (currentAlertSnack) { closeSnackbar(currentAlertSnack); }
             currentAlertSnack = enqueueSnackbar(
               `You received a message... ${messageTimeText}`,
@@ -727,7 +744,7 @@ export default ({ patient, session }) => {
             catch (err) { console.log('play sound failed due to browser'); }
           }
           idleTimer.reset();
-        }}       
+        }}
         debounce={250}
       />
       <AppBar className={classes.appBar}>
@@ -750,7 +767,7 @@ export default ({ patient, session }) => {
             alignItems='center'>
             <BusinessCenterOutlinedIcon />
             <Typography variant='h6' className={classes.title}>
-              AVA
+              {homeState === 'event' ? activities[0].reason : 'AVA'}
             </Typography>
           </Box>
           <Box pl={2} display={homeState === 'event' ? 'flex' : 'none'}>
@@ -770,60 +787,63 @@ export default ({ patient, session }) => {
         <Grid container>
           <Grid md={6} sm={7} xs={12} item>
             <GridList className={classes.gridList} cellHeight='auto' cols={1}>
-              {!activities || activities.length === 0 ? null : activities.map((activity, index) => (
-                <GridListTile key={activity.code} cols={1}>
-                  <Box display={activity.reason === priorReason ? 'none' : 'block'}>
-                    <Typography variant='body1' noWrap={true}>
-                      {(priorReason = activity.reason)}
-                    </Typography>
-                  </Box>
-                  <Paper
-                    component={Box}
-                    p={2}
-                    variant='outlined'
-                    // style={{ background: 'yellow' }}
-                    textAlign='left'
-                    onClick={() => {
-                      onChooseActivity(activity);
-                    }}
-                    square>
-                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                      <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
-                        {activity.type === 'document' ?
-                          <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
-                            <Typography variant='h5'>{activity.name}</Typography>
-                          </a>
-                          :
-                          <React.Fragment key={`act_box_${activity.name}`}>
-                            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+              {!activities || activities.length === 0
+                ? null
+                : activities.map((activity, index) => (
+                  <GridListTile key={activity.code} cols={1}>
+                    {activity.reason === priorReason ? null :
+                      <Typography variant='body1' noWrap={true}>
+                        {(priorReason = activity.reason)}
+                      </Typography>
+                    }
+                    <Paper
+                      component={Box}
+                      p={2}
+                      variant='outlined'
+                      // style={{ background: 'yellow' }}
+                      textAlign='left'
+                      onClick={() => {
+                        closeSnackbar();
+                        onChooseActivity(activity);
+                      }}
+                      square>
+                      <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                        <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
+                          {activity.type === 'document' ?
+                            <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
                               <Typography variant='h5'>{activity.name}</Typography>
-                            </Box>
-                            <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
-                              {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
-                                <Typography key={activity.name + 'h' + hNdx} variant='body2'>
-                                  {hNdx > 0 ? <br /> : null}
-                                  {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
-                                </Typography>
-                              )) : null}
-                            </Box>
-                          </React.Fragment>
-                        }
+                            </a>
+                            :
+                            <React.Fragment key={`act_box_${activity.name}`}>
+                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                <Typography variant='h5'>{activity.name}</Typography>
+                              </Box>
+                              <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
+                                {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
+                                  <Typography key={activity.name + 'h' + hNdx} variant='body2'>
+                                    {hNdx > 0 ? <br /> : null}
+                                    {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
+                                  </Typography>
+                                )) : null}
+                              </Box>
+                            </React.Fragment>
+                          }
+                        </Box>
+                        {activity.fact_history ?
+                          <IconButton
+                            aria-label='showHistory'
+                            onClick={() => {
+                              toggledRow = true;
+                              let newRowOpen = rowOpen;
+                              newRowOpen[index] = !newRowOpen[index];
+                              setRowOpen(newRowOpen);
+                            }}>
+                            {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                          </IconButton> : null}
                       </Box>
-                      {activity.fact_history ?
-                        <IconButton
-                          aria-label='showHistory'
-                          onClick={() => {
-                            toggledRow = true;
-                            let newRowOpen = rowOpen;
-                            newRowOpen[index] = !newRowOpen[index];
-                            setRowOpen(newRowOpen);
-                          }}>
-                          {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                        </IconButton> : null}
-                    </Box>
-                  </Paper>
-                </GridListTile>
-              ))}
+                    </Paper>
+                  </GridListTile>
+                ))}
               <GridListTile cols={1}>
                 <Typography variant='caption' noWrap={true}>
                   {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
@@ -847,7 +867,8 @@ export default ({ patient, session }) => {
           session={session}
           open={showNewFactDialog}
           fromHome={homeState}
-          onClose={() => {
+          onClose={(oopsieMessage = null) => {
+            oopsieMessage && (currentAlertSnack = enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
             setShowNewFactDialog(false);
             actionCancelled = true;
           }}
