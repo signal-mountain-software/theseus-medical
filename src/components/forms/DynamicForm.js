@@ -753,8 +753,11 @@ export default ({
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <br />
             {!freeText ?
-              setFreeText((session.patient_display_name.split(',')[1] || session.patient_display_name.split(' ')[0]) + "'s video - "
-                + new Date().toLocaleDateString('en-US', dateOptions))
+              (defaultValue ?
+                setFreeText(defaultValue + " - " + new Date().toLocaleDateString('en-US', dateOptions))
+                :
+                setFreeText((session.patient_display_name.split(',')[1] || session.patient_display_name.split(' ')[0]) + "'s video - "
+                + new Date().toLocaleDateString('en-US', dateOptions)))
               : null}
             <FreeTextForm
               open={true}
@@ -781,7 +784,7 @@ export default ({
                 newFact.value.mediaData = pVideo;
                 if (recordingStatus !== 'stopped') {
                   recordingStatus = 'aborted';
-                  onSave();
+                  //onSave();
                 };
               }
               }
