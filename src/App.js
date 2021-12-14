@@ -4,6 +4,7 @@ import Box from '@material-ui/core/Box';
 import AssignmentIcon from '@material-ui/icons/Assignment';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 // import ChatIcon from '@material-ui/icons/Chat';
+import { Auth } from '@aws-amplify/auth';
 
 // import withA2HS from './wrappers/withA2HS';
 import withRecoil from './wrappers/withRecoil';
@@ -40,7 +41,7 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(error);
+    handleWriteError( JSON.stringify(error) + ' ' + JSON.stringify(info) );
   }
 
   render() {
@@ -52,12 +53,13 @@ class ErrorBoundary extends React.Component {
 }
 
 const handleWriteError = async message => {
+  const user = await Auth.currentAuthenticatedUser();
   let instruction = {
     patient_id: 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: message,
     session: {
-      user_id: 'no user logged',
+      user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
     },
   };

@@ -26,9 +26,9 @@ import {
   useSnackbar
 } from 'notistack';
 import Button from '@material-ui/core/Button';
-import Box from '@material-ui/core/Box';
+// import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
-import Typography from '@material-ui/core/Typography';
+// import Typography from '@material-ui/core/Typography';
 
 import TopBar from '../components/TopBar';
 
@@ -47,6 +47,8 @@ export default Component => props => {
   const [inputPassword, setInputPassword] = React.useState('');
   const [inputCP, setInputCP] = React.useState('');
 
+  const [resetPW, setResetPW] = React.useState(false);
+
   const lambda = new Lambda({
     region: 'us-east-1',
     accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
@@ -60,8 +62,12 @@ export default Component => props => {
       if (authState === AuthState.SignedIn) {
         logSession();
         setSignedIn(true);
-      } else if (authState === AuthState.SignedOut) {
+      }
+      else if (authState === AuthState.SignedOut) {
         setSignedIn(false);
+      }
+      else {
+        console.log(authState);
       }
     });
   };
@@ -119,7 +125,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v21.11.15${window.location.href.split('//')[1].slice(0, 1)}`
+          `Version=v21.12.13${window.location.href.split('//')[1].slice(0, 1)}`
         );
       };
     } catch (err) {
@@ -133,7 +139,9 @@ export default Component => props => {
       const user = await Auth.currentAuthenticatedUser();
       if (user) setSignedIn(true);
     } catch (err) {
-      console.error(err);
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in.`, {
+        variant: 'info'
+      });
     }
   };
 
@@ -179,7 +187,7 @@ export default Component => props => {
         updateSession, {
         input: {
           session_id: pUser,
-          status: `v21.11.15${window.location.href.split('//')[1].slice(0, 1)}~${timeOut}`
+          status: `v21.12.13${window.location.href.split('//')[1].slice(0, 1)}~${timeOut}`
         }
       }
       ))
@@ -238,12 +246,13 @@ export default Component => props => {
     return (
       <React-Fragment>
         <TopBar />
-        <Paper component={Box} width={1} >
+        <Paper  >
           <AmplifyAuthenticator
-            
             hideToast
-          >
-            <AmplifySignIn slot='sign-in' hideSignUp
+            style={{ '--box-shadow': 'none' }}>
+            <AmplifySignIn
+              slot='sign-in'
+              hideSignUp
               headerText='Welcome to AVA!'
               formFields={[
                 {
@@ -273,12 +282,22 @@ export default Component => props => {
                   console.log(`inputCP is ${inputCP}`);
                   event.preventDefault();
                   try {
-                    await Auth.signIn(inputName.trim(), inputCP.trim());
                     calledFrom = 'signIn';
                     enqueueSnackbar(`Signing into AVA`, {
                       variant: 'info',
                       action
                     });
+                    let resp = await Auth.signIn(inputName.trim(), inputCP.trim());
+                    if (resp.challengeName === 'NEW_PASSWORD_REQUIRED') {
+                      setResetPW(true);
+                      enqueueSnackbar(`That's a temporary password.  Press "Reset password" to set a permanent one, please.`, {
+                        variant: 'info',
+                        action
+                      });
+                    }
+                    else {
+                      setResetPW(false);
+                    }
                   }
                   catch (e) {
                     console.log(e);
@@ -287,7 +306,8 @@ export default Component => props => {
                 }
               }
             />
-            <AmplifyForgotPassword headerText="Password Reset request"
+            <AmplifyForgotPassword
+              headerText={resetPW ? "Set your Password" : "Password Reset request"}
               slot="forgot-password"
               sendButtonText="Confirm"
               handleSend={

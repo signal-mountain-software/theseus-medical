@@ -9,8 +9,7 @@ import TextField from '@material-ui/core/TextField';
 
 import TimePicker from 'react-time-picker';
 
-import Grid from '@material-ui/core/Grid';
-import {isMobile} from 'react-device-detect';
+import { isMobile } from 'react-device-detect';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -208,9 +207,10 @@ export default ({
   message,
   statusMessage,
   values,
-  valueQualifiers,
+  qualifierTable,
   defaultValue,
-  lastQualifier,
+  qualCheckedParam,
+  checkedParm,
   searchText,
   setMessage,
   setStatusMessage,
@@ -222,19 +222,19 @@ export default ({
   const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
-
+  const [searchKey, setSearchKey] = React.useState(null);
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [formState, setFormState] = React.useState(1);
-  const [firstTime, setFirstTime] = React.useState(true);
+  //const [firstTime, setFirstTime] = React.useState(true);
 
-  const [qualifierTable, setQualifierTable] = React.useState({});
-  const [associationsTable, setAssociationsTable] = React.useState({});
+  // const [qualifierTable, setQualifierTable] = React.useState({});
+  //const [associationsTable, setAssociationsTable] = React.useState({});
   const [qualifiers, setQualifiers] = React.useState([]);
   const [selectedFact, setSelectedFact] = React.useState('');
 
   const [qualifierImage, setDialogImage] = React.useState('');
-  const [checked, setChecked] = React.useState([]);
+  const [checked, setChecked] = React.useState(checkedParm);
   const [qualifierOpen, setQualifierOpen] = React.useState(false);
   const [qualifierData, setQualifierData] = React.useState({});
   const [qMessage, setQMessage] = React.useState('');
@@ -246,13 +246,13 @@ export default ({
 
   const [listValues, setListValues] = React.useState([]);
 
-  const [qualChecked, setQualChecked] = React.useState({});
+  const [qualChecked, setQualChecked] = React.useState(qualCheckedParam);
   // const [qualMessage, setQualMessage] = React.useState('');
   const [OGqualifiers, setOGQualifiers] = React.useState([]);
 
   const [freeText, setFreeText] = React.useState('');
   const [filterText, setFilterText] = React.useState('');
-  const [messageField, setMessageField] = React.useState('');
+  //const [messageField, setMessageField] = React.useState('');
 
   var noToggle = false;
   var recordingStatus;
@@ -266,92 +266,92 @@ export default ({
   if (OGvalue === '' && type === 'document') {
     setOGvalue(value);
   }
-
-  if (firstTime || !newFact.value) {
-    console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
-    if (valueQualifiers && valueQualifiers.length > 0) {
-      valueQualifiers.forEach(vQual => {
-        if (vQual && Object.keys(vQual).length > 0) {
-          qualifierTable[vQual.value] = vQual;
-          if (vQual.associated_activity) {
-            associationsTable[vQual.value] = vQual.associated_activity;
-          }
-        }
-      });
-    }
-    setQualifierTable(qualifierTable);
-    setAssociationsTable(associationsTable);
-
-    var mF = '';
-    let vL = Array.isArray(values) ? values.length : 0;
-    if (vL > 0) {
-      let v = 0;
-      do {
-        if (values[v].includes('~^')) {     // ~^ indicates free form text box 
-          [, mF] = values[v].split(':');    // prompt with the string after the ":"
-        }
-        v++;
-      } while (v < vL && !mF);
-    }
-    setMessageField(mF);
-
-    if (type !== 'reservation') {
-      newFact.value = {
-        selected: [],
-        associations: associationsTable,
-        freeText: {},
-      };
-    }
-
-    setQualChecked({});
-
-    if (defaultValue && type !== 'reservation') {
-      let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
-      let defaultSelections;
-      if (!dValues) {
-        defaultSelections = [dBase];
-      } else {
-        defaultSelections = dValues.split('~');
-      }
-      if (defaultSelections.length > 0) {
-        setValue(defaultSelections[0].trim()); /* this line handles numeric & text defaults */
-        setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
-        /* the rest handles selection screen defaults */
-        defaultSelections.forEach(nfValue => {
-          let [value, freeText] = nfValue.trim().split('=');
-          value = value.trim();
-          if (freeText) {
-            freeText = freeText.trim();
-            newFact.value.freeText[value] = freeText;
-            if (value === mF) {
-              setMessage(freeText);
-            } else {
-              if (value === '%filter%') {
-                setFilterText(freeText);
-              }
+  /*
+    if (firstTime || !newFact.value) {
+      console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
+      if (valueQualifiers && valueQualifiers.length > 0) {
+        valueQualifiers.forEach(vQual => {
+          if (vQual && Object.keys(vQual).length > 0) {
+            qualifierTable[vQual.value] = vQual;
+            if (vQual.associated_activity) {
+              associationsTable[vQual.value] = vQual.associated_activity;
             }
-          } else {
-            newFact.value.selected.push(value);
           }
         });
       }
-      if (lastQualifier.length > 0) {
-        newFact.value.qualifiers = {};
-        lastQualifier.forEach(qStr => {
-          let [value, qArr] = qStr.split(':');
-          newFact.value.qualifiers[value] = [...qArr.split(',')];
-        });
-        setQualChecked(newFact.value.qualifiers);
+      setQualifierTable(qualifierTable);
+      setAssociationsTable(associationsTable);
+  
+      var mF = '';
+      let vL = Array.isArray(values) ? values.length : 0;
+      if (vL > 0) {
+        let v = 0;
+        do {
+          if (values[v].includes('~^')) {     // ~^ indicates free form text box 
+            [, mF] = values[v].split(':');    // prompt with the string after the ":"
+          }
+          v++;
+        } while (v < vL && !mF);
       }
+      setMessageField(mF);
+  
+      if (type !== 'reservation') {
+        newFact.value = {
+          selected: [],
+          associations: associationsTable,
+          freeText: {},
+        };
+      }
+  
+      setQualChecked({});
+  
+      if (defaultValue && type !== 'reservation') {
+        let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
+        let defaultSelections;
+        if (!dValues) {
+          defaultSelections = [dBase];
+        } else {
+          defaultSelections = dValues.split('~');
+        }
+        if (defaultSelections.length > 0) {
+          setValue(defaultSelections[0].trim()); // this line handles numeric & text defaults 
+          setNums(defaultSelections[0].trim().split(' over ')); // two numbers
+          // the rest handles selection screen defaults
+          defaultSelections.forEach(nfValue => {
+            let [value, freeText] = nfValue.trim().split('=');
+            value = value.trim();
+            if (freeText) {
+              freeText = freeText.trim();
+              newFact.value.freeText[value] = freeText;
+              if (value === mF) {
+                setMessage(freeText);
+              } else {
+                if (value === '%filter%') {
+                  setFilterText(freeText);
+                }
+              }
+            } else {
+              newFact.value.selected.push(value);
+            }
+          });
+        }
+        if (lastQualifier.length > 0) {
+          newFact.value.qualifiers = {};
+          lastQualifier.forEach(qStr => {
+            let [value, qArr] = qStr.split(':');
+            newFact.value.qualifiers[value] = [...qArr.split(',')];
+          });
+          setQualChecked(newFact.value.qualifiers);
+        }
+      }
+  
+      setChecked(type !== 'reservation' ? newFact.value.selected : {});
+      setNewFact(newFact);
+      setFirstTime(false);
+      setPeopleMode(false);
+      setSaveMode(false);
     }
-
-    setChecked(type !== 'reservation' ? newFact.value.selected : {});
-    setNewFact(newFact);
-    setFirstTime(false);
-    setPeopleMode(false);
-    setSaveMode(false);
-  }
-
+  */
   const onChangeFreeName = event => {
     let slotIndex = event.target.id.substr(event.target.id.indexOf('#') + 1);
     newFact.value.slot[slotIndex].display_name = event.target.value;
@@ -429,6 +429,14 @@ export default ({
         }
       }
       setChecked(newChecked);
+      if (newChecked.length > 0) {
+        let stopAt = newChecked.length - 1;
+        let sMess = 'You selected: ';
+        newChecked.forEach((entry, index) => {
+          sMess += entry.split(':')[0] + (index < stopAt ? ' ~ ' : '');
+        });
+        setStatusMessage(sMess);
+      }
 
       if (!newFact.value.hasOwnProperty('selected')) {
         newFact.value.selected = {};
@@ -443,9 +451,6 @@ export default ({
   const onChangeFreeText = event => {
     newFact.value.freeText[event.target.id] = event.target.value;
     setNewFact(newFact);
-    if (event.target.id === messageField) {
-      setMessage(event.target.value);
-    }
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -454,9 +459,6 @@ export default ({
   const onChangeFreeTime = tableRow => event => {
     newFact.value.freeText[tableRow] = event;
     setNewFact(newFact);
-    if (tableRow === messageField) {
-      setMessage(event);
-    }
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -479,6 +481,7 @@ export default ({
       newFact.value.freeText['%filter%'] = newFact.value.freeText[keyValue];
     }
     setNewFact(newFact);
+    setSearchKey(newFact.value.freeText['%filter%']);
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -489,7 +492,7 @@ export default ({
 
   const onChangeQMessage = event => {
     setQMessage(event.target.value);
-    setSaveMode(true)
+    setSaveMode(true);
   };
 
   const handleQClose = event => {
@@ -499,7 +502,7 @@ export default ({
   };
 
   const handleSendMessage = async (messageToSend, selectedQualifier) => {
-    let [recipient, person_id] = selectedQualifier.split(':');
+    let [recipient,] = selectedQualifier.split(':');
     await API
       .graphql(graphqlOperation(createPutFact, {
         input: {
@@ -671,9 +674,7 @@ export default ({
     if (values) {
       let filtering = false;
       let search1 = null;
-      if (newFact?.value?.freeText?.['%filter%']) {
-        search1 = newFact.value.freeText['%filter%'].toLowerCase();
-      }
+      if (searchKey) { search1 = searchKey.toLowerCase(); }
       let search2 = searchText.toLowerCase();
       let listDisplay;
 
@@ -682,17 +683,20 @@ export default ({
           filtering = true;
           return true;
         }
-        return (
+        let theValue = (
           ((!search2 || word.toLowerCase().includes(search2)) &&
-            (!filtering || (search1 && word.toLowerCase().includes(search1)))) ||
+            (!filtering || (search1 && word.toLowerCase().includes(search1)))));
+        if (theValue) { return true; }
+        theValue = (
           word.includes('~!') ||
-          checked.includes(word)
+          checked.some((checkItem) => { return checkItem.includes(word.split(':', 2)[1].split(':')[0] + ':'); })
         );
+        return theValue;
       });
 
       setListValues(listDisplay);
     }
-  }, [checked, formState, newFact, searchText, values]);
+  }, [checked, formState, searchKey, searchText, values]);
 
   switch (type) {
     case 'characteristic_num':
@@ -749,8 +753,11 @@ export default ({
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <br />
             {!freeText ?
-              setFreeText((session.patient_display_name.split(',')[1] || session.patient_display_name.split(' ')[0]) + "'s video - "
-                + new Date().toLocaleDateString('en-US', dateOptions))
+              (defaultValue ?
+                setFreeText(defaultValue + " - " + new Date().toLocaleDateString('en-US', dateOptions))
+                :
+                setFreeText((session.patient_display_name.split(',')[1] || session.patient_display_name.split(' ')[0]) + "'s video - "
+                + new Date().toLocaleDateString('en-US', dateOptions)))
               : null}
             <FreeTextForm
               open={true}
@@ -777,7 +784,7 @@ export default ({
                 newFact.value.mediaData = pVideo;
                 if (recordingStatus !== 'stopped') {
                   recordingStatus = 'aborted';
-                  onSave();
+                  //onSave();
                 };
               }
               }
@@ -797,6 +804,9 @@ export default ({
           width='100%'
           height='100%'
           playing={true}
+          onError={(err) => {
+            enqueueSnackbar(`I'm sorry... AVA can't play that video.`, { variant: 'error' });
+          }}
         />
       );
     case 'show_image':
@@ -879,9 +889,9 @@ export default ({
         </FormControl>
       );
     case 'document':
-      if (firstTime) {
-        window.open(defaultValue, message);
-      }
+      // if (firstTime) {
+      window.open(defaultValue, message);
+    //}
     // intentionally fall through to the message case
 
     case 'message':
@@ -896,16 +906,6 @@ export default ({
         />
       );
     default:
-      if (checked.length === 0) {
-        setStatusMessage('');
-      } else {
-        let stopAt = checked.length - 1;
-        let sMess = 'You selected: ';
-        checked.forEach((entry, index) => {
-          sMess += entry.split(':')[0] + (index < stopAt ? ' ~ ' : '');
-        });
-        setStatusMessage(sMess);
-      }
       let checkBoxOn = true;
       let suppressDisplay = false;
       return (
@@ -997,7 +997,11 @@ export default ({
                           {checkBoxOn ?
                             <Checkbox
                               edge='start'
-                              checked={checked.indexOf(value.split('~-')[0]) !== -1}
+                              checked={
+                                checked.some((checkItem) => {
+                                  return checkItem.split(':')[0] === value.split('~-')[0].split(':')[0];
+                                })
+                              }
                               disableRipple
                               onClick={handleToggle(value)}
                               inputProps={{ 'aria-labelledby': labelId }}
@@ -1024,10 +1028,9 @@ export default ({
                           />
                         </React.Fragment>
                       ) : !value.includes('~%') && !value.includes('~^') ? (
-                        <FormControl className={classes.clockBox}>
+                        <FormControl fullWidth className={classes.clockBox}>
                           {value.includes('~time:') ?
-                            /* Time prompt */
-                            <React.Fragment>
+/* Time prompt */ <React.Fragment>
                               <Box
                                 flexDirection='row'
                                 display='flex'
@@ -1048,46 +1051,35 @@ export default ({
                               </Box>
                             </React.Fragment>
                             :
-                            /* Text prompt */
-                            <React.Fragment>
-                              <Box
-                                flexDirection='row'
-                                display='flex'
-                                grow={1}
-                                justifyContent='flex-start'
-                                alignItems='baseline'
-                              >
-                                <Typography
-                                  variant={'body2'}
-                                  className={classes.clockText}
-                                  noWrap
-                                  flexGrow={1}
-                                >
-                                  {freeTextFieldName}
-                                </Typography>
-                                <TextField
-                                  className={classes.freeInput}
-                                  id={freeTextFieldName}
-                                  value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
-                                  // InputLabelProps={{ shrink: true }}
-                                  onChange={onChangeFreeText}
-                                />
-                              </Box>
-                            </React.Fragment>
+/* Text prompt */ <TextField
+                              className={classes.freeInput}
+                              id={freeTextFieldName}
+                              label={freeTextFieldName}
+                              variant='standard'
+                              autoComplete='off'
+                              // fullWidth={true}
+                              value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
+                              // InputLabelProps={{ shrink: true }}
+                              onChange={onChangeFreeText}
+                            />
+
+
                           }
                         </FormControl>
                       ) : value.includes('~%') ? (
-  /* Prompt for filter */ <FormControl className={classes.freeInput}>
+  /* Prompt for filter */ <FormControl fullWidth className={classes.freeInput}>
                           <Input
                             id='%filter-input%'
-                            type='search'
+                            type='text'
                             onChange={onChangeFilterText}
                             onKeyPress={onCheckEnter}
+                            autoComplete='off'
                             placeholder={newFact?.value?.freeText?.[freeTextFieldName] || freeTextFieldName}
                             value={filterText}
                             endAdornment={
                               <InputAdornment position='end'>
-                                <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => { handleFilterText(freeTextFieldName); }} >                                 <SearchIcon />
+                                <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => { handleFilterText(freeTextFieldName); }} >
+                                  <SearchIcon />
                                 </IconButton>
                               </InputAdornment>
                             }
@@ -1131,6 +1123,108 @@ export default ({
                     You selected: {qualChecked[selectedFact].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')}
                   </DialogContentText>
                 ) : null}
+                <DialogContent pt={0}>
+                  <FormControl fullWidth>
+                    <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
+                      <List>
+                        {qualifiers
+                          ? qualifiers.map((qualifier, qIndex) =>
+                            qualifier.startsWith('~~') ? (
+                              <ListItem
+                                key={value + qIndex.toString()}
+                                role={undefined}
+                                className={classes.defaultButton}
+                              >
+                                {qualifier.startsWith('~~e') ? (
+                                  <IconButton
+                                    edge='start'
+                                    aria-label='action'
+                                    href={`mailto:${qualifier.substr(9)}`}
+                                  >
+                                    <EmailIcon />
+                                  </IconButton>
+                                ) : null}
+                                {isMobile && (qualifier.startsWith('~~c') || qualifier.startsWith('~~h')) ? (
+                                  <IconButton
+                                    edge='start'
+                                    aria-label='action'
+                                    href={`tel:${qualifier.substr(7)}`}
+                                  >
+                                    <CallIcon />
+                                  </IconButton>
+                                ) : null}
+                                {isMobile && qualifier.startsWith('~~c') ? (
+                                  <IconButton
+                                    edge='start'
+                                    aria-label='actionsms'
+                                    href={`sms:${qualifier.substr(7)}&subject = Subject&body = ${qMessage}`}
+                                  >
+                                    <TextSMSIcon />
+                                  </IconButton>
+                                ) : null}
+                                {qualifier === '~~Message:' ? (
+                                  <TextField
+                                    value={qMessage}
+                                    id='PersonMessageText'
+                                    label='Message'
+                                    variant='standard'
+                                    autoComplete='off'
+                                    onChange={onChangeQMessage}
+                                    //InputProps={{ marginLeft: '2', marginTop: '2' }}
+                                  />
+                                ) : (
+                                  <ListItemText
+                                    id={'qhead' + value}
+                                    classes={{ primary: classes.subHeader }}
+                                    primary={qualifier.substr(2)}
+                                  />)
+                                }
+                              </ListItem>
+                            ) : (
+                              <ListItem
+                                key={qualifier + qIndex.toString()}
+                                role={undefined}
+                                dense
+                                button
+                                className={classes.defaultButton}
+                                onClick={handleToggleQual(qualifier)}>
+                                <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
+                                  {(!qualifier.startsWith('~[nocheck]=')) ?
+                                    <Checkbox
+                                      edge='start'
+                                      checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
+                                      name={qualifier}
+                                      disableRipple
+                                      inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
+                                    /> : null}
+                                  {!qualifier.startsWith('~other') ? (
+                                    <ListItemText
+                                      id={`qlabelid-${qualifier}`}
+                                      // fullWidth
+                                      primary={<Typography noWrap={true}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
+                                    />
+                                  ) : (
+                                    <TextField
+                                      id={qualifier.split(':')[1] + '_in'}
+                                      label={qualifier.split(':')[1]}
+                                      variant='standard'
+                                      value={freeText}
+                                      onChange={onChangeQualText}
+                                      // InputLabelProps={{ shrink: true }}
+                                      // InputProps={{ marginLeft: '2' }}
+                                      fullWidth
+                                    />
+                                  )}
+                                </React.Fragment>
+                              </ListItem>
+                            )
+                          )
+                          : null}
+                      </List>
+                    </FormGroup>
+                  </FormControl>
+                </DialogContent>
+
               </Box>
               {qualifierData.image_url ? (
                 <Avatar src={qualifierImage} className={classes.picture}>
@@ -1138,130 +1232,8 @@ export default ({
                 </Avatar>
               ) : null}
             </Box>
-            <DialogContent pt={0}>
-              <FormControl>
-                <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
-                  <List>
-                    {qualifiers
-                      ? qualifiers.map((qualifier, qIndex) =>
-                        qualifier.startsWith('~~') ? (
-                          <ListItem
-                            key={value + qIndex.toString()}
-                            role={undefined}
-                            className={classes.defaultButton}
-                          >
-                            {qualifier.startsWith('~~e') ? (
-                              <IconButton
-                                edge='start'
-                                aria-label='action'
-                                href={`mailto:${qualifier.substr(9)}`}
-                              >
-                                <EmailIcon />
-                              </IconButton>
-                            ) : null}
-                            {isMobile && (qualifier.startsWith('~~c') || qualifier.startsWith('~~h')) ? (
-                              <IconButton
-                                edge='start'
-                                aria-label='action'
-                                href={`tel:${qualifier.substr(7)}`}
-                              >
-                                <CallIcon />
-                              </IconButton>
-                            ) : null}
-                            {isMobile && qualifier.startsWith('~~c') ? (
-                              <IconButton
-                                edge='start'
-                                aria-label='actionsms'
-                                href={`sms:${qualifier.substr(7)}&subject = Subject&body = ${qMessage}`}
-                              >
-                                <TextSMSIcon />
-                              </IconButton>
-                            ) : null}
-                            {qualifier === '~~Message:' ? (
-                              <React-Fragment>
-                                <ListItemText
-                                  id={'qhead' + value}
-                                  classes={{ primary: classes.subHeader }}
-                                  primary={qualifier.substr(2)}
-                                />
-                                <TextField
-                                  value={qMessage}
-                                  onChange={onChangeQMessage}
-                                  InputProps={{ marginLeft: '2', marginTop: '2' }}
-                                  fullWidth
-                                />
-                              </React-Fragment>
-                            ) : (
-                              <ListItemText
-                                id={'qhead' + value}
-                                classes={{ primary: classes.subHeader }}
-                                primary={qualifier.substr(2)}
-                              />)
-                            }
-                          </ListItem>
-                        ) : (
-                          <ListItem
-                            key={qualifier + qIndex.toString()}
-                            role={undefined}
-                            dense
-                            button
-                            className={classes.defaultButton}
-                            onClick={handleToggleQual(qualifier)}>
-                            <React.Fragment key={`qfragment-${qualifier}-${qIndex.toString()}`}>
-                              {(!qualifier.startsWith('~[nocheck]=')) ?
-                                <Checkbox
-                                  edge='start'
-                                  checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
-                                  name={qualifier}
-                                  disableRipple
-                                  inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
-                                /> : null}
-                              {!qualifier.startsWith('~other') ? (
-                                <ListItemText
-                                  id={`qlabelid-${qualifier}`}
-                                  fullWidth
-                                  primary={<Typography noWrap={true}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
-                                />
-                              ) : (
-                                <FormControl fullWidth>
-                                  <Grid
-                                    container
-                                    alignItems='center'
-                                    justifyContent='flex-start'
-                                    className={classes.defaultButton}>
-                                    <Grid item marginRight={1} paddingRight={2}>
-                                      <Typography noWrap={true} marginRight={1}>
-                                        {qualifier.split(':')[1] + ':'}
-                                      </Typography>
-                                    </Grid>
-                                    <Grid item>
-                                      <Typography>
-                                        <span>&nbsp;&nbsp;</span>
-                                      </Typography>
-                                    </Grid>
-                                    <Grid item>
-                                      <TextField
-                                        value={freeText}
-                                        onChange={onChangeQualText}
-                                        InputLabelProps={{ shrink: true }}
-                                        InputProps={{ marginLeft: '2' }}
-                                        fullWidth
-                                      />
-                                    </Grid>
-                                  </Grid>
-                                </FormControl>
-                              )}
-                            </React.Fragment>
-                          </ListItem>
-                        )
-                      )
-                      : null}
-                  </List>
-                </FormGroup>
-              </FormControl>
-            </DialogContent>
             <DialogActions>
-              <Button onClick={handleQClose} color='inherit' size='small' variant='contained'>
+              <Button onClick={handleQClose} className={classes.reject} size='small' variant='contained'>
                 Back
               </Button>
               {saveMode ?
@@ -1275,6 +1247,7 @@ export default ({
                 </Button>
                 : null}
             </DialogActions>
+
           </Dialog>
         </React.Fragment >
       );
