@@ -441,7 +441,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       },
     };
 
-    if (defaultValue && fact.type !== 'reservation') {
+    if (defaultValue
+      && fact.type !== 'reservation'
+      && fact.type !== 'play_video'
+    ) {
       let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
       let defaultSelections;
       if (!dValues) {

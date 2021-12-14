@@ -804,6 +804,9 @@ export default ({
           width='100%'
           height='100%'
           playing={true}
+          onError={(err) => {
+            enqueueSnackbar(`I'm sorry... AVA can't play that video.`, { variant: 'error' });
+          }}
         />
       );
     case 'show_image':
