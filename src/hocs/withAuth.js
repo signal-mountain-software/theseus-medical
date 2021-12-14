@@ -125,7 +125,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v21.12.06${window.location.href.split('//')[1].slice(0, 1)}`
+          `Version=v21.12.13${window.location.href.split('//')[1].slice(0, 1)}`
         );
       };
     } catch (err) {
@@ -187,7 +187,7 @@ export default Component => props => {
         updateSession, {
         input: {
           session_id: pUser,
-          status: `v21.12.06${window.location.href.split('//')[1].slice(0, 1)}~${timeOut}`
+          status: `v21.12.13${window.location.href.split('//')[1].slice(0, 1)}~${timeOut}`
         }
       }
       ))
