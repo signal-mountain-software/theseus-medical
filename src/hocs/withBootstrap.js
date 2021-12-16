@@ -57,9 +57,14 @@ export default Component => props => {
         usingDefaultSession = true;
         getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: `${default_client_id}~default` }))
           .catch(error => {
-            enqueueSnackbar(`Contact AVA support.  There is no default Session`, { variant: 'error', persist: true, });
+            enqueueSnackbar(`You may not be connected to the internet.  AVA requires a network connection.`, { variant: 'error', persist: true, });
+            getSessionResult = null;
+            throw (error);
           });
-        session.user_display_name = 'Welcome ' + user.username;
+        if (getSessionResult?.data) {
+          session = getSessionResult.data.getSession;
+          session.user_display_name = 'Welcome ' + user.username;
+        }
       }
       else {
         session = getSessionResult.data.getSession;
