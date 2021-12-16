@@ -33,7 +33,7 @@ import Paper from '@material-ui/core/Paper';
 import TopBar from '../components/TopBar';
 
 export default Component => props => {
-  const [signedIn, setSignedIn] = React.useState(false);
+  const [signedIn, setSignedIn] = React.useState(true);
   const {
     enqueueSnackbar, closeSnackbar
   } = useSnackbar();
@@ -138,7 +138,8 @@ export default Component => props => {
   const setUser = async () => {
     try {
       const user = await Auth.currentAuthenticatedUser();
-      if (user) setSignedIn(true);
+      if (user) { setSignedIn(true); }
+      else { setSignedIn(false) }
     } catch (err) {
       enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in.`, {
         variant: 'info'
