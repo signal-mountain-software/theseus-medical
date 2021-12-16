@@ -122,10 +122,11 @@ export default Component => props => {
     try {
       const data = await Auth.currentSession();
       if (data) {
+        let timeStamp = new Date().toString();
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v21.12.13${window.location.href.split('//')[1].slice(0, 1)}`
+          `Version=v21.12.13${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
@@ -181,13 +182,12 @@ export default Component => props => {
   };
 
   const logAVAAccess = async (pUser, pSession, pMessage) => {
-    let timeOut = new Date().toString();
     await API
       .graphql(graphqlOperation(
         updateSession, {
         input: {
           session_id: pUser,
-          status: `v21.12.13${window.location.href.split('//')[1].slice(0, 1)}~${timeOut}`
+          status: pMessage
         }
       }
       ))

@@ -40,12 +40,13 @@ export default Component => props => {
       // Fred signs on as fred and we get Sessionv2 row with fred as primary key.  We assume this session is for user_id = fred.
       // That user_id will persist throughout the session and be used to determine which users you are allowed to work on behalf of (responsible_for)
       // The current user that you are working on behalf of (often and typically yourself), is stored in patient_id
-      getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username })).catch(error => {
-        enqueueSnackbar(`Welcome to AVA, ${user.username}! Please tap the Welcome button (the oval toward the top left of your screen).  That's where you'll be able to complete your account setup.
+      getSessionResult = await API.graphql(graphqlOperation(getSession, { session_id: user.username }))
+        .catch(error => {
+          enqueueSnackbar(`Welcome to AVA, ${user.username}! Please tap the Welcome button (the oval toward the top left of your screen).  That's where you'll be able to complete your account setup.
                 Once that's complete, we'll get your account finalized right away.  No worries, though!  You can use many AVA features in the meantime while we personalize things for you.`, {
-          variant: 'info', persist: true,
+            variant: 'info', persist: true,
+          });
         });
-      });
 
       var session;
 
@@ -62,15 +63,21 @@ export default Component => props => {
       }
       else {
         session = getSessionResult.data.getSession;
-        session.session_id = `v21.12.13${window.location.href.split('//')[1].slice(0, 1)}`;
         if (session.user_id !== user.username) {
           enqueueSnackbar(`You are emulating ${session.user_id}`, {
             variant: 'info',
           });
+          let emulatingSession = await API.graphql(graphqlOperation(getSession, { session_id: getSessionResult.data.getSession.user_id }))
+            .catch(error => {
+              enqueueSnackbar(`Request to emulate ${getSessionResult.data.getSession.user_id} failed.  Using ${user.user_id} for this session.`, {
+                variant: 'info', persist: true,
+              });
+              emulatingSession = null;
+            });
+          if (emulatingSession) { session = emulatingSession.data.getSession}
         }
+        session.session_id = `v21.12.13${window.location.href.split('//')[1].slice(0, 1)}`;
       }
-
-
 
       // get person's Account information
       getProfileResult = await API.graphql(graphqlOperation(getPerson, { person_id: (session.user_id) }))
