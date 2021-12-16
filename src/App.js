@@ -60,6 +60,7 @@ const handleWriteError = async message => {
     patient_id: 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: message,
+    status: new Date().toString(),
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
