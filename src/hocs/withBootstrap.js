@@ -17,9 +17,9 @@ export default Component => props => {
       dispatch({ type: SET_USER, payload: user });
     })().catch(error => {
       console.log(JSON.stringify(error));
-    //  enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message || error}`, {
-    //    variant: 'error',
-    //  });
+      //  enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message || error}`, {
+      //    variant: 'error',
+      //  });
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -80,9 +80,9 @@ export default Component => props => {
               });
               emulatingSession = null;
             });
-          if (emulatingSession) { session = emulatingSession.data.getSession}
+          if (emulatingSession) { session = emulatingSession.data.getSession; }
         }
-        session.session_id = `v21.12.13${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `v21.12.20${window.location.href.split('//')[1].slice(0, 1)}`;
       }
 
       // get person's Account information
@@ -163,7 +163,7 @@ export default Component => props => {
                 (err) => {
                   console.log(JSON.stringify(err));
                   console.log(`${respArray[r]} not found.  Trying Group table`);
-});
+                });
             if (pRec?.data?.getPerson) {
               pArray.push({
                 display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
