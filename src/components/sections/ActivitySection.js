@@ -384,10 +384,19 @@ export default ({ patient, session }) => {
     } else {
       if (newFact.hasOwnProperty('value') && newFact.value) {
         if (newFact.value.hasOwnProperty('mediaData')) {
+          let valueSelectedString = '';
+          if (newFact.value.selected) {
+            valueSelectedString += ' ~ ' + newFact.value.selected.join(' ~ ');
+          }
+          if (newFact.value.freeText) {
+            for (const [k, v] of Object.entries(newFact.value.freeText)) {
+              valueSelectedString += ` ~ ${k}=${v}`;
+            }
+          }
           if (newFact.value.mediaData.ContentType === 'video/webm' && !actionCancelled) {
             const finalFilename = await putVideo(newFact.value);
             const vName = newFact.value.tag;
-            newFact.value = `file_details.s3file=${finalFilename} ~ userTag=${vName}`;
+            newFact.value = `file_details.s3file=${finalFilename} ~ Video ~ userTag=${vName}${valueSelectedString}`;
             let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
               .catch(error => {
                 console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`);
@@ -395,7 +404,7 @@ export default ({ patient, session }) => {
             setLastWrittenFact(writtenFact?.data?.createPutFact || null);
           } else {
             const finalFilename = await putFile(newFact.value);
-            newFact.value = `file_details.s3file=${finalFilename} ~ userTag=${newFact.value.tag}`;
+            newFact.value = `file_details.s3file=${finalFilename} ~ File ~ userTag=${newFact.value.tag}${valueSelectedString}`;
             let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
               .catch(error => {
                 console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`);
@@ -589,6 +598,10 @@ export default ({ patient, session }) => {
 
     async function putFile(params) {    // Uploading files to the bucket
       let mediaData = newFact.value.mediaData;
+      mediaData.metadata = {
+        Key: 'Content-Type',
+        Value: newFact.value.mediaData.Body.type
+      }
       console.log(mediaData);
       await s3.upload(mediaData, function (err, data) {
         if (err) {
