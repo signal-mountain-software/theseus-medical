@@ -136,10 +136,10 @@ export default Component => props => {
   };
 
   const setUser = async () => {
+    setSignedIn(false);
     try {
       const user = await Auth.currentAuthenticatedUser();
       if (user) { setSignedIn(true); }
-      else { setSignedIn(false) }
     } catch (err) {
       enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in.`, {
         variant: 'info'

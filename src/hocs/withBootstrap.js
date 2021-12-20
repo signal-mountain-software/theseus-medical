@@ -16,9 +16,10 @@ export default Component => props => {
       const user = await Auth.currentAuthenticatedUser();
       dispatch({ type: SET_USER, payload: user });
     })().catch(error => {
-      enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message}`, {
-        variant: 'error',
-      });
+      console.log(JSON.stringify(error));
+    //  enqueueSnackbar(`Whoops! Something went wrong when fetching current user: ${error.message || error}`, {
+    //    variant: 'error',
+    //  });
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -159,7 +160,10 @@ export default Component => props => {
             let pRec = await API
               .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
               .catch(
-                () => { /* console.log(`${respArray[r]} not found.  Trying Group table`) */ });
+                (err) => {
+                  console.log(JSON.stringify(err));
+                  console.log(`${respArray[r]} not found.  Trying Group table`);
+});
             if (pRec?.data?.getPerson) {
               pArray.push({
                 display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
