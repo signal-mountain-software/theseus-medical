@@ -117,7 +117,7 @@ const useStyles = makeStyles(theme => ({
     //width: '95%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
-    height: theme.typography.fontSize * 2.8,
+    minHeight: theme.typography.fontSize * 2.8,
   },
   clockBox: {
     marginLeft: 0,
@@ -252,7 +252,6 @@ export default ({
 
   const [freeText, setFreeText] = React.useState('');
   const [filterText, setFilterText] = React.useState('');
-  //const [messageField, setMessageField] = React.useState('');
 
   var noToggle = false;
   var recordingStatus;
@@ -266,92 +265,7 @@ export default ({
   if (OGvalue === '' && type === 'document') {
     setOGvalue(value);
   }
-  /*
-    if (firstTime || !newFact.value) {
-      console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
-      if (valueQualifiers && valueQualifiers.length > 0) {
-        valueQualifiers.forEach(vQual => {
-          if (vQual && Object.keys(vQual).length > 0) {
-            qualifierTable[vQual.value] = vQual;
-            if (vQual.associated_activity) {
-              associationsTable[vQual.value] = vQual.associated_activity;
-            }
-          }
-        });
-      }
-      setQualifierTable(qualifierTable);
-      setAssociationsTable(associationsTable);
-  
-      var mF = '';
-      let vL = Array.isArray(values) ? values.length : 0;
-      if (vL > 0) {
-        let v = 0;
-        do {
-          if (values[v].includes('~^')) {     // ~^ indicates free form text box 
-            [, mF] = values[v].split(':');    // prompt with the string after the ":"
-          }
-          v++;
-        } while (v < vL && !mF);
-      }
-      setMessageField(mF);
-  
-      if (type !== 'reservation') {
-        newFact.value = {
-          selected: [],
-          associations: associationsTable,
-          freeText: {},
-        };
-      }
-  
-      setQualChecked({});
-  
-      if (defaultValue && type !== 'reservation') {
-        let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
-        let defaultSelections;
-        if (!dValues) {
-          defaultSelections = [dBase];
-        } else {
-          defaultSelections = dValues.split('~');
-        }
-        if (defaultSelections.length > 0) {
-          setValue(defaultSelections[0].trim()); // this line handles numeric & text defaults 
-          setNums(defaultSelections[0].trim().split(' over ')); // two numbers
-          // the rest handles selection screen defaults
-          defaultSelections.forEach(nfValue => {
-            let [value, freeText] = nfValue.trim().split('=');
-            value = value.trim();
-            if (freeText) {
-              freeText = freeText.trim();
-              newFact.value.freeText[value] = freeText;
-              if (value === mF) {
-                setMessage(freeText);
-              } else {
-                if (value === '%filter%') {
-                  setFilterText(freeText);
-                }
-              }
-            } else {
-              newFact.value.selected.push(value);
-            }
-          });
-        }
-        if (lastQualifier.length > 0) {
-          newFact.value.qualifiers = {};
-          lastQualifier.forEach(qStr => {
-            let [value, qArr] = qStr.split(':');
-            newFact.value.qualifiers[value] = [...qArr.split(',')];
-          });
-          setQualChecked(newFact.value.qualifiers);
-        }
-      }
-  
-      setChecked(type !== 'reservation' ? newFact.value.selected : {});
-      setNewFact(newFact);
-      setFirstTime(false);
-      setPeopleMode(false);
-      setSaveMode(false);
-    }
-  */
+
   const onChangeFreeName = event => {
     let slotIndex = event.target.id.substr(event.target.id.indexOf('#') + 1);
     newFact.value.slot[slotIndex].display_name = event.target.value;
@@ -382,11 +296,12 @@ export default ({
       closeSnackbar();   // close any persistent snackbars on the screen
 
       let checkedItems = value.split('~-');
-      const currentIndex = checked.indexOf(checkedItems[0]);
+      let item2Check = checkedItems[0];
+      const currentIndex = checked.indexOf(item2Check);
       const newChecked = [...checked];
 
       if (currentIndex === -1) {
-        newChecked.push(checkedItems[0]);
+        newChecked.push(item2Check);
         if (checkedItems.length > 1) {
           for (let i = 1; i < checkedItems.length; i++) {
             let inverse = true;
@@ -451,6 +366,13 @@ export default ({
   const onChangeFreeText = event => {
     newFact.value.freeText[event.target.id] = event.target.value;
     setNewFact(newFact);
+    if (event.target.value.length > 0) {
+      if (!checked.includes(event.target.id)) { checked.push(event.target.id); }
+    }
+    else {
+      let itsAt = checked.indexOf(event.target.id);
+      if (itsAt > -1) { checked.splice(itsAt,1) }
+    }
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -508,6 +430,7 @@ export default ({
         input: {
           patient_id: session.patient_id,
           activity_key: 'form.send_message',
+          status: new Date().toString(),
           value: `form.selections.${selectedQualifier} ~ MessageText = ${messageToSend}`,
           qualifier: [],
           session: {
@@ -757,7 +680,7 @@ export default ({
                 setFreeText(defaultValue + " - " + new Date().toLocaleDateString('en-US', dateOptions))
                 :
                 setFreeText((session.patient_display_name.split(',')[1] || session.patient_display_name.split(' ')[0]) + "'s video - "
-                + new Date().toLocaleDateString('en-US', dateOptions)))
+                  + new Date().toLocaleDateString('en-US', dateOptions)))
               : null}
             <FreeTextForm
               open={true}
@@ -889,11 +812,7 @@ export default ({
         </FormControl>
       );
     case 'document':
-      // if (firstTime) {
-      window.open(defaultValue, message);
-    //}
-    // intentionally fall through to the message case
-
+      window.open(defaultValue, message);  // intentionally fall through to the message case
     case 'message':
       return (
         <FreeTextForm
@@ -932,20 +851,16 @@ export default ({
                   /* ~[checkbox=off]             | Stop rendering check boxes, render value only
                   /* ~[checkbox=on]              | Begin rendering check boxes AND values
 
-                  /* prompt for text response...
+                  /* prompt for response...
                   /* ~other:<text>               | prompt for text response with <text>     | ~other:What is your name?                                */
                   /* ~time:<text>                | prompt for time response with <text>     | ~time:What time would you like your meal?                */
+                  /* ~file:<folder_name>         | render "pick a file"                     | ~file:public/documents                                   */
+
                   /* special cases...
                   /* ~+<key>~<value>             | use value only when <key> is selected    | ~+Filet Mignon~~!How would you like your filet cooked?      */
-                  /* ~includeObservations.<code> | use CLIENT_ID~<code> to get one or more  | ~includeObservations.entree_today
-                  /*                             | rows from Observations table; use each   |
-                  /*                             | each row's observation_code as a value   |
-                  /*                             | to build out this form                   |
 
-                  /* ~^<useTextBoxforThis>       | text entered will be shown in the        |                                                           */
-                  /*                             | message area (just below the title)      |                                                           */
-
-
+                  /* ~^<useTextBoxforThis>       | prompt with a multi-line box, show value |                                                           */
+                  /*                             | in message area (just below the title)   |                                                           */
 
                   /* */
 
@@ -953,10 +868,8 @@ export default ({
                   /* ~~! or ~! means "always show this line" */
                   /* ~% means suppress all lines after this one that do not include 
                       the freetext attached to this line 
-                      (prompt for freeText with ~%other:<prompt text>) */
-
-
-                  let freeTextFieldName = value.split(':')[1];
+                      (prompt for freeText with ~%other:<prompt text>) 
+                  */
 
                   if (value.startsWith('~+')) {
                     let checkMe = value.substr(2).replace('~', '%%').split('%%');
@@ -974,131 +887,169 @@ export default ({
 
                   if (suppressDisplay) { return null; }
 
-  /* Headers */   return value.startsWith('~~') ? (
-                    <ListItem key={value + vIndex.toString()} role={undefined} dense className={classes.factTitle}>
-                      <ListItemText
-                        id={'subhead' + value}
-                        primary={
-                          <Typography className={classes.factTitle}>
-                            {value.replace('!', '').substr(2)}
-                          </Typography>
+                  let [specialKey, freeTextFieldName] = value.split(':');
+                  let specialHandling = false;
+                  let header = false;
+                  let showCheckBox = true;
+                  let textPrompt = false;
+                  let promptBox = false;
+                  if (specialKey.charAt(0) === '~') {
+                    showCheckBox = (specialKey === '~withCheckBox');
+                    switch (specialKey.charAt(1)) { 
+                      case '~': { header = true; break; }
+                      case '%': { specialHandling = true; break; }
+                      default: {
+                        if (showCheckBox || specialKey.includes('other')) {
+                          textPrompt = true;
+                          promptBox = specialKey.includes('^');
                         }
-                      />
-                    </ListItem>
-                  ) : (
+                        else {
+                          specialHandling = true;
+                        }
+                      }
+                    }
+                  };
+
+                  return (
                     <ListItem
                       id={'blockhead' + value}
                       key={value + vIndex.toString()}
                       role={undefined}
                       dense
+                      //className={header ? classes.factTitle : classes.defaultButton}>
                       className={classes.defaultButton}>
-                      {(!value.includes('other:') && !value.includes('~time:')) ? (
-  /* Check Box */       <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
-                          {checkBoxOn ?
+                      {!specialHandling ?
+                        <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
+                          {checkBoxOn && showCheckBox &&
                             <Checkbox
                               edge='start'
                               checked={
                                 checked.some((checkItem) => {
-                                  return checkItem.split(':')[0] === value.split('~-')[0].split(':')[0];
+                                  return (
+                                    checkItem.split(':').pop() === value.split('~-')[0].split(':').pop()
+                                  )
                                 })
                               }
                               disableRipple
                               onClick={handleToggle(value)}
                               inputProps={{ 'aria-labelledby': labelId }}
                             />
-                            : null
                           }
-                          {qualifierTable.hasOwnProperty(value) ? (
+                          {qualifierTable.hasOwnProperty(value) &&
                             <ListItemSecondaryAction>
                               <IconButton edge='end' aria-label='comments' onClick={handleQualSelected(value)}>
                                 <InfoOutlinedIcon />
                               </IconButton>
                             </ListItemSecondaryAction>
-                          ) : null}
-                          <ListItemText
-                            id={labelId}
-                            classes={{ root: classes.inputText }}
-                            primary={value.split(/:(?!\d)/g)[0].split('~-')[0]}
-                            onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : null}
-                            secondary={
-                              newFact?.value?.qualifiers?.[value]
-                                ? newFact.value.qualifiers[value].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')
-                                : null
-                            }
-                          />
-                        </React.Fragment>
-                      ) : !value.includes('~%') && !value.includes('~^') ? (
-                        <FormControl fullWidth className={classes.clockBox}>
-                          {value.includes('~time:') ?
-/* Time prompt */ <React.Fragment>
-                              <Box
-                                flexDirection='row'
-                                display='flex'
-                                grow={1}
-                                justifyContent='flex-start'
-                                alignItems='baseline'>
-                                <Typography variant={'body2'} className={classes.clockText}>
-                                  {freeTextFieldName}
+                          }
+                          {header && false &&
+                            <ListItemText
+                              id={'subhead' + value}
+                              primary={
+                                <Typography className={classes.factTitle}>
+                                  {value.replace('!', '').substr(2)}
                                 </Typography>
-                                <TimePicker
-                                  value={newFact?.value?.freeText?.[freeTextFieldName] || '0:00'} clearIcon={null}
-                                  clockIcon={null}
-                                  // className={classes.freeInput}
-                                  className={classes.clockInput}
-                                  disableClock={true}
-                                  onChange={onChangeFreeTime(freeTextFieldName)}
-                                />
-                              </Box>
-                            </React.Fragment>
-                            :
-/* Text prompt */ <TextField
+                              }
+                            />
+                          }
+                          {textPrompt ||
+                            <ListItemText
+                              id={labelId}
+                              primary={
+                                header ?
+                                  <Typography className={classes.factTitle}>
+                                    {value.replace('!', '').substr(2)}
+                                  </Typography>
+                                  :
+                                  <Typography className={classes.inputText}>
+                                    {value.split(/:(?!\d)/g)[0].split('~-')[0]}
+                                  </Typography>
+                              }
+                              onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : null}
+                              secondary={
+                                newFact?.value?.qualifiers?.[value] &&
+                                newFact.value.qualifiers[value].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')
+                              }
+                            />
+                          }
+                          {textPrompt &&
+                            <TextField
                               className={classes.freeInput}
                               id={freeTextFieldName}
                               label={freeTextFieldName}
-                              variant='standard'
+                              variant={'standard'}
+                              multiline={promptBox}
+                              fullWidth                            
                               autoComplete='off'
-                              // fullWidth={true}
                               value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
-                              // InputLabelProps={{ shrink: true }}
                               onChange={onChangeFreeText}
                             />
-
-
                           }
-                        </FormControl>
-                      ) : value.includes('~%') ? (
-  /* Prompt for filter */ <FormControl fullWidth className={classes.freeInput}>
-                          <Input
-                            id='%filter-input%'
-                            type='text'
-                            onChange={onChangeFilterText}
-                            onKeyPress={onCheckEnter}
-                            autoComplete='off'
-                            placeholder={newFact?.value?.freeText?.[freeTextFieldName] || freeTextFieldName}
-                            value={filterText}
-                            endAdornment={
-                              <InputAdornment position='end'>
-                                <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => { handleFilterText(freeTextFieldName); }} >
-                                  <SearchIcon />
-                                </IconButton>
-                              </InputAdornment>
-                            }
-                          />
-                        </FormControl>
-                      ) : (
-  /* Text box prompt */ <TextField
-                          id={freeTextFieldName}
-                          label={freeTextFieldName}
-                          multiline
-                          fullWidth
-                          rows={5}
-                          type='text'
-                          variant='outlined'
-                          value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
-                          InputLabelProps={{ shrink: true }}
-                          onChange={onChangeFreeText}
-                        />
-                      )}
+                        </React.Fragment>
+                        :
+                        <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
+                          {value.includes('~%') &&  /* Prompt for filter */
+                            <FormControl fullWidth className={classes.freeInput}>
+                              <Input
+                                id='%filter-input%'
+                                type='text'
+                                onChange={onChangeFilterText}
+                                onKeyPress={onCheckEnter}
+                                autoComplete='off'
+                                placeholder={newFact?.value?.freeText?.[freeTextFieldName] || freeTextFieldName}
+                                value={filterText}
+                                endAdornment={
+                                  <InputAdornment position='end'>
+                                    <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => { handleFilterText(freeTextFieldName); }} >
+                                      <SearchIcon />
+                                    </IconButton>
+                                  </InputAdornment>
+                                }
+                              />
+                            </FormControl>
+                          }
+                          {value.startsWith('~file:') && /* File prompt */
+                            <input
+                              type="file"
+                              onChange={async (target) => {
+                                let fObj = target.target.files[0];
+                                let oName = fObj.name.toLowerCase().split('.');
+                                let oType = oName.pop();
+                                let fName = freeText ? (freeText + '.' + oType) : fObj.name;
+                                const pFile = {
+                                  Bucket: 'theseus-medical-storage',
+                                  Key: freeTextFieldName + fName,
+                                  Body: fObj,
+                                  ACL: 'public-read-write',
+                                };
+                                newFact.value.tag = freeText || oName;
+                                newFact.value.mediaData = pFile;
+                              }
+                              }
+                            />
+                          }
+                          {value.startsWith('~time:') && /* Time prompt */
+                            <Box
+                              flexDirection='row'
+                              display='flex'
+                              grow={1}
+                              justifyContent='flex-start'
+                              alignItems='baseline'>
+                              <Typography variant={'body2'} className={classes.clockText}>
+                                {freeTextFieldName}
+                              </Typography>
+                              <TimePicker
+                                value={newFact?.value?.freeText?.[freeTextFieldName] || '0:00'} clearIcon={null}
+                                clockIcon={null}
+                                // className={classes.freeInput}
+                                className={classes.clockInput}
+                                disableClock={true}
+                                onChange={onChangeFreeTime(freeTextFieldName)}
+                              />
+                            </Box>
+                          }
+                        </React.Fragment>
+                      }
                     </ListItem>
                   );
                 })}
@@ -1170,7 +1121,7 @@ export default ({
                                     variant='standard'
                                     autoComplete='off'
                                     onChange={onChangeQMessage}
-                                    //InputProps={{ marginLeft: '2', marginTop: '2' }}
+                                  //InputProps={{ marginLeft: '2', marginTop: '2' }}
                                   />
                                 ) : (
                                   <ListItemText
@@ -1197,24 +1148,26 @@ export default ({
                                       disableRipple
                                       inputProps={{ 'aria-labelledby': `qlabel-${qualifier}` }}
                                     /> : null}
-                                  {!qualifier.startsWith('~other') ? (
-                                    <ListItemText
-                                      id={`qlabelid-${qualifier}`}
-                                      // fullWidth
-                                      primary={<Typography noWrap={true}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
-                                    />
-                                  ) : (
-                                    <TextField
-                                      id={qualifier.split(':')[1] + '_in'}
-                                      label={qualifier.split(':')[1]}
-                                      variant='standard'
-                                      value={freeText}
-                                      onChange={onChangeQualText}
-                                      // InputLabelProps={{ shrink: true }}
-                                      // InputProps={{ marginLeft: '2' }}
-                                      fullWidth
-                                    />
-                                  )}
+                                  {!qualifier.startsWith('~other') ?
+                                    (
+                                      <ListItemText
+                                        id={`qlabelid-${qualifier}`}
+                                        primary={<Typography noWrap={true}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
+                                      />
+                                    )
+                                    :
+                                    (
+                                      <TextField
+                                        id={qualifier.split(':')[1] + '_in'}
+                                        label={qualifier.split(':')[1]}
+                                        variant='standard'
+                                        value={freeText}
+                                        onChange={onChangeQualText}
+                                        // InputLabelProps={{ shrink: true }}
+                                        // InputProps={{ marginLeft: '2' }}
+                                        fullWidth
+                                      />
+                                    )}
                                 </React.Fragment>
                               </ListItem>
                             )
