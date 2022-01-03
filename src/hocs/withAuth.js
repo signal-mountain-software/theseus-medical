@@ -33,7 +33,7 @@ import Paper from '@material-ui/core/Paper';
 import TopBar from '../components/TopBar';
 
 export default Component => props => {
-  const [signedIn, setSignedIn] = React.useState(false);
+  const [signedIn, setSignedIn] = React.useState(true);
   const {
     enqueueSnackbar, closeSnackbar
   } = useSnackbar();
@@ -122,10 +122,11 @@ export default Component => props => {
     try {
       const data = await Auth.currentSession();
       if (data) {
+        let timeStamp = new Date().toString();
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v21.12.13${window.location.href.split('//')[1].slice(0, 1)}`
+          `Version=v22.1.3${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
@@ -135,9 +136,10 @@ export default Component => props => {
   };
 
   const setUser = async () => {
+    setSignedIn(false);
     try {
       const user = await Auth.currentAuthenticatedUser();
-      if (user) setSignedIn(true);
+      if (user) { setSignedIn(true); }
     } catch (err) {
       enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in.`, {
         variant: 'info'
@@ -181,18 +183,20 @@ export default Component => props => {
   };
 
   const logAVAAccess = async (pUser, pSession, pMessage) => {
-    let timeOut = new Date().toString();
     await API
       .graphql(graphqlOperation(
         updateSession, {
         input: {
           session_id: pUser,
-          status: `v21.12.13${window.location.href.split('//')[1].slice(0, 1)}~${timeOut}`
+          status: pMessage
         }
       }
       ))
       .catch(error => {
         console.log(`Can't update session in logusage: ${error.errors[0].message}`);
+        enqueueSnackbar(`You are not connected to the internet.  AVA requires a network connection.`, {
+          variant: 'error', persist: true
+        });
       });
   };
 

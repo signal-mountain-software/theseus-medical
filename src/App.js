@@ -41,14 +41,16 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError( JSON.stringify(error) + ' ' + JSON.stringify(info) );
+    handleWriteError(`Error "${error}" encountered.  Info is ${info} (${JSON.stringify(info)})` );
   }
 
   render() {
     if (hasError) {
-      return <h3>AVA eFact written</h3>;
+      return <h3>AVA encountered an error</h3>;
     }
-    return this.props.children;
+    else {
+      return this.props.children;
+    }
   }
 }
 
@@ -58,6 +60,7 @@ const handleWriteError = async message => {
     patient_id: 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: message,
+    status: new Date().toString(),
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',

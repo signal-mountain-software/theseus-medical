@@ -283,14 +283,14 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   React.useEffect(() => {
     if (fact && session) {
-            
+
       var factCode = fact?.code?.split('.')[0];
       setFactEventClass(false);
       switch (factCode) {
         case 'document':
         case 'render':
         case 'query':
-        case 'list': { break; }   // leave both PromoClass, IOClass, and MessageClass as false
+        case 'list': { break; }   // leave PromoClass, IOClass, and MessageClass as false
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break; }
         case 'promo': { setFactPromoClass(true); break; }
         case 'search': { setFactEventClass(true); break; }
@@ -422,7 +422,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     }
     //setMessageField(mF);
 
-    
+
 
     setQualChecked({});
 
@@ -432,10 +432,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       value: (fact.type === 'reservation')
         ? fact.default_value
         : {
-        selected: [],
-        associations: associationsTable,
-        freeText: {},
-      },
+          selected: [],
+          associations: associationsTable,
+          freeText: {},
+        },
       session: {
         user_id: session.user_id,
         session_id: session.session_id,
@@ -485,7 +485,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         setQualChecked(nF.value.qualifiers);
       }
     }
-    
+
     setChecked(fact.type !== 'reservation' ? nF.value.selected : {});
     setNewFact(nF);
     //setFirstTime(false);
