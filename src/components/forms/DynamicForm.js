@@ -728,7 +728,7 @@ export default ({
           height='100%'
           playing={true}
           onError={(err) => {
-            enqueueSnackbar(`I'm sorry... AVA can't play that video.`, { variant: 'error' });
+            enqueueSnackbar(`I'm sorry... AVA can't play that video. (${err})`, { variant: 'error' });
           }}
         />
       );

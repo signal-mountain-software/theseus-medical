@@ -161,7 +161,6 @@ export default Component => props => {
               .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
               .catch(
                 (err) => {
-                  console.log(JSON.stringify(err));
                   console.log(`${respArray[r]} not found.  Trying Group table`);
                 });
             if (pRec?.data?.getPerson) {
