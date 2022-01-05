@@ -126,7 +126,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v22.1.3${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+          `Version=v22.1.10${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
