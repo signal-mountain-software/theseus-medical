@@ -371,7 +371,7 @@ export default ({
     }
     else {
       let itsAt = checked.indexOf(event.target.id);
-      if (itsAt > -1) { checked.splice(itsAt,1) }
+      if (itsAt > -1) { checked.splice(itsAt, 1); }
     }
     var resetter = formState + 1;
     setFormState(resetter);
@@ -697,7 +697,7 @@ export default ({
               replayVideoAutoplayAndLoopOff
               onRecordingComplete={async (videoBlob) => {
                 const pVideo = {
-                  Bucket: 'smsoftware-reports',
+                  Bucket: 'theseus-medical-storage',
                   Key: newFact.activity_key.replace('.', '^').split('^')[1] + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
                   Body: videoBlob,
                   ACL: 'public-read-write',
@@ -727,8 +727,24 @@ export default ({
           width='100%'
           height='100%'
           playing={true}
-          onError={(err) => {
-            enqueueSnackbar(`I'm sorry... AVA can't play that video. (${err})`, { variant: 'error' });
+          onError={async (err) => {
+            console.log(err);
+            enqueueSnackbar(`I'm sorry... AVA can't play that video. (${err.target.error.message || 'Details not provided'})`, { variant: 'error' });
+            await API
+              .graphql(graphqlOperation(createPutFact, {
+                input: {
+                  patient_id: session.patient_id,
+                  activity_key: 'error.videoPlayer',
+                  status: new Date().toString(),
+                  value: JSON.stringify(`Code=${err.target.error.code} Message=${err.target.error.message}`),
+                  qualifier: [defaultValue, err?.target?.outerHTML],
+                  session: {
+                    user_id: session.user_id,
+                    session_id: session.session_id
+                  },
+                }
+              }))
+              .catch(error => { console.log(error) });
           }}
         />
       );
@@ -895,7 +911,7 @@ export default ({
                   let promptBox = false;
                   if (specialKey.charAt(0) === '~') {
                     showCheckBox = (specialKey === '~withCheckBox');
-                    switch (specialKey.charAt(1)) { 
+                    switch (specialKey.charAt(1)) {
                       case '~': { header = true; break; }
                       case '%': { specialHandling = true; break; }
                       default: {
@@ -927,7 +943,7 @@ export default ({
                                 checked.some((checkItem) => {
                                   return (
                                     checkItem.split(':').pop() === value.split('~-')[0].split(':').pop()
-                                  )
+                                  );
                                 })
                               }
                               disableRipple
@@ -979,7 +995,7 @@ export default ({
                               label={freeTextFieldName}
                               variant={'standard'}
                               multiline={promptBox}
-                              fullWidth                            
+                              fullWidth
                               autoComplete='off'
                               value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
                               onChange={onChangeFreeText}

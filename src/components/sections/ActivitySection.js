@@ -151,15 +151,7 @@ export default ({ patient, session }) => {
   const s3 = new AWS.S3({
     accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
     secretAccessKey: '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',
-    //   Bucket: 'smsoftware-reports'
   });
-  /*
-    const s3Theseus = new AWS.S3({
-      accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
-      secretAccessKey: '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',
-      Bucket: 'theseus-medical-storage'
-    });
-    */
 
   var elastictranscoder = new AWS.ElasticTranscoder(
     {
@@ -269,30 +261,30 @@ export default ({ patient, session }) => {
   const onWildClick = () => {
     closeSnackbar();
   };
-/*
-  const checkRecentMessages = async () => {
-    let result = await API.graphql(
-      graphqlOperation(getActivityData, {
-        input: {
-          client_id: session.client_id,
-          person_id: patient.person_id,
-          event_id: '',
-          activity_type: '$$query.get_messages',
-          limit: limit,
-          fact_data: true,
-          includeEvents: true,
-          history_only: false,
-          use_short_date: isMobile,
-        },
-      })
-    ).catch(error => {
-      console.log(error);
-    });
-    let messageData = result?.data?.getActivityData?.[0];
-    if (!messageData) { return [0, '']; }
-    else { return [messageData.most_recent_observation, messageData.observation_status]; }
-  };
-*/
+  /*
+    const checkRecentMessages = async () => {
+      let result = await API.graphql(
+        graphqlOperation(getActivityData, {
+          input: {
+            client_id: session.client_id,
+            person_id: patient.person_id,
+            event_id: '',
+            activity_type: '$$query.get_messages',
+            limit: limit,
+            fact_data: true,
+            includeEvents: true,
+            history_only: false,
+            use_short_date: isMobile,
+          },
+        })
+      ).catch(error => {
+        console.log(error);
+      });
+      let messageData = result?.data?.getActivityData?.[0];
+      if (!messageData) { return [0, '']; }
+      else { return [messageData.most_recent_observation, messageData.observation_status]; }
+    };
+  */
   const onChooseActivity = async activity => {
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
@@ -393,7 +385,7 @@ export default ({ patient, session }) => {
               valueSelectedString += ` ~ ${k}=${v}`;
             }
           }
-          if (newFact.value.mediaData.ContentType === 'video/webm' && !actionCancelled) {
+          if ((newFact.value?.mediaData?.ContentType?.includes('video') || newFact.value?.mediaData?.Body?.type?.includes('video')) && !actionCancelled) {
             const finalFilename = await putVideo(newFact.value);
             const vName = newFact.value.tag;
             newFact.value = `file_details.s3file=${finalFilename} ~ Video ~ userTag=${vName}${valueSelectedString}`;
@@ -402,7 +394,8 @@ export default ({ patient, session }) => {
                 console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`);
               });
             setLastWrittenFact(writtenFact?.data?.createPutFact || null);
-          } else {
+          }
+          else {
             const finalFilename = await putFile(newFact.value);
             newFact.value = `file_details.s3file=${finalFilename} ~ File ~ userTag=${newFact.value.tag}${valueSelectedString}`;
             let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
@@ -561,39 +554,59 @@ export default ({ patient, session }) => {
     }
     selectedActivityName = '';
 
-    async function putVideo(params) {// Uploading files to the bucket
+    async function putVideo(params) {   // Uploading files to the bucket
+
+      let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
+      let cleanedName = newName.replace(/[\s/]/g, '+');
+      let pA = newFact.value.mediaData.Key.replace(newName, cleanedName).split('/');
+      let fA = pA.pop().split('.');
+      let fileExtension = fA[1];
+      let fileWithoutExtension = pA.join('/') + `/${cleanedName}`;
+      newFact.value.mediaData.Key = `${fileWithoutExtension}.${fileExtension}`;
+
       let mediaData = newFact.value.mediaData;
+      mediaData.metadata = JSON.stringify({
+        Key: "Content-Type",
+        Value: newFact.value.mediaData.Body.type
+      });
       let warning = mediaData.Key.includes('_partial.webm') ? 'Your recording was interrupted.  AVA will save everything up to that point. ' : '';
       let vName = newFact.value.tag;
-      var videoKeyName = newFact.activity_key.replace('.', '^').split('^')[1] + '_' + new Date().getTime() + '.mp4';
-      enqueueSnackbar(`${warning}AVA is preparing your video named "${vName}"`,
+      console.log(vName);
+      enqueueSnackbar(`${warning}AVA is preparing your video named "${mediaData.Key}"`,
         { variant: (warning !== '' ? 'warning' : 'info'), persist: true });
-      s3.upload(mediaData, function (err, data) {
-        if (err) {
+      let uploadOK = true;
+      let uploadResult = await s3
+        .upload(mediaData)
+        .promise()
+        .catch(err => {
+          uploadOK = false;
           enqueueSnackbar(`Uh oh!  AVA couldn't save your video.  The reason is ${JSON.stringify(err)}`,
             { variant: 'error', persist: true });
-        }
-        else {
+        });
+      if (uploadOK) {
+        mediaData.Key = uploadResult.Location;
+        if (fileExtension === 'webm') {
           var converterParms = {
             PipelineId: '1626108726566-cv5z9u', /* required */
             Input: {
               Key: mediaData.Key,
             },
             Output: {
-              Key: videoKeyName,
+              Key: fileWithoutExtension + '.mp4',
               PresetId: '1351620000001-000001',
             },
           };
+          mediaData.Key = fileWithoutExtension + '.mp4';
           elastictranscoder.createJob(converterParms, function (err, data) {
             if (err) alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.', '^').split('^')[1] + '.mp4'}`); // an error occurred
             else {
-              enqueueSnackbar(`Your video named "${vName}" is saved, and is now being prepared for viewing in AVA.`,
+              enqueueSnackbar(`Your video named "${mediaData.Key}" is saved, and is now being prepared for viewing in AVA.`,
                 { variant: 'info', persist: true });           // successful response
             }
           });
         }
-      });
-      return videoKeyName;
+      };
+      return mediaData.Key;
     }
 
     async function putFile(params) {    // Uploading files to the bucket
@@ -601,7 +614,7 @@ export default ({ patient, session }) => {
       mediaData.metadata = {
         Key: 'Content-Type',
         Value: newFact.value.mediaData.Body.type
-      }
+      };
       console.log(mediaData);
       await s3.upload(mediaData, function (err, data) {
         if (err) {
@@ -732,7 +745,7 @@ export default ({ patient, session }) => {
         ref={ref => { idleTimer = ref; }}
         timeout={1000 * 60 * 30}   // every "n" minutes
         onAction={() => {
-          if(idleSince) {
+          if (idleSince) {
             console.log(`Active at ${new Date().toLocaleString()}`);
             idleSince = null;
           }
@@ -744,7 +757,7 @@ export default ({ patient, session }) => {
             console.log(`Idle since ${idleString}`);
             //let [latestMessage, messageTimeText] = await checkRecentMessages();
           }
-          else { console.log(`Still idle (${idleString})`);}
+          else { console.log(`Still idle (${idleString})`); }
           let latestMessage = 0;
           let messageTimeText = 1;
           if (latestMessage > idleSince) {
