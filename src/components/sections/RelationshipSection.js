@@ -19,6 +19,7 @@ const useStyles = makeStyles({
 export default ({ person }) => {
   const classes = useStyles();
 
+
   return (
     <Section title='Relationships' outlined>
       <TableContainer className={classes.container} component={Paper}>
@@ -32,10 +33,12 @@ export default ({ person }) => {
           {person && person.relationships ? (
             <TableBody>
               {person.relationships.map(relationship => (
-                <TableRow key={relationship.person_id}>
-                  <TableCell>{relationship.name}</TableCell>
-                  <TableCell>{relationship.type}</TableCell>
-                </TableRow>
+                (!relationship.name ? null :
+                  <TableRow key={relationship.person_id}>
+                    <TableCell>{relationship.name}</TableCell>
+                    <TableCell>{relationship.type}</TableCell>
+                  </TableRow>
+                )
               ))}
             </TableBody>
           ) : null}

@@ -138,7 +138,6 @@ export default ({ session, profile, loginID }) => {
   const [changes, setChanges] = React.useState(false);
 
   const s3Bucket = 'https://theseus-medical-storage.s3.amazonaws.com/public/patients/';
-  // const [newFact, setNewFact] = React.useState({});
 
   React.useEffect(() => {
     if (profile) {

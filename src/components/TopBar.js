@@ -83,7 +83,7 @@ export default () => {
       "search_data": "",
       "clients": [
         {
-          "groups": [session.responsible_for],
+          "groups": [],
           "id": session.client_id
         }
       ],
@@ -92,7 +92,7 @@ export default () => {
         "first": ""
       },
       "display_name": "",
-      "groups": [session.responsible_for],
+      "groups": [],
       "preferred_method": "AVA",
       "relationships": null,
       "roles": ["patient"],

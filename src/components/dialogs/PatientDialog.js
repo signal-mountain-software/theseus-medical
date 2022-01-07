@@ -1,7 +1,7 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
 import { createPutFact } from '../../graphql/mutations';
-import { getSession } from '../../graphql/queries';
+import { getSession, getPerson } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
 
 import { useSnackbar } from 'notistack';
@@ -159,7 +159,6 @@ export default ({ patient, picture, open, onClose }) => {
       setLocation(patient.location || '');
       setInputPWD('password');
       setMethod(patient.preferred_method);
-      //      setTimeBasedRules(patient.time_based_rules);
       if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
       else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
       let foundAt;
@@ -169,6 +168,23 @@ export default ({ patient, picture, open, onClose }) => {
         if (groupFound) {
           setPatientGroups(patient.clients[foundAt].groups.map(e => { return (`${patient.client_id}~${e}`); }));
         }
+      }
+      if (patient.relationships) {
+        patient.relationships.forEach(async (relationship, index) => {
+          let result = await API.graphql(
+            graphqlOperation(getPerson, {
+              person_id: relationship.person_id,
+            })
+          ).catch(error => {
+            console.log(error);
+          });
+          if (result?.data) {
+            patient.relationships[index].name = result.data.getPerson.name.first + ' ' + result.data.getPerson.name.last;
+          }
+          else {
+            patient.relationships[index].name = null;
+          }
+        });
       }
     }
   }, [patient]);
