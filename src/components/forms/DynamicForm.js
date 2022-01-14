@@ -211,7 +211,7 @@ export default ({
   defaultValue,
   qualCheckedParam,
   checkedParm,
-  searchText,
+  searchTextFromParent,
   setMessage,
   setStatusMessage,
   observationKey,
@@ -222,7 +222,7 @@ export default ({
   const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
-  const [searchKey, setSearchKey] = React.useState(null);
+  const [filterPromptValue, setfilterPromptValue] = React.useState(null);
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [formState, setFormState] = React.useState(1);
@@ -403,7 +403,7 @@ export default ({
       newFact.value.freeText['%filter%'] = newFact.value.freeText[keyValue];
     }
     setNewFact(newFact);
-    setSearchKey(newFact.value.freeText['%filter%']);
+    setfilterPromptValue(newFact.value.freeText['%filter%']);
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -596,30 +596,47 @@ export default ({
   React.useEffect(() => {
     if (values) {
       let filtering = false;
-      let search1 = null;
-      if (searchKey) { search1 = searchKey.toLowerCase(); }
-      let search2 = searchText.toLowerCase();
+      let search1 = filterPromptValue ? filterPromptValue.toLowerCase() : null;
+      let search2 = searchTextFromParent.toLowerCase();
       let listDisplay;
+      let filteredCount = null;
+      let spliceEmpty = false;
 
-      listDisplay = values.filter(word => {
-        if (!filtering && word.includes('~%')) {
-          filtering = true;
+      listDisplay = values.filter(valuesListEntry => {
+        if (!filtering) {
+          if (valuesListEntry.includes('~%')) {
+            filtering = true;
+            filteredCount = 0;
+          }
           return true;
         }
-        let theValue = (
-          ((!search2 || word.toLowerCase().includes(search2)) &&
-            (!filtering || (search1 && word.toLowerCase().includes(search1)))));
-        if (theValue) { return true; }
-        theValue = (
-          word.includes('~!') ||
-          checked.some((checkItem) => { return checkItem.includes(word.split(':', 2)[1].split(':')[0] + ':'); })
+        if (
+          ((!search2 || valuesListEntry.toLowerCase().includes(search2)) &&
+            (!filtering || (search1 && valuesListEntry.toLowerCase().includes(search1))))) {
+          filteredCount++;
+          return true;
+        }
+        if (valuesListEntry === '~[filter=off]') { 
+          if (filtering && (search1 || search2) && (!filteredCount || (filteredCount === 0))) {
+            spliceEmpty = true;
+          }
+          filtering = false;
+          return true;
+        }
+        return (
+          valuesListEntry.includes('~!') ||
+          checked.some((checkItem) => { return checkItem.includes(valuesListEntry.split(':', 2)[1].split(':')[0] + ':'); })
         );
-        return theValue;
       });
+
+      if (spliceEmpty) { 
+        listDisplay.splice(listDisplay.indexOf('~[filter=off]'), 1,
+          ...['~[checkbox=off]', 'No matching entries found', '~[checkbox=on]']);
+      }
 
       setListValues(listDisplay);
     }
-  }, [checked, formState, searchKey, searchText, values]);
+  }, [checked, formState, filterPromptValue, searchTextFromParent, values]);
 
   switch (type) {
     case 'characteristic_num':

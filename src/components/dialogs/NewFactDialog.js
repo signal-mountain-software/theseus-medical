@@ -523,7 +523,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             defaultValue={value}
             qualCheckedParam={qualChecked}
             checkedParm={checked}
-            searchText={searchText}
+            searchTextFromParent={searchText}
             setMessage={setMessage}
             setStatusMessage={setStatusMessage}
             observationKey={fact.observation_key}
