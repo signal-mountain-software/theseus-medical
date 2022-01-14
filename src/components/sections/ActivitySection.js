@@ -536,7 +536,7 @@ export default ({ patient, session }) => {
     let segments = constructedValue.split('~');
     let enqueueOut = '';
     segments.forEach(segment => {
-      enqueueOut += segment.trim().split(':')[0] + ' - ';
+      enqueueOut += segment.trim().split(/:+(?!\s)/)[0] + ' - ';
     });
     sVal = enqueueOut.slice(0, (enqueueOut.length - 2)) || (actionCancelled ? 'cancelled' : 'completed');
 
