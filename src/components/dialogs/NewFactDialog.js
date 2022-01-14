@@ -451,14 +451,14 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       if (!dValues) {
         defaultSelections = [dBase];
       } else {
-        defaultSelections = dValues.split('~');
+        defaultSelections = dValues.split(/(?<=\s)~|~(?=\s)/g);
       }
       if (defaultSelections.length > 0) {
         setValue(defaultSelections[0].trim()); /* this line handles numeric & text defaults */
         //setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
-          let [value, freeText] = nfValue.trim().split('=');
+          let [value, freeText] = nfValue.trim().split(/(?<=\s)=|=(?=\s)/);
           value = value.trim();
           if (freeText) {
             freeText = freeText.trim();

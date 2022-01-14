@@ -625,6 +625,7 @@ export default ({
         }
         return (
           valuesListEntry.includes('~!') ||
+          checked.includes(valuesListEntry) ||
           checked.some((checkItem) => { return checkItem.includes(valuesListEntry.split(':', 2)[1].split(':')[0] + ':'); })
         );
       });
@@ -959,7 +960,7 @@ export default ({
                               checked={
                                 checked.some((checkItem) => {
                                   return (
-                                    checkItem.split(':').pop() === value.split('~-')[0].split(':').pop()
+                                    checkItem.split(':').pop().trim() === value.split('~-')[0].split(':').pop().trim()
                                   );
                                 })
                               }
