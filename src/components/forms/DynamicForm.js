@@ -636,7 +636,7 @@ export default ({
 
       setListValues(listDisplay);
     }
-  }, [checked, formState, filterPromptValue, searchTextFromParent, values]);
+  }, [checked, filterPromptValue, searchTextFromParent, values]);
 
   switch (type) {
     case 'characteristic_num':
