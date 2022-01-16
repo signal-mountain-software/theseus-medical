@@ -612,7 +612,7 @@ export default ({
         if (theValue) { return true; }
         theValue = (
           word.includes('~!') ||
-          checked.some((checkItem) => { return checkItem.includes(word.split(':', 2)[1].split(':')[0] + ':'); })
+          checked.some((checkItem) => { return checkItem.includes(word.replace(':', '%%').split('%%').pop().split(':')[0] + ':'); })
         );
         return theValue;
       });
