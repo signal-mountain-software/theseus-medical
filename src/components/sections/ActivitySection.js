@@ -163,7 +163,6 @@ export default ({ patient, session }) => {
   var idleTimer = null;
 
   const doneWithEvent = () => {
-    // setSummary(false);
     needsConfirmation(false);
     if (homeState === 'home') {
       serviceWorker.unregister();
@@ -172,46 +171,15 @@ export default ({ patient, session }) => {
     returnToHome();
   };
 
-  /*  
-    const handleSummarySubmit = () => {
-      // setSummary(false);
-      needsConfirmation(false);
-      newFact = {
-        patient_id: session.patient_id || session.user_id,
-        activity_key: 'confirmation.' + (event ? event : selected.code),
-        value: 'action.confirmed',
-        qualifier: [],
-        session: {
-          user_id: session.user_id,
-          session_id: session.session_id,
-        },
-      };
-      if (event) {
-        selectedActivityName = activities[0].reason.substr(0, activities[0].reason.length - 6);
-      } else {
-        selectedActivityName = selected.name;
-      }
-      setNewFact(newFact);
-      onSaveFact(newFact);
-      returnToHome();
-    };
-  */
-
+  
   const handleConfirmSubmit = () => {
-    // setSummary(false);
     needsConfirmation(false);
     newFact.status = 'confirmed';
     selectedActivityName = selected.name;
     setNewFact(newFact);
     onSaveFact(newFact);
-    //    returnToHome();
   };
-  /*
-    const handleSummaryBack = () => {
-      // setSummary(false);
-      needsConfirmation(false);
-    };
-  */
+  
   const handleConfirmBack = () => {
     // setSummary(false);
     needsConfirmation(false);
@@ -261,30 +229,7 @@ export default ({ patient, session }) => {
   const onWildClick = () => {
     closeSnackbar();
   };
-  /*
-    const checkRecentMessages = async () => {
-      let result = await API.graphql(
-        graphqlOperation(getActivityData, {
-          input: {
-            client_id: session.client_id,
-            person_id: patient.person_id,
-            event_id: '',
-            activity_type: '$$query.get_messages',
-            limit: limit,
-            fact_data: true,
-            includeEvents: true,
-            history_only: false,
-            use_short_date: isMobile,
-          },
-        })
-      ).catch(error => {
-        console.log(error);
-      });
-      let messageData = result?.data?.getActivityData?.[0];
-      if (!messageData) { return [0, '']; }
-      else { return [messageData.most_recent_observation, messageData.observation_status]; }
-    };
-  */
+ 
   const onChooseActivity = async activity => {
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
