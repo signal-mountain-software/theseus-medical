@@ -315,7 +315,18 @@ export default ({ patient, session }) => {
     needsConfirmation(false);
     let showMessage = true;
     if (typeof newFact.value === 'string') {
-      let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+      let writtenFact = await API
+        .graphql(graphqlOperation(createPutFact, { input: newFact }))
+        .catch(error => {
+          enqueueSnackbar(
+            `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong. Please try again: ${JSON.stringify(
+              error.message || error.errors[0].message
+            )}`,
+            {
+              variant: 'error', persist: true
+            }
+          );
+        });
       setLastWrittenFact(writtenFact.data.createPutFact);
       [, constructedValue] = newFact.value.replace('.', '^').split('^');
     } else {
@@ -334,9 +345,17 @@ export default ({ patient, session }) => {
             const finalFilename = await putVideo(newFact.value);
             const vName = newFact.value.tag;
             newFact.value = `file_details.s3file=${finalFilename} ~ Video ~ userTag=${vName}${valueSelectedString}`;
-            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
+            let writtenFact = await API
+              .graphql(graphqlOperation(createPutFact, { input: newFact }))
               .catch(error => {
-                console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`);
+                enqueueSnackbar(
+                  `Uh oh! We couldn't record important information about your video. Please try again: ${JSON.stringify(
+                    error.message || error.errors[0].message
+                  )}`,
+                  {
+                    variant: 'error', persist: true
+                  }
+                );
               });
             setLastWrittenFact(writtenFact?.data?.createPutFact || null);
           }
@@ -388,8 +407,19 @@ export default ({ patient, session }) => {
                   delete newFact.qualifier;
                 }
               }
-              let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
-              setLastWrittenFact(writtenFact.data.createPutFact);
+              let writtenFact = await API
+                .graphql(graphqlOperation(createPutFact, { input: newFact }))
+                .catch(error => {
+                  enqueueSnackbar(
+                    `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong. Please try again: ${JSON.stringify(
+                      error.message || error.errors[0].message
+                    )}`,
+                    {
+                      variant: 'error', persist: true
+                    }
+                  );
+                });
+              setLastWrittenFact(writtenFact?.data?.createPutFact);
             } else {
               needsConfirmation(true);
               showMessage = false;
@@ -413,7 +443,18 @@ export default ({ patient, session }) => {
               if (associationsObject && associationsObject.hasOwnProperty(mVal)) {
                 newFact.value = 'association.' + mVal;
                 newFact.activity_key = associationsObject[mVal];
-                await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+                await API
+                  .graphql(graphqlOperation(createPutFact, { input: newFact }))
+                  .catch(error => {
+                    enqueueSnackbar(
+                      `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong. Please try again: ${JSON.stringify(
+                        error.message || error.errors[0].message
+                      )}`,
+                      {
+                        variant: 'error', persist: true
+                      }
+                    );
+                  });
               }
             }
           }
@@ -462,7 +503,9 @@ export default ({ patient, session }) => {
               writtenFact.data.createPutFact.value = 'update.' + constructedValue;
               setLastWrittenFact(writtenFact.data.createPutFact);
               newFact.value.version ? newFact.value.version++ : newFact.value.version = 1;
-              await API.graphql(graphqlOperation(updateReservation, { input: newFact.value })).catch(error => {
+              await API
+                .graphql(graphqlOperation(updateReservation, { input: newFact.value }))
+                .catch(error => {
                 enqueueSnackbar(
                   `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong.  
                   Please try again: ${JSON.stringify(

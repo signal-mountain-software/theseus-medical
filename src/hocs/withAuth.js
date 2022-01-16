@@ -63,7 +63,7 @@ export default Component => props => {
         logSession();
         setSignedIn(true);
       }
-      else if (authState === AuthState.SignedOut) {
+      else if (authState === AuthState.SignedOut || authState === AuthState.SignIn) {
         setSignedIn(false);
       }
       else {
@@ -215,6 +215,10 @@ export default Component => props => {
       case 'UserNotFoundException': {
         setMessages(`The Username "${inputName.trim()}" does not exist`);
         console.log('bad user, password entered');
+        break;
+      }
+      case 'NetworkError': {
+        setMessages(`You are not connected to the Internet`);
         break;
       }
       default: {

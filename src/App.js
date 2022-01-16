@@ -41,7 +41,7 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(`Error "${error}" encountered.  Info is ${info} (${JSON.stringify(info)})` );
+    handleWriteError(`Error "${error}" encountered.  Info is ${info} (${JSON.stringify(info)})`);
   }
 
   render() {
@@ -55,10 +55,15 @@ class ErrorBoundary extends React.Component {
 }
 
 const handleWriteError = async (parmMessage) => {
-  const user = await Auth.currentAuthenticatedUser();
+  const user = await Auth
+    .currentAuthenticatedUser()
+    .catch(e => {
+      parmMessage += 'Auth error thrown = ' + JSON.stringify(e);
+
+    });
   let errorTime = new Date().toString();
   let instruction = {
-    patient_id: 'no info',
+    patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: parmMessage,
     status: `Version = v22.1.17~${errorTime}`,
@@ -67,7 +72,9 @@ const handleWriteError = async (parmMessage) => {
       session_id: 'no session recorded',
     },
   };
-  await API.graphql(graphqlOperation(createPutFact, { input: instruction }));
+  await API
+    .graphql(graphqlOperation(createPutFact, { input: instruction }))
+    .catch(e => { alert(`No database connection. You might not be connected to the internet. Contact AVA support for assistance.  Message is ${JSON.stringify(e)}`) })
 };
 
 const App = () => (
