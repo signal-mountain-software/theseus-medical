@@ -194,9 +194,11 @@ export default Component => props => {
       ))
       .catch(error => {
         console.log(`Can't update session in logusage: ${error.errors[0].message}`);
-        enqueueSnackbar(`You are not connected to the internet.  AVA requires a network connection.`, {
-          variant: 'error', persist: true
-        });
+        if (error.errors[0].message === 'Network Error') {
+          enqueueSnackbar(`You are not connected to the internet.  AVA requires a network connection.`, {
+            variant: 'error', persist: true
+          });
+        };
       });
   };
 

@@ -171,7 +171,7 @@ export default ({ patient, session }) => {
     returnToHome();
   };
 
-  
+
   const handleConfirmSubmit = () => {
     needsConfirmation(false);
     newFact.status = 'confirmed';
@@ -179,7 +179,7 @@ export default ({ patient, session }) => {
     setNewFact(newFact);
     onSaveFact(newFact);
   };
-  
+
   const handleConfirmBack = () => {
     // setSummary(false);
     needsConfirmation(false);
@@ -229,7 +229,24 @@ export default ({ patient, session }) => {
   const onWildClick = () => {
     closeSnackbar();
   };
- 
+
+  const handleWriteError = async (parmMessage) => {
+    let errorTime = new Date().toString();
+    let instruction = {
+      patient_id: patient.person_id,
+      activity_key: '***ERROR_CAUGHT***',
+      value: parmMessage,
+      status: `Version = v22.1.17~${errorTime}`,
+      session: {
+        user_id: patient.person_id,
+        session_id: session.client_id,
+      },
+    };
+    await API
+      .graphql(graphqlOperation(createPutFact, { input: instruction }))
+      .catch(e => { alert(`No database connection. You might not be connected to the internet. Contact AVA support for assistance.  Message is ${JSON.stringify(e)}`); });
+  };
+
   const onChooseActivity = async activity => {
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
@@ -506,16 +523,16 @@ export default ({ patient, session }) => {
               await API
                 .graphql(graphqlOperation(updateReservation, { input: newFact.value }))
                 .catch(error => {
-                enqueueSnackbar(
-                  `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong.  
+                  enqueueSnackbar(
+                    `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong.  
                   Please try again: ${JSON.stringify(
-                    error.message || error.errors[0].message
-                  )}`,
-                  {
-                    variant: 'error', persist: true
-                  }
-                );
-              });
+                      error.message || error.errors[0].message
+                    )}`,
+                    {
+                      variant: 'error', persist: true
+                    }
+                  );
+                });
             }
           }
         }
@@ -676,10 +693,13 @@ export default ({ patient, session }) => {
             },
           })
         ).catch(error => {
-          setLoading(false);
+          setLoading(false);          
           enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.errors[0].message}`, {
             variant: 'error',
+            persist: true,
           });
+          mounted = false;
+          handleWriteError(`Error in getActivityData is ${error.errors[0].message}`);
         });
 
         if (mounted) {

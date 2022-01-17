@@ -41,7 +41,7 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(`Error "${error}" encountered.  Info is ${info} (${JSON.stringify(info)})`);
+    handleWriteError(`Error "${error}" encountered.  Stack is ${info.componentStack}`);
   }
 
   render() {
