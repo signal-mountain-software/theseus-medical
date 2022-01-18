@@ -42,9 +42,11 @@ export default () => {
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const isStandalone = useMediaQuery('(display-mode: standalone)');
-  const showIOS = useIosCheck();
+  const [ platform, showIOS ] = useIosCheck();
   const { state } = useSession();
   const { patient, roles, session } = state;
+  if (session) { session.platform = platform; }
+  state.platform = platform;
 
   const [prompt, setPrompt] = useRecoilState(promptState);
 

@@ -15,15 +15,16 @@ const useIosCheck = () => {
   return React.useMemo(() => {
     if (nav && nav.standalone) {
       // user already installed the app
-      return false;
+      return [nav?.platform || 'not installed', false];
     }
 
     // check if current device is iOS/iOS 13
-    return (
+    return ([
+      nav?.platform || 'not installed',
       nav &&
       (/iPad|iPhone|iPod/.test(nav.platform) || (nav.platform === 'MacIntel' && nav.maxTouchPoints > 1)) &&
       !window.MSStream
-    );
+    ]);
   }, [nav]);
 };
 

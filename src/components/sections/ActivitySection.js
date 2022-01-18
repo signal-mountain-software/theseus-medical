@@ -163,7 +163,6 @@ export default ({ patient, session }) => {
   var idleTimer = null;
 
   const doneWithEvent = () => {
-    // setSummary(false);
     needsConfirmation(false);
     if (homeState === 'home') {
       serviceWorker.unregister();
@@ -172,46 +171,15 @@ export default ({ patient, session }) => {
     returnToHome();
   };
 
-  /*  
-    const handleSummarySubmit = () => {
-      // setSummary(false);
-      needsConfirmation(false);
-      newFact = {
-        patient_id: session.patient_id || session.user_id,
-        activity_key: 'confirmation.' + (event ? event : selected.code),
-        value: 'action.confirmed',
-        qualifier: [],
-        session: {
-          user_id: session.user_id,
-          session_id: session.session_id,
-        },
-      };
-      if (event) {
-        selectedActivityName = activities[0].reason.substr(0, activities[0].reason.length - 6);
-      } else {
-        selectedActivityName = selected.name;
-      }
-      setNewFact(newFact);
-      onSaveFact(newFact);
-      returnToHome();
-    };
-  */
 
   const handleConfirmSubmit = () => {
-    // setSummary(false);
     needsConfirmation(false);
     newFact.status = 'confirmed';
     selectedActivityName = selected.name;
     setNewFact(newFact);
     onSaveFact(newFact);
-    //    returnToHome();
   };
-  /*
-    const handleSummaryBack = () => {
-      // setSummary(false);
-      needsConfirmation(false);
-    };
-  */
+
   const handleConfirmBack = () => {
     // setSummary(false);
     needsConfirmation(false);
@@ -261,30 +229,24 @@ export default ({ patient, session }) => {
   const onWildClick = () => {
     closeSnackbar();
   };
-  /*
-    const checkRecentMessages = async () => {
-      let result = await API.graphql(
-        graphqlOperation(getActivityData, {
-          input: {
-            client_id: session.client_id,
-            person_id: patient.person_id,
-            event_id: '',
-            activity_type: '$$query.get_messages',
-            limit: limit,
-            fact_data: true,
-            includeEvents: true,
-            history_only: false,
-            use_short_date: isMobile,
-          },
-        })
-      ).catch(error => {
-        console.log(error);
-      });
-      let messageData = result?.data?.getActivityData?.[0];
-      if (!messageData) { return [0, '']; }
-      else { return [messageData.most_recent_observation, messageData.observation_status]; }
+
+  const handleWriteError = async (parmMessage) => {
+    let errorTime = new Date().toString();
+    let instruction = {
+      patient_id: patient.person_id,
+      activity_key: '***ERROR_CAUGHT***',
+      value: parmMessage,
+      status: `Version = v22.1.17~${errorTime}`,
+      session: {
+        user_id: patient.person_id,
+        session_id: session.client_id,
+      },
     };
-  */
+    await API
+      .graphql(graphqlOperation(createPutFact, { input: instruction }))
+      .catch(e => { alert(`No database connection. You might not be connected to the internet. Contact AVA support for assistance.  Message is ${JSON.stringify(e)}`); });
+  };
+
   const onChooseActivity = async activity => {
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
@@ -370,7 +332,18 @@ export default ({ patient, session }) => {
     needsConfirmation(false);
     let showMessage = true;
     if (typeof newFact.value === 'string') {
-      let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+      let writtenFact = await API
+        .graphql(graphqlOperation(createPutFact, { input: newFact }))
+        .catch(error => {
+          enqueueSnackbar(
+            `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong. Please try again: ${JSON.stringify(
+              error.message || error.errors[0].message
+            )}`,
+            {
+              variant: 'error', persist: true
+            }
+          );
+        });
       setLastWrittenFact(writtenFact.data.createPutFact);
       [, constructedValue] = newFact.value.replace('.', '^').split('^');
     } else {
@@ -389,9 +362,17 @@ export default ({ patient, session }) => {
             const finalFilename = await putVideo(newFact.value);
             const vName = newFact.value.tag;
             newFact.value = `file_details.s3file=${finalFilename} ~ Video ~ userTag=${vName}${valueSelectedString}`;
-            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
+            let writtenFact = await API
+              .graphql(graphqlOperation(createPutFact, { input: newFact }))
               .catch(error => {
-                console.log(`Problem writing Fact at video creation: ${JSON.stringify(error)}`);
+                enqueueSnackbar(
+                  `Uh oh! We couldn't record important information about your video. Please try again: ${JSON.stringify(
+                    error.message || error.errors[0].message
+                  )}`,
+                  {
+                    variant: 'error', persist: true
+                  }
+                );
               });
             setLastWrittenFact(writtenFact?.data?.createPutFact || null);
           }
@@ -443,8 +424,19 @@ export default ({ patient, session }) => {
                   delete newFact.qualifier;
                 }
               }
-              let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
-              setLastWrittenFact(writtenFact.data.createPutFact);
+              let writtenFact = await API
+                .graphql(graphqlOperation(createPutFact, { input: newFact }))
+                .catch(error => {
+                  enqueueSnackbar(
+                    `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong. Please try again: ${JSON.stringify(
+                      error.message || error.errors[0].message
+                    )}`,
+                    {
+                      variant: 'error', persist: true
+                    }
+                  );
+                });
+              setLastWrittenFact(writtenFact?.data?.createPutFact);
             } else {
               needsConfirmation(true);
               showMessage = false;
@@ -468,7 +460,18 @@ export default ({ patient, session }) => {
               if (associationsObject && associationsObject.hasOwnProperty(mVal)) {
                 newFact.value = 'association.' + mVal;
                 newFact.activity_key = associationsObject[mVal];
-                await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
+                await API
+                  .graphql(graphqlOperation(createPutFact, { input: newFact }))
+                  .catch(error => {
+                    enqueueSnackbar(
+                      `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong. Please try again: ${JSON.stringify(
+                        error.message || error.errors[0].message
+                      )}`,
+                      {
+                        variant: 'error', persist: true
+                      }
+                    );
+                  });
               }
             }
           }
@@ -517,17 +520,19 @@ export default ({ patient, session }) => {
               writtenFact.data.createPutFact.value = 'update.' + constructedValue;
               setLastWrittenFact(writtenFact.data.createPutFact);
               newFact.value.version ? newFact.value.version++ : newFact.value.version = 1;
-              await API.graphql(graphqlOperation(updateReservation, { input: newFact.value })).catch(error => {
-                enqueueSnackbar(
-                  `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong.  
+              await API
+                .graphql(graphqlOperation(updateReservation, { input: newFact.value }))
+                .catch(error => {
+                  enqueueSnackbar(
+                    `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong.  
                   Please try again: ${JSON.stringify(
-                    error.message || error.errors[0].message
-                  )}`,
-                  {
-                    variant: 'error', persist: true
-                  }
-                );
-              });
+                      error.message || error.errors[0].message
+                    )}`,
+                    {
+                      variant: 'error', persist: true
+                    }
+                  );
+                });
             }
           }
         }
@@ -536,7 +541,7 @@ export default ({ patient, session }) => {
     let segments = constructedValue.split('~');
     let enqueueOut = '';
     segments.forEach(segment => {
-      enqueueOut += segment.trim().split(':')[0] + ' - ';
+      enqueueOut += segment.trim().split(/:+(?!\s)/)[0] + ' - ';
     });
     sVal = enqueueOut.slice(0, (enqueueOut.length - 2)) || (actionCancelled ? 'cancelled' : 'completed');
 
@@ -688,10 +693,13 @@ export default ({ patient, session }) => {
             },
           })
         ).catch(error => {
-          setLoading(false);
+          setLoading(false);          
           enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.errors[0].message}`, {
             variant: 'error',
+            persist: true,
           });
+          mounted = false;
+          handleWriteError(`Error in getActivityData is ${error.errors[0].message}`);
         });
 
         if (mounted) {

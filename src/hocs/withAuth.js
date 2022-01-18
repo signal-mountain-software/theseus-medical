@@ -63,7 +63,7 @@ export default Component => props => {
         logSession();
         setSignedIn(true);
       }
-      else if (authState === AuthState.SignedOut) {
+      else if (authState === AuthState.SignedOut || authState === AuthState.SignIn) {
         setSignedIn(false);
       }
       else {
@@ -126,7 +126,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v22.1.10.1${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+          `Version=v22.1.17${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
@@ -194,9 +194,11 @@ export default Component => props => {
       ))
       .catch(error => {
         console.log(`Can't update session in logusage: ${error.errors[0].message}`);
-        enqueueSnackbar(`You are not connected to the internet.  AVA requires a network connection.`, {
-          variant: 'error', persist: true
-        });
+        if (error.errors[0].message === 'Network Error') {
+          enqueueSnackbar(`You are not connected to the internet.  AVA requires a network connection.`, {
+            variant: 'error', persist: true
+          });
+        };
       });
   };
 
@@ -215,6 +217,10 @@ export default Component => props => {
       case 'UserNotFoundException': {
         setMessages(`The Username "${inputName.trim()}" does not exist`);
         console.log('bad user, password entered');
+        break;
+      }
+      case 'NetworkError': {
+        setMessages(`You are not connected to the Internet`);
         break;
       }
       default: {
