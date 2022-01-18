@@ -458,7 +458,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         //setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
-          let [value, freeText] = nfValue.trim().split(/\s~|~\s/);
+        //  let [value, freeText] = nfValue.trim().split(/\s~|~\s/);
+          let [value, freeText] = nfValue.trim().split("=");
           value = value.trim();
           if (freeText) {
             freeText = freeText.trim();
