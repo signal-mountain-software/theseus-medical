@@ -33,7 +33,13 @@ import Paper from '@material-ui/core/Paper';
 import TopBar from '../components/TopBar';
 
 export default Component => props => {
-  const [signedIn, setSignedIn] = React.useState(true);
+  const [signedIn, setSigned] = React.useState(true);
+  let localSignedIn = true;
+  const setSignedIn = (setV) => { 
+    localSignedIn = setV;
+    setSigned(setV);
+  }
+
   const {
     enqueueSnackbar, closeSnackbar
   } = useSnackbar();
@@ -64,10 +70,18 @@ export default Component => props => {
         setSignedIn(true);
       }
       else if (authState === AuthState.SignedOut || authState === AuthState.SignIn) {
-        setSignedIn(false);
+        if (localSignedIn) {
+          setSignedIn(false);
+          enqueueSnackbar(`Authentication state is ${authState}.  Signed out.`, {
+            variant: 'info'
+          });
+        }
       }
       else {
         console.log(authState);
+        enqueueSnackbar(`Authentication state is ${authState}.`, {
+          variant: 'info'
+        });
       }
     });
   };
@@ -140,8 +154,13 @@ export default Component => props => {
     try {
       const user = await Auth.currentAuthenticatedUser();
       if (user) { setSignedIn(true); }
+      else {
+        enqueueSnackbar(`No authenticated user found.`, {
+          variant: 'info'
+        });
+      }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in.`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.1.17${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
