@@ -562,22 +562,18 @@ export default ({ patient, session }) => {
     async function putVideo(params) {   // Uploading files to the bucket
 
       let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
-      let cleanedName = newName.replace(/[\s/]/g, '+');
-      let pA = newFact.value.mediaData.Key.replace(newName, cleanedName).split('/');
-      let fA = pA.pop().split('.');
-      let fileExtension = fA[1];
-      let fileWithoutExtension = pA.join('/') + `/${cleanedName}`;
-      newFact.value.mediaData.Key = `${fileWithoutExtension}.${fileExtension}`;
+      newFact.value.mediaData.Key = newName.replace(/[\s/]/g, '+');
+      let [fileWithoutExtension, fileExtension] = newFact.value.mediaData.Key.split('.');
 
       let mediaData = newFact.value.mediaData;
       mediaData.metadata = JSON.stringify({
         Key: "Content-Type",
-        Value: newFact.value.mediaData.Body.type
+        Value: newFact.value.mediaData.ContentType
       });
       let warning = mediaData.Key.includes('_partial.webm') ? 'Your recording was interrupted.  AVA will save everything up to that point. ' : '';
       let vName = newFact.value.tag;
       console.log(vName);
-      enqueueSnackbar(`${warning}AVA is preparing your video named "${mediaData.Key}"`,
+      enqueueSnackbar(`${warning}AVA is preparing your video named "${newName}"`,
         { variant: (warning !== '' ? 'warning' : 'info'), persist: true });
       let uploadOK = true;
       let uploadResult = await s3
@@ -594,7 +590,7 @@ export default ({ patient, session }) => {
           var converterParms = {
             PipelineId: '1626108726566-cv5z9u', /* required */
             Input: {
-              Key: mediaData.Key,
+              Key: uploadResult.Key,
             },
             Output: {
               Key: fileWithoutExtension + '.mp4',
@@ -826,7 +822,7 @@ export default ({ patient, session }) => {
                 : activities.map((activity, index) => (
                   <GridListTile key={activity.code} cols={1}>
                     {activity.reason === priorReason ? null :
-                      <Typography variant='body1' noWrap={true}>
+                      <Typography variant='h6' noWrap={true}>
                         {(priorReason = activity.reason)}
                       </Typography>
                     }

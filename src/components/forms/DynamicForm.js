@@ -716,7 +716,7 @@ export default ({
               onRecordingComplete={async (videoBlob) => {
                 const pVideo = {
                   Bucket: 'theseus-medical-storage',
-                  Key: newFact.activity_key.replace('.', '^').split('^')[1] + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
+                  Key: freeText.replace('.', '-') + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
                   Body: videoBlob,
                   ACL: 'public-read-write',
                   ContentType: 'video/webm'
