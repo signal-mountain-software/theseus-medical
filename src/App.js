@@ -66,7 +66,7 @@ const handleWriteError = async (parmMessage) => {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: parmMessage,
-    status: `Version = v22.1.17~${errorTime}`,
+    status: `Version = v22.1.19~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
@@ -74,7 +74,7 @@ const handleWriteError = async (parmMessage) => {
   };
   await API
     .graphql(graphqlOperation(createPutFact, { input: instruction }))
-    .catch(e => { alert(`No database connection. You might not be connected to the internet. Contact AVA support for assistance.  Message is ${JSON.stringify(e)}`) })
+    .catch(e => { alert(`No database connection. You might not be connected to the internet. Contact AVA support for assistance.  Message is ${JSON.stringify(e)}`); });
 };
 
 const App = () => (

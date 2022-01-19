@@ -59,7 +59,7 @@ export default Component => props => {
 
         var userInfo = await Auth
           .currentUserInfo()
-          .catch(e => { console.log('Not logged in - or - network error')});
+          .catch(e => { console.log('Not logged in - or - network error'); });
         const default_client_id = userInfo?.attributes?.['custom:client'] || 'SMSoft';
 
         if (!getSessionResult) {
@@ -91,7 +91,7 @@ export default Component => props => {
               });
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
-          session.session_id = `v22.1.17${window.location.href.split('//')[1].slice(0, 1)}`;
+          session.session_id = `v22.1.19${window.location.href.split('//')[1].slice(0, 1)}`;
         }
 
         // get person's Account information
@@ -247,7 +247,7 @@ export default Component => props => {
         }
       }
     }
-    catch (err) { 
+    catch (err) {
       console.log('random catch', err);
     }
   }

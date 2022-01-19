@@ -35,10 +35,10 @@ import TopBar from '../components/TopBar';
 export default Component => props => {
   const [signedIn, setSigned] = React.useState(true);
   let localSignedIn = true;
-  const setSignedIn = (setV) => { 
+  const setSignedIn = (setV) => {
     localSignedIn = setV;
     setSigned(setV);
-  }
+  };
 
   const {
     enqueueSnackbar, closeSnackbar
@@ -140,7 +140,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           data.accessToken.payload.sub,
-          `Version=v22.1.17${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+          `Version=v22.1.19${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
@@ -160,7 +160,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.1.17${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.1.19${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }

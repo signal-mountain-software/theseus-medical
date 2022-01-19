@@ -236,7 +236,7 @@ export default ({ patient, session }) => {
       patient_id: patient.person_id,
       activity_key: '***ERROR_CAUGHT***',
       value: parmMessage,
-      status: `Version = v22.1.17~${errorTime}`,
+      status: `Version = v22.1.19~${errorTime}`,
       session: {
         user_id: patient.person_id,
         session_id: session.client_id,
@@ -689,7 +689,7 @@ export default ({ patient, session }) => {
             },
           })
         ).catch(error => {
-          setLoading(false);          
+          setLoading(false);
           enqueueSnackbar(`Whoops! Something went wrong when fetching activity data: ${error.errors[0].message}`, {
             variant: 'error',
             persist: true,

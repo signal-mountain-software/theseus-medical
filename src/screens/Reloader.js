@@ -14,7 +14,7 @@ export default () => {
     return (
         <Box mt={3}>
             <Typography align='center'>
-                {`Loading AVA version v22.1.17${window.location.href.split('//')[1].slice(0, 1)}`}
+                {`Loading AVA version v22.1.19${window.location.href.split('//')[1].slice(0, 1)}`}
             </Typography>
         </Box>
     );
