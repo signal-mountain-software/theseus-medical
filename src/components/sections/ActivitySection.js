@@ -236,7 +236,7 @@ export default ({ patient, session }) => {
       patient_id: patient.person_id,
       activity_key: '***ERROR_CAUGHT***',
       value: parmMessage,
-      status: `Version = v22.1.19~${errorTime}`,
+      status: `Version = v22.1.24~${errorTime}`,
       session: {
         user_id: patient.person_id,
         session_id: session.client_id,
@@ -244,7 +244,7 @@ export default ({ patient, session }) => {
     };
     await API
       .graphql(graphqlOperation(createPutFact, { input: instruction }))
-      .catch(e => { alert(`No database connection. You might not be connected to the internet. Contact AVA support for assistance.  Message is ${JSON.stringify(e)}`); });
+      .catch(e => { alert(`Menu build error, possible cause: ${parmMessage}. Use refresh button.`); });
   };
 
   const onChooseActivity = async activity => {
@@ -759,9 +759,9 @@ export default ({ patient, session }) => {
             idleSince = idleTimer.getLastActiveTime();
             idleString = new Date(idleSince).toLocaleString();
             console.log(`Idle since ${idleString}`);
-            //let [latestMessage, messageTimeText] = await checkRecentMessages();
           }
           else { console.log(`Still idle (${idleString})`); }
+          // let [latestMessage, messageTimeText] = await checkRecentMessages();
           let latestMessage = 0;
           let messageTimeText = 1;
           if (latestMessage > idleSince) {

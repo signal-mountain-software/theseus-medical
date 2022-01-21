@@ -91,14 +91,14 @@ export default Component => props => {
               });
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
-          session.session_id = `v22.1.19${window.location.href.split('//')[1].slice(0, 1)}`;
+          session.session_id = `v22.1.24${window.location.href.split('//')[1].slice(0, 1)}`;
         }
 
         // get person's Account information
         getProfileResult = await API
           .graphql(graphqlOperation(getPerson, { person_id: (session.user_id) }))
           .catch(error => {
-            enqueueSnackbar(`You are user ID is ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get your info.  The problem is: ${error.errors[0].message}`, {
+            enqueueSnackbar(`You are user ID ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get your info.  The problem is: ${error.errors[0].message}`, {
               variant: 'error', persist: true,
             });
             console.log('using default user...');

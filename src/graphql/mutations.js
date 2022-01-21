@@ -34,6 +34,7 @@ export const updateSession = /* GraphQL */ `
       description
       event_description
       kiosk_mode
+      groups_managed
     }
   }
 `;

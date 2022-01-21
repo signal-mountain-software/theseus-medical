@@ -88,12 +88,29 @@ const useStyles = makeStyles(theme => ({
   subHeader: {
     fontWeight: 'bold',
     minWidth: '100%',
-
+  },
+  subHeaderPlus: {
+    fontWeight: 'bold',
+    minWidth: '100%',
+    marginTop: '15px',
   },
   defaultButton: {
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 1,
+    variant: 'outlined',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.6,
+    // height: theme.typography.fontSize * 2.8,
+  },
+  defaultButtonTight: {
+    marginLeft: 3,
+    paddingLeft: 3,
+    paddingRight: 1,
+    paddingBottom: '1px',
+    paddingTop: '1px',
+    marginTop: '1px',
+    marginBottom: '1px',
     variant: 'outlined',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.6,
@@ -243,18 +260,23 @@ export default ({
 
   const [peopleMode, setPeopleMode] = React.useState(false);
   const [saveMode, setSaveMode] = React.useState(false);
+  const [groupChange, setGroupChange] = React.useState(false);
+  const [chosenPerson, setChosenPerson] = React.useState('');
 
   const [listValues, setListValues] = React.useState([]);
 
   const [qualChecked, setQualChecked] = React.useState(qualCheckedParam);
-  // const [qualMessage, setQualMessage] = React.useState('');
+  const [groupChecked, setGroupChecked] = React.useState({});
   const [OGqualifiers, setOGQualifiers] = React.useState([]);
+
 
   const [freeText, setFreeText] = React.useState('');
   const [filterText, setFilterText] = React.useState('');
 
   var noToggle = false;
   var recordingStatus;
+
+  var groupsManaged = session.groups_managed.replace(/\[|\]/g, '').split(/\s?,\s?/) || [];
 
   const classes = useStyles();
 
@@ -447,6 +469,30 @@ export default ({
       });
   };
 
+  const handleGroupChange = async (groupObject) => {
+    await API
+      .graphql(graphqlOperation(createPutFact, {
+        input: {
+          patient_id: chosenPerson,
+          activity_key: 'action.updatePersonGroups',
+          status: new Date().toString(),
+          value: `newGroups.${Object.keys(groupObject).join(' ~ ')}`,
+          qualifier: [],
+          session: {
+            user_id: session.patient_id,
+            session_id: session.session_id
+          },
+        }
+      }))
+      .catch(error => {
+        enqueueSnackbar(`Ooops! AVA could not update the groups.  (${error.message || error.errors[0].message})`, { variant: 'error' });
+      })
+      .then(message => {
+        enqueueSnackbar(`Groups updated!`, { variant: 'success' });
+      });
+  };
+
+
   const handleQSave = () => {
     if (!newFact.value.hasOwnProperty('qualifiers')) {
       newFact.value.qualifiers = {};
@@ -468,6 +514,12 @@ export default ({
     setOGQualifiers('');
     setQualifierOpen(false);
     setSaveMode(false);
+
+    if (groupChange) {
+      handleGroupChange(groupChecked);
+      setGroupChange(false);
+    }
+
   };
 
   const handleQualSelected = value => async () => {
@@ -481,6 +533,9 @@ export default ({
       ).catch(error => {
         console.log(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`);
       });
+      let gC = {};
+      result.data.getPerson.groups.forEach(g => { gC[g] = true; });
+      setGroupChecked(gC);
       qualifierTable[value].value = value;
       qualifierTable[value].qualifiers[0] = '~~' + result.data.getPerson.location;
       if (result?.data?.getPerson?.messaging?.email) { qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email); };
@@ -505,6 +560,7 @@ export default ({
       qualifierTable[value].image_url = 'patients/' + person_id + '.jpg';
       setDialogImage(response);
       setPeopleMode(true);
+      setChosenPerson(person_id);
     }
     else {
       getImage((!(qualifierTable[value]?.image_url?.includes('/')) ? 'observation_images/' : '') + qualifierTable[value].image_url);
@@ -547,6 +603,16 @@ export default ({
     // } else {
     //   setQualMessage('Options: ' + newChecked.join(' ~ '));
     // }
+  };
+
+  const handleToggleGroup = value => () => {
+    let checkFor = value.split('~')[0];
+    if (groupChecked.hasOwnProperty(checkFor)) { delete groupChecked[checkFor]; }
+    else { groupChecked[checkFor] = true; }
+    var resetter = formState + 1;
+    setFormState(resetter);
+    setSaveMode(true);
+    setGroupChange(true);
   };
 
   const onChangeValue = event => {
@@ -616,7 +682,7 @@ export default ({
           filteredCount++;
           return true;
         }
-        if (valuesListEntry === '~[filter=off]') { 
+        if (valuesListEntry === '~[filter=off]') {
           if (filtering && (search1 || search2) && (!filteredCount || (filteredCount === 0))) {
             spliceEmpty = true;
           }
@@ -630,7 +696,7 @@ export default ({
         );
       });
 
-      if (spliceEmpty) { 
+      if (spliceEmpty) {
         listDisplay.splice(listDisplay.indexOf('~[filter=off]'), 1,
           ...['~[checkbox=off]', 'No matching entries found', '~[checkbox=on]']);
       }
@@ -762,7 +828,7 @@ export default ({
                   },
                 }
               }))
-              .catch(error => { console.log(error) });
+              .catch(error => { console.log(error); });
           }}
         />
       );
@@ -926,7 +992,6 @@ export default ({
                   let header = false;
                   let showCheckBox = true;
                   let textPrompt = false;
-                  let promptBox = false;
                   if (specialKey.charAt(0) === '~') {
                     showCheckBox = (specialKey === '~withCheckBox');
                     switch (specialKey.charAt(1)) {
@@ -935,7 +1000,6 @@ export default ({
                       default: {
                         if (showCheckBox || specialKey.includes('other')) {
                           textPrompt = true;
-                          promptBox = specialKey.includes('^');
                         }
                         else {
                           specialHandling = true;
@@ -946,7 +1010,7 @@ export default ({
 
                   return (
                     <ListItem
-                      id={'blockhead' + value}
+                      id={'blockhead' + value + vIndex.toString()}
                       key={value + vIndex.toString()}
                       role={undefined}
                       dense
@@ -978,7 +1042,7 @@ export default ({
                           }
                           {header && false &&
                             <ListItemText
-                              id={'subhead' + value}
+                            id={'subhead' + value + vIndex.toString()}
                               primary={
                                 <Typography className={classes.factTitle}>
                                   {value.replace('!', '').substr(2)}
@@ -1012,7 +1076,7 @@ export default ({
                               id={freeTextFieldName}
                               label={freeTextFieldName}
                               variant={'standard'}
-                              multiline={promptBox}
+                              multiline
                               fullWidth
                               autoComplete='off'
                               value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
@@ -1177,6 +1241,7 @@ export default ({
                                   {(!qualifier.startsWith('~[nocheck]=')) ?
                                     <Checkbox
                                       edge='start'
+                                      key={`qlabel-${qualifier}`}
                                       checked={qualChecked && qualChecked[selectedFact].indexOf(qualifier) !== -1}
                                       name={qualifier}
                                       disableRipple
@@ -1186,6 +1251,7 @@ export default ({
                                     (
                                       <ListItemText
                                         id={`qlabelid-${qualifier}`}
+                                        key={`qlabelid-${qualifier}`}
                                         primary={<Typography noWrap={true}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
                                       />
                                     )
@@ -1207,6 +1273,42 @@ export default ({
                             )
                           )
                           : null}
+                        {groupsManaged &&
+                          <ListItem
+                            key={`qhead-groupmanagement-textkey`}
+                            className={classes.defaultButton}
+                          >                            
+                          <ListItemText
+                            id={`qhead-groupmanagement-textid`}
+                            key={`qhead-groupmanagement-textkey`}
+                          classes={{ primary: classes.subHeaderPlus }}
+                            primary='Groups'
+                            />
+                          </ListItem>
+                        }
+                        {groupsManaged ?
+                          groupsManaged.map((managedGroup, mx) =>
+                            <ListItem
+                              key={`mSection-${mx}-checkkeylistitem`}
+                              role={undefined}
+                              className={classes.defaultButtonTight}
+                              onClick={handleToggleGroup(managedGroup)}
+                            >
+                            <Checkbox
+                              edge='start'
+                              checked={groupChecked.hasOwnProperty(managedGroup.split('~')[0])}
+                              name={managedGroup}
+                              disableRipple
+                                key={`mSection-${mx}-checkkey`}
+                                id={`mSection-${mx}-checkid`}
+                              inputProps={{ 'aria-labelledby': `qlabel-${managedGroup}-check` }}
+                            />
+                            <ListItemText
+                              id={`mSection-${mx}-textid`}
+                                key={`mSection-${mx}-textkey`}
+                              primary={<Typography noWrap={true}>{managedGroup.split('~').pop()}</Typography>}
+                            />
+                          </ListItem>) : null}
                       </List>
                     </FormGroup>
                   </FormControl>
@@ -1230,7 +1332,7 @@ export default ({
                   variant='contained'
                   color='primary'
                   size='small'>
-                  {peopleMode ? 'Send Msg' : 'Save'}
+                  {(peopleMode && qMessage) ? 'Send Msg' : 'Save'}
                 </Button>
                 : null}
             </DialogActions>

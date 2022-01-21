@@ -218,6 +218,7 @@ export const getSession = /* GraphQL */ `
       description
       event_description
       kiosk_mode
+      groups_managed
     }
   }
 `;
