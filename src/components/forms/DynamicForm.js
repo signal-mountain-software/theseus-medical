@@ -276,7 +276,10 @@ export default ({
   var noToggle = false;
   var recordingStatus;
 
-  var groupsManaged = session.groups_managed.replace(/\[|\]/g, '').split(/\s?,\s?/) || [];
+  var groupsManaged = [];
+  if (session.groups_managed) {
+    groupsManaged = session.groups_managed.replace(/\[|\]/g, '').split(/\s?,\s?/);
+  }
 
   const classes = useStyles();
 
