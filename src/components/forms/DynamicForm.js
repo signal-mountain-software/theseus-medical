@@ -816,15 +816,15 @@ export default ({
           playing={true}
           onError={async (err) => {
             console.log(err);
-            enqueueSnackbar(`I'm sorry... AVA can't play that video. (${err.target.error.message || 'Details not provided'})`, { variant: 'error' });
+            enqueueSnackbar(`I'm sorry... AVA can't play that video. (${err?.target?.error?.message || 'Details not provided'})`, { variant: 'error' });
             await API
               .graphql(graphqlOperation(createPutFact, {
                 input: {
                   patient_id: session.patient_id,
                   activity_key: 'error.videoPlayer',
                   status: new Date().toString(),
-                  value: JSON.stringify(`Code=${err.target.error.code} Message=${err.target.error.message}`),
-                  qualifier: [defaultValue, err?.target?.outerHTML],
+                  value: `error_value.File=${defaultValue} Code=${err?.target?.error?.code} Message=${err?.target?.error?.message}`,
+                  qualifier: null,
                   session: {
                     user_id: session.user_id,
                     session_id: session.session_id

@@ -562,8 +562,8 @@ export default ({ patient, session }) => {
     async function putVideo(params) {   // Uploading files to the bucket
 
       let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
-      newFact.value.mediaData.Key = newName.replace(/[\s/]/g, '+');
       let [fileWithoutExtension, fileExtension] = newFact.value.mediaData.Key.split('.');
+      newFact.value.mediaData.Key = newName.replace(/[\s/]/g, '+') + '.' + fileExtension;
 
       let mediaData = newFact.value.mediaData;
       mediaData.metadata = JSON.stringify({
