@@ -158,14 +158,22 @@ export default Component => props => {
                 });
               }
             });
-          patient = getPatientResult.data.getPerson;
-          if (usingDefaultSession) {
-            patient.messaging.email = user.attributes.email || null;
-            patient.messaging.sms = user.attributes.phone_number || null;
-            patient.messaging.voice = null;
-            patient.location = null;
-            patient.name.first = user.username;
-            patient.name.last = 'Welcome';
+          if (!getPatientResult || !getPatientResult.data) {
+            enqueueSnackbar(`You are trying to work with user ${session.patient_id || session.user_id}.  But that account doesn't exist.  Reverting to your own account.`, {
+              variant: 'info', persist: false,
+            });
+            Object.assign(patient, profile);
+          }
+          else {
+            patient = getPatientResult.data.getPerson;
+            if (usingDefaultSession) {
+              patient.messaging.email = user.attributes.email || null;
+              patient.messaging.sms = user.attributes.phone_number || null;
+              patient.messaging.voice = null;
+              patient.location = null;
+              patient.name.first = user.username;
+              patient.name.last = 'Welcome';
+            }
           }
         }
         patient.groups = patient.clients[0].groups;
