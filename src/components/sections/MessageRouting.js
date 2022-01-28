@@ -183,11 +183,11 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
                   <TableCell style={{ width: 20, borderBottom: 'none' }}>
                       <Checkbox
                         edge='start'
-                        checked={route.day && route.day.includes('0')}
+                        checked={route?.day?.includes('0')}
                         name={`message_routing_${i}_0`}
                         disableRipple
                         onChange={ (event) => {
-                            updateRoutingDay(i, '0', route.day.includes('0'))
+                            updateRoutingDay(i, '0', route?.day?.includes('0'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_0` }}
                       />
@@ -195,11 +195,11 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
                   <TableCell style={{ width: 20, borderBottom: 'none' }}>
                       <Checkbox
                         edge='start'
-                        checked={route.day && route.day.includes('1')}
+                        checked={route?.day?.includes('1')}
                         name={`message_routing_${i}_1`}
                         disableRipple
                         onChange={ (event) => {
-                            updateRoutingDay(i, '1', route.day.includes('1'))
+                            updateRoutingDay(i, '1', route?.day?.includes('1'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_1` }}
                       />
@@ -207,12 +207,12 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
                   <TableCell style={{ width: 20, borderBottom: 'none' }}>
                       <Checkbox
                         edge='start'
-                        checked={route.day && route.day.includes('2')}
+                        checked={route?.day?.includes('2')}
                         name={`message_routing_${i}_2`}
                         disableRipple
                         onClick={ (event) => {
                           console.log('checkbox 2 tapped')
-                          updateRoutingDay(i, '2', route.day.includes('2'))
+                          updateRoutingDay(i, '2', route?.day?.includes('2'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_2` }}
                       />
@@ -220,12 +220,12 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
                   <TableCell style={{ width: 20, borderBottom: 'none' }}>
                       <Checkbox
                         edge='start'
-                        checked={route.day && route.day.includes('3')}
+                        checked={route?.day?.includes('3')}
                         name={`message_routing_${i}_3`}
                         disableRipple
                         onChange={ (event) => {
                           console.log('checkbox 3 tapped')
-                          updateRoutingDay(i, '3', route.day.includes('3'))
+                          updateRoutingDay(i, '3', route?.day?.includes('3'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_3` }}
                       />
@@ -233,11 +233,11 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
                   <TableCell style={{ width: 20, borderBottom: 'none' }}>
                       <Checkbox
                         edge='start'
-                        checked={route.day && route.day.includes('4')}
+                        checked={route?.day?.includes('4')}
                         name={`message_routing_${i}_4`}
                         disableRipple
                         onChange={ (event) => {
-                            updateRoutingDay(i, '4', route.day.includes('4'))
+                            updateRoutingDay(i, '4', route?.day?.includes('4'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_4` }}
                       />
@@ -245,11 +245,11 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
                   <TableCell style={{ width: 20, borderBottom: 'none' }}>
                       <Checkbox
                         edge='start'
-                        checked={route.day && route.day.includes('5')}
+                        checked={route?.day?.includes('5')}
                         name={`message_routing_${i}_5`}
                         disableRipple
                         onChange={ (event) => {
-                            updateRoutingDay(i, '5', route.day.includes('5'))
+                            updateRoutingDay(i, '5', route?.day?.includes('5'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_5` }}
                       />
@@ -257,11 +257,11 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
                   <TableCell style={{ width: 20, borderBottom: 'none' }}>
                       <Checkbox
                         edge='start'
-                        checked={route.day && route.day.includes('6')}
+                        checked={route?.day?.includes('6')}
                         name={`message_routing_${i}_6`}
                         disableRipple
                         onChange={ (event) => {
-                            updateRoutingDay(i, '6', route.day.includes('6'))
+                            updateRoutingDay(i, '6', route?.day?.includes('6'))
                         }}
                         inputProps={{ 'aria-labelledby': `message_routing_${i}_6` }}
                       />
