@@ -39,6 +39,11 @@ class ErrorBoundary extends React.Component {
     hasError = false;
   }
 
+  static getDerivedStateFromError(error) {
+    hasError = true;
+    handleWriteError(`Error "${error}" caught by getDerviedStateFromError`);
+  }
+
   componentDidCatch(error, info) {
     hasError = true;
     handleWriteError(`Error "${error}" encountered.  Stack is ${info.componentStack}`);
@@ -65,8 +70,8 @@ const handleWriteError = async (parmMessage) => {
   let instruction = {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
-    value: parmMessage,
-    status: `Version = v22.1.24~${errorTime}`,
+    value: `error.${parmMessage}`,
+    status: `Version = v22.1.28~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
