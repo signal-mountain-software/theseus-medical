@@ -46,7 +46,7 @@ import CallIcon from '@material-ui/icons/Call';
 import EmailIcon from '@material-ui/icons/Email';
 import TextSMSIcon from '@material-ui/icons/Textsms';
 
-import { getPerson } from '../../graphql/queries';
+import { getSession, getPerson } from '../../graphql/queries';
 
 import DialogContentText from '@material-ui/core/DialogContentText';
 
@@ -272,6 +272,7 @@ export default ({
 
   const [freeText, setFreeText] = React.useState('');
   const [filterText, setFilterText] = React.useState('');
+  const [getSessionResult, setSessionResult] = React.useState({});
 
   var noToggle = false;
   var recordingStatus;
@@ -534,27 +535,32 @@ export default ({
           person_id: person_id,
         })
       ).catch(error => {
-        console.log(`Whoops! Something went wrong when fetching a patient by session: ${error.message}`);
+        console.log(`Error accessing patient: ${error.message}`);
       });
       let gC = {};
       result.data.getPerson.groups.forEach(g => { gC[g] = true; });
       setGroupChecked(gC);
+      setSessionResult(await API
+        .graphql(graphqlOperation(getSession, { session_id: person_id }))
+        .catch(() => { }));
       qualifierTable[value].value = value;
       qualifierTable[value].qualifiers[0] = '~~' + result.data.getPerson.location;
-      if (result?.data?.getPerson?.messaging?.email) { qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email); };
+      if (result?.data?.getPerson?.messaging?.email) {
+        qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email + (result.data.getPerson.preferred_method === 'email' ? '  - preferred' : ''));
+      };
       if (result?.data?.getPerson?.messaging?.sms) {
         let cleaned = ('' + result.data.getPerson.messaging.sms).replace(/\D/g, '');
         let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         let phoneNumber = result.data.getPerson.messaging.sms;
         if (match) { phoneNumber = ['(', match[2], ') ', match[3], '-', match[4]].join(''); }
-        qualifierTable[value].qualifiers.push('~~cell: ' + phoneNumber);
+        qualifierTable[value].qualifiers.push('~~cell: ' + phoneNumber + (result.data.getPerson.preferred_method === 'sms' ? '  - preferred' : ''));
       };
       if (result?.data?.getPerson?.messaging?.voice) {
         let cleaned = ('' + result.data.getPerson.messaging.voice).replace(/\D/g, '');
         let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         let phoneNumber = result.data.getPerson.messaging.voice;
         if (match) { phoneNumber = ['(', match[2], ') ', match[3], '-', match[4]].join(''); }
-        qualifierTable[value].qualifiers.push('~~home: ' + phoneNumber);
+        qualifierTable[value].qualifiers.push('~~home: ' + phoneNumber + (result.data.getPerson.preferred_method === 'voice' ? '  - preferred' : ''));
       };
       let response = await Storage.get('patients/' + person_id + '.jpg').catch(error => {
         console.log(`Whoops! Something went wrong getting picture from s3: ${error.message}`);
@@ -609,7 +615,7 @@ export default ({
   };
 
   const handleToggleGroup = value => () => {
-    let checkFor = value.split('~')[0];
+    let checkFor = value.split('~')[0].trim();
     if (groupChecked.hasOwnProperty(checkFor)) { delete groupChecked[checkFor]; }
     else { groupChecked[checkFor] = true; }
     var resetter = formState + 1;
@@ -816,7 +822,7 @@ export default ({
           playing={true}
           onError={async (err) => {
             console.log(err);
-            let eValue = `Video error - no user snackbar.  err is ${JSON.stringify(err)}`;
+            let eValue = `error_value.Video error (user not notified) - err is ${JSON.stringify(err)}`;
             if (err?.target?.error?.message) {
               enqueueSnackbar(`I'm sorry... AVA can't play that video. (${err?.target?.error?.message || 'Details not provided'})`, { variant: 'error' });
               eValue = `error_value.File=${defaultValue} Code=${err?.target?.error?.code} Message=${err?.target?.error?.message}`;
@@ -1223,6 +1229,8 @@ export default ({
                                     value={qMessage}
                                     id='PersonMessageText'
                                     label='Message'
+                                    fullWidth
+                                    multiline
                                     variant='standard'
                                     autoComplete='off'
                                     onChange={onChangeQMessage}
@@ -1280,7 +1288,7 @@ export default ({
                             )
                           )
                           : null}
-                        {groupsManaged &&
+                        {groupsManaged && (groupsManaged.length > 0) &&
                           <ListItem
                             key={`qhead-groupmanagement-textkey`}
                             className={classes.defaultButton}
@@ -1293,7 +1301,7 @@ export default ({
                             />
                           </ListItem>
                         }
-                        {groupsManaged ?
+                        {(groupsManaged && (groupsManaged.length > 0)) ?
                           groupsManaged.map((managedGroup, mx) =>
                             <ListItem
                               key={`mSection-${mx}-checkkeylistitem`}
@@ -1303,7 +1311,7 @@ export default ({
                             >
                             <Checkbox
                               edge='start'
-                              checked={groupChecked.hasOwnProperty(managedGroup.split('~')[0])}
+                              checked={groupChecked.hasOwnProperty(managedGroup.split('~')[0].trim())}
                               name={managedGroup}
                               disableRipple
                                 key={`mSection-${mx}-checkkey`}
@@ -1313,9 +1321,64 @@ export default ({
                             <ListItemText
                               id={`mSection-${mx}-textid`}
                                 key={`mSection-${mx}-textkey`}
-                              primary={<Typography noWrap={true}>{managedGroup.split('~').pop()}</Typography>}
+                              primary={<Typography noWrap={true}>{managedGroup.split('~').pop().trim()}</Typography>}
                             />
-                          </ListItem>) : null}
+                            </ListItem>) : null}
+                        {groupsManaged &&
+                          <React.Fragment key={`session-panel`}>
+                          <ListItem
+                            key={`qhead-sessiondetails-header`}
+                            className={classes.defaultButton}
+                          >
+                            <ListItemText
+                                id={`qhead-sessiondetails-headertext`}
+                                key={`qhead-sessiondetails-headertext`}
+                              classes={{ primary: classes.subHeaderPlus }}
+                              primary='AVA Usage'
+                            />
+                            </ListItem>
+                            <ListItem
+                              key={`qhead-sessiondetails-userid`}
+                              className={classes.defaultButton}
+                            >
+                              <ListItemText
+                                id={`qlabelid-userid`}
+                                key={`qlabelid-userid`}
+                                primary={<Typography noWrap={true}>User ID: {getSessionResult?.data?.getSession?.session_id}</Typography>}
+                              />
+                            </ListItem>
+                          <ListItem
+                            key={`qhead-sessiondetails-platform`}
+                            className={classes.defaultButton}
+                          >
+                            <ListItemText
+                              id={`qlabelid-platform`}
+                              key={`qlabelid-platform`}
+                              primary={<Typography noWrap={true}>Platform: {getSessionResult?.data?.getSession?.platform}</Typography>}
+                            />
+                          </ListItem>
+                          <ListItem
+                            key={`qhead-sessiondetails-version`}
+                            className={classes.defaultButton}
+                          >
+                            <ListItemText
+                              id={`qlabelid-version`}
+                              key={`qlabelid-version`}
+                              primary={<Typography noWrap={true}>Last version: {getSessionResult?.data?.getSession?.status.split(/=|~/)[1]}</Typography>}
+                            />
+                            </ListItem>
+                            <ListItem
+                              key={`qhead-sessiondetails-status`}
+                              className={classes.defaultButton}
+                            >
+                              <ListItemText
+                                id={`qlabelid-status`}
+                                key={`qlabelid-status`}
+                                primary={<Typography noWrap={true}>Last use: {getSessionResult?.data?.getSession?.status.split(/=|~/).pop().replace(/GMT\S*/,'')}</Typography>}
+                              />
+                            </ListItem>
+                          </React.Fragment>
+                        }
                       </List>
                     </FormGroup>
                   </FormControl>
