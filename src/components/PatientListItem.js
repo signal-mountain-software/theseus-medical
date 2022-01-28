@@ -21,7 +21,7 @@ export default ({ patient, selected, onClick }) => {
 
   return (
     <ListItem selected={selected.patient_id === patient_id} onClick={onClick} button>
-      <ListItemText>{patient_display_name}</ListItemText>
+      <ListItemText>{patient_display_name} ({patient_id})</ListItemText>
     </ListItem>
   );
 };
