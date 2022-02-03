@@ -38,7 +38,7 @@ import ListItemIcon from '@material-ui/core/ListItemIcon';
 
 
 import Input from '@material-ui/core/Input';
-import InputAdornment from '@material-ui/core/InputAdornment';
+// import InputAdornment from '@material-ui/core/InputAdornment';
 import IconButton from '@material-ui/core/IconButton';
 import SearchIcon from '@material-ui/icons/Search';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
@@ -48,11 +48,11 @@ import TextSMSIcon from '@material-ui/icons/Textsms';
 
 import { getSession, getPerson } from '../../graphql/queries';
 
-import DialogContentText from '@material-ui/core/DialogContentText';
+// import DialogContentText from '@material-ui/core/DialogContentText';
 
 import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
-import FaceIcon from '@material-ui/icons/Face';
+// import FaceIcon from '@material-ui/icons/Face';
 
 import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
@@ -72,6 +72,14 @@ const useStyles = makeStyles(theme => ({
     marginBottom: '5px',
     marginTop: '5px',
     paddingLeft: 0,
+    verticalAlign: 'middle'
+  },
+  personText: {
+    marginRight: '15px',
+    marginLeft: '15px',
+    marginBottom: '5px',
+    marginTop: '5px',
+    paddingLeft: '15px',
     verticalAlign: 'middle'
   },
   leftButton: {
@@ -544,7 +552,8 @@ export default ({
         .graphql(graphqlOperation(getSession, { session_id: person_id }))
         .catch(() => { }));
       qualifierTable[value].value = value;
-      qualifierTable[value].qualifiers[0] = '~~' + result.data.getPerson.location;
+      qualifierTable[value].qualifiers.length = 1;
+      qualifierTable[value].qualifiers.push('~~' + result.data.getPerson.location);
       if (result?.data?.getPerson?.messaging?.email) {
         qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email + (result.data.getPerson.preferred_method === 'email' ? '  - preferred' : ''));
       };
@@ -975,6 +984,8 @@ export default ({
                   /* ~^<useTextBoxforThis>       | prompt with a multi-line box, show value |                                                           */
                   /*                             | in message area (just below the title)   |                                                           */
 
+                  /* ~person:<person stuff>      | show avatar and person name              |                                                           */
+
                   /* */
 
                   /* suppressing rows...
@@ -1001,7 +1012,9 @@ export default ({
                   if (suppressDisplay) { return null; }
 
                   let [specialKey, freeTextFieldName] = value.split(':');
+                  let personID = '';
                   let specialHandling = false;
+                  let personRow = false;
                   let header = false;
                   let showCheckBox = true;
                   let textPrompt = false;
@@ -1019,6 +1032,12 @@ export default ({
                         }
                       }
                     }
+                  }
+                  else if (qualifierTable[value]?.qualifiers[0]?.startsWith('~people:')) {
+                    personID = qualifierTable[value].qualifiers[0].substr(8);
+                    specialHandling = true;
+                    freeTextFieldName = specialKey;
+                    personRow = true;
                   };
 
                   return (
@@ -1055,7 +1074,7 @@ export default ({
                           }
                           {header && false &&
                             <ListItemText
-                            id={'subhead' + value + vIndex.toString()}
+                              id={'subhead' + value + vIndex.toString()}
                               primary={
                                 <Typography className={classes.factTitle}>
                                   {value.replace('!', '').substr(2)}
@@ -1101,22 +1120,28 @@ export default ({
                         <React.Fragment key={`fragment-${value}-${vIndex.toString()}`}>
                           {value.includes('~%') &&  /* Prompt for filter */
                             <FormControl fullWidth className={classes.freeInput}>
-                              <Input
-                                id='%filter-input%'
-                                type='text'
-                                onChange={onChangeFilterText}
-                                onKeyPress={onCheckEnter}
-                                autoComplete='off'
-                                placeholder={newFact?.value?.freeText?.[freeTextFieldName] || freeTextFieldName}
-                                value={filterText}
-                                endAdornment={
-                                  <InputAdornment position='end'>
-                                    <IconButton id={'testthis'} aria-label='trigger-filter-action' onClick={() => { handleFilterText(freeTextFieldName); }} >
-                                      <SearchIcon />
-                                    </IconButton>
-                                  </InputAdornment>
-                                }
-                              />
+                              <Box display='flex' flexDirection='row'>
+                                <Input
+                                  id='%filter-input%'
+                                  type='text'
+                                  style={{ flexGrow: 1, marginRight: 5 }}
+                                  onChange={onChangeFilterText}
+                                  onKeyPress={onCheckEnter}
+                                  autoComplete='off'
+                                  placeholder={newFact?.value?.freeText?.[freeTextFieldName] || freeTextFieldName}
+                                  value={filterText}
+                                />
+                                <Button
+                                  color='primary'
+                                  size='small'
+                                  variant='contained'
+                                  id={'testthis'}
+                                  aria-label='trigger-filter-action'
+                                  endIcon={<SearchIcon />}
+                                  onClick={() => { handleFilterText(freeTextFieldName); }}>
+                                  Search
+                                </Button>
+                              </Box>
                             </FormControl>
                           }
                           {value.startsWith('~file:') && /* File prompt */
@@ -1138,6 +1163,24 @@ export default ({
                               }
                               }
                             />
+                          }
+                          {personRow && /* Show person avatar and info  */
+                            <Box
+                              flexDirection='row'
+                              display='flex'
+                              grow={1}
+                              justifyContent='flex-start'
+                              onClick={handleQualSelected(value)}
+                              alignItems='center'>
+                              <Avatar
+                                src={`https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg`}
+                                sx={{ width: 30, height: 30 }}
+                                alt=""
+                              />
+                              <Typography variant={'h6'} className={classes.personText}>
+                                {freeTextFieldName}
+                              </Typography>
+                            </Box>
                           }
                           {value.startsWith('~time:') && /* Time prompt */
                             <Box
@@ -1167,30 +1210,45 @@ export default ({
               </List>
             </FormGroup>
           </FormControl>
-          <Dialog
-            open={qualifierOpen}
-            className={classes.qualDialog}
-            fullWidth
-            aria-labelledby='qualifier-dialog'>
-            <Box display='flex' flexDirection='row' width='95%'>
-              <Box display='flex' flexDirection='column' width='95%'>
-                <Typography className={classes.qualTitle} noWrap={true}>
-                  {qualifierData.value ? qualifierData.value.split(':')[0] : null}
-                </Typography>
-                {qualifierData.description ? (
-                  <DialogContentText className={classes.qualDescription}>{qualifierData.description}</DialogContentText>
-                ) : null}
-                {qualChecked?.[selectedFact]?.length > 0 ? (
-                  <DialogContentText className={classes.qualSubDescription}>
-                    You selected: {qualChecked[selectedFact].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')}
-                  </DialogContentText>
-                ) : null}
-                <DialogContent pt={0}>
-                  <FormControl fullWidth>
-                    <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
-                      <List>
-                        {qualifiers
-                          ? qualifiers.map((qualifier, qIndex) =>
+          {qualifierOpen &&
+            <Dialog
+              open={qualifierOpen}
+              className={classes.qualDialog}
+              fullWidth
+              scroll={'paper'}
+              aria-labelledby='qualifier-dialog'>
+              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+                {qualifierData.image_url ?
+                  (
+                    <Avatar
+                      src={qualifierImage}
+                      className={classes.picture}
+                      sx={{ width: 100, height: 100 }}
+                    />
+                  ) : null
+                }
+                <Box display='flex' pt={3} flexDirection='column' justifyContent='center' alignItems='center'>
+                  <Typography variant={'h5'} noWrap={true}>
+                    {qualifierData.value ? qualifierData.value.split(':')[0].split(',')[0].trim() : null}
+                  </Typography>
+                  <Typography noWrap={true}>
+                    {qualifierData.value ? qualifierData.value.split(':')[0].split(',')[1]?.trim() : null}
+                  </Typography>
+                  {qualifierData.description ? (
+                    <Typography className={classes.qualDescription}>
+                      {qualifierData.description}
+                    </Typography>
+                  )
+                    : null}
+                </Box>
+              </Box>
+              <DialogContent pt={0}>
+                <FormControl fullWidth>
+                  <FormGroup value={value} id='qvalue-label' name='value' open={qualifierOpen}>
+                    <List>
+                      {qualifiers
+                        ? qualifiers.map((qualifier, qIndex) =>
+                          !qualifier.startsWith('~people:') ? (
                             qualifier.startsWith('~~') ? (
                               <ListItem
                                 key={value + qIndex.toString()}
@@ -1234,7 +1292,6 @@ export default ({
                                     variant='standard'
                                     autoComplete='off'
                                     onChange={onChangeQMessage}
-                                  //InputProps={{ marginLeft: '2', marginTop: '2' }}
                                   />
                                 ) : (
                                   <ListItemText
@@ -1287,66 +1344,66 @@ export default ({
                               </ListItem>
                             )
                           )
-                          : null}
-                        {groupsManaged && (groupsManaged.length > 0) &&
+                            : null)
+                        : null
+                      }
+                      {peopleMode && (groupsManaged?.length > 0) &&
+                        <React.Fragment key={`session-panel`}>
                           <ListItem
                             key={`qhead-groupmanagement-textkey`}
                             className={classes.defaultButton}
-                          >                            
-                          <ListItemText
-                            id={`qhead-groupmanagement-textid`}
-                            key={`qhead-groupmanagement-textkey`}
-                          classes={{ primary: classes.subHeaderPlus }}
-                            primary='Groups'
+                          >
+                            <ListItemText
+                              id={`qhead-groupmanagement-textid`}
+                              key={`qhead-groupmanagement-textkey`}
+                              classes={{ primary: classes.subHeaderPlus }}
+                              primary='Groups'
                             />
                           </ListItem>
-                        }
-                        {(groupsManaged && (groupsManaged.length > 0)) ?
-                          groupsManaged.map((managedGroup, mx) =>
+                          {groupsManaged.map((managedGroup, mx) =>
                             <ListItem
                               key={`mSection-${mx}-checkkeylistitem`}
                               role={undefined}
                               className={classes.defaultButtonTight}
                               onClick={handleToggleGroup(managedGroup)}
                             >
-                            <Checkbox
-                              edge='start'
-                              checked={groupChecked.hasOwnProperty(managedGroup.split('~')[0].trim())}
-                              name={managedGroup}
-                              disableRipple
+                              <Checkbox
+                                edge='start'
+                                checked={groupChecked.hasOwnProperty(managedGroup.split('~')[0].trim())}
+                                name={managedGroup}
+                                disableRipple
                                 key={`mSection-${mx}-checkkey`}
                                 id={`mSection-${mx}-checkid`}
-                              inputProps={{ 'aria-labelledby': `qlabel-${managedGroup}-check` }}
-                            />
-                            <ListItemText
-                              id={`mSection-${mx}-textid`}
+                                inputProps={{ 'aria-labelledby': `qlabel-${managedGroup}-check` }}
+                              />
+                              <ListItemText
+                                id={`mSection-${mx}-textid`}
                                 key={`mSection-${mx}-textkey`}
-                              primary={<Typography noWrap={true}>{managedGroup.split('~').pop().trim()}</Typography>}
-                            />
-                            </ListItem>) : null}
-                        {groupsManaged &&
-                          <React.Fragment key={`session-panel`}>
+                                primary={<Typography noWrap={true}>{managedGroup.split('~').pop().trim()}</Typography>}
+                              />
+                            </ListItem>
+                          )}
                           <ListItem
                             key={`qhead-sessiondetails-header`}
                             className={classes.defaultButton}
                           >
                             <ListItemText
-                                id={`qhead-sessiondetails-headertext`}
-                                key={`qhead-sessiondetails-headertext`}
+                              id={`qhead-sessiondetails-headertext`}
+                              key={`qhead-sessiondetails-headertext`}
                               classes={{ primary: classes.subHeaderPlus }}
                               primary='AVA Usage'
                             />
-                            </ListItem>
-                            <ListItem
-                              key={`qhead-sessiondetails-userid`}
-                              className={classes.defaultButton}
-                            >
-                              <ListItemText
-                                id={`qlabelid-userid`}
-                                key={`qlabelid-userid`}
-                                primary={<Typography noWrap={true}>User ID: {getSessionResult?.data?.getSession?.session_id}</Typography>}
-                              />
-                            </ListItem>
+                          </ListItem>
+                          <ListItem
+                            key={`qhead-sessiondetails-userid`}
+                            className={classes.defaultButton}
+                          >
+                            <ListItemText
+                              id={`qlabelid-userid`}
+                              key={`qlabelid-userid`}
+                              primary={<Typography noWrap={true}>User ID: {getSessionResult?.data?.getSession?.session_id}</Typography>}
+                            />
+                          </ListItem>
                           <ListItem
                             key={`qhead-sessiondetails-platform`}
                             className={classes.defaultButton}
@@ -1364,50 +1421,43 @@ export default ({
                             <ListItemText
                               id={`qlabelid-version`}
                               key={`qlabelid-version`}
-                              primary={<Typography noWrap={true}>Last version: {getSessionResult?.data?.getSession?.status.split(/=|~/)[1]}</Typography>}
+                              primary={<Typography noWrap={true}>Last version: {getSessionResult?.data?.getSession?.status?.split(/=|~/)[1]}</Typography>}
                             />
-                            </ListItem>
-                            <ListItem
-                              key={`qhead-sessiondetails-status`}
-                              className={classes.defaultButton}
-                            >
-                              <ListItemText
-                                id={`qlabelid-status`}
-                                key={`qlabelid-status`}
-                                primary={<Typography noWrap={true}>Last use: {getSessionResult?.data?.getSession?.status.split(/=|~/).pop().replace(/GMT\S*/,'')}</Typography>}
-                              />
-                            </ListItem>
-                          </React.Fragment>
-                        }
-                      </List>
-                    </FormGroup>
-                  </FormControl>
-                </DialogContent>
-
-              </Box>
-              {qualifierData.image_url ? (
-                <Avatar src={qualifierImage} className={classes.picture}>
-                  <FaceIcon className={classes.picture} />
-                </Avatar>
-              ) : null}
-            </Box>
-            <DialogActions>
-              <Button onClick={handleQClose} className={classes.reject} size='small' variant='contained'>
-                Back
-              </Button>
-              {saveMode ?
-                <Button
-                  onClick={handleQSave}
-                  className={classes.confirm}
-                  variant='contained'
-                  color='primary'
-                  size='small'>
-                  {(peopleMode && qMessage) ? 'Send Msg' : 'Save'}
+                          </ListItem>
+                          <ListItem
+                            key={`qhead-sessiondetails-status`}
+                            className={classes.defaultButton}
+                          >
+                            <ListItemText
+                              id={`qlabelid-status`}
+                              key={`qlabelid-status`}
+                              primary={<Typography noWrap={true}>Last use: {getSessionResult?.data?.getSession?.status?.split(/=|~/).pop().replace(/GMT\S*/, '')}</Typography>}
+                            />
+                          </ListItem>
+                        </React.Fragment>
+                      }
+                    </List>
+                  </FormGroup>
+                </FormControl>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={handleQClose} className={classes.reject} size='small' variant='contained'>
+                  Back
                 </Button>
-                : null}
-            </DialogActions>
+                {saveMode ?
+                  <Button
+                    onClick={handleQSave}
+                    className={classes.confirm}
+                    variant='contained'
+                    color='primary'
+                    size='small'>
+                    {(peopleMode && qMessage) ? 'Send Msg' : 'Save'}
+                  </Button>
+                  : null}
+              </DialogActions>
 
-          </Dialog>
+            </Dialog>
+          }
         </React.Fragment >
       );
   }
