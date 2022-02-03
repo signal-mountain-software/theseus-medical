@@ -1170,14 +1170,32 @@ export default ({
                               display='flex'
                               grow={1}
                               justifyContent='flex-start'
-                              onClick={handleQualSelected(value)}
                               alignItems='center'>
+                              {checkBoxOn && showCheckBox &&
+                                <Checkbox
+                                  edge='start'
+                                  checked={
+                                    checked.some((checkItem) => {
+                                      return (
+                                        checkItem.split(':').pop().trim() === value.split('~-')[0].split(':').pop().trim()
+                                      );
+                                    })
+                                  }
+                                  disableRipple
+                                  onClick={handleToggle(value)}
+                                  inputProps={{ 'aria-labelledby': labelId }}
+                                />
+                              }
                               <Avatar
                                 src={`https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg`}
                                 sx={{ width: 30, height: 30 }}
                                 alt=""
+                                onClick={handleQualSelected(value)}
                               />
-                              <Typography variant={'h6'} className={classes.personText}>
+                              <Typography
+                                variant={'h6'}
+                                onClick={handleQualSelected(value)}
+                                className={classes.personText}>
                                 {freeTextFieldName}
                               </Typography>
                             </Box>
