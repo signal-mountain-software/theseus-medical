@@ -56,7 +56,7 @@ export default Component => props => {
 
   const [resetPW, setResetPW] = React.useState(false);
   let [platform, showIOS] = useIosCheck();
-  console.log(showIOS);
+  if (showIOS) {  };
 
   const lambda = new Lambda({
     region: 'us-east-1',
