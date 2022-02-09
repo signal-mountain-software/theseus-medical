@@ -6,6 +6,8 @@ export const getActivityData = /* GraphQL */ `
     getActivityData(input: $input) {
       code
       name
+      color
+      icon
       type
       reason
       baseline_value

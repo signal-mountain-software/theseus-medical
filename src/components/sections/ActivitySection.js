@@ -3,35 +3,37 @@ import { API, graphqlOperation } from 'aws-amplify';
 import IdleTimer from 'react-idle-timer';
 import avaAlert from '../../ava_alert.mp3';
 import { useSnackbar } from 'notistack';
-import AppBar from '@material-ui/core/AppBar';
+
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
-
+import Card from '@material-ui/core/Card';
+import CardMedia from '@material-ui/core/CardMedia';
+import Avatar from '@material-ui/core/Avatar';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { fade } from '@material-ui/core/styles/colorManipulator';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import BusinessCenterOutlinedIcon from '@material-ui/icons/BusinessCenterOutlined';
 import IconButton from '@material-ui/core/IconButton';
-
-import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import ExpandLessIcon from '@material-ui/icons/ExpandLess';
-
 import Dialog from '@material-ui/core/Dialog';
 import DialogTitle from '@material-ui/core/DialogTitle';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
-// import DialogContentText from '@material-ui/core/DialogContentText';
 
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import ExpandLessIcon from '@material-ui/icons/ExpandLess';
+
+import { updateSession } from '../../graphql/mutations';
 import { createPutFact } from '../../graphql/mutations';
 import { updateReservation } from '../../graphql/mutations';
+
 import { getActivityData } from '../../graphql/queries';
 import { getReservation } from '../../graphql/queries';
+
 import NewFactDialog from '../dialogs/NewFactDialog';
 
 import * as serviceWorker from '../../serviceWorker';
@@ -55,7 +57,12 @@ const useStyles = makeStyles(theme => ({
     zIndex: 1,
   },
   gridList: {
-    // maxHeight: 400,
+    fontWeight: 'bold',
+    marginLeft: 15
+  },
+  noDisplay: {
+    display: 'none',
+    visibility: 'hidden'
   },
   mainPaper: {
   },
@@ -91,6 +98,9 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
   },
+  activityText: {
+    marginLeft: theme.spacing(3),
+  },
 }));
 
 const DEFAULT_TYPE = 'My_activities';
@@ -125,6 +135,7 @@ export default ({ patient, session }) => {
   const [activePatient, setActivePatient] = React.useState(null);
 
   const [rowOpen, setRowOpen] = React.useState([]);
+  const [sectionOpen, setSectionOpen] = React.useState({});
 
   // const [showSummary, setSummary] = React.useState(false);
   const [showConfirmation, needsConfirmation] = React.useState(false);
@@ -140,9 +151,11 @@ export default ({ patient, session }) => {
   const classes = useStyles();
 
   var priorReason = '';
+  var sectionColor = '';
   var selectedActivityName = '';
   var addedAFavorite = false;
   var toggledRow = false;
+  var toggledSection = false;
   var currentAlertSnack = null;
 
   const AWS = require('aws-sdk');
@@ -213,13 +226,7 @@ export default ({ patient, session }) => {
     setSelected(selected);
     setShowNewFactDialog(true);
   };
-  /*
-    const handleSummaryExit = () => {
-      // setSummary(false);
-      needsConfirmation(false);
-      returnToHome();
-    };
-  */
+  
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
     // setLimit(DEFAULT_LIMIT);
@@ -251,6 +258,11 @@ export default ({ patient, session }) => {
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
       addedAFavorite = false;
+      return;
+    }
+    if (toggledSection) {
+      toggledSection = false;
+      setLimit(limit + 1);
       return;
     }
     if (activity?.code?.startsWith('event')) {
@@ -653,6 +665,9 @@ export default ({ patient, session }) => {
     let mounted = true;
     (async () => {
       if (session) {
+        if (session.current_event) {
+          setSectionOpen(JSON.parse(session.current_event));
+        }
         if (mounted) {
           setEvents(events);
           setTypes(types);
@@ -700,6 +715,7 @@ export default ({ patient, session }) => {
 
         if (mounted) {
           setLoading(false);
+
           if (Object.keys(lastWrittenFact).length > 0) {
             // getActivityData is list of options that displays on the user's screen 
             // If we just wrote a fact, attempt to drop information about that fact into getActivityData 
@@ -738,7 +754,43 @@ export default ({ patient, session }) => {
     return () => {
       mounted = false;
     };
-  }, [patient, event, type]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient, event, type, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateSessionPreferences = (pSections) => {
+    if (session) {
+      API
+        .graphql(graphqlOperation(
+          updateSession, {
+          input: {
+            session_id: session.user_id,
+              current_event: JSON.stringify(pSections),
+          }
+        }))
+        .catch(error => {
+          enqueueSnackbar(`Change to your preference was not saved.`, { variant: 'info' });
+        });
+    };
+  };
+
+  function stringToColor(string) {
+    let hash = 0;
+    let i;
+
+    /* eslint-disable no-bitwise */
+    for (i = 0; i < string.length; i += 1) {
+      hash = string.charCodeAt(i) + ((hash << 5) - hash);
+    }
+
+    let color = '#';
+
+    for (i = 0; i < 3; i += 1) {
+      const value = (hash >> (i * 8)) & 0xff;
+      color += `00${value.toString(16)}`.substr(-2);
+    }
+    /* eslint-enable no-bitwise */
+
+    return color;
+  }
 
   let idleSince = null;
   let idleString = '';
@@ -777,110 +829,138 @@ export default ({ patient, session }) => {
         }}
         debounce={250}
       />
-      <AppBar className={classes.appBar}>
-        <Box
-          px={3}
-          display='flex'
-          flexDirection='row'
-          minHeight={40}
-          width='100%'
-          alignItems='center'
-          mt={1}
-          mb={1}
-          justifyContent='space-between'>
-          <Box
-            flexDirection='row'
-            pl={1}
-            display='flex'
-            grow={1}
-            justifyContent='flex-start'
-            alignItems='center'>
-            <BusinessCenterOutlinedIcon />
-            <Typography variant='h6' className={classes.title}>
-              {homeState === 'event' ? activities[0].reason : 'AVA'}
-            </Typography>
-          </Box>
-          <Box pl={2} display={homeState === 'event' ? 'flex' : 'none'}>
-            <Button
-              color='secondary'
-              size='small'
-              variant='contained'
-              onClick={doneWithEvent}>
-              Home
-            </Button>
-          </Box>
-        </Box>
-      </AppBar>
+
 
       {/* Main Activity List and Selection */}
-      <Box p={3} flexGrow={1}>
-        <Grid container>
-          <Grid md={6} sm={7} xs={12} item>
-            <GridList className={classes.gridList} cellHeight='auto' cols={1}>
-              {!activities || activities.length === 0
-                ? null
-                : activities.map((activity, index) => (
-                  <GridListTile key={activity.code} cols={1}>
+      <Box p={3}  >
+        <Grid md={6} sm={7} xs={12} item>
+          <Card
+            style={{ marginBottom: '15px' }}
+            raised={false}
+            variant='elevation' elevation={0}
+          >
+            <CardMedia
+              component="img"
+              width='5%'
+              image='https://ava-icons.s3.amazonaws.com/AVA-logo.jpg'
+              alt='AVA'
+            />
+          </Card>
+          <GridList cellHeight='auto' cols={1}>
+            {!activities || activities.length === 0
+              ? null
+              : activities.map((activity, index) => (
+                !sectionOpen[activity.reason] && (activity.reason === priorReason) ? null :
+                  <GridListTile
+                    key={activity.reason + 'r' + index}
+                    style={{ marginBottom: '0px', marginTop: '0px' }}
+                    cols={1}
+                  >
                     {activity.reason === priorReason ? null :
-                      <Typography variant='h6' noWrap={true}>
-                        {(priorReason = activity.reason)}
-                      </Typography>
-                    }
-                    <Paper
-                      component={Box}
-                      p={2}
-                      variant='outlined'
-                      // style={{ background: 'yellow' }}
-                      textAlign='left'
-                      onClick={() => {
-                        closeSnackbar();
-                        onChooseActivity(activity);
-                      }}
-                      square>
-                      <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                        <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
-                          {activity.type === 'document' ?
-                            <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
-                              <Typography variant='h5'>{activity.name}</Typography>
-                            </a>
-                            :
-                            <React.Fragment key={`act_box_${activity.name}`}>
-                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                <Typography variant='h5'>{activity.name}</Typography>
-                              </Box>
-                              <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
-                                {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
-                                  <Typography key={activity.name + 'h' + hNdx} variant='body2'>
-                                    {hNdx > 0 ? <br /> : null}
-                                    {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
-                                  </Typography>
-                                )) : null}
-                              </Box>
-                            </React.Fragment>
-                          }
-                        </Box>
-                        {activity.fact_history ?
+                      <Paper
+                        component={Box}
+                        p={2}
+                        style={{ background: activity.color || stringToColor(activity.reason), marginTop: '5px', marginBottom: '5px' }}
+                        textAlign='left'
+                        onClick={() => {
+                          toggledSection = true;
+                          let newSectionOpen = sectionOpen;
+                          !sectionOpen.hasOwnProperty(activity.reason)
+                            ? newSectionOpen[activity.reason] = true
+                            : newSectionOpen[activity.reason] = !newSectionOpen[activity.reason];
+                          setSectionOpen(newSectionOpen);
+                          updateSessionPreferences(newSectionOpen);
+                          onChooseActivity(null);
+                        }}
+                        square>
+                        <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                          {(sectionColor = activity.color || stringToColor(activity.reason))}
+                        </Typography>
+                        <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            alignItems='center'
+                            marginRight={4}
+                          >
+                            <Avatar
+                              src={activity.icon || `https://ava-icons.s3.amazonaws.com/dining-room.png`}
+                              sx={{ width: 30, height: 30 }}
+                              alt=""
+                              variant="square"
+                            />
+                            <Typography className={classes.gridList} variant='h5'>
+                              {(priorReason = activity.reason)}
+                            </Typography>
+                          </Box>
                           <IconButton
-                            aria-label='showHistory'
-                            onClick={() => {
-                              toggledRow = true;
-                              let newRowOpen = rowOpen;
-                              newRowOpen[index] = !newRowOpen[index];
-                              setRowOpen(newRowOpen);
-                            }}>
-                            {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                          </IconButton> : null}
-                      </Box>
-                    </Paper>
+                            aria-label='showActivities'
+                            size='small'
+                          >
+                            {!sectionOpen[activity.reason] ? 'Show' : 'Hide'}
+                          </IconButton>
+                        </Box>
+                        <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                          {false}
+                        </Typography>
+                      </Paper>
+                    }
+                    {!sectionOpen[activity.reason] ? null :
+                      <Paper
+                        component={Box}
+                        p={2}
+                        variant='outlined'
+                        style={{ background: activity.color || sectionColor, marginBottom: '0px', marginTop: '0px' }}
+                        textAlign='left'
+                        onClick={() => {
+                          closeSnackbar();
+                          onChooseActivity(activity);
+                        }}
+                        square>
+                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                          <Box display='flex' flexDirection='column' className={classes.activityText} width='95%' textOverflow='ellipsis'>
+                            {activity.type === 'document' ?
+                              <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
+                                <Typography variant='h5'>{activity.name}</Typography>
+                              </a>
+                              :
+                              <React.Fragment key={`act_box_${activity.name}`}>
+                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                  <Typography variant='h5'>{activity.name}</Typography>
+                                </Box>
+                                <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
+                                  {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
+                                    <Typography key={activity.name + 'h' + hNdx} variant='body2'>
+                                      {hNdx > 0 ? <br /> : null}
+                                      {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
+                                    </Typography>
+                                  )) : null}
+                                </Box>
+                              </React.Fragment>
+                            }
+                          </Box>
+                          {activity.fact_history ?
+                            <IconButton
+                              aria-label='showHistory'
+                              onClick={() => {
+                                toggledRow = true;
+                                let newRowOpen = rowOpen;
+                                newRowOpen[index] = !newRowOpen[index];
+                                setRowOpen(newRowOpen);
+                              }}>
+                              {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            </IconButton> : null}
+                        </Box>
+                      </Paper>
+                    }
                   </GridListTile>
-                ))}
-              <GridListTile cols={1}>
-                <Typography variant='caption' noWrap={true}>
-                  {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
-                </Typography>
-              </GridListTile>
-            </GridList>
-          </Grid>
+              ))}
+            <GridListTile cols={1} >
+              <Typography variant='caption' noWrap={true}>
+                {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
+              </Typography>
+            </GridListTile>
+          </GridList>
         </Grid>
         {loading ?
           <div style={{ display: 'flex', justifyContent: 'center' }}>
