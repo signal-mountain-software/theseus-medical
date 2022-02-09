@@ -208,7 +208,7 @@ export default Component => props => {
               getPeopleByGroupResult = await API
                 .graphql(graphqlOperation(getGroup, { client_group_id: respArray[r] }))
                 .catch(
-                  error => {
+                  (error) => {
                     console.log(`Warning! We couldn't get the names of the people in the ${respArray[r]} group.  
                     Error is: ${error.errors[0].message}`);
                   }

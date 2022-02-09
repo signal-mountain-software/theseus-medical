@@ -237,21 +237,23 @@ export default ({ patient, session }) => {
     closeSnackbar();
   };
 
-  const handleWriteError = async (parmMessage) => {
-    let errorTime = new Date().toString();
-    let instruction = {
-      patient_id: patient.person_id,
-      activity_key: '***ERROR_CAUGHT***',
-      value: parmMessage,
-      status: `Version = v22.2.9~${errorTime}`,
-      session: {
-        user_id: patient.person_id,
-        session_id: session.client_id,
-      },
-    };
-    await API
-      .graphql(graphqlOperation(createPutFact, { input: instruction }))
-      .catch(e => { alert(`Menu build error, possible cause: ${parmMessage}. Use refresh button.`); });
+  function handleWriteError(parmMessage) {
+    if (parmMessage !== 'Network Error') {
+      let errorTime = new Date().toString();
+      let instruction = {
+        patient_id: patient.person_id,
+        activity_key: '***ERROR_CAUGHT***',
+        value: parmMessage,
+        status: `Version = v22.2.9~${errorTime}`,
+        session: {
+          user_id: patient.person_id,
+          session_id: session.client_id,
+        },
+      };
+      API
+        .graphql(graphqlOperation(createPutFact, { input: instruction }))
+        .catch(e => { alert(`Menu build error, possible cause: ${parmMessage}. Use refresh button.`); });
+    }
   };
 
   const onChooseActivity = async activity => {
@@ -696,7 +698,7 @@ export default ({ patient, session }) => {
               person_id: patient.person_id,
               event_id: event,
               activity_type: type,
-              limit: limit,
+              limit: 169,
               fact_data: true,
               includeEvents: true,
               history_only: false,

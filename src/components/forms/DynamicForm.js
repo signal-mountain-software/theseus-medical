@@ -835,22 +835,22 @@ export default ({
             if (err?.target?.error?.message) {
               enqueueSnackbar(`I'm sorry... AVA can't play that video. (${err?.target?.error?.message || 'Details not provided'})`, { variant: 'error' });
               eValue = `error_value.File=${defaultValue} Code=${err?.target?.error?.code} Message=${err?.target?.error?.message}`;
+              await API
+                .graphql(graphqlOperation(createPutFact, {
+                  input: {
+                    patient_id: session.patient_id,
+                    activity_key: 'error.videoPlayer',
+                    status: new Date().toString(),
+                    value: eValue,
+                    qualifier: null,
+                    session: {
+                      user_id: session.user_id,
+                      session_id: session.session_id
+                    },
+                  }
+                }))
+                .catch(error => { console.log(error); });
             }
-            await API
-              .graphql(graphqlOperation(createPutFact, {
-                input: {
-                  patient_id: session.patient_id,
-                  activity_key: 'error.videoPlayer',
-                  status: new Date().toString(),
-                  value: eValue,
-                  qualifier: null,
-                  session: {
-                    user_id: session.user_id,
-                    session_id: session.session_id
-                  },
-                }
-              }))
-              .catch(error => { console.log(error); });
           }}
         />
       );
