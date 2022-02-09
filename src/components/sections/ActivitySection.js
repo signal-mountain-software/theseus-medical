@@ -226,7 +226,7 @@ export default ({ patient, session }) => {
     setSelected(selected);
     setShowNewFactDialog(true);
   };
-  
+
   const returnToHome = () => {
     setType(DEFAULT_TYPE);
     // setLimit(DEFAULT_LIMIT);
@@ -243,7 +243,7 @@ export default ({ patient, session }) => {
       patient_id: patient.person_id,
       activity_key: '***ERROR_CAUGHT***',
       value: parmMessage,
-      status: `Version = v22.2.3~${errorTime}`,
+      status: `Version = v22.2.9~${errorTime}`,
       session: {
         user_id: patient.person_id,
         session_id: session.client_id,
@@ -763,7 +763,7 @@ export default ({ patient, session }) => {
           updateSession, {
           input: {
             session_id: session.user_id,
-              current_event: JSON.stringify(pSections),
+            current_event: JSON.stringify(pSections),
           }
         }))
         .catch(error => {
