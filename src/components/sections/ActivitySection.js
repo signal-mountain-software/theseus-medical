@@ -849,7 +849,7 @@ export default ({ patient, session }) => {
             <CardMedia
               component="img"
               width='5%'
-              image='https://ava-icons.s3.amazonaws.com/AVA-logo.jpg'
+              image={session?.client_icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg'}
               alt='AVA'
             />
           </Card>

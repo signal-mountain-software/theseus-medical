@@ -72,6 +72,23 @@ export const getActivityTypes = /* GraphQL */ `
     }
   }
 `;
+
+export const getCustomizations = /* GraphQL */ `
+  query GetCustomizations(
+    $client_id: String!
+    $custom_key: String!
+    ) {
+    getCustomizations(
+      client_id: $client_id
+      custom_key: $custom_key
+      ) {
+      client_id
+      custom_key
+      icon
+      color
+    }
+  }
+`;
 export const getEventsByClient = /* GraphQL */ `
   query GetEventsByClient(
     $client_id: String!
