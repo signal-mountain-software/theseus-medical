@@ -737,10 +737,14 @@ export default ({ patient, session }) => {
             });
           }
           setActivities(result.data.getActivityData);
+          let previousHomeState = homeState;
           if (event === '' && type === DEFAULT_TYPE) {
             setHomeState('home');
           } else {
             setHomeState('event');
+            if (previousHomeState !== 'event') {
+              window.scrollTo(0, 0);
+            }
           }
         } else {
           API.cancel(result, 'ActivitySection unmounted, cancel getActivityData');
@@ -799,6 +803,8 @@ export default ({ patient, session }) => {
 
   return (
     <Paper className={classes.mainPaper} onClick={() => onWildClick} >
+
+      {/* Idle timer always running */}
       <IdleTimer
         ref={ref => { idleTimer = ref; }}
         timeout={1000 * 60 * 30}   // every "n" minutes
@@ -832,7 +838,6 @@ export default ({ patient, session }) => {
         debounce={250}
       />
 
-
       {/* Main Activity List and Selection */}
       <Box p={3}  >
         <Grid md={6} sm={7} xs={12} item>
@@ -849,6 +854,49 @@ export default ({ patient, session }) => {
             />
           </Card>
           <GridList cellHeight='auto' cols={1}>
+            {homeState === 'event' ?
+              <GridListTile
+                key={'ReturnHomeHeader'}
+                style={{ marginBottom: '0px', marginTop: '0px' }}
+                cols={1}
+              >
+                <Paper
+                  component={Box}
+                  p={2}
+                  style={{ background: '#d25958', marginTop: '5px', marginBottom: '5px' }}
+                  textAlign='left'
+                  onClick={doneWithEvent}
+                  square>
+                  <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                    {('Dont display me')}
+                  </Typography>
+                  <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                    <Box
+                      display='flex'
+                      flexDirection='row'
+                      alignItems='center'
+                      marginRight={4}
+                    >
+                      <Avatar
+                        src={`https://ava-icons.s3.amazonaws.com/back.png`}
+                        sx={{ width: 30, height: 30 }}
+                        alt=""
+                        variant="square"
+                      />
+                      <Typography className={classes.gridList} variant='h5'>
+                        {'Return to Main Menu'}
+                      </Typography>
+                    </Box>
+                    <IconButton
+                      aria-label='showActivities'
+                      size='small'
+                    >
+                      {'Back'}
+                    </IconButton>
+                  </Box>
+                </Paper>
+              </GridListTile>
+              : 'none'}
             {!activities || activities.length === 0
               ? null
               : activities.map((activity, index) => (
