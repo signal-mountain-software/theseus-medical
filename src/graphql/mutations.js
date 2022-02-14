@@ -31,6 +31,7 @@ export const updateSession = /* GraphQL */ `
       assigned_to
       responsible_for
       current_event
+      platform
       description
       event_description
       kiosk_mode

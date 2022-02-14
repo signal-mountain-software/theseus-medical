@@ -4,6 +4,7 @@ import {
   AmplifySignIn,
   AmplifyForgotPassword
 } from '@aws-amplify/ui-react';
+import useIosCheck from '../hooks/useIosCheck';
 import {
   Auth,
   appendToCognitoUserAgent
@@ -54,6 +55,8 @@ export default Component => props => {
   const [inputCP, setInputCP] = React.useState('');
 
   const [resetPW, setResetPW] = React.useState(false);
+  let [platform, showIOS] = useIosCheck();
+  if (showIOS) {  };
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -136,11 +139,11 @@ export default Component => props => {
     try {
       const data = await Auth.currentSession();
       if (data) {
-        let timeStamp = new Date().toString();
+        let timeStamp = new Date().toString();        
         logAVAAccess(
           data.idToken.payload['cognito:username'],
-          data.accessToken.payload.sub,
-          `Version=v22.2.3${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+          platform,
+          `Version=v22.2.9${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
@@ -160,7 +163,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.2.3${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.2.9${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
@@ -201,13 +204,14 @@ export default Component => props => {
 
   };
 
-  const logAVAAccess = async (pUser, pSession, pMessage) => {
+  const logAVAAccess = async (pUser, pPlatform, pMessage) => {
     await API
       .graphql(graphqlOperation(
         updateSession, {
         input: {
           session_id: pUser,
-          status: pMessage
+          status: pMessage,
+          platform: pPlatform
         }
       }
       ))

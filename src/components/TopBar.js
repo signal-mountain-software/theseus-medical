@@ -133,6 +133,7 @@ export default () => {
           <Box flexGrow={1}>
             <PatientChip patient={patient} roles={roles} session={session} />
           </Box>
+          
           {!isMobile && !hideSwitchAccountButton && (
             <Box >
               <Tooltip

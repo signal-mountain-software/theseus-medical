@@ -3,7 +3,7 @@ import { useSnackbar } from 'notistack';
 import { API, Auth, graphqlOperation } from 'aws-amplify';
 
 import useSession from '../hooks/useSession';
-import { getGroup, getPerson, getRoles, getSession } from '../graphql/queries';
+import { getGroup, getPerson, getRoles, getSession, getCustomizations } from '../graphql/queries';
 import { SET_PATIENT, SET_PATIENTS, SET_PROFILE, SET_ROLES, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 
 export default Component => props => {
@@ -91,7 +91,7 @@ export default Component => props => {
               });
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
-          session.session_id = `v22.2.3${window.location.href.split('//')[1].slice(0, 1)}`;
+          session.session_id = `v22.2.9${window.location.href.split('//')[1].slice(0, 1)}`;
         }
 
         // get person's Account information
@@ -132,6 +132,18 @@ export default Component => props => {
         //    if (session.responsible_for === 'ALL') { roles = ['admin'] }
         //    else {
         const client_group_id = session.client_id + '~' + session.assigned_to;
+        
+        let getClientResult = await API
+          .graphql(graphqlOperation(getCustomizations, { client_id: session.client_id, custom_key: 'logo' }))
+          .catch(
+            error => {
+              console.log('logo not found for client ' + session.client_id);
+            }
+          );
+        session.client_icon = getClientResult?.data?.getCustomizations?.icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg';
+        //    }
+
+        // get the Client's information
         getRolesResult = await API
           .graphql(graphqlOperation(getRoles, { person_id: session.user_id, client_group_id }))
           .catch(
@@ -140,7 +152,7 @@ export default Component => props => {
             }
           );
         roles = getRolesResult?.data?.getRoles || ['patient'];
-        //    }
+
 
         // get the current patient information for a user; if the user does not have a current patient, use the user's id
         // const patient_id = usingDefaultSession ? user.username : session.patient_id;
@@ -208,7 +220,7 @@ export default Component => props => {
               getPeopleByGroupResult = await API
                 .graphql(graphqlOperation(getGroup, { client_group_id: respArray[r] }))
                 .catch(
-                  error => {
+                  (error) => {
                     console.log(`Warning! We couldn't get the names of the people in the ${respArray[r]} group.  
                     Error is: ${error.errors[0].message}`);
                   }

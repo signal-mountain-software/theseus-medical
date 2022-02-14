@@ -6,6 +6,8 @@ export const getActivityData = /* GraphQL */ `
     getActivityData(input: $input) {
       code
       name
+      color
+      icon
       type
       reason
       baseline_value
@@ -67,6 +69,23 @@ export const getActivityTypes = /* GraphQL */ `
         qualifier_description
         qualifier_observation_key
       }
+    }
+  }
+`;
+
+export const getCustomizations = /* GraphQL */ `
+  query GetCustomizations(
+    $client_id: String!
+    $custom_key: String!
+    ) {
+    getCustomizations(
+      client_id: $client_id
+      custom_key: $custom_key
+      ) {
+      client_id
+      custom_key
+      icon
+      color
     }
   }
 `;
@@ -215,6 +234,7 @@ export const getSession = /* GraphQL */ `
       assigned_to
       responsible_for
       current_event
+      platform
       description
       event_description
       kiosk_mode
