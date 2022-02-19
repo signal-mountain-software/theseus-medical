@@ -162,14 +162,14 @@ export default ({ patient, session }) => {
   AWS.config.update({ region: 'us-east-1' });
 
   const s3 = new AWS.S3({
-    accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
-    secretAccessKey: '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',
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
   var elastictranscoder = new AWS.ElasticTranscoder(
     {
-      accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
-      secretAccessKey: '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',
+      accessKeyId: process.env.REACT_APP_AVA_ID,
+      secretAccessKey: process.env.REACT_APP_AVA_KEY,
     }
   );
 
@@ -244,7 +244,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.2.9~${errorTime}`,
+        status: `Version = v22.2.20~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -374,30 +374,35 @@ export default ({ patient, session }) => {
           }
           if ((newFact.value?.mediaData?.ContentType?.includes('video') || newFact.value?.mediaData?.Body?.type?.includes('video')) && !actionCancelled) {
             const finalFilename = await putVideo(newFact.value);
-            const vName = newFact.value.tag;
-            newFact.value = `file_details.s3file=${finalFilename} ~ Video ~ userTag=${vName}${valueSelectedString}`;
-            let writtenFact = await API
-              .graphql(graphqlOperation(createPutFact, { input: newFact }))
-              .catch(error => {
-                enqueueSnackbar(
-                  `Uh oh! We couldn't record important information about your video. Please try again: ${JSON.stringify(
-                    error.message || error.errors[0].message
-                  )}`,
-                  {
-                    variant: 'error', persist: true
-                  }
-                );
-              });
-            setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+            if (finalFilename) {
+              const vName = newFact.value.tag;
+              newFact.value = `file_details.s3file=${finalFilename} ~ Video ~ userTag=${vName}${valueSelectedString}`;
+              let writtenFact = await API
+                .graphql(graphqlOperation(createPutFact, { input: newFact }))
+                .catch(error => {
+                  enqueueSnackbar(
+                    `Uh oh! We couldn't record important information about your video. Please try again: ${JSON.stringify(
+                      error.message || error.errors[0].message
+                    )}`,
+                    {
+                      variant: 'error', persist: true
+                    }
+                  );
+                });
+              setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+            }
+            else { showMessage = false; }
           }
           else {
             const finalFilename = await putFile(newFact.value);
-            newFact.value = `file_details.s3file=${finalFilename} ~ File ~ userTag=${newFact.value.tag}${valueSelectedString}`;
-            let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
-              .catch(error => {
-                console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`);
-              });
-            setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+            if (finalFilename) {
+              newFact.value = `file_details.s3file=${finalFilename} ~ File ~ userTag=${newFact.value.tag}${valueSelectedString}`;
+              let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }))
+                .catch(error => {
+                  console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`);
+                });
+              setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+            }
             showMessage = false;
           }
         }
@@ -595,7 +600,7 @@ export default ({ patient, session }) => {
         .promise()
         .catch(err => {
           uploadOK = false;
-          enqueueSnackbar(`Uh oh!  AVA couldn't save your video.  The reason is ${JSON.stringify(err)}`,
+          enqueueSnackbar(`Uh oh!  AVA couldn't save your video.  The reason is ${err.message}`,
             { variant: 'error', persist: true });
         });
       if (uploadOK) {
@@ -613,15 +618,18 @@ export default ({ patient, session }) => {
           };
           mediaData.Key = fileWithoutExtension + '.mp4';
           elastictranscoder.createJob(converterParms, function (err, data) {
-            if (err) alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.', '^').split('^')[1] + '.mp4'}`); // an error occurred
+            if (err) {
+              alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.', '^').split('^')[1] + '.mp4'}`);
+            }
             else {
               enqueueSnackbar(`Your video named "${mediaData.Key}" is saved, and is now being prepared for viewing in AVA.`,
                 { variant: 'info', persist: true });           // successful response
             }
           });
         }
+        return mediaData.Key
       };
-      return mediaData.Key;
+      return null;
     }
 
     async function putFile(params) {    // Uploading files to the bucket
@@ -631,16 +639,20 @@ export default ({ patient, session }) => {
         Value: newFact.value.mediaData.Body.type
       };
       console.log(mediaData);
-      await s3.upload(mediaData, function (err, data) {
-        if (err) {
-          enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, { variant: 'error', persist: true });
-          return 'File not written';
-        }
-        else {
-          enqueueSnackbar(`AVA completed the upload of your file.  Technical details: Bucket is ${data.Bucket}, Key is ${data.Key}`, { variant: 'success', persist: true });
-        }
-      });
-      return mediaData.Key;
+      let uploadGood = true;
+      await s3.upload(mediaData)
+        .promise()
+        .catch(err => {
+          enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+          uploadGood = false;
+        })
+        .then(data => {
+          if (uploadGood) {
+            enqueueSnackbar(`AVA completed the upload of your file.  Technical details: Bucket is ${data?.Bucket}, Key is ${data?.Key}`, { variant: 'success', persist: true });
+          }
+        });
+      if (uploadGood) { return mediaData.Key; }
+      else { return null; }
     }
 
   };
