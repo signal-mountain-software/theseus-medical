@@ -118,6 +118,7 @@ export default ({ patient, picture, open, onClose }) => {
   const [email, setEmail] = React.useState();
   const [cell, setCell] = React.useState();
   const [surrogate, setSurrogate] = React.useState();
+  const [searchTerm, setSearchTerm] = React.useState();
   const [voice, setVoice] = React.useState();
   const [location, setLocation] = React.useState();
   const [inputPWD, setInputPWD] = React.useState();
@@ -136,8 +137,8 @@ export default ({ patient, picture, open, onClose }) => {
   AWS.config.update({ region: 'us-east-1' });
 
   const s3 = new AWS.S3({
-    accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
-    secretAccessKey: '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',
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
   function formatPhone(pNumber) {
@@ -157,6 +158,7 @@ export default ({ patient, picture, open, onClose }) => {
       setVoice(patient.messaging?.voice ? formatPhone(patient.messaging?.voice) : '');
       setEmail(patient.messaging?.email || '');
       setLocation(patient.location || '');
+      setSearchTerm(patient.search_data || '');
       setInputPWD('password');
       setMethod(patient.preferred_method);
       if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
@@ -229,6 +231,7 @@ export default ({ patient, picture, open, onClose }) => {
       sms: cell ? '+1' + cell.replace(/\D/g, '') : null,
       voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
       surrogate: surrogate,
+      search_data: searchTerm,
       prefMethod: prefMethod || 'AVA',
       time_based_rules: patient.time_based_rules,
       groups: patientGroups,
@@ -298,6 +301,11 @@ export default ({ patient, picture, open, onClose }) => {
     let checkNum = event.target.value.replace(/[\d\s\-()]/g, '');
     if (checkNum) { setSurrogate(event.target.value); }
     else { setSurrogate(formatPhone('' + event.target.value.replace(/\D/g, ''))); }
+    setChanges(true);
+  };
+
+  const handleChangeSearch = event => {
+    setSearchTerm(event.target.value);
     setChanges(true);
   };
 
@@ -394,9 +402,6 @@ export default ({ patient, picture, open, onClose }) => {
                 style={{ display: 'none' }}
                 ref={hiddenFileInput}
                 onChange={async (target) => {
-                  // let fObj = target.target.files[0];
-                  // let oName = fObj.name.toLowerCase().split('.');
-                  // let oType = oName.pop();
                   const pFile = {
                     Bucket: 'theseus-medical-storage',
                     Key: 'public/patients/' + patient.person_id + '.jpg',
@@ -406,7 +411,7 @@ export default ({ patient, picture, open, onClose }) => {
                   enqueueSnackbar(`Your photo is being updated!`, { variant: 'success', persist: false });
                   s3.upload(pFile, function (err, data) {
                     if (err) {
-                      enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${JSON.stringify(err)}`, { variant: 'error', persist: true });
+                      enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
                     }
                   });
                 }
@@ -454,7 +459,11 @@ export default ({ patient, picture, open, onClose }) => {
                     </FormControl>
 
                     <Typography className={classes.idText}>{`My userID is ${patient.person_id}`}</Typography>
-
+                    
+                    <Box mt={3}>
+                      <TextField id='searchTerm' value={searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
+                    </Box>
+                  
                   </Box>
                 </div>
                 <Box flexGrow={1} mr={3}
