@@ -27,9 +27,7 @@ import {
   useSnackbar
 } from 'notistack';
 import Button from '@material-ui/core/Button';
-// import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
-// import Typography from '@material-ui/core/Typography';
 
 import TopBar from '../components/TopBar';
 
@@ -60,8 +58,8 @@ export default Component => props => {
 
   const lambda = new Lambda({
     region: 'us-east-1',
-    accessKeyId: 'AKIAR2O24AQ2HD72XKW4',
-    secretAccessKey: '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',
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
   const checkUser = () => {
@@ -143,7 +141,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=v22.2.9${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+          `Version=v22.2.20${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
@@ -163,7 +161,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.2.9${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.2.20${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
@@ -199,7 +197,7 @@ export default Component => props => {
       setSignedIn(false);
     }
     else {
-      setMessages(JSON.parse(fResp.Payload).body);
+      setMessages(`We could not change your password at this time!  You may sign-in using your old password.`);
     }
 
   };
