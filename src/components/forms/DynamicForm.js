@@ -698,11 +698,11 @@ export default ({
             if (/^\d+$/.test(arrayElement)) {       // all digits only
               if (arrayElement.length < 3) { return `-${arrayElement}`; }
               return arrayElement;
-            }  
+            }
             if (arrayElement.length < 3) { return `${arrayElement}-`; }
             return arrayElement;
           });
-        searching = ( searchTerms.length > 0 );
+        searching = (searchTerms.length > 0);
       };
       let listDisplay;
       let filteredCount = null;
@@ -781,7 +781,7 @@ export default ({
                 let fName = freeText ? (freeText + '.' + oType) : fObj.name;
                 const pFile = {
                   Bucket: 'theseus-medical-storage',
-                  Key: 'public/documents/' + fName,
+                  Key: fName,
                   Body: fObj,
                   ACL: 'public-read-write',
                 };
@@ -823,7 +823,7 @@ export default ({
               onRecordingComplete={async (videoBlob) => {
                 const pVideo = {
                   Bucket: 'theseus-medical-storage',
-                  Key: freeText.replace('.', '-') + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
+                  Key: freeText.replace('.', '_') + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
                   Body: videoBlob,
                   ACL: 'public-read-write',
                   ContentType: 'video/webm'
@@ -832,14 +832,18 @@ export default ({
                 newFact.value.mediaData = pVideo;
                 if (recordingStatus !== 'stopped') {
                   recordingStatus = 'aborted';
-                  //onSave();
+                  newFact.value.recordingStatus = 'aborted';
                 };
               }
               }
               onStopRecording={() => {
                 recordingStatus = 'stopped';
+                newFact.value.recordingStatus = 'stopped';
               }}
-              onStartRecording={() => { recordingStatus = 'started'; }}
+              onStartRecording={() => {
+                recordingStatus = 'started';
+                newFact.value.recordingStatus = 'started';
+              }}
             />
           </FormGroup>
         </FormControl>

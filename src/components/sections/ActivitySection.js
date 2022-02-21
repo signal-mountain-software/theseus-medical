@@ -166,13 +166,6 @@ export default ({ patient, session }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
-  var elastictranscoder = new AWS.ElasticTranscoder(
-    {
-      accessKeyId: process.env.REACT_APP_AVA_ID,
-      secretAccessKey: process.env.REACT_APP_AVA_KEY,
-    }
-  );
-
   var idleTimer = null;
 
   const doneWithEvent = () => {
@@ -581,18 +574,12 @@ export default ({ patient, session }) => {
     async function putVideo(params) {   // Uploading files to the bucket
 
       let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
-      let [fileWithoutExtension, fileExtension] = newFact.value.mediaData.Key.split('.');
-      newFact.value.mediaData.Key = newName.replace(/[\s/]/g, '+') + '.' + fileExtension;
-
+      let fileExtension = newFact.value.mediaData.Key.split('.').pop();
+      let destinationName = newName.trim().replace(/[\s/]/g, '_').split('.')[0];
+      newFact.value.mediaData.Key = destinationName + '.' + fileExtension;
       let mediaData = newFact.value.mediaData;
-      mediaData.metadata = JSON.stringify({
-        Key: "Content-Type",
-        Value: newFact.value.mediaData.ContentType
-      });
       let warning = mediaData.Key.includes('_partial.webm') ? 'Your recording was interrupted.  AVA will save everything up to that point. ' : '';
-      let vName = newFact.value.tag;
-      console.log(vName);
-      enqueueSnackbar(`${warning}AVA is preparing your video named "${newName}"`,
+      enqueueSnackbar(`${warning}AVA is saving your video named ${newName}`,
         { variant: (warning !== '' ? 'warning' : 'info'), persist: true });
       let uploadOK = true;
       let uploadResult = await s3
@@ -604,41 +591,15 @@ export default ({ patient, session }) => {
             { variant: 'error', persist: true });
         });
       if (uploadOK) {
-        mediaData.Key = uploadResult.Location;
-        if (fileExtension === 'webm') {
-          var converterParms = {
-            PipelineId: '1626108726566-cv5z9u', /* required */
-            Input: {
-              Key: uploadResult.Key,
-            },
-            Output: {
-              Key: fileWithoutExtension + '.mp4',
-              PresetId: '1351620000001-000001',
-            },
-          };
-          mediaData.Key = fileWithoutExtension + '.mp4';
-          elastictranscoder.createJob(converterParms, function (err, data) {
-            if (err) {
-              alert(`problem with converter job is ${JSON.stringify(err)}.  see ${newFact.activity_key.replace('.', '^').split('^')[1] + '.mp4'}`);
-            }
-            else {
-              enqueueSnackbar(`Your video named "${mediaData.Key}" is saved, and is now being prepared for viewing in AVA.`,
-                { variant: 'info', persist: true });           // successful response
-            }
-          });
-        }
-        return mediaData.Key
+        enqueueSnackbar(`Your video named ${destinationName} is saved!`, { variant: 'success', persist: false });
+        showMessage = false;
+        return uploadResult.Key;
       };
       return null;
     }
 
     async function putFile(params) {    // Uploading files to the bucket
       let mediaData = newFact.value.mediaData;
-      mediaData.metadata = {
-        Key: 'Content-Type',
-        Value: newFact.value.mediaData.Body.type
-      };
-      console.log(mediaData);
       let uploadGood = true;
       await s3.upload(mediaData)
         .promise()

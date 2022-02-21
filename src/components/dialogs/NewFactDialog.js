@@ -110,10 +110,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   const searchText = '';
   const [factIOClass, setFactIOClass] = React.useState(false);
+  const [factRecordMediaClass, setFactRecordMediaClass] = React.useState(false);
   const [factPromoClass, setFactPromoClass] = React.useState(false);
   const [factEventClass, setFactEventClass] = React.useState(false);
   const [factMessageClass, setFactMessageClass] = React.useState(false);
-
+  console.log(factRecordMediaClass);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   // From DynamicForm
@@ -170,8 +171,13 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   };
 
   const handleSave = () => {
-    withNext = false;
-    handleExit();
+    if (newFact.value.recordingStatus === 'started') {
+      enqueueSnackbar(`AVA is still recording!  Tap the square button to stop recording before tapping Save.`, { variant: 'warning', persist: true });
+    }
+    else {
+      withNext = false;
+      handleExit();
+    }
   };
 
   const handlePromoSignup = () => {
@@ -274,7 +280,12 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   };
 
   const handleClose = () => {
-    onClose(factIOClass ? `You pressed CANCEL. ${fact.name} was not completed.` : null);
+    if (newFact.value.recordingStatus === 'started') {
+      enqueueSnackbar(`Warning!  You'll lose everything!  AVA is still recording.  Press the square button to stop recording, then Cancel or Save.`, { variant: 'warning', persist: true });
+    }
+    else {
+      onClose(factIOClass ? `You pressed CANCEL. ${fact.name} was not completed.` : null);
+    }
   };
 
   const disableSave = value => {
@@ -291,6 +302,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         case 'render':
         case 'query':
         case 'list': { break; }   // leave PromoClass, IOClass, and MessageClass as false
+        case 'media': { setFactRecordMediaClass(true); setFactIOClass(true); break; }
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break; }
         case 'promo': { setFactPromoClass(true); break; }
         case 'search': { setFactEventClass(true); break; }
@@ -458,7 +470,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         //setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
         /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
-        //  let [value, freeText] = nfValue.trim().split(/\s~|~\s/);
+          //  let [value, freeText] = nfValue.trim().split(/\s~|~\s/);
           let [value, freeText] = nfValue.trim().split("=");
           value = value.trim();
           if (freeText) {
