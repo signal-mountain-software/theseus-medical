@@ -86,6 +86,7 @@ export const getCustomizations = /* GraphQL */ `
       custom_key
       icon
       color
+      customization_value
     }
   }
 `;
@@ -121,6 +122,7 @@ export const getPeopleByGroup = /* GraphQL */ `
         id
       }
       location
+      search_data
       name {
         first
         last
@@ -167,6 +169,7 @@ export const getPerson = /* GraphQL */ `
         id
       }
       location
+      search_data
       name {
         first
         last

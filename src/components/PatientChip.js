@@ -63,14 +63,16 @@ export default ({ patient, roles, session }) => {
               clickable
             />
           </Tooltip>
-          <PatientDialog
-            patient={patient}
-            picture={picture}
-            open={open}
-            onClose={() => {
-              setOpen(false);
-            }}
-          />
+          {open &&
+            <PatientDialog
+              patient={patient}
+              picture={picture}
+              open={open}
+              onClose={() => {
+                setOpen(false);
+              }}
+            />
+          }
         </>
       ) : (
         <Chip

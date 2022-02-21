@@ -236,7 +236,7 @@ export default ({
   defaultValue,
   qualCheckedParam,
   checkedParm,
-  searchTextFromParent,
+  searchTextFromParent,   // not used
   setMessage,
   setStatusMessage,
   observationKey,
@@ -429,10 +429,15 @@ export default ({
     setFormState(resetter);
   };
 
-  const handleFilterText = keyValue => {
+  const handleFilterText = async (keyValue) => {
+    // An activity value that starts with the code "~%" is treated as a filter
+    // A filter is used to supress the display of subsequent values
+    // filterText is updated on every change in the value typed in to "~%" filter line
     if (filterText) {
       newFact.value.freeText['%filter%'] = filterText;
     }
+    // if filterText is empty, then nothing has been typed into the filter field at all
+    // This code checks to see if we had preserved the value of the filter from a previous call
     else if (keyValue) {
       newFact.value.freeText['%filter%'] = newFact.value.freeText[keyValue];
     }
@@ -680,8 +685,25 @@ export default ({
   React.useEffect(() => {
     if (values) {
       let filtering = false;
-      let search1 = filterPromptValue ? filterPromptValue.toLowerCase() : null;
-      let search2 = searchTextFromParent.toLowerCase();
+      let searching = false;
+      let searchTerms = [];
+      if (filterPromptValue) {
+        searchTerms = filterPromptValue
+          .toLowerCase()
+          .split(/\W+/g)
+          .map(arrayElement => {
+            if (session.search_terms?.hasOwnProperty(arrayElement)) {
+              return session.search_terms[arrayElement];
+            }
+            if (/^\d+$/.test(arrayElement)) {       // all digits only
+              if (arrayElement.length < 3) { return `-${arrayElement}`; }
+              return arrayElement;
+            }
+            if (arrayElement.length < 3) { return `${arrayElement}-`; }
+            return arrayElement;
+          });
+        searching = (searchTerms.length > 0);
+      };
       let listDisplay;
       let filteredCount = null;
       let spliceEmpty = false;
@@ -694,17 +716,18 @@ export default ({
           }
           return true;
         }
-        if (
-          ((!search2 || valuesListEntry.toLowerCase().includes(search2)) &&
-            (!filtering || (search1 && valuesListEntry.toLowerCase().includes(search1))))) {
-          filteredCount++;
-          return true;
-        }
         if (valuesListEntry === '~[filter=off]') {
-          if (filtering && (search1 || search2) && (!filteredCount || (filteredCount === 0))) {
+          if (searching && (!filteredCount || (filteredCount === 0))) {
             spliceEmpty = true;
           }
           filtering = false;
+          return true;
+        }
+        if (
+          searching &&
+          searchTerms.every(searchTerm => { return valuesListEntry.toLowerCase().includes(searchTerm); })
+        ) {
+          filteredCount++;
           return true;
         }
         return (
@@ -721,7 +744,7 @@ export default ({
 
       setListValues(listDisplay);
     }
-  }, [checked, filterPromptValue, searchTextFromParent, values]);
+  }, [checked, filterPromptValue, searchTextFromParent, values, session.search_terms]);
 
   switch (type) {
     case 'characteristic_num':
@@ -758,7 +781,7 @@ export default ({
                 let fName = freeText ? (freeText + '.' + oType) : fObj.name;
                 const pFile = {
                   Bucket: 'theseus-medical-storage',
-                  Key: 'public/documents/' + fName,
+                  Key: fName,
                   Body: fObj,
                   ACL: 'public-read-write',
                 };
@@ -800,7 +823,7 @@ export default ({
               onRecordingComplete={async (videoBlob) => {
                 const pVideo = {
                   Bucket: 'theseus-medical-storage',
-                  Key: freeText.replace('.', '-') + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
+                  Key: freeText.replace('.', '_') + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
                   Body: videoBlob,
                   ACL: 'public-read-write',
                   ContentType: 'video/webm'
@@ -809,14 +832,18 @@ export default ({
                 newFact.value.mediaData = pVideo;
                 if (recordingStatus !== 'stopped') {
                   recordingStatus = 'aborted';
-                  //onSave();
+                  newFact.value.recordingStatus = 'aborted';
                 };
               }
               }
               onStopRecording={() => {
                 recordingStatus = 'stopped';
+                newFact.value.recordingStatus = 'stopped';
               }}
-              onStartRecording={() => { recordingStatus = 'started'; }}
+              onStartRecording={() => {
+                recordingStatus = 'started';
+                newFact.value.recordingStatus = 'started';
+              }}
             />
           </FormGroup>
         </FormControl>
