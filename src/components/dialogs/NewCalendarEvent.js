@@ -8,7 +8,7 @@ import { useSnackbar } from 'notistack';
 
 import { Lambda } from 'aws-sdk';
 
-import "react-datepicker/dist/react-datepicker.css";
+// import "react-datepicker/dist/react-datepicker.css";
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';

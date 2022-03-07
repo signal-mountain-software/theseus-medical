@@ -1,6 +1,6 @@
 import React from 'react';
 
-import "react-datepicker/dist/react-datepicker.css";
+// import "react-datepicker/dist/react-datepicker.css";
 
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';

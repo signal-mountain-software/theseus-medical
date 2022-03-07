@@ -3,9 +3,9 @@ import { API, graphqlOperation } from 'aws-amplify';
 
 import { useSnackbar } from 'notistack';
 
-import { getCalendar } from '../../graphql/queries';
+// import { getCalendar } from '../../graphql/queries';
 
-import "react-datepicker/dist/react-datepicker.css";
+// import "react-datepicker/dist/react-datepicker.css";
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
