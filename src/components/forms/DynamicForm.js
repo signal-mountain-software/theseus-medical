@@ -5,6 +5,8 @@ import { API, graphqlOperation } from 'aws-amplify';
 import FormControl from '@material-ui/core/FormControl';
 import FormGroup from '@material-ui/core/FormGroup';
 
+import NewCalendarEvent from '../dialogs/NewCalendarEvent';
+
 import TextField from '@material-ui/core/TextField';
 
 import TimePicker from 'react-time-picker';
@@ -38,7 +40,6 @@ import ListItemIcon from '@material-ui/core/ListItemIcon';
 
 
 import Input from '@material-ui/core/Input';
-// import InputAdornment from '@material-ui/core/InputAdornment';
 import IconButton from '@material-ui/core/IconButton';
 import SearchIcon from '@material-ui/icons/Search';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
@@ -48,11 +49,8 @@ import TextSMSIcon from '@material-ui/icons/Textsms';
 
 import { getSession, getPerson } from '../../graphql/queries';
 
-// import DialogContentText from '@material-ui/core/DialogContentText';
-
 import Box from '@material-ui/core/Box';
 import Avatar from '@material-ui/core/Avatar';
-// import FaceIcon from '@material-ui/icons/Face';
 
 import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
@@ -971,6 +969,15 @@ export default ({
           message={mOut}
           onChange={onChangeMessage}
           onError={onError}
+        />
+      );
+    case 'new_event':
+      return (
+        <NewCalendarEvent
+          patient={session}
+          picture={null}
+          showNewEvent={true}
+          onClose={onSave}
         />
       );
     default:
