@@ -6,6 +6,10 @@ import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
 
+import { Lambda } from 'aws-sdk';
+import { useSnackbar } from 'notistack';
+
+
 import Box from '@material-ui/core/Box';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import CancelIcon from '@material-ui/icons/Cancel';
@@ -99,8 +103,16 @@ const useStyles = makeStyles(theme => ({
 
 let working_date = '';
 
-export default ({ myCalendar, person_id }) => {
+export default ({ myCalendar, person_id, display_name }) => {
     const classes = useStyles();
+
+    const lambda = new Lambda({
+        region: 'us-east-1',
+        accessKeyId: process.env.REACT_APP_AVA_ID,
+        secretAccessKey: process.env.REACT_APP_AVA_KEY,
+    });
+
+    const { enqueueSnackbar } = useSnackbar();
 
     function formatDate(pDate) {
         let yyyy = pDate.substr(0, 4);
@@ -110,6 +122,58 @@ export default ({ myCalendar, person_id }) => {
         let rString = dDate.toDateString();
         return rString;
     }
+
+    const handleSeatSignup = (pEvent) => {
+        console.log(pEvent);
+        return;
+    };
+
+    const handleTimeSignup = async (pEvent, pSlot) => {
+        let invokeFailed = false;
+        let releaseSlot = false;
+        let reserveSlot = false;
+        if (!pSlot.owner || (pSlot.owner === 'available')) {
+            reserveSlot = true;
+        }
+        else if (pSlot.owner === person_id) {
+            releaseSlot = true;
+        }
+        else { return }  // clicked a slot not owner by the current user
+        var payload = {
+            action: "sign_up",
+            clientId: pEvent.client,
+            sign_up: {
+                "event_key": pEvent.event_key,
+                "slot_id": pSlot.id,
+                "owner": releaseSlot ? 'available' : person_id,
+                "requestor": releaseSlot ? 'available' : person_id,
+                "display_name": releaseSlot ? null : display_name,
+                "new_list_key": (releaseSlot ? 'available' : person_id) + '#' + pEvent.schedule_key,
+            }
+        };
+        let params = {
+            FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
+            InvocationType: 'RequestResponse',
+            LogType: 'Tail',
+            Payload: JSON.stringify(payload)
+        };
+        const fResp = await lambda
+            .invoke(params)
+            .promise()
+            .catch(err => {
+                console.log("AVA couldn't save this event.  Error is", JSON.stringify(err));
+                enqueueSnackbar(`AVA couldn't save this event.  Error is ${err.message}`, {
+                    variant: 'error'
+                });
+                invokeFailed = true;
+            });
+        if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
+            enqueueSnackbar(`Slot is (releaseSlot ? 'available' : person_id)!`, {
+                variant: 'success'
+            });
+        };
+        return;
+    };
 
     return (
         <Box p={3}  >
@@ -190,7 +254,12 @@ export default ({ myCalendar, person_id }) => {
                                                                         This event requires you to sign-up.  Choose a time below.
                                                                     </Typography>                                                                </Box>
                                                                 :
-                                                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                                                <Box display='flex'
+                                                                    flexDirection='row'
+                                                                    justifyContent='flex-start'
+                                                                    alignItems='center'
+                                                                    onClick={handleSeatSignup(this_event)}
+                                                                >
                                                                     <Typography variant='subtitle2'>
                                                                         This event requires you to sign-up.  Check here to reserve your spot!
                                                                     </Typography>
@@ -206,9 +275,13 @@ export default ({ myCalendar, person_id }) => {
                                                             {this_event.slots.map((this_slot, index) => (
                                                                 index === 0 ? null :
                                                                     <Button
+                                                                        key={'time_button' + this_slot.id + this_event.occData.date}
                                                                         disabled={this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')}
                                                                         variant={this_slot.owner === person_id ? "contained" : "text"}
                                                                         className={this_slot.owner === person_id ? classes.confirm : null}
+                                                                        onClick={() => {
+                                                                            handleTimeSignup(this_event, this_slot);
+                                                                        }}
                                                                     >
                                                                         {Math.floor((this_slot.id - (this_slot.id > 1299 ? 1200 : 0)) / 100).toString() + ':' + ('0' + (this_slot.id % 100).toString()).substr(-2)}
                                                                     </Button>

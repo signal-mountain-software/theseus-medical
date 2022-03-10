@@ -6,6 +6,7 @@ import FormControl from '@material-ui/core/FormControl';
 import FormGroup from '@material-ui/core/FormGroup';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
+import ShowCalendar from '../dialogs/ShowCalendar';
 
 import TextField from '@material-ui/core/TextField';
 
@@ -282,6 +283,7 @@ export default ({
 
   var noToggle = false;
   var recordingStatus;
+  let currentEvents = [];
 
   var groupsManaged = [];
   if (session.groups_managed) {
@@ -977,6 +979,15 @@ export default ({
           patient={session}
           picture={null}
           showNewEvent={true}
+          onClose={onSave}
+        />
+      );
+    case 'show_calendar':
+      return (
+        <ShowCalendar
+          patient={session}
+          currentEvents={currentEvents}
+          showCalendar={true}
           onClose={onSave}
         />
       );
