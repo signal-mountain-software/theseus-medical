@@ -71,18 +71,6 @@ export default ({ person, updateGroups }) => {
         gCodes.push(c); 
       });
       setPatientGroups(person.groups.map(e => { return (`${person.client_id}~${e}`); }));
-      /*
-      setAllGroupNames(gNames);
-      setAllGroupCodes(gCodes);
-      let foundAt;
-      let groupFound;
-      if (Array.isArray(person.clients)) {
-        groupFound = person.clients.some((e, i) => { foundAt = i; return (e.id === person.client_id); });
-        if (groupFound) {
-          setPatientGroups(person.clients[foundAt].groups.map(e => { return (`${person.client_id}~${e}`); }));
-        }
-      }
-      */
     }
   }, [notMyFirstTime, person, state.session.user_id]);
 

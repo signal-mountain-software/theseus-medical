@@ -90,6 +90,60 @@ export const getCustomizations = /* GraphQL */ `
     }
   }
 `;
+
+export const getCalendar = /* GraphQL */ `
+  query getCalendar($input: GetCalendarInput) {
+  getCalendar(input: $input) {
+    body {
+      id
+      client
+      event_key
+      list_key
+      calData {
+        date_key
+        date_key_modifier
+        description
+        first_date
+        groups
+        image
+        last_date
+        last_date_scheduled
+        location
+        max_seats
+        recurrence_type
+        reminder_minutes_NotEnrolled
+        reminder_minutes_Enrolled
+        signup_type
+        time_to
+        time_from
+        status
+        slot_visibility
+      }
+      occData {
+        date
+        description
+        image
+        location
+        max_seats
+        originally_scheduled_date
+        time_to
+        time_from
+        status
+      }
+      schedule_key
+      slots {
+        reminder_minutes
+        owner
+        name
+        id
+      }
+    }
+    status
+    message
+  }
+}
+`;
+
 export const getEventsByClient = /* GraphQL */ `
   query GetEventsByClient(
     $client_id: String!

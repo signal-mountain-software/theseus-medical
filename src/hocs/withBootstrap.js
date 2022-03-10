@@ -91,7 +91,7 @@ export default Component => props => {
               });
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
-          session.session_id = `v22.2.20${window.location.href.split('//')[1].slice(0, 1)}`;
+          session.session_id = `v22.3.10${window.location.href.split('//')[1].slice(0, 1)}`;
         }
 
         // get person's Account information
@@ -132,7 +132,7 @@ export default Component => props => {
         //    if (session.responsible_for === 'ALL') { roles = ['admin'] }
         //    else {
         const client_group_id = session.client_id + '~' + session.assigned_to;
-        
+
         let getClientResult = await API
           .graphql(graphqlOperation(getCustomizations, { client_id: session.client_id, custom_key: 'logo' }))
           .catch(
@@ -141,14 +141,14 @@ export default Component => props => {
             }
           );
         session.client_icon = getClientResult?.data?.getCustomizations?.icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg';
-        
+
         let getSearchCustomizationResult = await API
           .graphql(graphqlOperation(getCustomizations, { client_id: session.client_id, custom_key: 'search_terms' }))
           .catch(
             error => {
               console.log('no search Customizations found for ' + session.client_id);
             }
-        );
+          );
         let customization_value = getSearchCustomizationResult?.data?.getCustomizations?.customization_value;
         session.search_terms = customization_value ? JSON.parse(customization_value) : {};
 
