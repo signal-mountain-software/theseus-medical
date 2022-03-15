@@ -160,6 +160,9 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
   };
 
   const handleUpdate = async () => {
+    enqueueSnackbar(`AVA is creating your new event!  Stand by...`, {
+      variant: 'warning'
+    });
     let invokeFailed = false;
     var payload = {
       "action": "add_event",
@@ -174,7 +177,7 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
         "time_from": time_from,
         "time_to": time_to,
         "location": location,
-        "owner": patient.person_id,
+        "owner": patient.patient_id,
         "signup_type": signup_type,
         "slot_max_seats": slot_max_seats,
         "slot_interval": slot_interval,
@@ -448,7 +451,10 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
             </Typography>
             {changes ?
               <Button
-                onClick={handleUpdate}
+                onClick={() => {
+                  setChanges(false);
+                  handleUpdate();
+                }}
                 disabled={!changes}
                 hidden={!changes}
                 variant='contained'

@@ -7,10 +7,15 @@ import Box from '@material-ui/core/Box';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
 import IconButton from '@material-ui/core/IconButton';
+import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+
+import Input from '@material-ui/core/Input';
+import SearchIcon from '@material-ui/icons/Search';
+import InputAdornment from '@material-ui/core/InputAdornment';
 
 import CalendarForm from '../forms/CalendarForm';
 
@@ -95,20 +100,22 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ patient, currentEvents, showCalendar, onClose }) => {
     const [myCalendar, setMyCalendar] = React.useState([]);
+    const [filterText, setFilterText] = React.useState('');
+    const [myFilter, setMyFilter] = React.useState('');
 
     const classes = useStyles();
 
     const [changes, setChanges] = React.useState(false);
-    console.log(changes);
+    if (changes) { console.log(changes); }
 
     const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-    console.log(isMobile);
+    if (isMobile) { console.log(isMobile); }
 
     const AWS = require('aws-sdk');
     AWS.config.update({ region: 'us-east-1' });
 
     React.useEffect(() => {
-        return (async () => { 
+        return (async () => {
             let invokeFailed = false;
             let rightNow = new Date();
             let this_year = rightNow.getFullYear();
@@ -131,20 +138,38 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
                     })
                 )
                 .catch(error => {
-                    // enqueueSnackbar(`We had a problem getting current information: ${error.errors[0].message}`, {
-                    //     variant: 'error',
-                    // });
+                    console.log(error);
                     invokeFailed = true;
                 });
             let theCalendar = [];
             if (!invokeFailed) {
-                result.data.getCalendar.body.forEach(cEv => { theCalendar.push(cEv); });
+                result.data.getCalendar.body.forEach(cEv => {
+                    theCalendar.push(cEv);
+                });
             };
             setMyCalendar(theCalendar);
             return theCalendar;
         });
     }, [currentEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-   
+
+    const onCheckEnter = event => {
+        if (event.key === 'Enter' || event.type === 'blur') {
+            handleFilterText(event.target.value);
+        }
+    };
+
+    const onChangeFilterText = event => {
+        setFilterText(event.target.value);
+        // var resetter = formState + 1;
+        // setFormState(resetter);
+    };
+
+    const handleFilterText = event => {
+        setMyFilter(filterText);
+        // var resetter = formState + 1;
+        // setFormState(resetter);
+    };
+
     const handleAbort = () => {
         setChanges(false);
         onClose();
@@ -165,9 +190,49 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
                         <IconButton color='inherit' edge='start' onClick={handleAbort}>
                             <CloseIcon />
                         </IconButton>
-                        <Typography variant='h6' className={classes.title}>
-                            {`Current Events`}
-                        </Typography>
+                        {isMobile ? null :
+                            <Typography variant='h6' className={classes.title}>
+                                {`Current Events`}
+                            </Typography>
+                        }
+                        <Box display='flex' flexDirection='row' mr={isMobile ? 0 : 5}>
+                            <Input
+                                id='event_search'
+                                type='text'
+                                variant={'contained'}
+                                style={{ flexGrow: 1, marginRight: 5 }}
+                                onKeyPress={onCheckEnter}
+                                onBlur={onCheckEnter}
+                                onChange={onChangeFilterText}
+                                startAdornment={
+                                    <InputAdornment position="start">
+                                        Search
+                                    </InputAdornment>
+                                }
+                                endAdornment={
+                                    <InputAdornment position="end">
+                                        <IconButton
+                                            aria-label="toggle password visibility"
+                                            onClick={() => { handleFilterText(filterText); }}
+                                            edge="end"
+                                        >
+                                            {<SearchIcon />}
+                                        </IconButton>
+                                    </InputAdornment>
+                                }
+                                autoComplete='off'
+                                value={filterText}
+                            />
+                        </Box>
+                        {isMobile ? null :
+                            <Button
+                                onClick={handleAbort}
+                                variant='contained'
+                                className={classes.topButton}
+                            >
+                                Done
+                            </Button>
+                        }
                     </Toolbar>
                 </AppBar>
                 <Toolbar />
@@ -176,6 +241,7 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
                         myCalendar={myCalendar}
                         person_id={patient.patient_id}
                         display_name={patient.patient_display_name}
+                        filter={myFilter}
                     />
                 </Box>
             </Dialog>

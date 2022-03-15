@@ -111,10 +111,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   const searchText = '';
   const [factIOClass, setFactIOClass] = React.useState(false);
   const [factRecordMediaClass, setFactRecordMediaClass] = React.useState(false);
+  if (factRecordMediaClass) { console.log(factRecordMediaClass); };
   const [factPromoClass, setFactPromoClass] = React.useState(false);
   const [factEventClass, setFactEventClass] = React.useState(false);
   const [factMessageClass, setFactMessageClass] = React.useState(false);
-  console.log(factRecordMediaClass);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   // From DynamicForm

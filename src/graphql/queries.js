@@ -111,6 +111,7 @@ export const getCalendar = /* GraphQL */ `
         location
         max_seats
         recurrence_type
+        owner
         reminder_minutes_NotEnrolled
         reminder_minutes_Enrolled
         signup_type
@@ -125,6 +126,7 @@ export const getCalendar = /* GraphQL */ `
         image
         location
         max_seats
+        remaining_seats
         originally_scheduled_date
         time_to
         time_from
