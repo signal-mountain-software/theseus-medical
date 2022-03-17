@@ -120,11 +120,11 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
   const [signup_type, setSignUpType] = React.useState('none');
   const [slot_max_seats, setSlotMaxSeats] = React.useState();
   const [slot_interval, setSlotInterval] = React.useState();
-  const [time_from, setTimeFrom] = React.useState();
-  const [timeFromAsATime, setTimeFromAsATime] = React.useState();
+  const [time_from_display_string, setTimeFromAsDisplayString] = React.useState();
+  const [timeFromAs24HourNumber, setTimeFromAs24HourNumber] = React.useState();
   const [displayTimes, setIntervalDisplay] = React.useState([]);
-  const [time_to, setTimeTo] = React.useState();
-  const [timeToAsATime, setTimeToAsATime] = React.useState();
+  const [time_to_display_string, setTimeToAsDisplayString] = React.useState();
+  const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [location, setLocation] = React.useState();
 
   const { enqueueSnackbar } = useSnackbar();
@@ -174,8 +174,8 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
         "event_date": eventAsADate.getTime(),
         "last_date": lastAsADate?.getTime() || eventAsADate?.getTime(),
         "schedule_type": prefMethod,
-        "time_from": time_from,
-        "time_to": time_to,
+        "time_from": time_from_display_string,
+        "time_to": time_to_display_string,
         "location": location,
         "owner": patient.patient_id,
         "signup_type": signup_type,
@@ -214,7 +214,7 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
 
   const handleChangeDescription = event => {
     setDescription(event.target.value);
-    if (event_date && time_from) { setChanges(true); }
+    if (event_date && time_from_display_string) { setChanges(true); }
   };
 
   const handleChangeLocation = event => {
@@ -224,20 +224,20 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
   const handleChangeDate = event => {
     setEventDate(event.target.value);
     setEventAsADate(null);
-    if (description && time_from) { setChanges(true); }
+    if (description && time_from_display_string) { setChanges(true); }
   };
 
   const handleChangeTimeFrom = event => {
-    setTimeFrom(event.target.value);
+    setTimeFromAsDisplayString(event.target.value);
     if (description && event_date) { setChanges(true); }
   };
 
   const handleTimeFromExit = event => {
-    if ((event.key === 'Enter' || event.type === 'blur') && time_from) {
+    if ((event.key === 'Enter' || event.type === 'blur') && time_from_display_string) {
       let ampm = null;
-      if (time_from.includes('p')) { ampm = 'pm'; }
-      else if (time_from.includes('a')) { ampm = 'am'; };
-      let [hh$, mm$] = time_from.split(':');
+      if (time_from_display_string.includes('p')) { ampm = 'pm'; }
+      else if (time_from_display_string.includes('a')) { ampm = 'am'; };
+      let [hh$, mm$] = time_from_display_string.split(':');
       let hh = Number(hh$.replace(/\D+/g, ''));
       let mm = 0;
       if (hh > 100) {
@@ -247,33 +247,29 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
       if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
       if (hh >= 12) { ampm = 'pm'; }
       else if (!ampm) { ampm = ((hh > 7) && (hh < 12)) ? 'am' : 'pm'; }
-      setTimeFrom(`${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
-      let calcFromTime = 0;
+      setTimeFromAsDisplayString(`${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
+      let calcFromTime = 0;   // numeric 24 hour clock version of time as hhmm
       if (ampm === 'pm') {
         calcFromTime = (hh < 12 ? ((hh + 12) * 100) : 1200) + mm;
       }
       else {
         calcFromTime = ((hh < 12 ? (hh * 100) : 0) + mm);
       }
-      setTimeFromAsATime(calcFromTime);
-      if (!time_to) {
-        setTimeToAsATime(calcFromTime + 100);
-        if (hh === 11) { ampm = (ampm = 'am' ? 'pm' : 'am'); }
-        if (hh === 12) { hh = 1; }
-        else { hh++; };
-        setTimeTo(`${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
+      setTimeFromAs24HourNumber(calcFromTime);
+      if (!time_to_display_string) {
+        if (slot_interval) { assumeToTime(calcFromTime); }
       }
-      else if (timeToAsATime && (timeToAsATime < calcFromTime)) {
-        if (timeToAsATime < 1200) {
-          setTimeToAsATime(timeToAsATime + 1200);
-          setTimeTo(time_to.replace('am', 'pm'));
+      else if (timeToAs24HourNumber && (timeToAs24HourNumber < calcFromTime)) {
+        if (timeToAs24HourNumber < 1200) {
+          setTimeToAs24HourNumber(timeToAs24HourNumber + 1200);
+          setTimeToAsDisplayString(time_to_display_string.replace('am', 'pm'));
         }
         else {
-          setTimeToAsATime(timeFromAsATime + 100);
+          setTimeToAs24HourNumber(timeFromAs24HourNumber + 100);
           if (hh === 11) { ampm = (ampm = 'am' ? 'pm' : 'am'); }
           if (hh === 12) { hh = 1; }
           else { hh++; };
-          setTimeTo(`${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
+          setTimeToAsDisplayString(`${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
         }
       }
       if (displayTimes.length > 0) {
@@ -282,12 +278,20 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
     }
   };
 
+  function assumeToTime(pFromTime) { 
+    let newTime = pFromTime >= 2300 ? (pFromTime % 100) : (pFromTime + 100);
+    setTimeToAs24HourNumber(newTime);
+    let hh = Math.floor(newTime / 100);
+    let mm = newTime % 100;
+    setTimeToAsDisplayString(`${hh === 0 ? '12' : (hh > 12 ? (hh - 12) : hh).toString()}:${mm < 10 ? ('0' + mm) : mm} ${newTime > 1159 ? 'pm' : 'am'}`);
+  };
+
   const handleTimeToExit = event => {
-    if ((event.key === 'Enter' || event.type === 'blur') && time_to) {
+    if ((event.key === 'Enter' || event.type === 'blur') && time_to_display_string) {
       let ampm = null;
-      if (time_to.includes('p')) { ampm = 'pm'; }
-      else if (time_to.includes('a')) { ampm = 'am'; };
-      let [hh$, mm$] = time_to.split(':');
+      if (time_to_display_string.includes('p')) { ampm = 'pm'; }
+      else if (time_to_display_string.includes('a')) { ampm = 'am'; };
+      let [hh$, mm$] = time_to_display_string.split(':');
       let hh = Number(hh$.replace(/\D+/g, ''));
       let mm = 0;
       if (hh > 100) {
@@ -304,19 +308,19 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
       else {
         calcToTime = ((hh < 12 ? (hh * 100) : 0) + mm);
       }
-      if (timeFromAsATime && (calcToTime < timeFromAsATime)) {
+      if (timeFromAs24HourNumber && (calcToTime < timeFromAs24HourNumber)) {
         if (calcToTime < 1200) {
           calcToTime += 1200;
         }
         else {
-          calcToTime = timeFromAsATime + 100;
+          calcToTime = timeFromAs24HourNumber + 100;
         }
       }
-      setTimeToAsATime(calcToTime);
+      setTimeToAs24HourNumber(calcToTime);
       mm = calcToTime % 100;
       hh = Math.floor(calcToTime / 100);
       ampm = hh > 11 ? 'pm' : 'am';
-      setTimeTo(`${hh > 12 ? hh - 12 : hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
+      setTimeToAsDisplayString(`${hh > 12 ? hh - 12 : hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
       if (displayTimes.length > 0) {
         handleExitInterval({ key: event.key, type: event.type, toTime: calcToTime });
       }
@@ -324,7 +328,7 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
   };
 
   const handleChangeTimeTo = event => {
-    setTimeTo(event.target.value);
+    setTimeToAsDisplayString(event.target.value);
   };
 
   const handleDateExit = event => {
@@ -380,6 +384,9 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
 
   const handleChangeSignUp = event => {
     setSignUpType(event.target.value);
+    if (event.target.value === 'time' && !time_to_display_string) { 
+      assumeToTime(timeFromAs24HourNumber);
+    }
   };
 
   const handleChangeMaxSeats = event => {
@@ -394,11 +401,11 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
     let intervals = [];
     if (
       (event.key === 'Enter' || event.type === 'blur')
-      && (timeFromAsATime || event.hasOwnProperty('fromTime'))
-      && (timeToAsATime || event.hasOwnProperty('toTime'))
+      && (timeFromAs24HourNumber || event.hasOwnProperty('fromTime'))
+      && (timeToAs24HourNumber || event.hasOwnProperty('toTime'))
     ) {
-      let useFromTime = event.fromTime || timeFromAsATime;
-      let useToTime = event.toTime || timeToAsATime;
+      let useFromTime = event.fromTime || timeFromAs24HourNumber;
+      let useToTime = event.toTime || timeToAs24HourNumber;
       let s = Number(slot_interval);
       let m = useToTime % 100;
       let h = Math.floor(useToTime / 100);
@@ -593,8 +600,8 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
                 }
                 <div>
                   <TextField
-                    id='time_from'
-                    value={time_from}
+                    id='time_from_display_string'
+                    value={time_from_display_string}
                     onChange={handleChangeTimeFrom}
                     onKeyPress={handleTimeFromExit}
                     onBlur={handleTimeFromExit}
@@ -602,8 +609,8 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
                   />
                   {'    '}
                   <TextField
-                    id='time_to'
-                    value={time_to}
+                    id='time_to_display_string'
+                    value={time_to_display_string}
                     onChange={handleChangeTimeTo}
                     onKeyPress={handleTimeToExit}
                     onBlur={handleTimeToExit}
