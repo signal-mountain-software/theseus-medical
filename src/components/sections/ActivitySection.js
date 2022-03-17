@@ -29,7 +29,6 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 
 import { updateSession } from '../../graphql/mutations';
 import { createPutFact } from '../../graphql/mutations';
-import { updateReservation } from '../../graphql/mutations';
 
 import { getActivityData } from '../../graphql/queries';
 import { getReservation } from '../../graphql/queries';
@@ -237,7 +236,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.3.10~${errorTime}`,
+        status: `Version = v22.3.15~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -487,75 +486,20 @@ export default ({ patient, session }) => {
               }
             }
           }
-        } else if (newFact.value.hasOwnProperty('event_code')) {      // for "reservation" type activities
-          constructedValue = '';
-          let link = '';
-          let nS = newFact.value.slot.length;
-          for (let s = 0; s < nS; s++) {
-            if (newFact.value.slot[s].hasOwnProperty('action')) {
-              if (newFact.value.slot[s].action) {
-                constructedValue += link + newFact.value.slot[s].identifier + ' ' + newFact.value.slot[s].action;
-                link = ' ~ ';
-              }
-              // delete newFact.value.slot[s].action;
-            }
-          }
-          if (constructedValue) {
-            // **** check to see if the reservation has been updated while this user had it open
-            let result = await API.graphql(
-              graphqlOperation(getReservation, {
-                client_id: newFact.value.client_id,
-                event_code: newFact.value.event_code,
-              })
-            ).catch(error => {
-              console.log(`Reservation not read while checking version: ${JSON.stringify(error)}`, {
-                variant: 'error',
-              });
-            });
-            if (result.data.getReservation.version !== newFact.value.version) {
-              enqueueSnackbar(
-                `Uh oh! Someone else may have been in the sign-up sheet for ${newFact.value.event_name}, 
-                and made a change before you pressed SAVE.  Please try again`,
-                { variant: 'error', persist: true }
-              );
-              let selectedActivity = selected;
-              let chosenActivity = selected;
-              selectedActivity.default_value = result.data.getReservation;
-              setSelected(selectedActivity);
-              setShowNewFactDialog(true);
-              showMessage = false;
-              onChooseActivity(chosenActivity);
-            }
-            else {
-              newFact.activity_key = 'update.reservation';
-              let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
-              writtenFact.data.createPutFact.value = 'update.' + constructedValue;
-              setLastWrittenFact(writtenFact.data.createPutFact);
-              newFact.value.version ? newFact.value.version++ : newFact.value.version = 1;
-              await API
-                .graphql(graphqlOperation(updateReservation, { input: newFact.value }))
-                .catch(error => {
-                  enqueueSnackbar(
-                    `Uh oh! We tried to update ${newFact.value.event_name} but something went wrong.  
-                  Please try again: ${JSON.stringify(
-                      error.message || error.errors[0].message
-                    )}`,
-                    {
-                      variant: 'error', persist: true
-                    }
-                  );
-                });
-            }
-          }
         }
       }
     }
-    let segments = constructedValue.split('~');
-    let enqueueOut = '';
-    segments.forEach(segment => {
-      enqueueOut += segment.trim().split(/:+(?!\s)/)[0] + ' - ';
-    });
-    sVal = enqueueOut.slice(0, (enqueueOut.length - 2)) || (actionCancelled ? 'cancelled' : 'completed');
+    if (constructedValue) {
+      let segments = constructedValue.split('~');
+      let enqueueOut = '';
+      segments.forEach(segment => {
+        enqueueOut += segment.trim().split(/:+(?!\s)/)[0] + ' - ';
+      });
+      sVal = enqueueOut.slice(0, (enqueueOut.length - 2)) || (actionCancelled ? 'cancelled' : 'completed');
+    }
+    else {
+      showMessage = false;
+    }
 
     setNewFact(newFact);
     setLimit(limit);
