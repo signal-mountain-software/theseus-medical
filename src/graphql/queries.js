@@ -128,8 +128,10 @@ export const getCalendar = /* GraphQL */ `
         max_seats
         remaining_seats
         originally_scheduled_date
+        owner
         time_to
         time_from
+        signup_type
         status
       }
       schedule_key
