@@ -103,6 +103,8 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
   const [filterText, setFilterText] = React.useState('');
   const [myFilter, setMyFilter] = React.useState('');
 
+  const [lastEndDate, setLastEndDate] = React.useState();
+
   const classes = useStyles();
 
   const [changes, setChanges] = React.useState(false);
@@ -126,6 +128,7 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
       let fortnight_year = twoWeeksFromNow.getFullYear();
       let fortnight_month = twoWeeksFromNow.getMonth() + 1;
       let fortnight_date = twoWeeksFromNow.getDate();
+
       let result = await API
         .graphql(
           graphqlOperation(getCalendar, {
@@ -149,6 +152,7 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
         });
       };
       setMyCalendar(theCalendar);
+      setLastEndDate(twoWeeksFromNow);
       return theCalendar;
     });
   }, [currentEvents]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -245,6 +249,55 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
             filter={myFilter}
           />
         </Box>
+        {(!myCalendar || myCalendar.length === 0) ? null
+          :
+          <Box m={2}>
+            <Button
+              onClick={async () => {
+                let invokeFailed = false;
+                lastEndDate.setDate(lastEndDate.getDate() + 1);
+                let event_time = lastEndDate.getTime();
+                let this_year = lastEndDate.getFullYear();
+                let this_month = lastEndDate.getMonth() + 1;
+                let this_date = lastEndDate.getDate();
+                let twoWeeksFromNow = new Date(lastEndDate);
+                twoWeeksFromNow.setDate(this_date + 14);
+                let fortnight_year = twoWeeksFromNow.getFullYear();
+                let fortnight_month = twoWeeksFromNow.getMonth() + 1;
+                let fortnight_date = twoWeeksFromNow.getDate();
+                let result = await API
+                  .graphql(
+                    graphqlOperation(getCalendar, {
+                      input: {
+                        "action": `list_events#${event_time}`,
+                        "clientId": patient.client_id,
+                        "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
+                        "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
+                        "person_id": patient.patient_id
+                      }
+                    })
+                  )
+                  .catch(error => {
+                    console.log(error);
+                    invokeFailed = true;
+                  });
+                let theCalendar = myCalendar;
+                if (!invokeFailed) {
+                  result.data.getCalendar.body.forEach(cEv => {
+                    theCalendar.push(cEv);
+                  });
+                };
+                setMyCalendar(theCalendar);
+                setLastEndDate(twoWeeksFromNow);
+                return theCalendar;
+              }}
+              variant='contained'
+              className={classes.topButton}
+            >
+              Show more days
+            </Button>
+          </Box>
+        }
       </Dialog>
       : null
   );

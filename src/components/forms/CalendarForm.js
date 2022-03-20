@@ -106,13 +106,15 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-let working_date = '';
-const now = new Date(new Date().setHours(0, 0, 0, 0));
-const today = now.getTime();
-const tomorrow = new Date(now.getFullYear(), now.getMonth(), (now.getDate() + 1)).getTime();
-
 
 export default ({ myCalendar, person_id, display_name, filter }) => {
+
+  let working_date = '';
+  const now = new Date(new Date().setHours(0, 0, 0, 0));
+  const today = now.getTime();
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), (now.getDate() + 1)).getTime();
+  const dateOptions = { weekday: 'short', month: 'short', day: 'numeric' };
+
   const classes = useStyles();
   const [theCalendar, setTheCalendar] = React.useState([]);
   let filterText = filter ? filter.toLowerCase() : null;
@@ -148,7 +150,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
     let dd = pDate.substr(6, 2);
     let dDate = new Date(yyyy, Number(mm) - 1, dd);
     let testDate = dDate.getTime();
-    let rString = (testDate === today ? 'Today - ' : (testDate === tomorrow ? 'Tomorrow - ' : '')) + dDate.toDateString();
+    let rString = (testDate === today ? 'Today - ' : (testDate === tomorrow ? 'Tomorrow - ' : '')) + dDate.toLocaleDateString('en-US', dateOptions);
     return rString;
   }
 
@@ -208,7 +210,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
   };
 
   React.useEffect(() => {
-    console.log('in use Effect of CalendarForm.js');
+    /* console.log('in use Effect of CalendarForm.js'); */
   }, [theCalendar]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrint = async (pEvent, pType) => {
@@ -237,7 +239,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
     if (!invokeFailed) {
       let fResponse = JSON.parse(fResp.Payload);
       if (fResponse.status === 200) {
-        window.open(fResponse.body.Location, `${pEvent.calData.description} ${pType}`);
+        window.open(fResponse.body.Location, `${pEvent.occData.description} ${pType}`);
       }
     };
     return;
@@ -382,7 +384,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                   (
                     !filterText ||
                     (this_event.occData.description.toLowerCase().includes(filterText)
-                      || this_event.occData.location.toLowerCase().includes(filterText)
+                    || (this_event.occData.location && this_event.occData.location.toLowerCase().includes(filterText) )
                     )
                   )
                 ) ?
@@ -393,7 +395,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                         style={{ marginBottom: '0px', marginTop: (index === 0 ? '0px' : '50px') }}
                         cols={1}
                       >
-                        <Box mb={0} py={1} px={3} borderBottom={2}>
+                        <Box mb={0} py={1} px={0} borderBottom={2}>
                           <Box flexGrow={1}>
                             <Typography
                               className={classes.noDisplay}
@@ -438,7 +440,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                   <Typography variant='h5'>{this_event.occData.description}</Typography>
                                   {this_event.occData.location ? <Typography variant='body2'>{this_event.occData.location}</Typography> : null}
                                 </Box>
-                                {(this_event.calData.owner === person_id) ?
+                                {(this_event.occData.owner === person_id) ?
                                   <React-fragment>
                                     <Box display='flex' flexDirection='row'>
                                       <IconButton
@@ -476,7 +478,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                   : null}
                               </Box>
                               {this_event.slots[0].owner === person_id
-                                ? (this_event.calData.signup_type === 'time'
+                                ? (this_event.occData.signup_type === 'time'
                                   ?
                                   <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                     <Typography variant='subtitle2'>
@@ -484,7 +486,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                     </Typography>
                                   </Box>
                                   :
-                                  (this_event.calData.signup_type !== 'seats'
+                                  (this_event.occData.signup_type !== 'seats'
                                     ? null
                                     : (
                                       <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
@@ -495,20 +497,20 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                     )
                                   )
                                 )
-                                : (this_event.calData.signup_type === 'none'
+                                : (this_event.occData.signup_type === 'none'
                                   ? null
                                   : (
                                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                       <Typography variant='subtitle2'>
                                         This event requires you to sign-up.
-                                        {this_event.calData.signup_type === 'time' ? '  Choose a time below.' : '  Tap below to reserve your spot!'}
+                                        {this_event.occData.signup_type === 'time' ? '  Choose a time below.' : '  Tap below to reserve your spot!'}
                                       </Typography>
                                     </Box>
 
                                   )
                                 )
                               }
-                              {(this_event.calData.signup_type !== 'time') ?
+                              {(this_event.occData.signup_type !== 'time') ?
                                 <Box display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                   <Button
                                     key={'seat_button' + this_event.event_key}
@@ -520,8 +522,8 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                     }}
                                   >
                                     {this_event.slots[0].owner === person_id ?
-                                      (this_event.calData.signup_type !== 'seats' ? "Reminder Set" : "Signed-up!")
-                                      : (this_event.calData.signup_type !== 'seats' ? "Remind me?" : "Sign up?")}
+                                      (this_event.occData.signup_type !== 'seats' ? "Reminder Set" : "Signed-up!")
+                                      : (this_event.occData.signup_type !== 'seats' ? "Remind me?" : "Sign up?")}
                                   </Button>
                                 </Box>
                                 :

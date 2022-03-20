@@ -130,6 +130,7 @@ export const getCalendar = /* GraphQL */ `
         originally_scheduled_date
         time_to
         time_from
+        signup_type
         status
       }
       schedule_key
