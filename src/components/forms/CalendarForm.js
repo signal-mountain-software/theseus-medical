@@ -239,7 +239,11 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
     if (!invokeFailed) {
       let fResponse = JSON.parse(fResp.Payload);
       if (fResponse.status === 200) {
-        window.open(fResponse.body.Location, `${pEvent.occData.description} ${pType}`);
+        window.open(
+          fResponse.body.Location,
+          `${pEvent.occData.description} ${pType}`,
+          'noopener, noreferrer'
+        );
       }
     };
     return;
@@ -384,7 +388,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                   (
                     !filterText ||
                     (this_event.occData.description.toLowerCase().includes(filterText)
-                    || (this_event.occData.location && this_event.occData.location.toLowerCase().includes(filterText) )
+                      || (this_event.occData.location && this_event.occData.location.toLowerCase().includes(filterText))
                     )
                   )
                 ) ?
@@ -440,42 +444,6 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                   <Typography variant='h5'>{this_event.occData.description}</Typography>
                                   {this_event.occData.location ? <Typography variant='body2'>{this_event.occData.location}</Typography> : null}
                                 </Box>
-                                {(this_event.occData.owner === person_id) ?
-                                  <React-fragment>
-                                    <Box display='flex' flexDirection='row'>
-                                      <IconButton
-                                        key={'sheet_button' + this_event.event_key}
-                                        variant={"contained"}
-                                        className={classes.warning}
-                                        onClick={async () => {
-                                          await handlePrint(this_event, 'sign-up');
-                                        }}
-                                      >
-                                        <AssignmentIcon />
-                                      </IconButton>
-                                      <IconButton
-                                        key={'report_button' + this_event.event_key}
-                                        variant={"contained"}
-                                        className={classes.warning}
-                                        onClick={async () => {
-                                          await handlePrint(this_event, 'report');
-                                        }}
-                                      >
-                                        <InfoOutlinedIcon />
-                                      </IconButton>
-                                      <IconButton
-                                        key={'delete_button' + this_event.event_key}
-                                        variant={"contained"}
-                                        className={classes.warning}
-                                        onClick={async () => {
-                                          await handleDelete(this_event, index);
-                                        }}
-                                      >
-                                        {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
-                                      </IconButton>
-                                    </Box>
-                                  </React-fragment>
-                                  : null}
                               </Box>
                               {this_event.slots[0].owner === person_id
                                 ? (this_event.occData.signup_type === 'time'
@@ -506,10 +474,45 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                         {this_event.occData.signup_type === 'time' ? '  Choose a time below.' : '  Tap below to reserve your spot!'}
                                       </Typography>
                                     </Box>
-
                                   )
                                 )
                               }
+                              {(this_event.occData.owner.includes(person_id)) ?
+                                <React-fragment>
+                                  <Box display='flex' flexDirection='row' ml={-2} mt={0} mb={-2}>
+                                    <IconButton
+                                      key={'sheet_button' + this_event.event_key}
+                                      variant={"contained"}
+                                      className={classes.warning}
+                                      onClick={async () => {
+                                        await handlePrint(this_event, 'sign-up');
+                                      }}
+                                    >
+                                      <AssignmentIcon />
+                                    </IconButton>
+                                    <IconButton
+                                      key={'report_button' + this_event.event_key}
+                                      variant={"contained"}
+                                      className={classes.warning}
+                                      onClick={async () => {
+                                        await handlePrint(this_event, 'report');
+                                      }}
+                                    >
+                                      <InfoOutlinedIcon />
+                                    </IconButton>
+                                    <IconButton
+                                      key={'delete_button' + this_event.event_key}
+                                      variant={"contained"}
+                                      className={classes.warning}
+                                      onClick={async () => {
+                                        await handleDelete(this_event, index);
+                                      }}
+                                    >
+                                      {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
+                                    </IconButton>
+                                  </Box>
+                                </React-fragment>
+                                : null}
                               {(this_event.occData.signup_type !== 'time') ?
                                 <Box display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                   <Button
