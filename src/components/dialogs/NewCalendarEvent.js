@@ -418,7 +418,7 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
       let stopLoop = (h * 100) + m;
       for (
         let t = useFromTime;
-        t < stopLoop;
+        t <= stopLoop;
         t
       ) {
         let mm = t % 100;
