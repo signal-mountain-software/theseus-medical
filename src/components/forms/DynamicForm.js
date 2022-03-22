@@ -2,6 +2,10 @@ import React from 'react';
 import { Storage } from 'aws-amplify';
 import { API, graphqlOperation } from 'aws-amplify';
 
+import { updateSession } from '../../graphql/mutations';
+import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
+import useSession from '../../hooks/useSession';
+
 import FormControl from '@material-ui/core/FormControl';
 import FormGroup from '@material-ui/core/FormGroup';
 
@@ -243,6 +247,9 @@ export default ({
   onSave,
   onNext,
 }) => {
+
+  const { dispatch } = useSession();
+
   const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['', '']);
   const [mOut, setMOut] = React.useState(message || 'enter something here');
@@ -267,6 +274,7 @@ export default ({
 
   const [peopleMode, setPeopleMode] = React.useState(false);
   const [saveMode, setSaveMode] = React.useState(false);
+  const [switchMode, setSwitchMode] = React.useState(false);
   const [groupChange, setGroupChange] = React.useState(false);
   const [chosenPerson, setChosenPerson] = React.useState('');
 
@@ -509,6 +517,36 @@ export default ({
       });
   };
 
+  const handleSwitch = async (parmSelected) => {
+    if (session && parmSelected) {
+      let newPatient = {
+        patient_id: parmSelected.user_id,
+        patient_display_name: parmSelected.user_display_name
+      };
+      const result1 = await API.graphql(
+        graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
+      ).catch(error => {
+        enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.errors[0].message}`, {
+          variant: 'error',
+        });
+      });
+
+      const result2 = await API.graphql(
+        graphqlOperation(getPerson, {
+          person_id: parmSelected.user_id,
+        })
+      ).catch(error => {
+        enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.errors[0].message}`, {
+          variant: 'error',
+        });
+      });
+
+      dispatch({ type: SET_SESSION, payload: result1.data.updateSession });
+      dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
+      let jumpTo = window.location.href.replace('refresh', 'theseus');
+      window.location.replace(jumpTo);
+    }
+  };
 
   const handleQSave = () => {
     if (!newFact.value.hasOwnProperty('qualifiers')) {
@@ -542,6 +580,18 @@ export default ({
   const handleQualSelected = value => async () => {
     setQMessage('');
     if (qualifierTable[value].qualifiers[0].startsWith('~people:')) {
+      let respArray = [];
+      if (session.responsible_for) {
+        if (Array.isArray(session.responsible_for)) {
+          respArray.push(...session.responsible_for);
+        }
+        else if (session.responsible_for.startsWith('[')) {
+          respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(',');
+        }
+        else {
+          respArray.push(session.responsible_for);
+        }
+      }
       let person_id = qualifierTable[value].qualifiers[0].split(':')[1];
       let result = await API.graphql(
         graphqlOperation(getPerson, {
@@ -551,7 +601,11 @@ export default ({
         console.log(`Error accessing patient: ${error.message}`);
       });
       let gC = {};
-      result.data.getPerson.groups.forEach(g => { gC[g] = true; });
+      result.data.getPerson.groups.forEach(g => {
+        gC[g] = true;
+        if (respArray.includes(g)) { setSwitchMode(true); }
+      });
+      if (respArray.includes(result.data.getPerson.person_id)) { setSwitchMode(true); }
       setGroupChecked(gC);
       setSessionResult(await API
         .graphql(graphqlOperation(getSession, { session_id: person_id }))
@@ -584,6 +638,9 @@ export default ({
       setDialogImage(response);
       setPeopleMode(true);
       setChosenPerson(person_id);
+      if (true) {
+
+      }
     }
     else {
       getImage((!(qualifierTable[value]?.image_url?.includes('/')) ? 'observation_images/' : '') + qualifierTable[value].image_url);
@@ -1516,6 +1573,16 @@ export default ({
                 </FormControl>
               </DialogContent>
               <DialogActions>
+                {switchMode ?
+                  <Button
+                    onClick={() => { handleSwitch(getSessionResult.data.getSession); }}
+                    className={classes.confirm}
+                    variant='contained'
+                    color='primary'
+                    size='small'>
+                    Switch to this Account
+                  </Button>
+                  : null}
                 <Button onClick={handleQClose} className={classes.reject} size='small' variant='contained'>
                   Back
                 </Button>

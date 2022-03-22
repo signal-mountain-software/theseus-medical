@@ -107,6 +107,15 @@ export default ({ open, roles, onClose }) => {
           </Typography>
         </Toolbar>
       </AppBar>
+      <Typography variant='body1' className={classes.title}>
+        &nbsp;
+      </Typography>
+      <Typography variant='body1' className={classes.title}>
+        NOTE: Switch Account is being moved.
+      </Typography>
+      <Typography variant='body1' className={classes.title}>
+        Please use "Directory Search / Find a Resident", then search for and select the desired account and press "Switch to this Account".
+      </Typography>
       {patients && roles ? (
         <Box p={3}>
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
