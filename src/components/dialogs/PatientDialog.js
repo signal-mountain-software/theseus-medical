@@ -92,9 +92,16 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
-  idText: {
+  idText1: {
     fontSize: theme.typography.fontSize * 0.8,
     marginTop: 10,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
+  idText2: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginTop: 0,
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 10,
@@ -124,6 +131,7 @@ export default ({ patient, picture, open, onClose }) => {
   const [inputPWD, setInputPWD] = React.useState();
   const [prefMethod, setMethod] = React.useState();
   const [patientGroups, setPatientGroups] = React.useState();
+  const [patientPChange, setPatientPChange] = React.useState();
 
   const [changes, setChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(false);
@@ -188,8 +196,22 @@ export default ({ patient, picture, open, onClose }) => {
           }
         });
       }
+      if (patient.person_id === state.session.user_id) {
+        setPatientPChange(state.session.password_change_date);
+      }
+      else { 
+        [patient.person_id].forEach(async (pPerson) => {
+          let pSessionResult = await API
+            .graphql(graphqlOperation(getSession, { session_id: pPerson }))
+            .catch(() => { });
+          if (pSessionResult) {
+            setPatientPChange(pSessionResult.data.getSession.password_change_date);
+          }
+        });
+      }
     }
-  }, [patient]);
+  }, [patient]);  // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const hiddenFileInput = React.useRef(null);
 
@@ -201,8 +223,8 @@ export default ({ patient, picture, open, onClose }) => {
     setResettingPwd(false);
     setInputPWD('password');
     setChanges(false);
-    onClose()
-  }
+    onClose();
+  };
 
   const handleUpdate = async () => {
     if (patient.person_id.startsWith('*NEW~')) {
@@ -332,7 +354,7 @@ export default ({ patient, picture, open, onClose }) => {
     patient.time_based_rules[tableRow].method = event.target.value;
     setChanges(true);
   };
-  
+
   return (
     open ?
       <Dialog open={open} onClose={handleAbort} TransitionComponent={Transition} fullScreen>
@@ -458,12 +480,17 @@ export default ({ patient, picture, open, onClose }) => {
                       </RadioGroup>
                     </FormControl>
 
-                    <Typography className={classes.idText}>{`My userID is ${patient.person_id}`}</Typography>
-                    
+                    <Typography className={classes.idText1}>
+                      {`My userID is ${patient.person_id}`}
+                    </Typography>
+                    {patientPChange ?
+                      <Typography className={classes.idText2}>{`My password was set on ${patientPChange.split('GMT')[0]} GMT`}</Typography>
+                      : null}
+
                     <Box mt={3}>
                       <TextField id='searchTerm' value={searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
                     </Box>
-                  
+
                   </Box>
                 </div>
                 <Box flexGrow={1} mr={3}
@@ -520,7 +547,7 @@ export default ({ patient, picture, open, onClose }) => {
                   onChange={handleChangePassword}
                   helperText={inputPWD === 'password' ? 'temporary password' : 'password'}
                 />
-              </div>              
+              </div>
             </React.Fragment>
             : null}
         </Toolbar>

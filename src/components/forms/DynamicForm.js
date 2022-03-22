@@ -1497,6 +1497,18 @@ export default ({
                               primary={<Typography noWrap={true}>Last use: {getSessionResult?.data?.getSession?.status?.split(/=|~/).pop().replace(/GMT\S*/, '')}</Typography>}
                             />
                           </ListItem>
+                          {getSessionResult?.data?.getSession?.password_change_date ?
+                            <ListItem
+                              key={`qhead-sessiondetails-pwdchange`}
+                              className={classes.defaultButton}
+                            >
+                              <ListItemText
+                                id={`qlabelid-status`}
+                                key={`qlabelid-status`}
+                                primary={<Typography noWrap={true}>Pwd change: {getSessionResult?.data?.getSession?.password_change_date?.split('GMT')[0]} (GMT)</Typography>}
+                              />
+                            </ListItem>
+                            : null}
                         </React.Fragment>
                       }
                     </List>

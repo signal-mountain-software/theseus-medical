@@ -309,8 +309,6 @@ export default Component => props => {
               ]}
               handleSubmit={
                 async (event) => {
-                  console.log(`inputName is ${inputName}`);
-                  console.log(`inputCP is ${inputCP}`);
                   event.preventDefault();
                   try {
                     calledFrom = 'signIn';
@@ -381,7 +379,6 @@ export default Component => props => {
                   value: inputPassword,
                   handleInputChange:
                     (e) => {
-                      console.log(`newP is ${e.target.value}`);
                       setInputPassword(e.target.value);
                     },
                   inputProps: { required: true, type: "text", autocomplete: "off" },
