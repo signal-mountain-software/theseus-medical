@@ -14,8 +14,6 @@ import ShowCalendar from '../dialogs/ShowCalendar';
 
 import TextField from '@material-ui/core/TextField';
 
-import TimePicker from 'react-time-picker';
-
 import { isMobile } from 'react-device-detect';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -419,15 +417,95 @@ export default ({
     setFormState(resetter);
   };
 
-
-  const onChangeFreeTime = tableRow => event => {
-    newFact.value.freeText[tableRow] = event;
-    setNewFact(newFact);
+  const onChangeFreeDate = event => {
+    newFact.value.freeText[event.target.id] = event.target.value;
     var resetter = formState + 1;
     setFormState(resetter);
   };
 
-  const onCheckEnter = event => {
+  const handleDateExit = event => {
+    if (event.key === 'Enter' || event.type === 'blur') {
+      let goodDate = new Date(event.target.value);
+      if (isNaN(goodDate)) {
+        let tNext = event.target.value.trim().toLowerCase().startsWith('next');
+        if (tNext) { 
+          let dayWord = event.target.value.split(' ')[1].trim();
+          event.target.value = dayWord;
+        }
+        let tDate = event.target.value.substr(0, 3).toLowerCase();
+        let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
+        goodDate = new Date(Date.now());
+        if (dOfw > -1) {
+          if ((goodDate.getDay() > dOfw) && tNext) {
+            tNext = false; 
+          }
+          goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + (tNext ? 7 : 0));
+        }
+        else if (tDate === 'tom') {
+          goodDate.setDate(goodDate.getDate() + 1);
+        }
+        else if (tDate !== 'tod') {
+          goodDate = new Date(event.target.value);
+        }
+      }
+      let current = new Date(Date.now());
+      current.setHours(0, 0, 0, 0);
+      if (goodDate < current) {
+        let yyyy = current.getFullYear();
+        goodDate.setFullYear(yyyy);
+        if (goodDate < current) { goodDate.setFullYear(yyyy + 1); }
+      };
+      newFact.value.freeText[event.target.id] = goodDate.toDateString();
+      var resetter = formState + 1;
+      setFormState(resetter);
+      setNewFact(newFact);
+    }
+  };
+
+  const onChangeFreeTime = event => {
+    newFact.value.freeText[event.target.id] = event.target.value;
+    var resetter = formState + 1;
+    setFormState(resetter);
+  };
+
+  const handleTimeExit = event => {
+    if (event.key === 'Enter' || event.type === 'blur') {
+      let ampm = null;
+      if (event.target.value.includes('p')) { ampm = 'pm'; }
+      else if (event.target.value.includes('a')) { ampm = 'am'; };
+      let [hh$, mm$] = event.target.value.split(':');
+      let hh = Number(hh$.replace(/\D+/g, ''));
+      let mm = 0;
+      if (hh > 100) {
+        if (!mm$) { mm = hh % 100; }
+        hh = Math.floor(hh / 100);
+      }
+      if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
+      if (mm > 59) {
+        let hAdd = Math.floor(mm / 60);
+        mm -= (hAdd * 60);
+        hh += hAdd;
+      }
+      if (hh >= 23) {
+        hh = hh % 24;
+      }
+      if (hh >= 12) {
+        hh -= 12;
+        ampm = 'pm';
+      }
+      if (hh === 0) {
+        hh = 12;
+        ampm = 'pm';
+      }
+      if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
+      newFact.value.freeText[event.target.id] = `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
+      var resetter = formState + 1;
+      setFormState(resetter);
+      setNewFact(newFact);
+    }
+  };
+
+    const onCheckEnter = event => {
     if (event.key === 'Enter') { handleFilterText(event.target.value); }
   };
 
@@ -1080,6 +1158,7 @@ export default ({
                   /* prompt for response...
                   /* ~other:<text>               | prompt for text response with <text>     | ~other:What is your name?                                */
                   /* ~time:<text>                | prompt for time response with <text>     | ~time:What time would you like your meal?                */
+                  /* ~date:<text>                | prompt for date response with <text>     | ~date:What date would you like your meal?                */
                   /* ~file:<folder_name>         | render "pick a file"                     | ~file:public/documents                                   */
 
                   /* special cases...
@@ -1304,6 +1383,27 @@ export default ({
                               </Typography>
                             </Box>
                           }
+                          {value.startsWith('~date:') && /* Date prompt */
+                            <Box
+                              flexDirection='row'
+                              display='flex'
+                              grow={1}
+                              justifyContent='flex-start'
+                              alignItems='baseline'>
+                              <TextField
+                                className={classes.freeInput}
+                                id={freeTextFieldName}
+                                label={freeTextFieldName}
+                                variant={'standard'}
+                                fullWidth
+                                autoComplete='off'
+                                onKeyPress={handleDateExit}
+                                onChange={onChangeFreeDate}
+                                onBlur={handleDateExit}
+                                value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
+                              />
+                            </Box>
+                          }
                           {value.startsWith('~time:') && /* Time prompt */
                             <Box
                               flexDirection='row'
@@ -1311,16 +1411,17 @@ export default ({
                               grow={1}
                               justifyContent='flex-start'
                               alignItems='baseline'>
-                              <Typography variant={'body2'} className={classes.clockText}>
-                                {freeTextFieldName}
-                              </Typography>
-                              <TimePicker
-                                value={newFact?.value?.freeText?.[freeTextFieldName] || '0:00'} clearIcon={null}
-                                clockIcon={null}
-                                // className={classes.freeInput}
-                                className={classes.clockInput}
-                                disableClock={true}
-                                onChange={onChangeFreeTime(freeTextFieldName)}
+                              <TextField
+                                className={classes.freeInput}
+                                id={freeTextFieldName}
+                                label={freeTextFieldName}
+                                variant={'standard'}
+                                fullWidth
+                                autoComplete='off'
+                                onKeyPress={handleTimeExit}
+                                onChange={onChangeFreeTime}
+                                onBlur={handleTimeExit}
+                                value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
                               />
                             </Box>
                           }
