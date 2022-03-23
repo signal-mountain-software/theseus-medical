@@ -235,7 +235,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.3.21~${errorTime}`,
+        status: `Version = v22.3.24~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -661,7 +661,7 @@ export default ({ patient, session }) => {
       }
     })();
 
-    if (patient && session) { 
+    if (patient && session) {
       setPromise(callPromise);
       if (false) { console.log(promise); };
     }
@@ -778,7 +778,7 @@ export default ({ patient, session }) => {
                 };
                 await API.graphql(
                   graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
-                ).catch(error => {console.log(error)});
+                ).catch(error => { console.log(error); });
                 let jumpTo = window.location.href.replace('refresh', 'theseus');
                 window.location.replace(jumpTo);
               }
