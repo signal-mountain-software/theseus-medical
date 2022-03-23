@@ -605,7 +605,9 @@ export default ({
         gC[g] = true;
         if (respArray.includes(g)) { setSwitchMode(true); }
       });
-      if (respArray.includes(result.data.getPerson.person_id)) { setSwitchMode(true); }
+      if (respArray.includes(result.data.getPerson.person_id) || session.kiosk_mode) {
+        setSwitchMode(true);
+      }
       setGroupChecked(gC);
       setSessionResult(await API
         .graphql(graphqlOperation(getSession, { session_id: person_id }))

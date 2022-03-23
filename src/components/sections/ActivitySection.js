@@ -112,8 +112,6 @@ export default ({ patient, session }) => {
   const [newFact, setNewFact] = React.useState(null);
 
   const [activities, setActivities] = React.useState([]); // populates the activity buttons
-  const [events, setEvents] = React.useState([]); // populates the events dropdown list
-  const [types, setTypes] = React.useState([]); // populates the types dropdown list
 
   const [event, setEvent] = React.useState(''); // stores the current selected event filter
   const [type, setType] = React.useState(DEFAULT_TYPE); // stores the current selected type filter
@@ -132,6 +130,8 @@ export default ({ patient, session }) => {
   var actionCancelled;
 
   const [activePatient, setActivePatient] = React.useState(null);
+
+  const [promise, setPromise] = React.useState(null);
 
   const [rowOpen, setRowOpen] = React.useState([]);
   const [sectionOpen, setSectionOpen] = React.useState({});
@@ -155,7 +155,6 @@ export default ({ patient, session }) => {
   var addedAFavorite = false;
   var toggledRow = false;
   var toggledSection = false;
-  var currentAlertSnack = null;
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
@@ -281,6 +280,7 @@ export default ({ patient, session }) => {
             includeEvents: true,
             history_only: false,
             use_short_date: isMobile,
+            kiosk_mode: false
           },
         })
       ).catch(error => {
@@ -579,36 +579,28 @@ export default ({ patient, session }) => {
     }
   };
 
-  // build the event and activity lists for drop downs
+  // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (session) {
-        if (session.current_event) {
-          setSectionOpen(JSON.parse(session.current_event));
-        }
-        if (mounted) {
-          setEvents(events);
-          setTypes(types);
-        } else {
-        }
-      }
-    })();
-
+    setLoading(true);
+    if (patient && session?.kiosk_mode && (session.user_id === session.patient_id)) {
+      onChooseActivity('list.find_people');
+      return () => {
+      };
+    }
+    if (session?.current_event) {
+      setSectionOpen(JSON.parse(session.current_event));
+    };
     return () => {
-      mounted = false;
     };
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // retrieve the activities for the main part of the screen
+  // on patient, event, or type change... retrieve the activities for the main part of the screen
   React.useEffect(() => {
     setLoading(true);
     let mounted = true;
-    (async () => {
-      let result;
-      if (rowOpen[0]) { console.log('this is here to force a reload'); };
+    let callPromise = (async () => {
       if (patient && session) {
-        result = await API.graphql(
+        let result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: {
               client_id: session.client_id,
@@ -620,6 +612,7 @@ export default ({ patient, session }) => {
               includeEvents: true,
               history_only: false,
               use_short_date: isMobile,
+              kiosk_mode: session?.kiosk_mode
             },
           })
         ).catch(error => {
@@ -649,7 +642,6 @@ export default ({ patient, session }) => {
               [, result.data.getActivityData[aIndex].most_recent_observation] = lastWrittenFact.value
                 .replace('.', '^')
                 .split('^');
-              setLastWrittenFact({});
               return true;                                                    // exit this iteration AND stop the loop (.some ends when ANY true is returned)
             });
           }
@@ -669,7 +661,12 @@ export default ({ patient, session }) => {
       }
     })();
 
-    if (patient !== activePatient) {
+    if (patient && session) { 
+      setPromise(callPromise);
+      if (false) { console.log(promise); };
+    }
+
+    if (patient?.person_id !== activePatient?.person_id) {
       returnToHome();
       setActivePatient(patient);
     }
@@ -677,7 +674,37 @@ export default ({ patient, session }) => {
     return () => {
       mounted = false;
     };
-  }, [patient, event, type, limit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [patient?.person_id, event, type]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // on limit or lastWrittenFact change... retrieve the activities for the main part of the screen
+  React.useEffect(() => {
+    setLoading(true);
+    if (Object.keys(lastWrittenFact).length > 0) {
+      let updatedActivities = activities;
+      // getActivityData is list of options that displays on the user's screen 
+      // If we just wrote a fact, attempt to drop information about that fact into getActivityData 
+      let [findAKey] = lastWrittenFact.activity_key.split('#');       // fact keys are in the form activity_type.activity_code#time_stamp
+      updatedActivities.some((checkObj, aIndex) => {
+        if (checkObj.code !== findAKey) {                             // if the current activity_code is NOT the one that was most recently recorded
+          return false;                                               //    leave this iteration, but keep the loop alive (return false)
+        }
+        // A match! put info about the recently recorded fact into getActivityData 
+        updatedActivities[aIndex].fact_history = [lastWrittenFact];
+        updatedActivities[aIndex].observation_status = '';
+        [, updatedActivities[aIndex].most_recent_observation] = lastWrittenFact.value
+          .replace('.', '^')
+          .split('^');
+        return true;                                                    // exit this iteration AND stop the loop (.some ends when ANY true is returned)
+      });
+      setActivities(updatedActivities);
+      setLimit(limit + 1);
+      setLastWrittenFact({});
+    };
+    setLoading(false);
+    return () => {
+    };
+  }, [limit, lastWrittenFact]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const updateSessionPreferences = (pSections) => {
     if (session) {
@@ -716,7 +743,9 @@ export default ({ patient, session }) => {
   }
 
   let idleSince = null;
+  let idleStartTime = 0;
   let idleString = '';
+  let msInAMinute = 1000 * 60;
 
   return (
     <Paper className={classes.mainPaper} onClick={() => onWildClick} >
@@ -724,7 +753,7 @@ export default ({ patient, session }) => {
       {/* Idle timer always running */}
       <IdleTimer
         ref={ref => { idleTimer = ref; }}
-        timeout={1000 * 60 * 30}   // every "n" minutes
+        timeout={(session?.kiosk_mode ? 1 : 30) * msInAMinute}   // every "n" minutes
         onAction={() => {
           if (idleSince) {
             console.log(`Active at ${new Date().toLocaleString()}`);
@@ -735,20 +764,41 @@ export default ({ patient, session }) => {
           if (!idleSince) {
             idleSince = idleTimer.getLastActiveTime();
             idleString = new Date(idleSince).toLocaleString();
+            idleStartTime = new Date(idleSince).getTime();
             console.log(`Idle since ${idleString}`);
           }
-          else { console.log(`Still idle (${idleString})`); }
-          // let [latestMessage, messageTimeText] = await checkRecentMessages();
-          let latestMessage = 0;
-          let messageTimeText = 1;
-          if (latestMessage > idleSince) {
-            if (currentAlertSnack) { closeSnackbar(currentAlertSnack); }
-            currentAlertSnack = enqueueSnackbar(
-              `You received a message... ${messageTimeText}`,
-              { variant: 'info', persist: true }
-            );
-            try { new Audio(avaAlert).play(); }
-            catch (err) { console.log('play sound failed due to browser'); }
+          else {
+            console.log(`Still idle (${idleString})`);
+            if (session?.kiosk_mode) {
+              let checkTime = new Date().getTime() - idleStartTime;
+              if (checkTime > (4 * msInAMinute)) {
+                let newPatient = {
+                  patient_id: session.user_id,
+                  patient_display_name: session.user_display_name
+                };
+                await API.graphql(
+                  graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
+                ).catch(error => {console.log(error)});
+                let jumpTo = window.location.href.replace('refresh', 'theseus');
+                window.location.replace(jumpTo);
+              }
+              else if (checkTime > (3 * msInAMinute)) {
+                enqueueSnackbar(
+                  `Are you still there?  AVA will end your session in 1 minute...`,
+                  { variant: 'warning', persist: true }
+                );
+                try { new Audio(avaAlert).play(); }
+                catch (err) { console.log('play sound failed due to browser'); }
+              }
+              else if (checkTime > (2 * msInAMinute)) {
+                enqueueSnackbar(
+                  `Are you still there?  AVA will end your session in 2 minutes...`,
+                  { variant: 'info', persist: true }
+                );
+                try { new Audio(avaAlert).play(); }
+                catch (err) { console.log('play sound failed due to browser'); }
+              }
+            }
           }
           idleTimer.reset();
         }}
@@ -945,7 +995,7 @@ export default ({ patient, session }) => {
           open={showNewFactDialog}
           fromHome={homeState}
           onClose={(oopsieMessage = null) => {
-            oopsieMessage && (currentAlertSnack = enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
+            oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
             setShowNewFactDialog(false);
             actionCancelled = true;
           }}
