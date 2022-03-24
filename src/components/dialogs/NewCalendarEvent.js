@@ -245,8 +245,23 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
         hh = Math.floor(hh / 100);
       }
       if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
-      if (hh >= 12) { ampm = 'pm'; }
-      else if (!ampm) { ampm = ((hh > 7) && (hh < 12)) ? 'am' : 'pm'; }
+      if (mm > 59) {
+        let hAdd = Math.floor(mm / 60);
+        mm -= (hAdd * 60);
+        hh += hAdd;
+      }
+      if (hh >= 23) {
+        hh = hh % 24;
+      }
+      if (hh >= 12) {
+        hh -= 12;
+        ampm = 'pm';
+      }
+      if (hh === 0) {
+        hh = 12;
+        ampm = 'pm';
+      }
+      if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
       setTimeFromAsDisplayString(`${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
       let calcFromTime = 0;   // numeric 24 hour clock version of time as hhmm
       if (ampm === 'pm') {
@@ -298,9 +313,23 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
         if (!mm$) { mm = hh % 100; }
         hh = Math.floor(hh / 100);
       }
-      if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
-      if (hh > 12) { ampm = 'pm'; }
-      else if (!ampm) { ampm = ((hh > 7) && (hh < 12)) ? 'am' : 'pm'; }
+      if (mm > 59) {
+        let hAdd = Math.floor(mm / 60);
+        mm -= (hAdd * 60);
+        hh += hAdd;
+      }
+      if (hh >= 23) {
+        hh = hh % 24;
+      }
+      if (hh >= 12) {
+        hh -= 12;
+        ampm = 'pm';
+      }
+      if (hh === 0) {
+        hh = 12;
+        ampm = 'pm';
+      }
+      if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
       let calcToTime = 0;
       if (ampm === 'pm') {
         calcToTime = (hh < 12 ? ((hh + 12) * 100) : 1200) + mm;
@@ -334,6 +363,21 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
   const handleDateExit = event => {
     if (event.key === 'Enter' || event.type === 'blur') {
       let goodDate = new Date(event_date);
+      if (isNaN(goodDate)) {
+        let jump = 0;
+        let tDate = event_date.substr(0, 3).toLowerCase();
+        let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
+        goodDate = new Date(Date.now());
+        if (dOfw > -1) {
+          goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + jump);
+        }
+        else if (tDate === 'tom') {
+          goodDate.setDate(goodDate.getDate() + 1);
+        }
+        else if (tDate !== 'tod') {
+          goodDate = new Date(event_date);
+        }
+      }
       let current = new Date(Date.now());
       current.setHours(0, 0, 0, 0);
       if (goodDate < current) {
@@ -418,7 +462,7 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
       let stopLoop = (h * 100) + m;
       for (
         let t = useFromTime;
-        t < stopLoop;
+        t <= stopLoop;
         t
       ) {
         let mm = t % 100;

@@ -141,7 +141,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=v22.3.21${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+          `Version=v22.3.24${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
@@ -161,7 +161,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.3.21${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.3.24${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
@@ -309,8 +309,6 @@ export default Component => props => {
               ]}
               handleSubmit={
                 async (event) => {
-                  console.log(`inputName is ${inputName}`);
-                  console.log(`inputCP is ${inputCP}`);
                   event.preventDefault();
                   try {
                     calledFrom = 'signIn';
@@ -381,7 +379,6 @@ export default Component => props => {
                   value: inputPassword,
                   handleInputChange:
                     (e) => {
-                      console.log(`newP is ${e.target.value}`);
                       setInputPassword(e.target.value);
                     },
                   inputProps: { required: true, type: "text", autocomplete: "off" },

@@ -1108,6 +1108,16 @@
                                 "ofType": null
                             },
                             "defaultValue": null
+                        },
+                        {
+                            "name": "kiosk_mode",
+                            "description": null,
+                            "type": {
+                                "kind": "SCALAR",
+                                "name": "Boolean",
+                                "ofType": null
+                            },
+                            "defaultValue": null
                         }
                     ],
                     "interfaces": null,
@@ -3002,6 +3012,18 @@
                             "deprecationReason": null
                         },
                         {
+                            "name": "password_change_date",
+                            "description": null,
+                            "args": [],
+                            "type": {
+                                "kind": "SCALAR",
+                                "name": "String",
+                                "ofType": null
+                            },
+                            "isDeprecated": false,
+                            "deprecationReason": null
+                        },
+                        {
                             "name": "platform",
                             "description": null,
                             "args": [],
@@ -4073,6 +4095,16 @@
                         },
                         {
                             "name": "current_event",
+                            "description": null,
+                            "type": {
+                                "kind": "SCALAR",
+                                "name": "String",
+                                "ofType": null
+                            },
+                            "defaultValue": null
+                        },
+                        {
+                            "name": "password_change_date",
                             "description": null,
                             "type": {
                                 "kind": "SCALAR",

@@ -1,6 +1,13 @@
 import React from 'react';
 import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
+
+import { API, graphqlOperation } from 'aws-amplify';
+import { updateSession } from '../graphql/mutations';
+import { SET_PATIENT, SET_SESSION } from '../contexts/Session/actions';
+import { useSnackbar } from 'notistack';
+import { getPerson } from '../graphql/queries';
+
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -16,6 +23,7 @@ import Typography from '@material-ui/core/Typography';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import AssignmentIndIcon from '@material-ui/icons/AssignmentInd';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
+import HomeIcon from '@material-ui/icons/Home';
 import GetAppIcon from '@material-ui/icons/GetApp';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import PatientDialog from './dialogs/PatientDialog';
@@ -36,6 +44,8 @@ const ITEM_HEIGHT = 48;
 export default () => {
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
   const [hideSwitchAccountButton, setHideSwitchAccountButton] = React.useState(true);
+  const { enqueueSnackbar } = useSnackbar();
+  const { dispatch } = useSession();
   const [open, setOpen] = React.useState(false);
   const [addAccount, setAddAccount] = React.useState(false);
   const [templatePatient, setTemplatePatient] = React.useState({});
@@ -103,6 +113,38 @@ export default () => {
     });
     setAddAccount(true);
   };
+
+  const onReset = async () => {
+    if (session) {
+      let newPatient = {
+        patient_id: session.user_id,
+        patient_display_name: session.user_display_name
+      };
+      const result1 = await API.graphql(
+        graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
+      ).catch(error => {
+        enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.errors[0].message}`, {
+          variant: 'error',
+        });
+      });
+
+      const result2 = await API.graphql(
+        graphqlOperation(getPerson, {
+          person_id: session.user_id,
+        })
+      ).catch(error => {
+        enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.errors[0].message}`, {
+          variant: 'error',
+        });
+      });
+
+      dispatch({ type: SET_SESSION, payload: result1.data.updateSession });
+      dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
+      let jumpTo = window.location.href.replace('refresh', 'theseus');
+      window.location.replace(jumpTo);
+    }
+  };
+
 
   const onInstall = () => {
     if (showIOS) {
@@ -174,6 +216,14 @@ export default () => {
                 <ListItemText primary={'Switch Account'} />
               </MenuItem>
             )}
+            {session && (session.patient_id !== session.user_id) &&
+              <MenuItem onClick={onReset}>
+                <ListItemIcon>
+                  <HomeIcon />
+                </ListItemIcon>
+                <ListItemText primary={`Use ${session.user_display_name} (${session.user_id})`} />
+              </MenuItem>
+            }
             <MenuItem onClick={onSignOut}>
               <ListItemIcon>
                 <ExitToAppIcon />
