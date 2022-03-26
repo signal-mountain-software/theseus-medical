@@ -300,6 +300,7 @@ export const getSession = /* GraphQL */ `
       description
       event_description
       kiosk_mode
+      kiosk_activity
       groups_managed
     }
   }

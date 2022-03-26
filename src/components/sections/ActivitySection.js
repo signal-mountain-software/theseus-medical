@@ -272,7 +272,7 @@ export default ({ patient, session }) => {
         graphqlOperation(getActivityData, {
           input: {
             client_id: session.client_id,
-            person_id: patient.person_id,
+            person_id: patient?.person_id || session.patient_id,
             event_id: '',
             activity_type: '$$' + (activity?.code || activity),
             limit: limit,
@@ -335,6 +335,7 @@ export default ({ patient, session }) => {
     let mVal = '';
     let constructedValue = '';
     let constructedQualifier = [];
+    let factWasWritten = false;
     needsConfirmation(false);
     let showMessage = true;
     if (typeof newFact.value === 'string') {
@@ -351,6 +352,7 @@ export default ({ patient, session }) => {
           );
         });
       setLastWrittenFact(writtenFact.data.createPutFact);
+      factWasWritten = true;
       [, constructedValue] = newFact.value.replace('.', '^').split('^');
     } else {
       if (newFact.hasOwnProperty('value') && newFact.value) {
@@ -382,6 +384,7 @@ export default ({ patient, session }) => {
                   );
                 });
               setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+              factWasWritten = true;
             }
             else { showMessage = false; }
           }
@@ -394,6 +397,7 @@ export default ({ patient, session }) => {
                   console.log(`Problem writing Fact at file upload: ${JSON.stringify(error)}`);
                 });
               setLastWrittenFact(writtenFact?.data?.createPutFact || null);
+              factWasWritten = true;
             }
             showMessage = false;
           }
@@ -448,6 +452,7 @@ export default ({ patient, session }) => {
                   );
                 });
               setLastWrittenFact(writtenFact?.data?.createPutFact);
+              factWasWritten = true;
             } else {
               needsConfirmation(true);
               showMessage = false;
@@ -468,6 +473,7 @@ export default ({ patient, session }) => {
               newFact.value = 'selection.' + mVal;
               let writtenFact = await API.graphql(graphqlOperation(createPutFact, { input: newFact }));
               setLastWrittenFact(writtenFact.data.createPutFact);
+              factWasWritten = true;
               if (associationsObject && associationsObject.hasOwnProperty(mVal)) {
                 newFact.value = 'association.' + mVal;
                 newFact.activity_key = associationsObject[mVal];
@@ -514,6 +520,18 @@ export default ({ patient, session }) => {
       }
     }
     selectedActivityName = '';
+
+    if (session?.kiosk_mode && factWasWritten && (session?.user_id === session?.patient_id)) {
+      let newPatient = {
+        patient_id: session.user_id,
+        patient_display_name: session.user_display_name
+      };
+      await API.graphql(
+        graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
+      ).catch(error => { console.log(error); });
+      let jumpTo = window.location.href.replace('refresh', 'theseus');
+      window.location.replace(jumpTo);
+    }
 
     async function putVideo(params) {   // Uploading files to the bucket
 
@@ -582,8 +600,8 @@ export default ({ patient, session }) => {
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
     setLoading(true);
-    if (patient && session?.kiosk_mode && (session.user_id === session.patient_id)) {
-      onChooseActivity('list.find_people');
+    if (session?.kiosk_mode && (session.user_id === session.patient_id)) {
+      onChooseActivity(session.kiosk_activity);
       return () => {
       };
     }
@@ -751,59 +769,66 @@ export default ({ patient, session }) => {
     <Paper className={classes.mainPaper} onClick={() => onWildClick} >
 
       {/* Idle timer always running */}
-      <IdleTimer
-        ref={ref => { idleTimer = ref; }}
-        timeout={(session?.kiosk_mode ? 1 : 30) * msInAMinute}   // every "n" minutes
-        onAction={() => {
-          if (idleSince) {
-            console.log(`Active at ${new Date().toLocaleString()}`);
-            idleSince = null;
-          }
-        }}
-        onIdle={async () => {
-          if (!idleSince) {
-            idleSince = idleTimer.getLastActiveTime();
-            idleString = new Date(idleSince).toLocaleString();
-            idleStartTime = new Date(idleSince).getTime();
-            console.log(`Idle since ${idleString}`);
-          }
-          else {
-            console.log(`Still idle (${idleString})`);
-            if (session?.kiosk_mode) {
-              let checkTime = new Date().getTime() - idleStartTime;
-              if (checkTime > (4 * msInAMinute)) {
-                let newPatient = {
-                  patient_id: session.user_id,
-                  patient_display_name: session.user_display_name
-                };
-                await API.graphql(
-                  graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
-                ).catch(error => { console.log(error); });
-                let jumpTo = window.location.href.replace('refresh', 'theseus');
-                window.location.replace(jumpTo);
-              }
-              else if (checkTime > (3 * msInAMinute)) {
-                enqueueSnackbar(
-                  `Are you still there?  AVA will end your session in 1 minute...`,
-                  { variant: 'warning', persist: true }
-                );
-                try { new Audio(avaAlert).play(); }
-                catch (err) { console.log('play sound failed due to browser'); }
-              }
-              else if (checkTime > (2 * msInAMinute)) {
-                enqueueSnackbar(
-                  `Are you still there?  AVA will end your session in 2 minutes...`,
-                  { variant: 'info', persist: true }
-                );
-                try { new Audio(avaAlert).play(); }
-                catch (err) { console.log('play sound failed due to browser'); }
+      {(session?.kiosk_mode && (!selected?.code || (selected?.code !== session?.kiosk_activity))) ?
+        <IdleTimer
+          ref={ref => { idleTimer = ref; }}
+          timeout={(session?.kiosk_mode ? 1 : 30) * msInAMinute}   // every "n" minutes
+          onAction={(event) => {
+            if (idleSince) {
+              console.log(`Active at ${new Date().toLocaleString()} on ${event.type}`);
+              idleSince = null;
+            }
+          }}
+          onIdle={async () => {
+            if (!idleSince) {
+              idleSince = idleTimer.getLastActiveTime();
+              idleString = new Date(idleSince).toLocaleString();
+              idleStartTime = new Date(idleSince).getTime();
+              console.log(`Idle since ${idleString}`);
+            }
+            else {
+              console.log(`Still idle at ${new Date().toLocaleString()}`);
+              if (session?.kiosk_mode) {
+                let checkTime = new Date().getTime() - idleStartTime;
+                if (checkTime > (4 * msInAMinute)) {
+                  let newPatient = {
+                    patient_id: session.user_id,
+                    patient_display_name: session.user_display_name
+                  };
+                  await API.graphql(
+                    graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
+                  ).catch(error => { console.log(error); });
+                  let jumpTo = window.location.href.replace('refresh', 'theseus');
+                  window.location.replace(jumpTo);
+                }
+                else if (checkTime > (3 * msInAMinute)) {
+                  enqueueSnackbar(
+                    `Are you still there?  AVA will end your session in 1 minute...`,
+                    { variant: 'warning', persist: true }
+                  );
+                  try { new Audio(avaAlert).play(); }
+                  catch (err) {
+                    console.log('play sound failed due to browser');
+                  }
+                }
+                else if (checkTime > (2 * msInAMinute)) {
+                  enqueueSnackbar(
+                    `Are you still there?  AVA will end your session in 2 minutes...`,
+                    { variant: 'info', persist: true }
+                  );
+                  try { new Audio(avaAlert).play(); }
+                  catch (err) {
+                    console.log('play sound failed due to browser');
+                  }
+                }
               }
             }
-          }
-          idleTimer.reset();
-        }}
-        debounce={250}
-      />
+            idleTimer.reset();
+          }}
+          debounce={250}
+        />
+        : null
+      }
 
       {/* Main Activity List and Selection */}
       <Box p={3}  >
@@ -994,9 +1019,20 @@ export default ({ patient, session }) => {
           session={session}
           open={showNewFactDialog}
           fromHome={homeState}
-          onClose={(oopsieMessage = null) => {
+          onClose={async (oopsieMessage = null) => {
             oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
             setShowNewFactDialog(false);
+            if (session?.kiosk_mode && (session?.user_id === session?.patient_id)) { 
+              let newPatient = {
+                patient_id: session.user_id,
+                patient_display_name: session.user_display_name
+              };
+              await API.graphql(
+                graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
+              ).catch(error => { console.log(error); });
+              let jumpTo = window.location.href.replace('refresh', 'theseus');
+              window.location.replace(jumpTo);
+            }
             actionCancelled = true;
           }}
           onSave={onSaveFact}

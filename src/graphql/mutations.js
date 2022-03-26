@@ -36,6 +36,7 @@ export const updateSession = /* GraphQL */ `
       description
       event_description
       kiosk_mode
+      kiosk_activity
       groups_managed
     }
   }

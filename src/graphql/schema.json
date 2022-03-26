@@ -1118,6 +1118,16 @@
                                 "ofType": null
                             },
                             "defaultValue": null
+                        },
+                        {
+                            "name": "kiosk_activity",
+                            "description": null,
+                            "type": {
+                                "kind": "SCALAR",
+                                "name": "String",
+                                "ofType": null
+                            },
+                            "defaultValue": null
                         }
                     ],
                     "interfaces": null,
@@ -3071,6 +3081,16 @@
                             "isDeprecated": false,
                             "deprecationReason": null
                         },
+                         {
+                            "name": "kiosk_activity",
+                            "description": null,
+                            "type": {
+                                "kind": "SCALAR",
+                                "name": "String",
+                                "ofType": null
+                            },
+                            "defaultValue": null
+                        },
                         {
                             "name": "groups_managed",
                             "description": null,
@@ -4149,6 +4169,16 @@
                             "type": {
                                 "kind": "SCALAR",
                                 "name": "Boolean",
+                                "ofType": null
+                            },
+                            "defaultValue": null
+                        },
+                        {
+                            "name": "kiosk_activity",
+                            "description": null,
+                            "type": {
+                                "kind": "SCALAR",
+                                "name": "String",
                                 "ofType": null
                             },
                             "defaultValue": null
