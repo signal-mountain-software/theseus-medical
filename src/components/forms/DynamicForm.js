@@ -288,7 +288,7 @@ export default ({
   const [getSessionResult, setSessionResult] = React.useState({});
 
   var noToggle = false;
-  var recordingStatus;
+  let recordingStatus;
   let currentEvents = [];
 
   var groupsManaged = [];
@@ -954,26 +954,18 @@ export default ({
             <br />
             <VideoRecorder
               isOnInitially
-              isFlipped
               showReplayControls
-              replayVideoAutoplayAndLoopOff
+              replayVideoAutoplayAndLoopOff={false}
               onRecordingComplete={async (videoBlob) => {
                 const pVideo = {
                   Bucket: 'theseus-medical-storage',
-                  Key: freeText.replace('.', '_') + (recordingStatus !== 'stopped' ? '_partial' : '') + '.webm',
+                  Key: freeText.replace('.', '_') + '.webm',
                   Body: videoBlob,
                   ACL: 'public-read-write',
                   ContentType: 'video/webm'
                 };
                 newFact.value.tag = freeText;
                 newFact.value.mediaData = pVideo;
-                if (recordingStatus !== 'stopped') {
-                  recordingStatus = 'aborted';
-                  newFact.value.recordingStatus = 'aborted';
-                };
-              }
-              }
-              onStopRecording={() => {
                 recordingStatus = 'stopped';
                 newFact.value.recordingStatus = 'stopped';
               }}
@@ -1221,6 +1213,11 @@ export default ({
                     specialHandling = true;
                     freeTextFieldName = specialKey;
                     personRow = true;
+                  }
+                  else if (freeTextFieldName && freeTextFieldName.startsWith('group=')) {
+                    specialHandling = true;
+                    freeTextFieldName = specialKey;
+                    personRow = true;
                   };
 
                   return (
@@ -1370,7 +1367,7 @@ export default ({
                                 />
                               }
                               <Avatar
-                                src={`https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg`}
+                                src={personID ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
                                 sx={{ width: 30, height: 30 }}
                                 alt=""
                                 onClick={handleQualSelected(value)}

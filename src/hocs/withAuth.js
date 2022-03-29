@@ -185,7 +185,7 @@ export default Component => props => {
       .invoke(params)
       .promise()
       .catch(err => {
-        console.log('call for activity details failed.  Error is', JSON.stringify(err));
+        console.log('Call failed.  Error is', JSON.stringify(err));
         setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
         invokeFailed = true;
       });

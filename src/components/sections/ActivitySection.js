@@ -366,8 +366,16 @@ export default ({ patient, session }) => {
               valueSelectedString += ` ~ ${k}=${v}`;
             }
           }
-          if ((newFact.value?.mediaData?.ContentType?.includes('video') || newFact.value?.mediaData?.Body?.type?.includes('video')) && !actionCancelled) {
-            const finalFilename = await putVideo(newFact.value);
+          if (
+            (
+              newFact.value?.mediaData?.ContentType?.includes('video')
+              || newFact.value?.mediaData?.Body?.type?.includes('video')
+              || newFact.value?.mediaData?.ContentType?.includes('audio')
+              || newFact.value?.mediaData?.Body?.type?.includes('audio')
+            )
+            && !actionCancelled
+          ) {
+            const finalFilename = await putMedia(newFact.value);
             if (finalFilename) {
               const vName = newFact.value.tag;
               newFact.value = `file_details.s3file=${finalFilename} ~ Video ~ userTag=${vName}${valueSelectedString}`;
@@ -375,7 +383,7 @@ export default ({ patient, session }) => {
                 .graphql(graphqlOperation(createPutFact, { input: newFact }))
                 .catch(error => {
                   enqueueSnackbar(
-                    `Uh oh! We couldn't record important information about your video. Please try again: ${JSON.stringify(
+                    `Uh oh! We couldn't record important information about your recording. Please try again: ${JSON.stringify(
                       error.message || error.errors[0].message
                     )}`,
                     {
@@ -533,15 +541,14 @@ export default ({ patient, session }) => {
       window.location.replace(jumpTo);
     }
 
-    async function putVideo(params) {   // Uploading files to the bucket
-
+    async function putMedia(params) {   // Uploading files to the bucket
       let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
       let fileExtension = newFact.value.mediaData.Key.split('.').pop();
       let destinationName = newName.trim().replace(/[\s/]/g, '_').split('.')[0];
       newFact.value.mediaData.Key = destinationName + '.' + fileExtension;
       let mediaData = newFact.value.mediaData;
       let warning = mediaData.Key.includes('_partial.webm') ? 'Your recording was interrupted.  AVA will save everything up to that point. ' : '';
-      enqueueSnackbar(`${warning}AVA is saving your video named ${newName}`,
+      enqueueSnackbar(`${warning}AVA is saving your recording named ${newName}`,
         { variant: (warning !== '' ? 'warning' : 'info'), persist: true });
       let uploadOK = true;
       let uploadResult = await s3
@@ -549,11 +556,11 @@ export default ({ patient, session }) => {
         .promise()
         .catch(err => {
           uploadOK = false;
-          enqueueSnackbar(`Uh oh!  AVA couldn't save your video.  The reason is ${err.message}`,
+          enqueueSnackbar(`Uh oh!  AVA couldn't save your recording.  The reason is ${err.message}`,
             { variant: 'error', persist: true });
         });
       if (uploadOK) {
-        enqueueSnackbar(`Your video named ${destinationName} is saved!`, { variant: 'success', persist: false });
+        enqueueSnackbar(`Your recording named ${destinationName} is saved!`, { variant: 'success', persist: false });
         showMessage = false;
         return uploadResult.Key;
       };
