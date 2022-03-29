@@ -288,7 +288,6 @@ export default ({
   const [getSessionResult, setSessionResult] = React.useState({});
 
   var noToggle = false;
-  let recordingStatus;
   let currentEvents = [];
 
   var groupsManaged = [];
@@ -896,7 +895,6 @@ export default ({
         />
       );
     case 'upload_file':
-      recordingStatus = 'none';
       return (
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
@@ -931,7 +929,6 @@ export default ({
         </FormControl>
       );
     case 'record_video':
-      recordingStatus = 'none';
       var dateOptions = { month: 'short', day: 'numeric' };
       return (
         <FormControl fullWidth>
@@ -966,11 +963,9 @@ export default ({
                 };
                 newFact.value.tag = freeText;
                 newFact.value.mediaData = pVideo;
-                recordingStatus = 'stopped';
                 newFact.value.recordingStatus = 'stopped';
               }}
               onStartRecording={() => {
-                recordingStatus = 'started';
                 newFact.value.recordingStatus = 'started';
               }}
             />
