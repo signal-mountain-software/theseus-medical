@@ -141,7 +141,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=v22.3.24${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+          `Version=v22.4.1${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
         );
       };
     } catch (err) {
@@ -161,7 +161,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.3.24${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.4.1${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
@@ -185,7 +185,7 @@ export default Component => props => {
       .invoke(params)
       .promise()
       .catch(err => {
-        console.log('call for activity details failed.  Error is', JSON.stringify(err));
+        console.log('Call failed.  Error is', JSON.stringify(err));
         setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
         invokeFailed = true;
       });

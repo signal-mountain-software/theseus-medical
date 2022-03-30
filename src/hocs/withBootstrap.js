@@ -92,7 +92,7 @@ export default Component => props => {
               });
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
-          session.session_id = `v22.3.24${window.location.href.split('//')[1].slice(0, 1)}`;
+          session.session_id = `v22.4.1${window.location.href.split('//')[1].slice(0, 1)}`;
         }
 
         // get person's Account information
