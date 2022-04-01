@@ -510,7 +510,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   }, [fact]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Dialog open={open} fullWidth={true}>
+    <Dialog open={open} fullScreen >
       <DialogContentText className={classes.title} id='scroll-dialog-title'>
         {fact?.name}
       </DialogContentText>

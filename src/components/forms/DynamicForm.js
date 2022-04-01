@@ -31,6 +31,7 @@ import DialogContent from '@material-ui/core/DialogContent';
 
 import Typography from '@material-ui/core/Typography';
 import Button from '@material-ui/core/Button';
+// import Image from 'material-ui-image';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
@@ -125,13 +126,19 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.6,
     // height: theme.typography.fontSize * 2.8,
   },
+  lastName: {
+    fontSize: theme.typography.fontSize * 1.5,
+    fontWeight: 'bold'
+  },
+  firstName: {
+    fontSize: theme.typography.fontSize * 1.2,
+  },
   messageInput: {
     marginLeft: 0,
     marginBottom: theme.spacing(10),
     paddingLeft: 0,
     paddingRight: 15,
     width: '95%',
-    //    verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
     height: theme.typography.fontSize * 2.8,
   },
@@ -427,7 +434,7 @@ export default ({
       let goodDate = new Date(event.target.value);
       if (isNaN(goodDate)) {
         let tNext = event.target.value.trim().toLowerCase().startsWith('next');
-        if (tNext) { 
+        if (tNext) {
           let dayWord = event.target.value.split(' ')[1].trim();
           event.target.value = dayWord;
         }
@@ -436,7 +443,7 @@ export default ({
         goodDate = new Date(Date.now());
         if (dOfw > -1) {
           if ((goodDate.getDay() > dOfw) && tNext) {
-            tNext = false; 
+            tNext = false;
           }
           goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + (tNext ? 7 : 0));
         }
@@ -504,7 +511,7 @@ export default ({
     }
   };
 
-    const onCheckEnter = event => {
+  const onCheckEnter = event => {
     if (event.key === 'Enter') { handleFilterText(event.target.value); }
   };
 
@@ -1341,11 +1348,11 @@ export default ({
                           }
                           {personRow && /* Show person avatar and info  */
                             <Box
-                              flexDirection='row'
                               display='flex'
-                              grow={1}
-                              justifyContent='flex-start'
-                              alignItems='center'>
+                              height={150}
+                              flexDirection='row'
+                              alignItems='center'
+                            >
                               {checkBoxOn && showCheckBox &&
                                 <Checkbox
                                   edge='start'
@@ -1361,25 +1368,48 @@ export default ({
                                   inputProps={{ 'aria-labelledby': labelId }}
                                 />
                               }
-                              <Avatar
-                                src={personID ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
-                                sx={{ width: 30, height: 30 }}
-                                alt=""
+                              <Box
+                                width={150}
+                                display='flex'
+                                flexDirection='row'
+                                justifyContent={'center'}
                                 onClick={handleQualSelected(value)}
-                              />
-                              <Typography
-                                variant={'h6'}
+                              >
+                                <Box
+                                  component="img"
+                                  width={1}
+                                  maxWidth={1}
+                                  minHeight={150}
+                                  maxHeight={150}
+                                  alt='No photo available'
+                                  src={personID ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
+                                />
+                              </Box>
+                              <Box
+                                marginLeft={2}
+                                display='flex'
+                                flexDirection='column'
+                                alignItems='flex-start'
+                                justifyContent='center'
                                 onClick={handleQualSelected(value)}
-                                className={classes.personText}>
-                                {freeTextFieldName}
-                              </Typography>
+                              >
+                                <Typography
+                                  className={classes.lastName}
+                                >
+                                  {freeTextFieldName.split(',')[0].trim()}
+                                </Typography>
+                                <Typography
+                                  className={classes.firstName}
+                                >
+                                  {freeTextFieldName.split(',')[1]?.trim()}
+                                </Typography>
+                              </Box>
                             </Box>
                           }
                           {value.startsWith('~date:') && /* Date prompt */
                             <Box
                               flexDirection='row'
                               display='flex'
-                              grow={1}
                               justifyContent='flex-start'
                               alignItems='baseline'>
                               <TextField
@@ -1435,10 +1465,15 @@ export default ({
               <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
                 {qualifierData.image_url ?
                   (
-                    <Avatar
+                    <Box
+                      marginTop={5}
+                      component="img"
+                      width={200}
+                      maxWidth={200}
+                      minHeight={200}
+                      maxHeight={200}
+                      alt='No photo available'
                       src={qualifierImage}
-                      className={classes.picture}
-                      sx={{ width: 100, height: 100 }}
                     />
                   ) : null
                 }

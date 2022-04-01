@@ -235,7 +235,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.4.1~${errorTime}`,
+        status: `Version = v22.4.4~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -1029,7 +1029,7 @@ export default ({ patient, session }) => {
           onClose={async (oopsieMessage = null) => {
             oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
             setShowNewFactDialog(false);
-            if (session?.kiosk_mode && (session?.user_id === session?.patient_id)) { 
+            if (session?.kiosk_mode && (session?.user_id === session?.patient_id)) {
               let newPatient = {
                 patient_id: session.user_id,
                 patient_display_name: session.user_display_name
