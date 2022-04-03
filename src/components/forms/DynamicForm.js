@@ -1706,7 +1706,7 @@ export default ({
                   </FormGroup>
                 </FormControl>
               </DialogContent>
-              <DialogActions>
+              <DialogActions style={{ justifyContent: 'center' }}>
                 {switchMode ?
                   <IconButton
                     onClick={() => { handleSwitch(getSessionResult.data.getSession); }}
