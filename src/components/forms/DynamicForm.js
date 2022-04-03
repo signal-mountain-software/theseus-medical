@@ -9,6 +9,8 @@ import useSession from '../../hooks/useSession';
 import FormControl from '@material-ui/core/FormControl';
 import FormGroup from '@material-ui/core/FormGroup';
 
+import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
+
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import ShowCalendar from '../dialogs/ShowCalendar';
 
@@ -54,7 +56,6 @@ import TextSMSIcon from '@material-ui/icons/Textsms';
 import { getSession, getPerson } from '../../graphql/queries';
 
 import Box from '@material-ui/core/Box';
-import Avatar from '@material-ui/core/Avatar';
 
 import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
@@ -689,7 +690,11 @@ export default ({
         gC[g] = true;
         if (respArray.includes(g)) { setSwitchMode(true); }
       });
-      if (respArray.includes(result.data.getPerson.person_id) || session.kiosk_mode) {
+      if (
+        respArray.includes(result.data.getPerson.person_id)
+        || respArray.includes('*all')
+        || session.kiosk_mode
+      ) {
         setSwitchMode(true);
       }
       setGroupChecked(gC);
@@ -1117,6 +1122,7 @@ export default ({
       return (
         <ShowCalendar
           patient={session}
+          peopleList={values}
           currentEvents={currentEvents}
           showCalendar={true}
           onClose={onSave}
@@ -1585,8 +1591,6 @@ export default ({
                                         variant='standard'
                                         value={freeText}
                                         onChange={onChangeQualText}
-                                        // InputLabelProps={{ shrink: true }}
-                                        // InputProps={{ marginLeft: '2' }}
                                         fullWidth
                                       />
                                     )}
@@ -1704,14 +1708,12 @@ export default ({
               </DialogContent>
               <DialogActions>
                 {switchMode ?
-                  <Button
+                  <IconButton
                     onClick={() => { handleSwitch(getSessionResult.data.getSession); }}
-                    className={classes.confirm}
                     variant='contained'
-                    color='primary'
                     size='small'>
-                    Switch to this Account
-                  </Button>
+                    <SwapHorizIcon />
+                  </IconButton>
                   : null}
                 <Button onClick={handleQClose} className={classes.reject} size='small' variant='contained'>
                   Back
@@ -1727,7 +1729,6 @@ export default ({
                   </Button>
                   : null}
               </DialogActions>
-
             </Dialog>
           }
         </React.Fragment >
