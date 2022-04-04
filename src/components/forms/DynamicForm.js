@@ -9,6 +9,8 @@ import useSession from '../../hooks/useSession';
 import FormControl from '@material-ui/core/FormControl';
 import FormGroup from '@material-ui/core/FormGroup';
 
+import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
+
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import ShowCalendar from '../dialogs/ShowCalendar';
 
@@ -31,6 +33,7 @@ import DialogContent from '@material-ui/core/DialogContent';
 
 import Typography from '@material-ui/core/Typography';
 import Button from '@material-ui/core/Button';
+// import Image from 'material-ui-image';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
@@ -53,7 +56,6 @@ import TextSMSIcon from '@material-ui/icons/Textsms';
 import { getSession, getPerson } from '../../graphql/queries';
 
 import Box from '@material-ui/core/Box';
-import Avatar from '@material-ui/core/Avatar';
 
 import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
@@ -125,13 +127,19 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.6,
     // height: theme.typography.fontSize * 2.8,
   },
+  lastName: {
+    fontSize: theme.typography.fontSize * 1.5,
+    fontWeight: 'bold'
+  },
+  firstName: {
+    fontSize: theme.typography.fontSize * 1.2,
+  },
   messageInput: {
     marginLeft: 0,
     marginBottom: theme.spacing(10),
     paddingLeft: 0,
     paddingRight: 15,
     width: '95%',
-    //    verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
     height: theme.typography.fontSize * 2.8,
   },
@@ -427,7 +435,7 @@ export default ({
       let goodDate = new Date(event.target.value);
       if (isNaN(goodDate)) {
         let tNext = event.target.value.trim().toLowerCase().startsWith('next');
-        if (tNext) { 
+        if (tNext) {
           let dayWord = event.target.value.split(' ')[1].trim();
           event.target.value = dayWord;
         }
@@ -436,7 +444,7 @@ export default ({
         goodDate = new Date(Date.now());
         if (dOfw > -1) {
           if ((goodDate.getDay() > dOfw) && tNext) {
-            tNext = false; 
+            tNext = false;
           }
           goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + (tNext ? 7 : 0));
         }
@@ -504,7 +512,7 @@ export default ({
     }
   };
 
-    const onCheckEnter = event => {
+  const onCheckEnter = event => {
     if (event.key === 'Enter') { handleFilterText(event.target.value); }
   };
 
@@ -682,7 +690,11 @@ export default ({
         gC[g] = true;
         if (respArray.includes(g)) { setSwitchMode(true); }
       });
-      if (respArray.includes(result.data.getPerson.person_id) || session.kiosk_mode) {
+      if (
+        respArray.includes(result.data.getPerson.person_id)
+        || respArray.includes('*all')
+        || session.kiosk_mode
+      ) {
         setSwitchMode(true);
       }
       setGroupChecked(gC);
@@ -1107,9 +1119,13 @@ export default ({
         />
       );
     case 'show_calendar':
+      let OGsession = {};
+      Object.assign(OGsession, session);
       return (
         <ShowCalendar
           patient={session}
+          OGpatient={OGsession}
+          peopleList={values}
           currentEvents={currentEvents}
           showCalendar={true}
           onClose={onSave}
@@ -1341,11 +1357,11 @@ export default ({
                           }
                           {personRow && /* Show person avatar and info  */
                             <Box
-                              flexDirection='row'
                               display='flex'
-                              grow={1}
-                              justifyContent='flex-start'
-                              alignItems='center'>
+                              height={150}
+                              flexDirection='row'
+                              alignItems='center'
+                            >
                               {checkBoxOn && showCheckBox &&
                                 <Checkbox
                                   edge='start'
@@ -1361,25 +1377,48 @@ export default ({
                                   inputProps={{ 'aria-labelledby': labelId }}
                                 />
                               }
-                              <Avatar
-                                src={personID ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
-                                sx={{ width: 30, height: 30 }}
-                                alt=""
+                              <Box
+                                width={150}
+                                display='flex'
+                                flexDirection='row'
+                                justifyContent={'center'}
                                 onClick={handleQualSelected(value)}
-                              />
-                              <Typography
-                                variant={'h6'}
+                              >
+                                <Box
+                                  component="img"
+                                  width={1}
+                                  maxWidth={1}
+                                  minHeight={150}
+                                  maxHeight={150}
+                                  alt='No photo available'
+                                  src={personID ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
+                                />
+                              </Box>
+                              <Box
+                                marginLeft={2}
+                                display='flex'
+                                flexDirection='column'
+                                alignItems='flex-start'
+                                justifyContent='center'
                                 onClick={handleQualSelected(value)}
-                                className={classes.personText}>
-                                {freeTextFieldName}
-                              </Typography>
+                              >
+                                <Typography
+                                  className={classes.lastName}
+                                >
+                                  {freeTextFieldName.split(',')[0].trim()}
+                                </Typography>
+                                <Typography
+                                  className={classes.firstName}
+                                >
+                                  {freeTextFieldName.split(',')[1]?.trim()}
+                                </Typography>
+                              </Box>
                             </Box>
                           }
                           {value.startsWith('~date:') && /* Date prompt */
                             <Box
                               flexDirection='row'
                               display='flex'
-                              grow={1}
                               justifyContent='flex-start'
                               alignItems='baseline'>
                               <TextField
@@ -1435,10 +1474,15 @@ export default ({
               <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
                 {qualifierData.image_url ?
                   (
-                    <Avatar
+                    <Box
+                      marginTop={5}
+                      component="img"
+                      width={200}
+                      maxWidth={200}
+                      minHeight={200}
+                      maxHeight={200}
+                      alt='No photo available'
                       src={qualifierImage}
-                      className={classes.picture}
-                      sx={{ width: 100, height: 100 }}
                     />
                   ) : null
                 }
@@ -1550,8 +1594,6 @@ export default ({
                                         variant='standard'
                                         value={freeText}
                                         onChange={onChangeQualText}
-                                        // InputLabelProps={{ shrink: true }}
-                                        // InputProps={{ marginLeft: '2' }}
                                         fullWidth
                                       />
                                     )}
@@ -1667,16 +1709,14 @@ export default ({
                   </FormGroup>
                 </FormControl>
               </DialogContent>
-              <DialogActions>
+              <DialogActions style={{ justifyContent: 'center' }}>
                 {switchMode ?
-                  <Button
+                  <IconButton
                     onClick={() => { handleSwitch(getSessionResult.data.getSession); }}
-                    className={classes.confirm}
                     variant='contained'
-                    color='primary'
                     size='small'>
-                    Switch to this Account
-                  </Button>
+                    <SwapHorizIcon />
+                  </IconButton>
                   : null}
                 <Button onClick={handleQClose} className={classes.reject} size='small' variant='contained'>
                   Back
@@ -1692,7 +1732,6 @@ export default ({
                   </Button>
                   : null}
               </DialogActions>
-
             </Dialog>
           }
         </React.Fragment >

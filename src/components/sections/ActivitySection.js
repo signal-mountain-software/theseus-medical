@@ -235,7 +235,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.4.1~${errorTime}`,
+        status: `Version = v22.4.4~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -607,7 +607,10 @@ export default ({ patient, session }) => {
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
     setLoading(true);
-    if (session?.kiosk_mode && (session.user_id === session.patient_id)) {
+    if (session?.kiosk_mode
+      && (session.user_id === session.patient_id)
+      && session.kiosk_activity
+    ) {
       onChooseActivity(session.kiosk_activity);
       return () => {
       };
@@ -776,7 +779,7 @@ export default ({ patient, session }) => {
     <Paper className={classes.mainPaper} onClick={() => onWildClick} >
 
       {/* Idle timer always running */}
-      {(session?.kiosk_mode && (!selected?.code || (selected?.code !== session?.kiosk_activity))) ?
+      {selected?.code ?
         <IdleTimer
           ref={ref => { idleTimer = ref; }}
           timeout={(session?.kiosk_mode ? 1 : 30) * msInAMinute}   // every "n" minutes
@@ -798,6 +801,7 @@ export default ({ patient, session }) => {
               if (session?.kiosk_mode) {
                 let checkTime = new Date().getTime() - idleStartTime;
                 if (checkTime > (4 * msInAMinute)) {
+                  closeSnackbar();
                   let newPatient = {
                     patient_id: session.user_id,
                     patient_display_name: session.user_display_name
@@ -809,6 +813,7 @@ export default ({ patient, session }) => {
                   window.location.replace(jumpTo);
                 }
                 else if (checkTime > (3 * msInAMinute)) {
+                  closeSnackbar();
                   enqueueSnackbar(
                     `Are you still there?  AVA will end your session in 1 minute...`,
                     { variant: 'warning', persist: true }
@@ -819,6 +824,7 @@ export default ({ patient, session }) => {
                   }
                 }
                 else if (checkTime > (2 * msInAMinute)) {
+                  closeSnackbar();
                   enqueueSnackbar(
                     `Are you still there?  AVA will end your session in 2 minutes...`,
                     { variant: 'info', persist: true }
@@ -839,15 +845,14 @@ export default ({ patient, session }) => {
 
       {/* Main Activity List and Selection */}
       <Box p={3}  >
-        <Grid md={6} sm={7} xs={12} item>
+        <Grid item>
           <Card
-            style={{ marginBottom: '15px' }}
+            style={{ maxWidth: 'max-content', marginBottom: '15px' }}
             raised={false}
             variant='elevation' elevation={0}
           >
             <CardMedia
               component="img"
-              width='5%'
               image={session?.client_icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg'}
               alt='AVA'
             />
@@ -967,7 +972,12 @@ export default ({ patient, session }) => {
                         }}
                         square>
                         <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                          <Box display='flex' flexDirection='column' className={classes.activityText} width='95%' textOverflow='ellipsis'>
+                          <Box
+                            display='flex'
+                            flexDirection='column'
+                            className={classes.activityText}
+                            textOverflow='ellipsis'
+                          >
                             {activity.type === 'document' ?
                               <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
                                 <Typography variant='h5'>{activity.name}</Typography>
@@ -1029,7 +1039,7 @@ export default ({ patient, session }) => {
           onClose={async (oopsieMessage = null) => {
             oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
             setShowNewFactDialog(false);
-            if (session?.kiosk_mode && (session?.user_id === session?.patient_id)) { 
+            if (session?.kiosk_mode && (session?.user_id === session?.patient_id)) {
               let newPatient = {
                 patient_id: session.user_id,
                 patient_display_name: session.user_display_name

@@ -3,7 +3,7 @@ import { useSnackbar } from 'notistack';
 import { API, Auth, graphqlOperation } from 'aws-amplify';
 
 import useSession from '../hooks/useSession';
-// import { getGroup } from '../graphql/queries';
+import { getGroup } from '../graphql/queries';
 import { getPerson, getRoles, getSession, getCustomizations } from '../graphql/queries';
 import { SET_PATIENT, SET_PATIENTS, SET_PROFILE, SET_ROLES, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 
@@ -92,7 +92,7 @@ export default Component => props => {
               });
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
-          session.session_id = `v22.4.1${window.location.href.split('//')[1].slice(0, 1)}`;
+          session.session_id = `v22.4.4${window.location.href.split('//')[1].slice(0, 1)}`;
         }
 
         // get person's Account information
@@ -206,7 +206,6 @@ export default Component => props => {
 
         if (session.responsible_for) {
           roles.push('responsible_for');  // remove this line when ready to fully depreciate OG switch account process
-          /*  DEPRECIATED
                     let pArray = [];
                     let respArray = [];
                     if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
@@ -254,7 +253,6 @@ export default Component => props => {
                       });
                     }
           
-                  }
                     if (patients.length > 0) {
                       patients.unshift({
                         display_name: `${profile.name.last}, ${profile.name.first}`,
@@ -264,7 +262,6 @@ export default Component => props => {
                       });
                       roles.push('responsible_for');
                     };
-          */
         }
 
         if (mounted) {
