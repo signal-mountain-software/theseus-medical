@@ -1119,9 +1119,12 @@ export default ({
         />
       );
     case 'show_calendar':
+      let OGsession = {};
+      Object.assign(OGsession, session);
       return (
         <ShowCalendar
           patient={session}
+          OGpatient={OGsession}
           peopleList={values}
           currentEvents={currentEvents}
           showCalendar={true}

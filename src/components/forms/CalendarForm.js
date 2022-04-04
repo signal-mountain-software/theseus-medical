@@ -107,7 +107,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 
-export default ({ myCalendar, person_id, display_name, filter }) => {
+export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => {
 
   let working_date = '';
   const now = new Date(new Date().setHours(0, 0, 0, 0));
@@ -369,15 +369,12 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
   return (
     (!myCalendar || myCalendar.length === 0)
       ?
-      <Box flexGrow={1}>
-        <Typography variant='h6'>
-          Building your Calendar...
-        </Typography>
+      <Box mt={2} flexGrow={1}>
         <CircularProgress />
       </Box>
       :
-      <Box p={3}  >
-        <Grid md={12} sm={12} xs={12} item>
+      <Box >
+        <Grid item>
           <GridList cellHeight='auto' cols={1} key='gridList'>
             {!myCalendar || myCalendar.length === 0
               ?
@@ -470,8 +467,7 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                   : (
                                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                       <Typography variant='subtitle2'>
-                                        This event requires you to sign-up.
-                                        {this_event.occData.signup_type === 'time' ? '  Choose a time below.' : '  Tap below to reserve your spot!'}
+                                        {this_event.occData.signup_type === 'time' ? 'Choose a time below.' : 'Tap below to reserve your spot!'}
                                       </Typography>
                                     </Box>
                                   )
@@ -513,41 +509,42 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                                   </Box>
                                 </React-fragment>
                                 : null}
-                              {(this_event.occData.signup_type !== 'time') ?
-                                <Box display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                  <Button
-                                    key={'seat_button' + this_event.event_key}
-                                    disabled={this_event.slots[0].owner && (this_event.slots[0].owner !== person_id) && (this_event.slots[0].owner !== '') && (this_event.slots[0].owner !== 'available')}
-                                    variant={this_event.slots[0].owner === person_id ? "contained" : "outlined"}
-                                    className={this_event.slots[0].owner === person_id ? classes.confirm : null}
-                                    onClick={async () => {
-                                      await handleSeatSignup(this_event, index);
-                                    }}
-                                  >
-                                    {this_event.slots[0].owner === person_id ?
-                                      (this_event.occData.signup_type !== 'seats' ? "Reminder Set" : "Signed-up!")
-                                      : (this_event.occData.signup_type !== 'seats' ? "Remind me?" : "Sign up?")}
-                                  </Button>
-                                </Box>
-                                :
-                                <Box flexWrap='wrap' display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                  {this_event.slots.map((this_slot, slotIndex) => (
-                                    slotIndex === 0 ? null :
-                                      <Button
-                                        key={'time_button' + this_slot.id + this_event.occData.date}
-                                        disabled={this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')}
-                                        variant={this_slot.owner === person_id ? "contained" : "text"}
-                                        className={this_slot.owner === person_id ? classes.confirm : ((this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')) ? classes.unavailable : null)}
-                                        onClick={() => {
-                                          handleTimeSignup(this_event, this_slot, index, slotIndex);
-                                        }}
-                                      >
-                                        {Math.floor((this_slot.id - (this_slot.id > 1299 ? 1200 : 0)) / 100).toString() + ':' + ('0' + (this_slot.id % 100).toString()).substr(-2)}
-                                      </Button>
+                              {!kiosk_mode ?
+                                (this_event.occData.signup_type !== 'time') ?
+                                  <Box display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                    <Button
+                                      key={'seat_button' + this_event.event_key}
+                                      disabled={this_event.slots[0].owner && (this_event.slots[0].owner !== person_id) && (this_event.slots[0].owner !== '') && (this_event.slots[0].owner !== 'available')}
+                                      variant={this_event.slots[0].owner === person_id ? "contained" : "outlined"}
+                                      className={this_event.slots[0].owner === person_id ? classes.confirm : null}
+                                      onClick={async () => {
+                                        await handleSeatSignup(this_event, index);
+                                      }}
+                                    >
+                                      {this_event.slots[0].owner === person_id ?
+                                        (this_event.occData.signup_type !== 'seats' ? "Reminder Set" : "Signed-up!")
+                                        : (this_event.occData.signup_type !== 'seats' ? "Remind me?" : "Sign up?")}
+                                    </Button>
+                                  </Box>
+                                  :
+                                  <Box flexWrap='wrap' display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                    {this_event.slots.map((this_slot, slotIndex) => (
+                                      slotIndex === 0 ? null :
+                                        <Button
+                                          key={'time_button' + this_slot.id + this_event.occData.date}
+                                          disabled={this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')}
+                                          variant={this_slot.owner === person_id ? "contained" : "text"}
+                                          className={this_slot.owner === person_id ? classes.confirm : ((this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')) ? classes.unavailable : null)}
+                                          onClick={() => {
+                                            handleTimeSignup(this_event, this_slot, index, slotIndex);
+                                          }}
+                                        >
+                                          {Math.floor((this_slot.id - (this_slot.id > 1299 ? 1200 : 0)) / 100).toString() + ':' + ('0' + (this_slot.id % 100).toString()).substr(-2)}
+                                        </Button>
 
-                                  ))}
-                                </Box>
-                              }
+                                    ))}
+                                  </Box>
+                                : null}
                             </React.Fragment>
                           </Box>
                         </Box>
@@ -556,10 +553,8 @@ export default ({ myCalendar, person_id, display_name, filter }) => {
                   </React-fragment>
                   : null
               ))}
-
           </GridList>
         </Grid>
-
       </Box>
   );
 };

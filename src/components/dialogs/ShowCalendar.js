@@ -2,14 +2,17 @@ import React from 'react';
 
 import { API, graphqlOperation } from 'aws-amplify';
 
-import AppBar from '@material-ui/core/AppBar';
+import Paper from '@material-ui/core/Paper';
+import TextField from '@material-ui/core/TextField';
+
 import Box from '@material-ui/core/Box';
-import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
+import DialogContent from '@material-ui/core/DialogContent';
+import DialogActions from '@material-ui/core/DialogActions';
+import DialogContentText from '@material-ui/core/DialogContentText';
 import IconButton from '@material-ui/core/IconButton';
 import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
-import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -17,17 +20,15 @@ import Input from '@material-ui/core/Input';
 import SearchIcon from '@material-ui/icons/Search';
 import InputAdornment from '@material-ui/core/InputAdornment';
 
+import List from '@material-ui/core/List';
+import ListItem from '@material-ui/core/ListItem';
+
 import CalendarForm from '../forms/CalendarForm';
 
 import { getCalendar } from '../../graphql/queries';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
-  title: {
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    flexGrow: 1
-  },
   formControl: {
     margin: 0,
     paddingTop: 0,
@@ -37,6 +38,43 @@ const useStyles = makeStyles(theme => ({
     paddingTop: 0,
     height: theme.spacing(2.5),
   },
+  freeInput: {
+    marginLeft: '25px',
+    marginTop: '5px',
+    marginRight: 2,
+    marginBottom: '10px',
+    paddingLeft: 0,
+    paddingRight: 0,
+    width: '90%',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
+    minHeight: theme.typography.fontSize * 2.8,
+  },
+  reject: {
+    backgroundColor: theme.palette.reject[theme.palette.type],
+  },
+  title: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '1.3rem',
+  },
+  titleText: {
+    fontSize: '1.3rem',
+  },
+  dialogBox: {
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    minWidth: '100%',
+  },
+  subDescriptionText: {
+    marginLeft: theme.spacing(3),
+    marginBottom: theme.spacing(1),
+    marginRight: theme.spacing(5),
+    fontSize: '0.8rem',
+  },
+
   picture: {
     width: theme.spacing(16),
     height: theme.spacing(16),
@@ -59,7 +97,7 @@ const useStyles = makeStyles(theme => ({
   },
   topButton: {
     variant: 'outlined',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
+    backgroundColor: theme.palette.primary[theme.palette.type],
   },
   resetButton: {
     variant: 'outlined',
@@ -80,6 +118,9 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
+  listItemAVA: {
+    fontSize: theme.typography.fontSize * 1.5,
+  },
   idText: {
     fontSize: theme.typography.fontSize * 0.8,
     marginTop: 10,
@@ -98,69 +139,120 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, currentEvents, showCalendar, onClose }) => {
+export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, onClose }) => {
   const [myCalendar, setMyCalendar] = React.useState([]);
   const [filterText, setFilterText] = React.useState('');
   const [myFilter, setMyFilter] = React.useState('');
+  const [person_filter, setPersonFilter] = React.useState('');
+  const [showPersonSelect, setShowPersonSelect] = React.useState(false);
 
   const [lastEndDate, setLastEndDate] = React.useState();
 
   const classes = useStyles();
 
   const [changes, setChanges] = React.useState(false);
-  if (changes) { console.log(changes); }
+  if (changes) { }
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-  if (isMobile) { console.log(isMobile); }
+  if (isMobile) { }
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
-  React.useEffect(() => {
-    return (async () => {
-      let invokeFailed = false;
-      let rightNow = new Date();
-      let event_time = rightNow.getTime();
-      let this_year = rightNow.getFullYear();
-      let this_month = rightNow.getMonth() + 1;
-      let this_date = rightNow.getDate();
-      let twoWeeksFromNow = new Date(rightNow.setDate(this_date + 14));
-      let fortnight_year = twoWeeksFromNow.getFullYear();
-      let fortnight_month = twoWeeksFromNow.getMonth() + 1;
-      let fortnight_date = twoWeeksFromNow.getDate();
+  const setCalendar = async () => {
+    let invokeFailed = false;
+    let rightNow = new Date();
+    let event_time = rightNow.getTime();
+    let this_year = rightNow.getFullYear();
+    let this_month = rightNow.getMonth() + 1;
+    let this_date = rightNow.getDate();
+    let twoWeeksFromNow = new Date(rightNow.setDate(this_date + 14));
+    let fortnight_year = twoWeeksFromNow.getFullYear();
+    let fortnight_month = twoWeeksFromNow.getMonth() + 1;
+    let fortnight_date = twoWeeksFromNow.getDate();
 
-      let result = await API
-        .graphql(
-          graphqlOperation(getCalendar, {
-            input: {
-              "action": `list_events#${event_time}`,
-              "clientId": patient.client_id,
-              "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
-              "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
-              "person_id": patient.patient_id
-            }
-          })
-        )
-        .catch(error => {
-          console.log(error);
-          invokeFailed = true;
-        });
-      let theCalendar = [];
-      if (!invokeFailed) {
-        result.data.getCalendar.body.forEach(cEv => {
-          theCalendar.push(cEv);
-        });
-      };
-      setMyCalendar(theCalendar);
-      setLastEndDate(twoWeeksFromNow);
-      return theCalendar;
-    });
+    let result = await API
+      .graphql(
+        graphqlOperation(getCalendar, {
+          input: {
+            "action": `list_events#${event_time}`,
+            "clientId": patient.client_id,
+            "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
+            "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
+            "person_id": patient.patient_id
+          }
+        })
+      )
+      .catch(error => {
+        console.log(error);
+        invokeFailed = true;
+      });
+    let theCalendar = [];
+    if (!invokeFailed) {
+      result.data.getCalendar.body.forEach(cEv => {
+        theCalendar.push(cEv);
+      });
+    };
+    setMyCalendar(theCalendar);
+    setLastEndDate(twoWeeksFromNow);
+    return theCalendar;
+  };
+
+  React.useEffect(() => {
+    return (setCalendar);
   }, [currentEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const extendDates = async () => {
+    let invokeFailed = false;
+    lastEndDate.setDate(lastEndDate.getDate() + 1);
+    let event_time = lastEndDate.getTime();
+    let this_year = lastEndDate.getFullYear();
+    let this_month = lastEndDate.getMonth() + 1;
+    let this_date = lastEndDate.getDate();
+    let twoWeeksFromNow = new Date(lastEndDate);
+    twoWeeksFromNow.setDate(this_date + 14);
+    let fortnight_year = twoWeeksFromNow.getFullYear();
+    let fortnight_month = twoWeeksFromNow.getMonth() + 1;
+    let fortnight_date = twoWeeksFromNow.getDate();
+    let result = await API
+      .graphql(
+        graphqlOperation(getCalendar, {
+          input: {
+            "action": `list_events#${event_time}`,
+            "clientId": patient.client_id,
+            "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
+            "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
+            "person_id": patient.patient_id
+          }
+        })
+      )
+      .catch(error => {
+        console.log(error);
+        invokeFailed = true;
+      });
+    let theCalendar = myCalendar;
+    if (!invokeFailed) {
+      result.data.getCalendar.body.forEach(cEv => {
+        theCalendar.push(cEv);
+      });
+    };
+    setMyCalendar(theCalendar);
+    setLastEndDate(twoWeeksFromNow);
+    return theCalendar;
+  };
+
+  const choosePerson = () => {
+    setShowPersonSelect(true);
+  };
 
   const onCheckEnter = event => {
     if (event.key === 'Enter' || event.type === 'blur') {
       handleFilterText(event.target.value);
     }
+  };
+
+  const handleChangePersonFilter = event => {
+    setPersonFilter(event.target.value);
   };
 
   const onChangeFilterText = event => {
@@ -175,7 +267,21 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
     // setFormState(resetter);
   };
 
+  function formatDate(pDate) {
+    let yyyy = pDate.substr(0, 4);
+    let mm = pDate.substr(4, 2);
+    let dd = pDate.substr(6, 2);
+    let dDate = new Date(yyyy, Number(mm) - 1, dd);
+    let rString = dDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    return rString;
+  }
+
   const handleAbort = () => {
+    if (OGpatient.patient_id !== patient.patient_id) {
+      patient.patient_display_name = OGpatient.patient_display_name;
+      patient.patient_id = OGpatient.patient_id;
+      patient.kiosk_mode = true;
+    }
     setChanges(false);
     onClose();
   };
@@ -183,122 +289,152 @@ export default ({ patient, currentEvents, showCalendar, onClose }) => {
   // **************************
 
   return (
-    showCalendar ?
+    (showCalendar &&
       <Dialog
         open={showCalendar}
         onClose={handleAbort}
         TransitionComponent={Transition}
         fullScreen
       >
-        <AppBar>
-          <Toolbar>
-            <IconButton color='inherit' edge='start' onClick={handleAbort}>
-              <CloseIcon />
-            </IconButton>
-            {isMobile ? null :
-              <Typography variant='h6' className={classes.title}>
-                {`Current Events`}
-              </Typography>
+        <Box
+          display='flex'
+          mb={0}
+          flexDirection='row'
+          justifyContent='flex-start'
+          alignItems='center'
+        >
+          <Box
+            display='flex'
+            grow={1}
+            style={{ width: '90%' }}
+            mb={0}
+            flexDirection='column'
+            justifyContent='center'
+            alignItems='flex-start'
+          >
+            <DialogContentText className={classes.title} id='scroll-dialog-title'>
+              {patient.kiosk_mode ? `Calendar of Events` : `${patient.patient_display_name.split(',').pop()}'s Calendar`}
+            </DialogContentText>
+            {(myCalendar.length > 0) ?
+              <DialogContentText className={classes.subDescriptionText}>
+                {formatDate(myCalendar[0].occData.date)} to {formatDate(myCalendar[myCalendar.length - 1].occData.date)}
+              </DialogContentText>
+              :
+              <DialogContentText className={classes.subDescriptionText}>
+                Building your Calendar
+              </DialogContentText>
             }
-            <Box display='flex' flexDirection='row' mr={isMobile ? 0 : 5}>
-              <Input
-                id='event_search'
-                type='text'
-                variant={'contained'}
-                style={{ flexGrow: 1, marginRight: 5 }}
-                onKeyPress={onCheckEnter}
-                onBlur={onCheckEnter}
-                onChange={onChangeFilterText}
-                startAdornment={
-                  <InputAdornment position="start">
-                    Search
-                  </InputAdornment>
-                }
-                endAdornment={
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="toggle password visibility"
-                      onClick={() => { handleFilterText(filterText); }}
-                      edge="end"
-                    >
-                      {<SearchIcon />}
-                    </IconButton>
-                  </InputAdornment>
-                }
-                autoComplete='off'
-                value={filterText}
-              />
-            </Box>
-            {isMobile ? null :
-              <Button
-                onClick={handleAbort}
-                variant='contained'
-                className={classes.topButton}
-              >
-                Done
+          </Box>
+          <Box mr={2}>
+            <Input
+              id='event_search'
+              type='text'
+              variant={'contained'}
+              style={{ marginRight: 5 }}
+              onKeyPress={onCheckEnter}
+              onBlur={onCheckEnter}
+              onChange={onChangeFilterText}
+              label={'Search'}
+              startAdornment={
+                <InputAdornment position="start">
+                  Search
+                </InputAdornment>
+              }
+              endAdornment={
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="search_icon"
+                    onClick={() => { handleFilterText(filterText); }}
+                    edge="end"
+                  >
+                    {<SearchIcon />}
+                  </IconButton>
+                </InputAdornment>
+              }
+              autoComplete='off'
+              value={filterText}
+            />
+          </Box>
+          {patient.kiosk_mode &&
+            <Box mr={3} justifySelf={'flex-end'} alignSelf={'center'}>
+              <Button className={classes.defaultButton} size='small' variant='contained' onClick={choosePerson}>
+                {'Resident?'}
               </Button>
-            }
-          </Toolbar>
-        </AppBar>
-        <Toolbar />
-        <Box m={2}>
+            </Box>
+          }
+        </Box>
+        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
           <CalendarForm
             myCalendar={myCalendar}
             person_id={patient.patient_id}
+            kiosk_mode={patient.kiosk_mode}
             display_name={patient.patient_display_name}
             filter={myFilter}
           />
-        </Box>
-        {(!myCalendar || myCalendar.length === 0) ? null
-          :
-          <Box m={2}>
+        </DialogContent>
+        <DialogActions style={{ justifyContent: 'center' }}>
+          {myCalendar && myCalendar.length > 0 &&
             <Button
-              onClick={async () => {
-                let invokeFailed = false;
-                lastEndDate.setDate(lastEndDate.getDate() + 1);
-                let event_time = lastEndDate.getTime();
-                let this_year = lastEndDate.getFullYear();
-                let this_month = lastEndDate.getMonth() + 1;
-                let this_date = lastEndDate.getDate();
-                let twoWeeksFromNow = new Date(lastEndDate);
-                twoWeeksFromNow.setDate(this_date + 14);
-                let fortnight_year = twoWeeksFromNow.getFullYear();
-                let fortnight_month = twoWeeksFromNow.getMonth() + 1;
-                let fortnight_date = twoWeeksFromNow.getDate();
-                let result = await API
-                  .graphql(
-                    graphqlOperation(getCalendar, {
-                      input: {
-                        "action": `list_events#${event_time}`,
-                        "clientId": patient.client_id,
-                        "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
-                        "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
-                        "person_id": patient.patient_id
-                      }
-                    })
-                  )
-                  .catch(error => {
-                    console.log(error);
-                    invokeFailed = true;
-                  });
-                let theCalendar = myCalendar;
-                if (!invokeFailed) {
-                  result.data.getCalendar.body.forEach(cEv => {
-                    theCalendar.push(cEv);
-                  });
-                };
-                setMyCalendar(theCalendar);
-                setLastEndDate(twoWeeksFromNow);
-                return theCalendar;
-              }}
+              onClick={extendDates}
               variant='contained'
+              size='small'
               className={classes.topButton}
             >
-              Show more days
+              {isMobile ? 'More' : 'Show more days'}
             </Button>
-          </Box>
+          }
+          {patient.kiosk_mode &&
+            <Button className={classes.defaultButton} size='small' variant='contained' onClick={choosePerson}>
+              {'Sign-up?'}
+            </Button>
+          }
+          <Button className={classes.reject} size='small' variant='contained' onClick={handleAbort}>
+            {'Done'}
+          </Button>
+        </DialogActions>
+        {showPersonSelect &&
+          <Dialog
+            p={2}
+            height={250}
+            fullWidth
+            variant={'elevation'} elevation={2}
+            open={showPersonSelect}
+            TransitionComponent={Transition}
+          >
+            <DialogContentText className={classes.title} id='scroll-dialog-title' dividers>
+              {'Find and tap your name in this list'}
+            </DialogContentText>
+            <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
+              <TextField
+                id='Type a few letters to filter the list'
+                value={person_filter}
+                onChange={handleChangePersonFilter}
+                className={classes.freeInput}
+                label='Type a few letters to filter the list'
+                variant={'standard'}
+                autoComplete='off'
+              />
+              <List component='nav'>
+                {peopleList.map((listEntry, x) => (
+                  (
+                    listEntry.includes(person_filter) ?
+                      <ListItem onClick={() => {
+                        [patient.patient_display_name, patient.patient_id,] = listEntry.split(':');
+                        setShowPersonSelect(false);
+                        patient.kiosk_mode = false;
+                        setCalendar();
+                      }} button>
+                        <Typography className={classes.listItemAVA}>
+                          {listEntry.split(':')[0]}
+                        </Typography>
+                      </ListItem> : null
+                  )
+                ))}
+              </List>
+            </Paper>
+          </Dialog>
         }
       </Dialog>
-      : null
+    )
   );
 };
