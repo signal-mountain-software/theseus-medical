@@ -235,7 +235,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.4.4~${errorTime}`,
+        status: `Version = v22.4.4a~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
