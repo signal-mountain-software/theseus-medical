@@ -73,16 +73,10 @@ export default Component => props => {
       else if (authState === AuthState.SignedOut || authState === AuthState.SignIn) {
         if (localSignedIn) {
           setSignedIn(false);
-          enqueueSnackbar(`Authentication state is ${authState}.  Signed out.`, {
-            variant: 'info'
-          });
         }
       }
       else {
         console.log(authState);
-        enqueueSnackbar(`Authentication state is ${authState}.`, {
-          variant: 'info'
-        });
       }
     });
   };
