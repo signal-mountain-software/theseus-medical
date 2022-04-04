@@ -777,9 +777,8 @@ export default ({ patient, session }) => {
 
   return (
     <Paper className={classes.mainPaper} onClick={() => onWildClick} >
-
       {/* Idle timer always running */}
-      {selected?.code ?
+      {showNewFactDialog ?
         <IdleTimer
           ref={ref => { idleTimer = ref; }}
           timeout={(session?.kiosk_mode ? 1 : 30) * msInAMinute}   // every "n" minutes
