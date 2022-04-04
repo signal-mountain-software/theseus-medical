@@ -33,7 +33,6 @@ import DialogContent from '@material-ui/core/DialogContent';
 
 import Typography from '@material-ui/core/Typography';
 import Button from '@material-ui/core/Button';
-// import Image from 'material-ui-image';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
@@ -43,7 +42,6 @@ import ListItem from '@material-ui/core/ListItem';
 import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
 import ListItemText from '@material-ui/core/ListItemText';
 import ListItemIcon from '@material-ui/core/ListItemIcon';
-
 
 import Input from '@material-ui/core/Input';
 import IconButton from '@material-ui/core/IconButton';
@@ -1386,8 +1384,8 @@ export default ({
                               >
                                 <Box
                                   component="img"
-                                  width={1}
-                                  maxWidth={1}
+                                  minWidth={150}
+                                  maxWidth={150}
                                   minHeight={150}
                                   maxHeight={150}
                                   alt='No photo available'
@@ -1658,7 +1656,7 @@ export default ({
                             <ListItemText
                               id={`qlabelid-userid`}
                               key={`qlabelid-userid`}
-                              primary={<Typography noWrap={true}>User ID: {getSessionResult?.data?.getSession?.session_id}</Typography>}
+                              primary={<Typography noWrap={true}>User ID: {getSessionResult?.data?.getSession?.session_id || chosenPerson}</Typography>}
                             />
                           </ListItem>
                           <ListItem
@@ -1710,7 +1708,7 @@ export default ({
                 </FormControl>
               </DialogContent>
               <DialogActions style={{ justifyContent: 'center' }}>
-                {switchMode ?
+                {(switchMode && getSessionResult?.data?.getSession) ?
                   <IconButton
                     onClick={() => { handleSwitch(getSessionResult.data.getSession); }}
                     variant='contained'
