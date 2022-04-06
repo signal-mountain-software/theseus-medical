@@ -701,7 +701,7 @@ export default ({
         .catch(() => { }));
       qualifierTable[value].value = value;
       qualifierTable[value].qualifiers.length = 1;
-      qualifierTable[value].qualifiers.push('~~' + result.data.getPerson.location);
+      qualifierTable[value].qualifiers.push('~~' + (result.data.getPerson.location || 'No Location given'));
       if (result?.data?.getPerson?.messaging?.email) {
         qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email + (result.data.getPerson.preferred_method === 'email' ? '  - preferred' : ''));
       };
