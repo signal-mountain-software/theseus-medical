@@ -7,7 +7,6 @@ import useSession from '../../hooks/useSession';
 import { useSnackbar } from 'notistack';
 
 import AppBar from '@material-ui/core/AppBar';
-import Avatar from '@material-ui/core/Avatar';
 import Box from '@material-ui/core/Box';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
@@ -18,7 +17,6 @@ import Toolbar from '@material-ui/core/Toolbar';
 import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import FaceIcon from '@material-ui/icons/Face';
 
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
