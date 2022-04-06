@@ -618,6 +618,7 @@ export default ({ patient, session }) => {
     if (session?.current_event) {
       setSectionOpen(JSON.parse(session.current_event));
     };
+    setLoading(false);
     return () => {
     };
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
