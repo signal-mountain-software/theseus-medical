@@ -1356,6 +1356,7 @@ export default ({
                           {personRow && /* Show person avatar and info  */
                             <Box
                               display='flex'
+                              marginTop={2}
                               height={150}
                               flexDirection='row'
                               alignItems='center'
@@ -1386,8 +1387,6 @@ export default ({
                                   component="img"
                                   minWidth={150}
                                   maxWidth={150}
-                                  minHeight={150}
-                                  maxHeight={150}
                                   alt='No photo available'
                                   src={personID ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
                                 />
