@@ -1111,6 +1111,7 @@ export default ({
       return (
         <NewCalendarEvent
           patient={session}
+          peopleList={values}
           picture={null}
           showNewEvent={true}
           onClose={onSave}
