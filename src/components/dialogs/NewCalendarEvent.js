@@ -14,6 +14,7 @@ import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
+import DialogActions from '@material-ui/core/DialogActions';
 import IconButton from '@material-ui/core/IconButton';
 import Paper from '@material-ui/core/Paper';
 import Slide from '@material-ui/core/Slide';
@@ -28,6 +29,9 @@ import Radio from '@material-ui/core/Radio';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 
+import List from '@material-ui/core/List';
+import ListItem from '@material-ui/core/ListItem';
+
 // import ClientsSection from '../sections/ClientsSection';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -37,6 +41,13 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     flexGrow: 1
+  },
+  titlePersonSelect: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '1.3rem',
   },
   formControl: {
     margin: 0,
@@ -63,8 +74,10 @@ const useStyles = makeStyles(theme => ({
   },
   defaultButton: {
     alignSelf: 'end',
+    marginTop: 1,
     variant: 'outlined',
-    verticalAlign: 'end',
+    verticalAlign: 'center',
+    fontSize: theme.typography.fontSize * 0.6,
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
   topButton: {
@@ -84,9 +97,40 @@ const useStyles = makeStyles(theme => ({
     marginLeft: 10,
     paddingLeft: 10,
   },
+  freeInput: {
+    marginLeft: '25px',
+    marginTop: '15px',
+    marginRight: 2,
+    marginBottom: '10px',
+    paddingLeft: 0,
+    paddingRight: 0,
+    width: '90%',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
+    minHeight: theme.typography.fontSize * 2.8,
+  },
+  reject: {
+    backgroundColor: theme.palette.reject[theme.palette.type],
+  },
+  listItemAVA: {
+    fontSize: theme.typography.fontSize * 1.5,
+  },
+  listItemHighlighted: {
+    fontSize: theme.typography.fontSize * 1.5,
+    backgroundColor: 'yellow'
+  },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
+  noRow: {
+    marginLeft: 0,
+    marginTop: 0,
+    marginBottom: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
     paddingLeft: 0,
     paddingRight: 10,
   },
@@ -108,7 +152,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, picture, showNewEvent, onClose }) => {
+export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const classes = useStyles();
 
   const [description, setDescription] = React.useState();
@@ -117,6 +161,7 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
   const [eventAsADate, setEventAsADate] = React.useState();
   const [lastAsADate, setLastAsADate] = React.useState();
   const [prefMethod, setMethod] = React.useState();
+  const [specificPeople, setSpecificPeople] = React.useState();
   const [signup_type, setSignUpType] = React.useState('none');
   const [slot_max_seats, setSlotMaxSeats] = React.useState();
   const [slot_interval, setSlotInterval] = React.useState();
@@ -126,6 +171,9 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
   const [time_to_display_string, setTimeToAsDisplayString] = React.useState();
   const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [location, setLocation] = React.useState();
+  const [showPersonSelect, setShowPersonSelect] = React.useState(false);
+  const [person_filter, setPersonFilter] = React.useState('');
+  const [restrictionList, setRestrictionList] = React.useState([]);
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -178,6 +226,7 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
         "time_to": time_to_display_string,
         "location": location,
         "owner": patient.patient_id,
+        "restrictions": restrictionList,
         "signup_type": signup_type,
         "slot_max_seats": slot_max_seats,
         "slot_interval": slot_interval,
@@ -219,6 +268,20 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
 
   const handleChangeLocation = event => {
     setLocation(event.target.value);
+  };
+
+  const handleSelectPerson = (pPerson) => {
+    let newRList = restrictionList;
+    newRList.push(pPerson.replace(':', '%%').split(':')[0]);
+    setRestrictionList(newRList);
+  };
+
+  const choosePerson = () => {
+    setShowPersonSelect(true);
+  };
+
+  const handleChangePersonFilter = event => {
+    setPersonFilter(event.target.value);
   };
 
   const handleChangeDate = event => {
@@ -293,7 +356,7 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
     }
   };
 
-  function assumeToTime(pFromTime) { 
+  function assumeToTime(pFromTime) {
     let newTime = pFromTime >= 2300 ? (pFromTime % 100) : (pFromTime + 100);
     setTimeToAs24HourNumber(newTime);
     let hh = Math.floor(newTime / 100);
@@ -426,9 +489,14 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
     setMethod(event.target.value);
   };
 
+
+  const handleChangePeopleToggle = event => {
+    setSpecificPeople(event.target.value);
+  };
+
   const handleChangeSignUp = event => {
     setSignUpType(event.target.value);
-    if (event.target.value === 'time' && !time_to_display_string) { 
+    if (event.target.value === 'time' && !time_to_display_string) {
       assumeToTime(timeFromAs24HourNumber);
     }
   };
@@ -513,7 +581,8 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
               >
                 {isMobile ? 'Save' : 'Save Changes'}
               </Button>
-              : null}
+              : null
+            }
           </Toolbar>
         </AppBar>
         <Toolbar />
@@ -750,10 +819,125 @@ export default ({ patient, picture, showNewEvent, onClose }) => {
                     </Box>
                   </React-Fragment>
                 }
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <Typography className={classes.radioText}>Do you wish to restrict this event to specific people only?</Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup
+                      row
+                      defaultValue={'no'}
+                      aria-label="restrictions"
+                      name="restrictions"
+                      value={specificPeople}
+                      onChange={handleChangePeopleToggle}
+                    >
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="no"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            No
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="yes"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Yes
+                          </Typography>}
+                      />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+                {(specificPeople === 'yes') &&
+                  <div>
+                    {restrictionList.length > 0 ?
+                      restrictionList.map((restrictionEntry, x) => (
+                        (
+                          <ListItem
+                            key={`${restrictionEntry}_selected_${x}`}
+                            className={classes.noRow}
+                          >
+                            <Typography
+                              className={classes.radioText}>
+                              {restrictionEntry.split('%%')[0]}
+                            </Typography>
+                          </ListItem>
+                        )
+                      ))
+                      : (
+                        <Typography
+                          className={classes.radioText}>
+                          {'Tap the button below to choose...'}
+                        </Typography>
+                      )
+                    }
+                    <Button className={classes.defaultButton} size='small' variant='contained' onClick={choosePerson}>
+                      {`Choose ${restrictionList.length > 0 ? 'more ' : ''}Attendees?`}
+                    </Button>
+                  </div>
+                }
               </form>
             </Box>
           </Paper>
         </Box>
+        {showPersonSelect &&
+          <Dialog
+            p={2}
+            height={250}
+            fullWidth
+            variant={'elevation'} elevation={2}
+            open={showPersonSelect}
+            TransitionComponent={Transition}
+          >
+            <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
+              <TextField
+                id='Type a few letters to filter the list'
+                value={person_filter}
+                onChange={handleChangePersonFilter}
+                className={classes.freeInput}
+                label='Type a few letters to filter the list'
+                variant={'standard'}
+                autoComplete='off'
+              />
+              <List component='nav'>
+                {peopleList.map((listEntry, x) => (
+                  (
+                    listEntry.includes(person_filter) ?
+                      <ListItem
+                        key={`${listEntry.split(':')[1]}_select_${x}`}
+                        onClick={() => { handleSelectPerson(listEntry); }}
+                        button>
+                        <Typography
+                          className={classes.listItemAVA}>
+                          {listEntry.split(':')[0]}
+                        </Typography>
+                      </ListItem> : null
+                  )
+                ))}
+              </List>
+            </Paper>
+            <DialogActions style={{ justifyContent: 'center' }}>
+              <Button
+                className={classes.reject}
+                size='small'
+                variant='contained'
+                onClick={() => {
+                  setShowPersonSelect(false);
+                }}>
+                {'Done'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        }
       </Dialog>
       : null
   );
