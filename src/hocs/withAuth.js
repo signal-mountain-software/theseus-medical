@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   AmplifyAuthenticator,
   AmplifySignIn,
@@ -81,6 +82,21 @@ export default Component => props => {
     });
   };
 
+  function useParams() {
+    const { search } = useLocation();
+    return React.useMemo(() => new URLSearchParams(search), [search]);
+  };
+
+  const allParams = useParams();
+
+  function getParams() {
+    let returnObject = {};
+    allParams.forEach((value, key) => {
+      returnObject[key] = value;
+    });
+    return returnObject;
+  }
+
   const action = key => {
     if (calledFrom !== 'signIn') {
       return (
@@ -135,7 +151,8 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=v22.4.7${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+          `Version=v22.4.7${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          JSON.stringify(getParams())
         );
       };
     } catch (err) {
@@ -147,8 +164,22 @@ export default Component => props => {
   const setUser = async () => {
     setSignedIn(false);
     try {
-      const user = await Auth.currentAuthenticatedUser();
-      if (user) { setSignedIn(true); }
+      let user = {};
+      let urlQuery = getParams();
+      if (urlQuery?.user) {        //third
+        user = {
+          username: urlQuery.user,
+          attributes: {
+            email: 'no-email@none.com',
+            phone_number: '+12225559999',
+            'custom:client': urlQuery.client
+          }
+        };
+      }
+      else {
+        user = await Auth.currentAuthenticatedUser();
+      }
+      if (user) { setSignedIn(true); }      //fourth
       else {
         enqueueSnackbar(`No authenticated user found.`, {
           variant: 'info'
@@ -193,17 +224,17 @@ export default Component => props => {
     else {
       setMessages(`We could not change your password at this time!  You may sign-in using your old password.`);
     }
-
   };
 
-  const logAVAAccess = async (pUser, pPlatform, pMessage) => {
+  const logAVAAccess = async (pUser, pPlatform, pMessage, pParams) => {
     await API
       .graphql(graphqlOperation(
         updateSession, {
         input: {
           session_id: pUser,
           status: pMessage,
-          platform: pPlatform
+          platform: pPlatform,
+          url_parameters: pParams
         }
       }
       ))

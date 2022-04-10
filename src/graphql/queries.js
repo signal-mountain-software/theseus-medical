@@ -297,6 +297,7 @@ export const getSession = /* GraphQL */ `
       current_event
       password_change_date
       platform
+      url_parameters
       description
       event_description
       kiosk_mode

@@ -276,7 +276,7 @@ export default ({ patient, session }) => {
             event_id: '',
             activity_type: '$$' + (activity?.code || activity),
             limit: limit,
-            fact_data: true,
+            fact_data: false,
             includeEvents: true,
             history_only: false,
             use_short_date: isMobile,
@@ -540,6 +540,14 @@ export default ({ patient, session }) => {
       let jumpTo = window.location.href.replace('refresh', 'theseus');
       window.location.replace(jumpTo);
     }
+    
+    if (session?.url_parameters && factWasWritten) {
+      await API.graphql(
+        graphqlOperation(updateSession, { input: { session_id: session.user_id, url_parameters: '' } })
+      ).catch(error => { console.log(error); });
+      let jumpTo = window.location.href.replace('activity', 'completedactivity');
+      window.location.replace(jumpTo);
+    }
 
     async function putMedia(params) {   // Uploading files to the bucket
       let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
@@ -607,6 +615,21 @@ export default ({ patient, session }) => {
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
     setLoading(true);
+    if (session?.url_parameters) { 
+      let urlActivity = null;
+      if (typeof(session.url_parameters) === 'object') { 
+        urlActivity = session.url_parameters.activity;
+      }
+      else {
+        let sessionURLObject = JSON.parse(session.url_parameters);
+          urlActivity = sessionURLObject.activity;
+      }
+      if (urlActivity) {
+        onChooseActivity(urlActivity);
+        return () => {
+        };
+      }
+    }
     if (session?.kiosk_mode
       && (session.user_id === session.patient_id)
       && session.kiosk_activity

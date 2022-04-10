@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 import { API, Auth, graphqlOperation } from 'aws-amplify';
+import { useLocation } from 'react-router-dom';
 
 import useSession from '../hooks/useSession';
 import { getGroup } from '../graphql/queries';
@@ -12,10 +13,46 @@ export default Component => props => {
   const { state, dispatch } = useSession();
   const { user } = state;
 
+  function useParams() {
+    const { search } = useLocation();
+    return React.useMemo(() => new URLSearchParams(search), [search]);
+  };
+
+  const allParams = useParams();
+
+  function getParams() {
+    let returnObject = {};
+    allParams.forEach((value, key) => {
+      returnObject[key] = value;
+    });
+    return returnObject;
+  }
+
   React.useEffect(() => {
     (async () => {
-      const user = await Auth.currentAuthenticatedUser();
-      dispatch({ type: SET_USER, payload: user });
+      let user = {};
+      let urlQuery = getParams();
+      if (urlQuery?.user) {        //first
+        user = {
+          username: urlQuery.user,
+          attributes: {
+            email: 'no-email@none.com',
+            phone_number: '+12225559999',
+            'custom:client': urlQuery.client
+          }
+        };
+        try {
+          await Auth           //second
+            .signIn(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP);
+        }
+        catch (e) {
+          console.log(e);     //fifth
+        }
+      }
+      else {
+        user = await Auth.currentAuthenticatedUser();
+      }
+      dispatch({ type: SET_USER, payload: user });       //sixth
     })().catch(error => {
       console.log(JSON.stringify(error));
     });
@@ -93,6 +130,10 @@ export default Component => props => {
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
           session.session_id = `v22.4.7${window.location.href.split('//')[1].slice(0, 1)}`;
+          let urlQuery = getParams();
+          if (urlQuery?.user) {   
+            session.url_parameters = urlQuery;
+          }
         }
 
         // get person's Account information
