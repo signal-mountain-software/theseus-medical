@@ -63,6 +63,10 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
+  logoDisplay: {
+    maxWidth: '600px',
+    marginBottom: '15px'
+  },
   mainPaper: {
   },
   defaultButton: {
@@ -870,7 +874,7 @@ export default ({ patient, session }) => {
       <Box p={3}  >
         <Grid item>
           <Card
-            style={{ maxWidth: 'max-content', marginBottom: '15px' }}
+            className={classes.logoDisplay}
             raised={false}
             variant='elevation' elevation={0}
           >
