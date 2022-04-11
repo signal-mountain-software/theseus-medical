@@ -860,6 +860,10 @@ export default ({
             filtering = true;
             filteredCount = 0;
           }
+          else if (valuesListEntry === '~[filter=on]') {
+            filtering = true;
+            filteredCount = 1;
+          }
           return true;
         }
         if (valuesListEntry === '~[filter=off]') {
