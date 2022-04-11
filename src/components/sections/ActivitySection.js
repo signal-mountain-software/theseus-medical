@@ -239,7 +239,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.4.7~${errorTime}`,
+        status: `Version = v22.4.11~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -544,7 +544,7 @@ export default ({ patient, session }) => {
       let jumpTo = window.location.href.replace('refresh', 'theseus');
       window.location.replace(jumpTo);
     }
-    
+
     if (session?.url_parameters && factWasWritten) {
       await API.graphql(
         graphqlOperation(updateSession, { input: { session_id: session.user_id, url_parameters: '' } })
@@ -619,14 +619,14 @@ export default ({ patient, session }) => {
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
     setLoading(true);
-    if (session?.url_parameters) { 
+    if (session?.url_parameters) {
       let urlActivity = null;
-      if (typeof(session.url_parameters) === 'object') { 
+      if (typeof (session.url_parameters) === 'object') {
         urlActivity = session.url_parameters.activity;
       }
       else {
         let sessionURLObject = JSON.parse(session.url_parameters);
-          urlActivity = sessionURLObject.activity;
+        urlActivity = sessionURLObject.activity;
       }
       if (urlActivity) {
         onChooseActivity(urlActivity);
