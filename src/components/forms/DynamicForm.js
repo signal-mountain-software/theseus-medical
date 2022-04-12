@@ -33,7 +33,6 @@ import DialogContent from '@material-ui/core/DialogContent';
 
 import Typography from '@material-ui/core/Typography';
 import Button from '@material-ui/core/Button';
-// import Image from 'material-ui-image';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
@@ -43,7 +42,6 @@ import ListItem from '@material-ui/core/ListItem';
 import ListItemSecondaryAction from '@material-ui/core/ListItemSecondaryAction';
 import ListItemText from '@material-ui/core/ListItemText';
 import ListItemIcon from '@material-ui/core/ListItemIcon';
-
 
 import Input from '@material-ui/core/Input';
 import IconButton from '@material-ui/core/IconButton';
@@ -68,6 +66,7 @@ const useStyles = makeStyles(theme => ({
   },
   inputText: {
     paddingRight: '45px',
+    marginTop: 0,
   },
   clockText: {
     marginRight: '15px',
@@ -150,7 +149,7 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 0,
     //width: '95%',
     verticalAlign: 'middle',
-    fontSize: theme.typography.fontSize * 0.4,
+    // fontSize: theme.typography.fontSize * 0.4,
     minHeight: theme.typography.fontSize * 2.8,
   },
   clockBox: {
@@ -703,7 +702,7 @@ export default ({
         .catch(() => { }));
       qualifierTable[value].value = value;
       qualifierTable[value].qualifiers.length = 1;
-      qualifierTable[value].qualifiers.push('~~' + result.data.getPerson.location);
+      qualifierTable[value].qualifiers.push('~~' + (result.data.getPerson.location || 'No Location given'));
       if (result?.data?.getPerson?.messaging?.email) {
         qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email + (result.data.getPerson.preferred_method === 'email' ? '  - preferred' : ''));
       };
@@ -861,6 +860,10 @@ export default ({
           if (valuesListEntry.includes('~%')) {
             filtering = true;
             filteredCount = 0;
+          }
+          else if (valuesListEntry === '~[filter=on]') {
+            filtering = true;
+            filteredCount = 1;
           }
           return true;
         }
@@ -1113,6 +1116,7 @@ export default ({
       return (
         <NewCalendarEvent
           patient={session}
+          peopleList={values}
           picture={null}
           showNewEvent={true}
           onClose={onSave}
@@ -1263,16 +1267,6 @@ export default ({
                               </IconButton>
                             </ListItemSecondaryAction>
                           }
-                          {header && false &&
-                            <ListItemText
-                              id={'subhead' + value + vIndex.toString()}
-                              primary={
-                                <Typography className={classes.factTitle}>
-                                  {value.replace('!', '').substr(2)}
-                                </Typography>
-                              }
-                            />
-                          }
                           {textPrompt ||
                             <ListItemText
                               id={labelId}
@@ -1286,7 +1280,7 @@ export default ({
                                     {value.split(/:(?!\d)/g)[0].split('~-')[0]}
                                   </Typography>
                               }
-                              onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : null}
+                            onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : (checkBoxOn && showCheckBox ? handleToggle(value) : null)}
                               secondary={
                                 newFact?.value?.qualifiers?.[value] &&
                                 newFact.value.qualifiers[value].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')
@@ -1358,6 +1352,7 @@ export default ({
                           {personRow && /* Show person avatar and info  */
                             <Box
                               display='flex'
+                              marginTop={2}
                               height={150}
                               flexDirection='row'
                               alignItems='center'
@@ -1386,10 +1381,8 @@ export default ({
                               >
                                 <Box
                                   component="img"
-                                  width={1}
-                                  maxWidth={1}
-                                  minHeight={150}
-                                  maxHeight={150}
+                                  minWidth={150}
+                                  maxWidth={150}
                                   alt='No photo available'
                                   src={personID ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${personID}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
                                 />
@@ -1658,7 +1651,7 @@ export default ({
                             <ListItemText
                               id={`qlabelid-userid`}
                               key={`qlabelid-userid`}
-                              primary={<Typography noWrap={true}>User ID: {getSessionResult?.data?.getSession?.session_id}</Typography>}
+                              primary={<Typography noWrap={true}>User ID: {getSessionResult?.data?.getSession?.session_id || chosenPerson}</Typography>}
                             />
                           </ListItem>
                           <ListItem
@@ -1710,7 +1703,7 @@ export default ({
                 </FormControl>
               </DialogContent>
               <DialogActions style={{ justifyContent: 'center' }}>
-                {switchMode ?
+                {(switchMode && getSessionResult?.data?.getSession) ?
                   <IconButton
                     onClick={() => { handleSwitch(getSessionResult.data.getSession); }}
                     variant='contained'

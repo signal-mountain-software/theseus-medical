@@ -384,7 +384,11 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
             </Button>
           }
           {patient.kiosk_mode &&
-            <Button className={classes.defaultButton} size='small' variant='contained' onClick={choosePerson}>
+            <Button
+              className={classes.defaultButton}
+              size='small'
+              variant='contained'
+              onClick={choosePerson}>
               {'Sign-up?'}
             </Button>
           }

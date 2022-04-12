@@ -19,6 +19,7 @@ import AssignmentIcon from '@material-ui/icons/Assignment';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import DeleteIcon from '@material-ui/icons/Delete';
 import DeleteForeverIcon from '@material-ui/icons/DeleteForever';
+import Tooltip from '@material-ui/core/Tooltip';
 
 import CircularProgress from '@material-ui/core/CircularProgress';
 
@@ -110,6 +111,8 @@ const useStyles = makeStyles(theme => ({
 export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => {
 
   let working_date = '';
+  let usingAVAsignUp = false;   // code will change wording on screen to direct user to sign-up sheet
+
   const now = new Date(new Date().setHours(0, 0, 0, 0));
   const today = now.getTime();
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), (now.getDate() + 1)).getTime();
@@ -451,45 +454,62 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                                     </Typography>
                                   </Box>
                                   :
-                                  (this_event.occData.signup_type !== 'seats'
-                                    ? null
-                                    : (
+                                  ((this_event.occData.signup_type === 'seats') && usingAVAsignUp
+                                    ? 
                                       <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                         <Typography variant='subtitle2'>
                                           You are signed-up for this event!  Tap below to remove your registration.
                                         </Typography>
                                       </Box>
-                                    )
+                                    : null
                                   )
                                 )
                                 : (this_event.occData.signup_type === 'none'
                                   ? null
                                   : (
                                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                      <Typography variant='subtitle2'>
-                                        {this_event.occData.signup_type === 'time' ? 'Choose a time below.' : 'Tap below to reserve your spot!'}
-                                      </Typography>
+                                      {usingAVAsignUp ?
+                                        <Typography variant='subtitle2'>
+                                          {this_event.occData.signup_type === 'time' ? 'Choose a time below.' : 'Tap below to reserve your spot!'}
+                                        </Typography>
+                                        :
+                                        <Typography variant='subtitle2'>
+                                          {this_event.occData.signup_type === 'time' ? 'Choose a time below.' : 'Make sure to sign-up to reserve your spot!'}
+                                        </Typography>
+                                      }
                                     </Box>
                                   )
                                 )
                               }
                               {(this_event.occData.owner.includes(person_id)) ?
                                 <React-fragment>
+                                  <Tooltip
+                                    enterDelay={2000}
+                                    title={
+                                      <Typography variant='caption'>
+                                        {`Event key = ${this_event.event_key}`}
+                                      </Typography>
+                                    }
+                                    placement='bottom-start'>
                                   <Box display='flex' flexDirection='row' ml={-2} mt={0} mb={-2}>
-                                    <IconButton
-                                      key={'sheet_button' + this_event.event_key}
-                                      variant={"contained"}
-                                      className={classes.warning}
-                                      onClick={async () => {
-                                        await handlePrint(this_event, 'sign-up');
-                                      }}
-                                    >
-                                      <AssignmentIcon />
-                                    </IconButton>
+                                      {
+                                        this_event.occData.signup_type === 'seats' &&
+                                        <IconButton
+                                          key={'sheet_button' + this_event.event_key}
+                                          variant={"contained"}
+                                          className={classes.warning}
+                                          onClick={async () => {
+                                            await handlePrint(this_event, 'sign-up');
+                                          }}
+                                          >
+                                            <AssignmentIcon />
+                                        </IconButton>
+                                      }
                                     <IconButton
                                       key={'report_button' + this_event.event_key}
                                       variant={"contained"}
                                       className={classes.warning}
+                                      
                                       onClick={async () => {
                                         await handlePrint(this_event, 'report');
                                       }}
@@ -506,7 +526,8 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                                     >
                                       {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
                                     </IconButton>
-                                  </Box>
+                                    </Box>
+                                  </Tooltip>
                                 </React-fragment>
                                 : null}
                               {!kiosk_mode ?
@@ -522,8 +543,9 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                                       }}
                                     >
                                       {this_event.slots[0].owner === person_id ?
-                                        (this_event.occData.signup_type !== 'seats' ? "Reminder Set" : "Signed-up!")
-                                        : (this_event.occData.signup_type !== 'seats' ? "Remind me?" : "Sign up?")}
+                                        (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? "Reminder Set" : "Signed-up!")
+                                        : (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? "Remind me?" : "Sign up?")
+                                      }
                                     </Button>
                                   </Box>
                                   :

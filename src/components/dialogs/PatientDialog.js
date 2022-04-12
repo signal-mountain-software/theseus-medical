@@ -7,7 +7,6 @@ import useSession from '../../hooks/useSession';
 import { useSnackbar } from 'notistack';
 
 import AppBar from '@material-ui/core/AppBar';
-import Avatar from '@material-ui/core/Avatar';
 import Box from '@material-ui/core/Box';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
@@ -18,7 +17,6 @@ import Toolbar from '@material-ui/core/Toolbar';
 import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import FaceIcon from '@material-ui/icons/Face';
 
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
@@ -199,7 +197,7 @@ export default ({ patient, picture, open, onClose }) => {
       if (patient.person_id === state.session.user_id) {
         setPatientPChange(state.session.password_change_date);
       }
-      else { 
+      else {
         [patient.person_id].forEach(async (pPerson) => {
           let pSessionResult = await API
             .graphql(graphqlOperation(getSession, { session_id: pPerson }))
@@ -402,9 +400,13 @@ export default ({ patient, picture, open, onClose }) => {
               alignItems="center"
               justifyContent="center"
             >
-              <Avatar src={picture} className={classes.picture}>
-                <FaceIcon className={classes.picture} />
-              </Avatar>
+              <Box
+                component="img"
+                minWidth={150}
+                maxWidth={150}
+                alt='No photo available'
+                src={!patient.person_id.startsWith('*NEW~') ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
+              />
               <br />
               {!patient.person_id.startsWith('*NEW~') ?
                 <Button
@@ -418,7 +420,8 @@ export default ({ patient, picture, open, onClose }) => {
                 >
                   <Typography>Update photo?</Typography>
                 </Button>
-                : null}
+                : null
+              }
               <input
                 type="file"
                 style={{ display: 'none' }}

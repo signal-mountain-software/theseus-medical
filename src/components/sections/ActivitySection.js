@@ -63,6 +63,10 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
+  logoDisplay: {
+    maxWidth: '600px',
+    marginBottom: '15px'
+  },
   mainPaper: {
   },
   defaultButton: {
@@ -235,7 +239,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.4.4~${errorTime}`,
+        status: `Version = v22.4.11~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -276,7 +280,7 @@ export default ({ patient, session }) => {
             event_id: '',
             activity_type: '$$' + (activity?.code || activity),
             limit: limit,
-            fact_data: true,
+            fact_data: false,
             includeEvents: true,
             history_only: false,
             use_short_date: isMobile,
@@ -541,6 +545,14 @@ export default ({ patient, session }) => {
       window.location.replace(jumpTo);
     }
 
+    if (session?.url_parameters && factWasWritten) {
+      await API.graphql(
+        graphqlOperation(updateSession, { input: { session_id: session.user_id, url_parameters: '' } })
+      ).catch(error => { console.log(error); });
+      let jumpTo = window.location.href.replace('activity', 'completedactivity');
+      window.location.replace(jumpTo);
+    }
+
     async function putMedia(params) {   // Uploading files to the bucket
       let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
       let fileExtension = newFact.value.mediaData.Key.split('.').pop();
@@ -607,6 +619,21 @@ export default ({ patient, session }) => {
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
     setLoading(true);
+    if (session?.url_parameters) {
+      let urlActivity = null;
+      if (typeof (session.url_parameters) === 'object') {
+        urlActivity = session.url_parameters.activity;
+      }
+      else {
+        let sessionURLObject = JSON.parse(session.url_parameters);
+        urlActivity = sessionURLObject.activity;
+      }
+      if (urlActivity) {
+        onChooseActivity(urlActivity);
+        return () => {
+        };
+      }
+    }
     if (session?.kiosk_mode
       && (session.user_id === session.patient_id)
       && session.kiosk_activity
@@ -618,6 +645,7 @@ export default ({ patient, session }) => {
     if (session?.current_event) {
       setSectionOpen(JSON.parse(session.current_event));
     };
+    setLoading(false);
     return () => {
     };
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -777,9 +805,8 @@ export default ({ patient, session }) => {
 
   return (
     <Paper className={classes.mainPaper} onClick={() => onWildClick} >
-
       {/* Idle timer always running */}
-      {selected?.code ?
+      {showNewFactDialog ?
         <IdleTimer
           ref={ref => { idleTimer = ref; }}
           timeout={(session?.kiosk_mode ? 1 : 30) * msInAMinute}   // every "n" minutes
@@ -847,7 +874,7 @@ export default ({ patient, session }) => {
       <Box p={3}  >
         <Grid item>
           <Card
-            style={{ maxWidth: 'max-content', marginBottom: '15px' }}
+            className={classes.logoDisplay}
             raised={false}
             variant='elevation' elevation={0}
           >
@@ -1075,6 +1102,32 @@ export default ({ patient, session }) => {
             {selected ? selected.name : null}
           </DialogTitle>
           <DialogContent dividers={true} className={classes.descriptionText}>
+            {newFact?.value?.freeText
+              ?
+              Object.keys(newFact.value.freeText)
+                .map(selectedValue => (
+                  !selectedValue.startsWith('%filter%')
+                    ?
+                    (
+                      <React-Fragment key={`${selectedValue}_frag1`}>
+                        <Box display='flex' flexGrow={1} key={`${selectedValue}_f`} flexWrap='wrap' flexDirection='row' justifyContent='flex-start'>
+                          <Typography style={{ fontWeight: 'bold' }} key={`${selectedValue}_t1`}>
+                            {selectedValue}
+                          </Typography>
+                          <Typography key={`${selectedValue}_fsp`}>
+                            <span>&nbsp;</span>
+                          </Typography>
+                          <Typography key={`${selectedValue}_t2`}>
+                            {newFact.value.freeText[selectedValue].replace(/[~[\]]/g, '')}
+                          </Typography>
+                        </Box >
+                      </React-Fragment>
+                    )
+                    :
+                    null
+                ))
+              : null
+            }
             {newFact?.value?.selected
               ?
               newFact.value.selected
@@ -1102,32 +1155,6 @@ export default ({ patient, session }) => {
                       </React-Fragment>
                     )
                     : null
-                ))
-              : null
-            }
-            {newFact?.value?.freeText
-              ?
-              Object.keys(newFact.value.freeText)
-                .map(selectedValue => (
-                  !selectedValue.startsWith('%filter%')
-                    ?
-                    (
-                      <React-Fragment key={`${selectedValue}_frag1`}>
-                        <Box display='flex' flexGrow={1} key={`${selectedValue}_f`} flexWrap='wrap' flexDirection='row' justifyContent='flex-start'>
-                          <Typography style={{ fontWeight: 'bold' }} key={`${selectedValue}_t1`}>
-                            {selectedValue}
-                          </Typography>
-                          <Typography key={`${selectedValue}_fsp`}>
-                            <span>&nbsp;</span>
-                          </Typography>
-                          <Typography key={`${selectedValue}_t2`}>
-                            {newFact.value.freeText[selectedValue].replace(/[~[\]]/g, '')}
-                          </Typography>
-                        </Box >
-                      </React-Fragment>
-                    )
-                    :
-                    null
                 ))
               : null
             }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 import { API, Auth, graphqlOperation } from 'aws-amplify';
+import { useLocation } from 'react-router-dom';
 
 import useSession from '../hooks/useSession';
 import { getGroup } from '../graphql/queries';
@@ -12,10 +13,46 @@ export default Component => props => {
   const { state, dispatch } = useSession();
   const { user } = state;
 
+  function useParams() {
+    const { search } = useLocation();
+    return React.useMemo(() => new URLSearchParams(search), [search]);
+  };
+
+  const allParams = useParams();
+
+  function getParams() {
+    let returnObject = {};
+    allParams.forEach((value, key) => {
+      returnObject[key] = value;
+    });
+    return returnObject;
+  }
+
   React.useEffect(() => {
     (async () => {
-      const user = await Auth.currentAuthenticatedUser();
-      dispatch({ type: SET_USER, payload: user });
+      let user = {};
+      let urlQuery = getParams();
+      if (urlQuery?.user) {        //first
+        user = {
+          username: urlQuery.user,
+          attributes: {
+            email: 'no-email@none.com',
+            phone_number: '+12225559999',
+            'custom:client': urlQuery.client
+          }
+        };
+        try {
+          await Auth           //second
+            .signIn(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP);
+        }
+        catch (e) {
+          console.log(e);     //fifth
+        }
+      }
+      else {
+        user = await Auth.currentAuthenticatedUser();
+      }
+      dispatch({ type: SET_USER, payload: user });       //sixth
     })().catch(error => {
       console.log(JSON.stringify(error));
     });
@@ -92,7 +129,11 @@ export default Component => props => {
               });
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
-          session.session_id = `v22.4.4${window.location.href.split('//')[1].slice(0, 1)}`;
+          session.session_id = `v22.4.11${window.location.href.split('//')[1].slice(0, 1)}`;
+          let urlQuery = getParams();
+          if (urlQuery?.user) {
+            session.url_parameters = urlQuery;
+          }
         }
 
         // get person's Account information
@@ -206,62 +247,62 @@ export default Component => props => {
 
         if (session.responsible_for) {
           roles.push('responsible_for');  // remove this line when ready to fully depreciate OG switch account process
-                    let pArray = [];
-                    let respArray = [];
-                    if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
-                    else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-                    else { respArray.push(session.responsible_for); }
-                    if (respArray.length > 0) {
-                      for (let r = 0; r < respArray.length; r++) {
-                        let pRec = await API
-                          .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
-                          .catch(
-                            (err) => {
-                              // console.log(`${respArray[r]} not found.  Trying Group table`);
-                            });
-                        if (pRec?.data?.getPerson) {
-                          pArray.push({
-                            display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
-                            person_id: pRec.data.getPerson.person_id,
-                            roles: ['patient'],
-                            client_group_id: 'na'
-                          });
-                          continue;
-                        }
-                        if (!respArray[r].includes('~')) { respArray[r] = session.client_id + '~' + respArray[r]; }
-                        getPeopleByGroupResult = await API
-                          .graphql(graphqlOperation(getGroup, { client_group_id: respArray[r] }))
-                          .catch(
-                            (error) => {
-                              console.log(`Warning! We couldn't get the names of the people in the ${respArray[r]} group.  
+          let pArray = [];
+          let respArray = [];
+          if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
+          else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+          else { respArray.push(session.responsible_for); }
+          if (respArray.length > 0) {
+            for (let r = 0; r < respArray.length; r++) {
+              let pRec = await API
+                .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
+                .catch(
+                  (err) => {
+                    // console.log(`${respArray[r]} not found.  Trying Group table`);
+                  });
+              if (pRec?.data?.getPerson) {
+                pArray.push({
+                  display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
+                  person_id: pRec.data.getPerson.person_id,
+                  roles: ['patient'],
+                  client_group_id: 'na'
+                });
+                continue;
+              }
+              if (!respArray[r].includes('~')) { respArray[r] = session.client_id + '~' + respArray[r]; }
+              getPeopleByGroupResult = await API
+                .graphql(graphqlOperation(getGroup, { client_group_id: respArray[r] }))
+                .catch(
+                  (error) => {
+                    console.log(`Warning! We couldn't get the names of the people in the ${respArray[r]} group.  
                               Error is: ${error.errors[0].message}`);
-                            }
-                          );
-                        if (getPeopleByGroupResult) {
-                          pArray.push(...getPeopleByGroupResult.data.getGroup);
-                        }
-                      };
-                      // sort resulting array and remove duplicates
-                      let pSet = pArray.sort((a, b) => {
-                        return (a.person_id > b.person_id ? 1 : -1);
-                      });
-                      let aSet = pSet.filter((e, x, a) => {
-                        return (x === 0 || e.person_id !== a[x - 1].person_id);
-                      });
-                      patients = aSet.sort((a, b) => {
-                        return (a.display_name > b.display_name ? 1 : -1);
-                      });
-                    }
-          
-                    if (patients.length > 0) {
-                      patients.unshift({
-                        display_name: `${profile.name.last}, ${profile.name.first}`,
-                        person_id: profile.person_id,
-                        roles: ['patient'],
-                        client_group_id: 'na'
-                      });
-                      roles.push('responsible_for');
-                    };
+                  }
+                );
+              if (getPeopleByGroupResult) {
+                pArray.push(...getPeopleByGroupResult.data.getGroup);
+              }
+            };
+            // sort resulting array and remove duplicates
+            let pSet = pArray.sort((a, b) => {
+              return (a.person_id > b.person_id ? 1 : -1);
+            });
+            let aSet = pSet.filter((e, x, a) => {
+              return (x === 0 || e.person_id !== a[x - 1].person_id);
+            });
+            patients = aSet.sort((a, b) => {
+              return (a.display_name > b.display_name ? 1 : -1);
+            });
+          }
+
+          if (patients.length > 0) {
+            patients.unshift({
+              display_name: `${profile.name.last}, ${profile.name.first}`,
+              person_id: profile.person_id,
+              roles: ['patient'],
+              client_group_id: 'na'
+            });
+            roles.push('responsible_for');
+          };
         }
 
         if (mounted) {
