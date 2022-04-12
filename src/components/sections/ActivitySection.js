@@ -1102,6 +1102,32 @@ export default ({ patient, session }) => {
             {selected ? selected.name : null}
           </DialogTitle>
           <DialogContent dividers={true} className={classes.descriptionText}>
+            {newFact?.value?.freeText
+              ?
+              Object.keys(newFact.value.freeText)
+                .map(selectedValue => (
+                  !selectedValue.startsWith('%filter%')
+                    ?
+                    (
+                      <React-Fragment key={`${selectedValue}_frag1`}>
+                        <Box display='flex' flexGrow={1} key={`${selectedValue}_f`} flexWrap='wrap' flexDirection='row' justifyContent='flex-start'>
+                          <Typography style={{ fontWeight: 'bold' }} key={`${selectedValue}_t1`}>
+                            {selectedValue}
+                          </Typography>
+                          <Typography key={`${selectedValue}_fsp`}>
+                            <span>&nbsp;</span>
+                          </Typography>
+                          <Typography key={`${selectedValue}_t2`}>
+                            {newFact.value.freeText[selectedValue].replace(/[~[\]]/g, '')}
+                          </Typography>
+                        </Box >
+                      </React-Fragment>
+                    )
+                    :
+                    null
+                ))
+              : null
+            }
             {newFact?.value?.selected
               ?
               newFact.value.selected
@@ -1129,32 +1155,6 @@ export default ({ patient, session }) => {
                       </React-Fragment>
                     )
                     : null
-                ))
-              : null
-            }
-            {newFact?.value?.freeText
-              ?
-              Object.keys(newFact.value.freeText)
-                .map(selectedValue => (
-                  !selectedValue.startsWith('%filter%')
-                    ?
-                    (
-                      <React-Fragment key={`${selectedValue}_frag1`}>
-                        <Box display='flex' flexGrow={1} key={`${selectedValue}_f`} flexWrap='wrap' flexDirection='row' justifyContent='flex-start'>
-                          <Typography style={{ fontWeight: 'bold' }} key={`${selectedValue}_t1`}>
-                            {selectedValue}
-                          </Typography>
-                          <Typography key={`${selectedValue}_fsp`}>
-                            <span>&nbsp;</span>
-                          </Typography>
-                          <Typography key={`${selectedValue}_t2`}>
-                            {newFact.value.freeText[selectedValue].replace(/[~[\]]/g, '')}
-                          </Typography>
-                        </Box >
-                      </React-Fragment>
-                    )
-                    :
-                    null
                 ))
               : null
             }

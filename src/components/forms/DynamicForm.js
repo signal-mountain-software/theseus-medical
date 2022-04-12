@@ -66,6 +66,7 @@ const useStyles = makeStyles(theme => ({
   },
   inputText: {
     paddingRight: '45px',
+    marginTop: 0,
   },
   clockText: {
     marginRight: '15px',
@@ -148,7 +149,7 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 0,
     //width: '95%',
     verticalAlign: 'middle',
-    fontSize: theme.typography.fontSize * 0.4,
+    // fontSize: theme.typography.fontSize * 0.4,
     minHeight: theme.typography.fontSize * 2.8,
   },
   clockBox: {
@@ -1266,16 +1267,6 @@ export default ({
                               </IconButton>
                             </ListItemSecondaryAction>
                           }
-                          {header && false &&
-                            <ListItemText
-                              id={'subhead' + value + vIndex.toString()}
-                              primary={
-                                <Typography className={classes.factTitle}>
-                                  {value.replace('!', '').substr(2)}
-                                </Typography>
-                              }
-                            />
-                          }
                           {textPrompt ||
                             <ListItemText
                               id={labelId}
@@ -1289,7 +1280,7 @@ export default ({
                                     {value.split(/:(?!\d)/g)[0].split('~-')[0]}
                                   </Typography>
                               }
-                              onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : null}
+                            onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : (checkBoxOn && showCheckBox ? handleToggle(value) : null)}
                               secondary={
                                 newFact?.value?.qualifiers?.[value] &&
                                 newFact.value.qualifiers[value].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')
