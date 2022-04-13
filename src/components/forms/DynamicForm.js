@@ -875,7 +875,7 @@ export default ({
           return true;
         }
         if (
-          searching &&
+          !searching ||
           searchTerms.every(searchTerm => { return valuesListEntry.toLowerCase().includes(searchTerm); })
         ) {
           filteredCount++;
@@ -1353,7 +1353,7 @@ export default ({
                             <Box
                               display='flex'
                               marginTop={2}
-                              height={150}
+                              minHeight={150}
                               flexDirection='row'
                               alignItems='center'
                             >
@@ -1472,8 +1472,6 @@ export default ({
                       component="img"
                       width={200}
                       maxWidth={200}
-                      minHeight={200}
-                      maxHeight={200}
                       alt='No photo available'
                       src={qualifierImage}
                     />
