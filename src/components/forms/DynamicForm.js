@@ -187,8 +187,8 @@ const useStyles = makeStyles(theme => ({
   qualDialog: {},
   qualTitle: {
     marginTop: theme.spacing(3),
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
+    marginLeft: theme.spacing(0),
+    marginRight: theme.spacing(0),
     marginBottom: 0,
     fontSize: '1.0rem',
     fontWeight: 'bold',
@@ -289,6 +289,7 @@ export default ({
   const [groupChecked, setGroupChecked] = React.useState({});
   const [OGqualifiers, setOGQualifiers] = React.useState([]);
 
+  const [personRowLimit, setPersonRowLimit] = React.useState(100);
 
   const [freeText, setFreeText] = React.useState('');
   const [filterText, setFilterText] = React.useState('');
@@ -534,7 +535,12 @@ export default ({
       newFact.value.freeText['%filter%'] = newFact.value.freeText[keyValue];
     }
     setNewFact(newFact);
-    setfilterPromptValue(newFact.value.freeText['%filter%']);
+    if (newFact.value.freeText['%filter%']?.length > 0) {
+      setfilterPromptValue(newFact.value.freeText['%filter%']);
+    }
+    else { 
+      setfilterPromptValue(null);
+    }
     var resetter = formState + 1;
     setFormState(resetter);
   };
@@ -818,6 +824,10 @@ export default ({
     }
   }
 
+  const handleMore = () => { 
+    setPersonRowLimit(personRowLimit + 100)
+  };
+
   React.useEffect(() => {
     if (open) {
       setMOut(message);
@@ -875,7 +885,7 @@ export default ({
           return true;
         }
         if (
-          searching &&
+          !searching ||
           searchTerms.every(searchTerm => { return valuesListEntry.toLowerCase().includes(searchTerm); })
         ) {
           filteredCount++;
@@ -1047,7 +1057,7 @@ export default ({
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
             <List className={classes.root}>
-              <Typography noWrap={true} className={classes.factTitle}>
+              <Typography noWrap={false} className={classes.factTitle}>
                 {availableSlots > 0 ? "Choose any open check box to reserve your place!" : "I'm sorry, this event is full"}
               </Typography>
               {newFact.value.slot.flatMap((currentSlot, vX) => {
@@ -1138,6 +1148,7 @@ export default ({
     default:
       let checkBoxOn = true;
       let suppressDisplay = false;
+      let workingRowCount = 0;
       return (
         <React.Fragment key={`selection-panel`}>
           <FormControl fullWidth>
@@ -1180,10 +1191,11 @@ export default ({
 
                   /* suppressing rows...
                   /* ~~! or ~! means "always show this line" */
-                  /* ~% means suppress all lines after this one that do not include 
+                  /* ~% means suppress all lines after this one that do not include
                       the freetext attached to this line 
                       (prompt for freeText with ~%other:<prompt text>) 
                   */
+                  let [specialKey, freeTextFieldName] = value.split(':');
 
                   if (value.startsWith('~+')) {
                     let checkMe = value.substr(2).replace('~', '%%').split('%%');
@@ -1201,7 +1213,6 @@ export default ({
 
                   if (suppressDisplay) { return null; }
 
-                  let [specialKey, freeTextFieldName] = value.split(':');
                   let personID = '';
                   let specialHandling = false;
                   let personRow = false;
@@ -1228,11 +1239,39 @@ export default ({
                     specialHandling = true;
                     freeTextFieldName = specialKey;
                     personRow = true;
+                    if (workingRowCount >= personRowLimit) {
+                      if (workingRowCount === personRowLimit) {
+                        workingRowCount++;
+                        return (
+                          <Button key='more_button' onClick={handleMore} className={classes.confirm} size='small' variant='contained'>
+                            More?
+                          </Button>
+                        );
+                      }
+                      else { return null; }
+                    }
+                    else {
+                      workingRowCount++;
+                    }
                   }
                   else if (freeTextFieldName && freeTextFieldName.startsWith('group=')) {
                     specialHandling = true;
                     freeTextFieldName = specialKey;
                     personRow = true;
+                    if (workingRowCount >= personRowLimit) {
+                      if (workingRowCount === personRowLimit) {
+                        workingRowCount++;
+                        return (
+                          <Button onClick={handleMore} className={classes.confirm} size='small' variant='contained'>
+                            More?
+                          </Button>
+                        );
+                      }
+                      else { return null; }
+                    }
+                    else {
+                      workingRowCount++;
+                    }
                   };
 
                   return (
@@ -1327,7 +1366,7 @@ export default ({
                                   Search
                                 </Button>
                               </Box>
-                            </FormControl>
+                              </FormControl>
                           }
                           {value.startsWith('~file:') && /* File prompt */
                             <input
@@ -1353,7 +1392,7 @@ export default ({
                             <Box
                               display='flex'
                               marginTop={2}
-                              height={150}
+                              minHeight={150}
                               flexDirection='row'
                               alignItems='center'
                             >
@@ -1461,7 +1500,7 @@ export default ({
             <Dialog
               open={qualifierOpen}
               className={classes.qualDialog}
-              fullWidth
+              
               scroll={'paper'}
               aria-labelledby='qualifier-dialog'>
               <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
@@ -1472,18 +1511,16 @@ export default ({
                       component="img"
                       width={200}
                       maxWidth={200}
-                      minHeight={200}
-                      maxHeight={200}
                       alt='No photo available'
                       src={qualifierImage}
                     />
                   ) : null
                 }
                 <Box display='flex' pt={3} flexDirection='column' justifyContent='center' alignItems='center'>
-                  <Typography variant={'h5'} noWrap={true}>
+                  <Typography variant={'h5'} noWrap={false}>
                     {qualifierData.value ? qualifierData.value.split(':')[0].split(',')[0].trim() : null}
                   </Typography>
-                  <Typography noWrap={true}>
+                  <Typography noWrap={false}>
                     {qualifierData.value ? qualifierData.value.split(':')[0].split(',')[1]?.trim() : null}
                   </Typography>
                   {qualifierData.description ? (
@@ -1576,7 +1613,7 @@ export default ({
                                       <ListItemText
                                         id={`qlabelid-${qualifier}`}
                                         key={`qlabelid-${qualifier}`}
-                                        primary={<Typography noWrap={true}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
+                                        primary={<Typography noWrap={false}>{qualifier.replace(/~\[.*\]=/, '')}</Typography>}
                                       />
                                     )
                                     :
@@ -1629,7 +1666,7 @@ export default ({
                               <ListItemText
                                 id={`mSection-${mx}-textid`}
                                 key={`mSection-${mx}-textkey`}
-                                primary={<Typography noWrap={true}>{managedGroup.split('~').pop().trim()}</Typography>}
+                                primary={<Typography noWrap={false}>{managedGroup.split('~').pop().trim()}</Typography>}
                               />
                             </ListItem>
                           )}
@@ -1651,7 +1688,7 @@ export default ({
                             <ListItemText
                               id={`qlabelid-userid`}
                               key={`qlabelid-userid`}
-                              primary={<Typography noWrap={true}>User ID: {getSessionResult?.data?.getSession?.session_id || chosenPerson}</Typography>}
+                              primary={<Typography noWrap={false}>User ID: {getSessionResult?.data?.getSession?.session_id || chosenPerson}</Typography>}
                             />
                           </ListItem>
                           <ListItem
@@ -1661,7 +1698,7 @@ export default ({
                             <ListItemText
                               id={`qlabelid-platform`}
                               key={`qlabelid-platform`}
-                              primary={<Typography noWrap={true}>Platform: {getSessionResult?.data?.getSession?.platform}</Typography>}
+                              primary={<Typography noWrap={false}>Platform: {getSessionResult?.data?.getSession?.platform}</Typography>}
                             />
                           </ListItem>
                           <ListItem
@@ -1671,7 +1708,7 @@ export default ({
                             <ListItemText
                               id={`qlabelid-version`}
                               key={`qlabelid-version`}
-                              primary={<Typography noWrap={true}>Last version: {getSessionResult?.data?.getSession?.status?.split(/=|~/)[1]}</Typography>}
+                              primary={<Typography noWrap={false}>Last version: {getSessionResult?.data?.getSession?.status?.split(/=|~/)[1]}</Typography>}
                             />
                           </ListItem>
                           <ListItem
@@ -1681,7 +1718,7 @@ export default ({
                             <ListItemText
                               id={`qlabelid-status`}
                               key={`qlabelid-status`}
-                              primary={<Typography noWrap={true}>Last use: {getSessionResult?.data?.getSession?.status?.split(/=|~/).pop().replace(/GMT\S*/, '')}</Typography>}
+                              primary={<Typography noWrap={false}>Last use: {getSessionResult?.data?.getSession?.status?.split(/=|~/).pop().replace(/GMT\S*/, '')}</Typography>}
                             />
                           </ListItem>
                           {getSessionResult?.data?.getSession?.password_change_date ?
@@ -1692,7 +1729,7 @@ export default ({
                               <ListItemText
                                 id={`qlabelid-status`}
                                 key={`qlabelid-status`}
-                                primary={<Typography noWrap={true}>Pwd change: {getSessionResult?.data?.getSession?.password_change_date?.split('GMT')[0]} (GMT)</Typography>}
+                                primary={<Typography noWrap={false}>Pwd change: {getSessionResult?.data?.getSession?.password_change_date?.split('GMT')[0]} (GMT)</Typography>}
                               />
                             </ListItem>
                             : null}
