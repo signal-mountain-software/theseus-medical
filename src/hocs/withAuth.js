@@ -248,12 +248,26 @@ export default Component => props => {
       });
   };
 
-  const eHandler = (data) => {
+  const eHandler =async (data) => {
     switch (data.code) {
       case 'NotAuthorizedException': {
-        setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
-        console.log(`user ${data.message.split(' ')[0]} OK, bad password`);
-        break;
+        let newP;
+        let c0 = inputCP.trim().charAt(0);
+        if (c0 === c0.toUpperCase()) {   // first character was a capital letter
+          newP = c0.toLowerCase() + inputCP.trim().substring(1);
+        }
+        else {   // first character was a lower case letter
+          newP = c0.toUpperCase() + inputCP.trim().substring(1);
+        }
+        try {
+          await Auth.signIn(inputName.trim(), newP);
+          break;
+        }
+        catch {
+          setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
+          console.log(`user ${data.message.split(' ')[0]} OK, bad password`);
+          break;
+        }
       }
       case 'InvalidParameterException': {
         setMessages(`There are invalid characters in the Username "${inputName.trim()}".  Please try again.`);
