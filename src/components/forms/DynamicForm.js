@@ -127,11 +127,11 @@ const useStyles = makeStyles(theme => ({
     // height: theme.typography.fontSize * 2.8,
   },
   lastName: {
-    fontSize: theme.typography.fontSize * 1.5,
+    fontSize: theme.typography.fontSize * 2.5,
     fontWeight: 'bold'
   },
   firstName: {
-    fontSize: theme.typography.fontSize * 1.2,
+    fontSize: theme.typography.fontSize * 2.2,
   },
   messageInput: {
     marginLeft: 0,
