@@ -172,9 +172,17 @@ export default ({ patient, picture, open, onClose }) => {
       let foundAt;
       let groupFound;
       if (Array.isArray(patient.clients)) {
+        // patient.clients is an array...   each element is a single object with 
+        //     key = client_id and 
+        //     value = array of groups this patient is a member of in that client
+        // First - find the array element that contains the object key (id) = current client (patient.client_id)
         groupFound = patient.clients.some((e, i) => { foundAt = i; return (e.id === patient.client_id); });
         if (groupFound) {
+          // We found the right array element... load the React patientGroups value with
+          //    an array of client, group entries as in 'SMSoft~AVT_residents'...   
           setPatientGroups(patient.clients[foundAt].groups.map(e => { return (`${patient.client_id}~${e}`); }));
+          // Next, are there any entries in this array that represent a group that
+          // belongs to another group?
         }
       }
       if (patient.relationships) {
