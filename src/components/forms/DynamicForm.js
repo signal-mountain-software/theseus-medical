@@ -1455,6 +1455,7 @@ export default ({
                             <Box
                               flexDirection='row'
                               display='flex'
+                              width={'100%'}
                               justifyContent='flex-start'
                               alignItems='baseline'>
                               <TextField
@@ -1476,6 +1477,7 @@ export default ({
                               flexDirection='row'
                               display='flex'
                               grow={1}
+                              width={'100%'}
                               justifyContent='flex-start'
                               alignItems='baseline'>
                               <TextField
