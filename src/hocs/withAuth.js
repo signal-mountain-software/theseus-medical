@@ -151,7 +151,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=v22.4.11${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          `Version=v22.4.18${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -186,7 +186,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.4.11${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.4.18${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
@@ -248,12 +248,26 @@ export default Component => props => {
       });
   };
 
-  const eHandler = (data) => {
+  const eHandler =async (data) => {
     switch (data.code) {
       case 'NotAuthorizedException': {
-        setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
-        console.log(`user ${data.message.split(' ')[0]} OK, bad password`);
-        break;
+        let newP;
+        let c0 = inputCP.trim().charAt(0);
+        if (c0 === c0.toUpperCase()) {   // first character was a capital letter
+          newP = c0.toLowerCase() + inputCP.trim().substring(1);
+        }
+        else {   // first character was a lower case letter
+          newP = c0.toUpperCase() + inputCP.trim().substring(1);
+        }
+        try {
+          await Auth.signIn(inputName.trim(), newP);
+          break;
+        }
+        catch {
+          setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
+          console.log(`user ${data.message.split(' ')[0]} OK, bad password`);
+          break;
+        }
       }
       case 'InvalidParameterException': {
         setMessages(`There are invalid characters in the Username "${inputName.trim()}".  Please try again.`);

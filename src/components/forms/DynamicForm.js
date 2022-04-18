@@ -127,11 +127,11 @@ const useStyles = makeStyles(theme => ({
     // height: theme.typography.fontSize * 2.8,
   },
   lastName: {
-    fontSize: theme.typography.fontSize * 1.5,
+    fontSize: theme.typography.fontSize * 2.5,
     fontWeight: 'bold'
   },
   firstName: {
-    fontSize: theme.typography.fontSize * 1.2,
+    fontSize: theme.typography.fontSize * 2.2,
   },
   messageInput: {
     marginLeft: 0,
@@ -184,7 +184,9 @@ const useStyles = makeStyles(theme => ({
     width: '95%',
     height: theme.typography.fontSize * 25,
   },
-  qualDialog: {},
+  qualDialog: {
+    minWidth: '90%'
+  },
   qualTitle: {
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(0),
@@ -538,7 +540,7 @@ export default ({
     if (newFact.value.freeText['%filter%']?.length > 0) {
       setfilterPromptValue(newFact.value.freeText['%filter%']);
     }
-    else { 
+    else {
       setfilterPromptValue(null);
     }
     var resetter = formState + 1;
@@ -691,18 +693,21 @@ export default ({
         console.log(`Error accessing patient: ${error.message}`);
       });
       let gC = {};
-      result.data.getPerson.groups.forEach(g => {
-        gC[g] = true;
-        if (respArray.includes(g)) { setSwitchMode(true); }
-      });
-      if (
-        respArray.includes(result.data.getPerson.person_id)
-        || respArray.includes('*all')
-        || session.kiosk_mode
-      ) {
-        setSwitchMode(true);
+      if (groupsManaged.length > 0) {
+        result.data.getPerson.groups.forEach(g => {
+          gC[g] = true;
+          if (respArray.includes(g)) { setSwitchMode(true); }
+        });
+        if (
+          respArray.includes(result.data.getPerson.person_id)
+          || respArray.includes('*all')
+          || session.kiosk_mode
+        ) {
+          setSwitchMode(true);
+        }
       }
       setGroupChecked(gC);
+
       setSessionResult(await API
         .graphql(graphqlOperation(getSession, { session_id: person_id }))
         .catch(() => { }));
@@ -726,17 +731,16 @@ export default ({
         if (match) { phoneNumber = ['(', match[2], ') ', match[3], '-', match[4]].join(''); }
         qualifierTable[value].qualifiers.push('~~home: ' + phoneNumber + (result.data.getPerson.preferred_method === 'voice' ? '  - preferred' : ''));
       };
+
       let response = await Storage.get('patients/' + person_id + '.jpg').catch(error => {
         console.log(`Whoops! Something went wrong getting picture from s3: ${error.message}`);
       });
       qualifierTable[value].qualifiers.push('~~Message:');
       qualifierTable[value].image_url = 'patients/' + person_id + '.jpg';
       setDialogImage(response);
+
       setPeopleMode(true);
       setChosenPerson(person_id);
-      if (true) {
-
-      }
     }
     else {
       getImage((!(qualifierTable[value]?.image_url?.includes('/')) ? 'observation_images/' : '') + qualifierTable[value].image_url);
@@ -824,8 +828,8 @@ export default ({
     }
   }
 
-  const handleMore = () => { 
-    setPersonRowLimit(personRowLimit + 100)
+  const handleMore = () => {
+    setPersonRowLimit(personRowLimit + 100);
   };
 
   React.useEffect(() => {
@@ -1319,7 +1323,7 @@ export default ({
                                     {value.split(/:(?!\d)/g)[0].split('~-')[0]}
                                   </Typography>
                               }
-                            onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : (checkBoxOn && showCheckBox ? handleToggle(value) : null)}
+                              onClick={qualifierTable.hasOwnProperty(value) ? handleQualSelected(value) : (checkBoxOn && showCheckBox ? handleToggle(value) : null)}
                               secondary={
                                 newFact?.value?.qualifiers?.[value] &&
                                 newFact.value.qualifiers[value].map(x => { return x.replace('~other:', '').replace(/~\[.*\]=/, ''); }).join(' ~ ')
@@ -1366,7 +1370,7 @@ export default ({
                                   Search
                                 </Button>
                               </Box>
-                              </FormControl>
+                            </FormControl>
                           }
                           {value.startsWith('~file:') && /* File prompt */
                             <input
@@ -1499,11 +1503,15 @@ export default ({
           {qualifierOpen &&
             <Dialog
               open={qualifierOpen}
-              className={classes.qualDialog}
-              
+              fullWidth
               scroll={'paper'}
               aria-labelledby='qualifier-dialog'>
-              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+              <Box
+                display='flex'
+                flexDirection='column'
+                justifyContent='center'
+                alignItems='center'
+              >
                 {qualifierData.image_url ?
                   (
                     <Box
@@ -1517,10 +1525,10 @@ export default ({
                   ) : null
                 }
                 <Box display='flex' pt={3} flexDirection='column' justifyContent='center' alignItems='center'>
-                  <Typography variant={'h5'} noWrap={false}>
+                  <Typography variant={'h5'} className={classes.lastName} noWrap={false}>
                     {qualifierData.value ? qualifierData.value.split(':')[0].split(',')[0].trim() : null}
                   </Typography>
-                  <Typography noWrap={false}>
+                  <Typography className={classes.firstName} noWrap={false}>
                     {qualifierData.value ? qualifierData.value.split(':')[0].split(',')[1]?.trim() : null}
                   </Typography>
                   {qualifierData.description ? (

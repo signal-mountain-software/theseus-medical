@@ -402,176 +402,192 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                         <Box mb={0} py={1} px={0} borderBottom={2}>
                           <Box flexGrow={1}>
                             <Typography
+                              key={this_event.occData.date + 'dhead' + index}
                               className={classes.noDisplay}
                             >
                               {working_date = this_event.occData.date}
                             </Typography>
-                            <Typography variant='h6'>
+                            <Typography
+                              key={this_event.occData.date + 'head' + index}
+                              variant='h6'
+                            >
                               {formatDate(working_date)}
                             </Typography>
+                            {this_event.occData.status === 'message' ?
+                              this_event.occData.description.split('%%').map((messageLine) => (
+                                <Typography
+                                  key={this_event.occData.date + 'message' + index}
+                                  variant='subtitle1'
+                                >
+                                  {messageLine}
+                                </Typography>
+                              ))
+                              : null
+                            }
                           </Box>
                         </Box>
-
                       </GridListTile>
                     }
-                    <GridListTile
-                      key={this_event.id + 'r' + index}
-                      style={{ marginBottom: '0px', marginTop: '0px' }}
-                      cols={1}
-                    >
-                      <Paper
-                        component={Box}
-                        p={2}
-                        mt={0} mb={1}
-                        variant='outlined'
-                        style={{ background: this_event, marginBottom: '0px', marginTop: '0px' }}
-                        textAlign='left'
-                        onClick={() => {
-                          // onChooseCalendar(this_event);
-                        }}
-                        square>
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                          <Box display='flex' flexDirection='column' className={classes.activityText} width='95%' textOverflow='ellipsis'>
-                            <React.Fragment key={`act_box_${this_event.id}`}>
-                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                <Box display='flex' flexGrow={1} flexDirection='column'>
-                                  <Box display='flex' flexDirection='row'>
-                                    <Typography variant='h6'>{this_event.occData.time_from}</Typography>
-                                    {this_event.occData.time_to ?
-                                      <Typography variant='h6'>&nbsp;-&nbsp;{this_event.occData.time_to}</Typography>
-                                      : null}
+                    {this_event.occData.status !== 'message' &&
+                      <GridListTile
+                        key={this_event.id + 'r' + index}
+                        style={{ marginBottom: '0px', marginTop: '0px' }}
+                        cols={1}
+                      >
+                        <Paper
+                          component={Box}
+                          p={2}
+                          mt={0} mb={1}
+                          variant='outlined'
+                          style={{ background: this_event, marginBottom: '0px', marginTop: '0px' }}
+                          textAlign='left'
+                          onClick={() => {
+                            // onChooseCalendar(this_event);
+                          }}
+                          square>
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                            <Box display='flex' flexDirection='column' className={classes.activityText} width='95%' textOverflow='ellipsis'>
+                              <React.Fragment key={`act_box_${this_event.id}`}>
+                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                  <Box display='flex' flexGrow={1} flexDirection='column'>
+                                    <Box display='flex' flexDirection='row'>
+                                      <Typography variant='h6'>{this_event.occData.time_from}</Typography>
+                                      {this_event.occData.time_to ?
+                                        <Typography variant='h6'>&nbsp;-&nbsp;{this_event.occData.time_to}</Typography>
+                                        : null}
+                                    </Box>
+                                    <Typography variant='h5'>{this_event.occData.description}</Typography>
+                                    {this_event.occData.location ? <Typography variant='body2'>{this_event.occData.location}</Typography> : null}
                                   </Box>
-                                  <Typography variant='h5'>{this_event.occData.description}</Typography>
-                                  {this_event.occData.location ? <Typography variant='body2'>{this_event.occData.location}</Typography> : null}
                                 </Box>
-                              </Box>
-                              {this_event.slots[0].owner === person_id
-                                ? (this_event.occData.signup_type === 'time'
-                                  ?
-                                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                    <Typography variant='subtitle2'>
-                                      You are signed-up for {Math.floor((this_event.slots[0].id - (this_event.slots[0].id > 1299 ? 1200 : 0)) / 100).toString() + ':' + ('0' + (this_event.slots[0].id % 100).toString()).substr(-2)}.  Tap to remove or select another time.
-                                    </Typography>
-                                  </Box>
-                                  :
-                                  ((this_event.occData.signup_type === 'seats') && usingAVAsignUp
-                                    ? 
+                                {this_event.slots[0].owner === person_id
+                                  ? (this_event.occData.signup_type === 'time'
+                                    ?
+                                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                      <Typography variant='subtitle2'>
+                                        You are signed-up for {Math.floor((this_event.slots[0].id - (this_event.slots[0].id > 1299 ? 1200 : 0)) / 100).toString() + ':' + ('0' + (this_event.slots[0].id % 100).toString()).substr(-2)}.  Tap to remove or select another time.
+                                      </Typography>
+                                    </Box>
+                                    :
+                                    ((this_event.occData.signup_type === 'seats') && usingAVAsignUp
+                                      ?
                                       <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                         <Typography variant='subtitle2'>
                                           You are signed-up for this event!  Tap below to remove your registration.
                                         </Typography>
                                       </Box>
-                                    : null
+                                      : null
+                                    )
                                   )
-                                )
-                                : (this_event.occData.signup_type === 'none'
-                                  ? null
-                                  : (
-                                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                      {usingAVAsignUp ?
-                                        <Typography variant='subtitle2'>
-                                          {this_event.occData.signup_type === 'time' ? 'Choose a time below.' : 'Tap below to reserve your spot!'}
-                                        </Typography>
-                                        :
-                                        <Typography variant='subtitle2'>
-                                          {this_event.occData.signup_type === 'time' ? 'Choose a time below.' : 'Make sure to sign-up to reserve your spot!'}
+                                  : (this_event.occData.signup_type === 'none'
+                                    ? null
+                                    : (
+                                      <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                        {usingAVAsignUp ?
+                                          <Typography variant='subtitle2'>
+                                            {this_event.occData.signup_type === 'time' ? 'Choose a time below.' : 'Tap below to reserve your spot!'}
+                                          </Typography>
+                                          :
+                                          <Typography variant='subtitle2'>
+                                            {this_event.occData.signup_type === 'time' ? 'Choose a time below.' : 'Make sure to sign-up to reserve your spot!'}
+                                          </Typography>
+                                        }
+                                      </Box>
+                                    )
+                                  )
+                                }
+                                {(this_event.occData.owner.includes(person_id)) ?
+                                  <React-fragment>
+                                    <Tooltip
+                                      enterDelay={2000}
+                                      title={
+                                        <Typography variant='caption'>
+                                          {`Event key = ${this_event.event_key}`}
                                         </Typography>
                                       }
-                                    </Box>
-                                  )
-                                )
-                              }
-                              {(this_event.occData.owner.includes(person_id)) ?
-                                <React-fragment>
-                                  <Tooltip
-                                    enterDelay={2000}
-                                    title={
-                                      <Typography variant='caption'>
-                                        {`Event key = ${this_event.event_key}`}
-                                      </Typography>
-                                    }
-                                    placement='bottom-start'>
-                                  <Box display='flex' flexDirection='row' ml={-2} mt={0} mb={-2}>
-                                      {
-                                        this_event.occData.signup_type === 'seats' &&
+                                      placement='bottom-start'>
+                                      <Box display='flex' flexDirection='row' ml={-2} mt={0} mb={-2}>
+                                        {
+                                          this_event.occData.signup_type === 'seats' &&
+                                          <IconButton
+                                            key={'sheet_button' + this_event.event_key}
+                                            variant={"contained"}
+                                            className={classes.warning}
+                                            onClick={async () => {
+                                              await handlePrint(this_event, 'sign-up');
+                                            }}
+                                          >
+                                            <AssignmentIcon />
+                                          </IconButton>
+                                        }
                                         <IconButton
-                                          key={'sheet_button' + this_event.event_key}
+                                          key={'report_button' + this_event.event_key}
+                                          variant={"contained"}
+                                          className={classes.warning}
+
+                                          onClick={async () => {
+                                            await handlePrint(this_event, 'report');
+                                          }}
+                                        >
+                                          <InfoOutlinedIcon />
+                                        </IconButton>
+                                        <IconButton
+                                          key={'delete_button' + this_event.event_key}
                                           variant={"contained"}
                                           className={classes.warning}
                                           onClick={async () => {
-                                            await handlePrint(this_event, 'sign-up');
-                                          }}
-                                          >
-                                            <AssignmentIcon />
-                                        </IconButton>
-                                      }
-                                    <IconButton
-                                      key={'report_button' + this_event.event_key}
-                                      variant={"contained"}
-                                      className={classes.warning}
-                                      
-                                      onClick={async () => {
-                                        await handlePrint(this_event, 'report');
-                                      }}
-                                    >
-                                      <InfoOutlinedIcon />
-                                    </IconButton>
-                                    <IconButton
-                                      key={'delete_button' + this_event.event_key}
-                                      variant={"contained"}
-                                      className={classes.warning}
-                                      onClick={async () => {
-                                        await handleDelete(this_event, index);
-                                      }}
-                                    >
-                                      {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
-                                    </IconButton>
-                                    </Box>
-                                  </Tooltip>
-                                </React-fragment>
-                                : null}
-                              {!kiosk_mode ?
-                                (this_event.occData.signup_type !== 'time') ?
-                                  <Box display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                    <Button
-                                      key={'seat_button' + this_event.event_key}
-                                      disabled={this_event.slots[0].owner && (this_event.slots[0].owner !== person_id) && (this_event.slots[0].owner !== '') && (this_event.slots[0].owner !== 'available')}
-                                      variant={this_event.slots[0].owner === person_id ? "contained" : "outlined"}
-                                      className={this_event.slots[0].owner === person_id ? classes.confirm : null}
-                                      onClick={async () => {
-                                        await handleSeatSignup(this_event, index);
-                                      }}
-                                    >
-                                      {this_event.slots[0].owner === person_id ?
-                                        (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? "Reminder Set" : "Signed-up!")
-                                        : (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? "Remind me?" : "Sign up?")
-                                      }
-                                    </Button>
-                                  </Box>
-                                  :
-                                  <Box flexWrap='wrap' display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                    {this_event.slots.map((this_slot, slotIndex) => (
-                                      slotIndex === 0 ? null :
-                                        <Button
-                                          key={'time_button' + this_slot.id + this_event.occData.date}
-                                          disabled={this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')}
-                                          variant={this_slot.owner === person_id ? "contained" : "text"}
-                                          className={this_slot.owner === person_id ? classes.confirm : ((this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')) ? classes.unavailable : null)}
-                                          onClick={() => {
-                                            handleTimeSignup(this_event, this_slot, index, slotIndex);
+                                            await handleDelete(this_event, index);
                                           }}
                                         >
-                                          {Math.floor((this_slot.id - (this_slot.id > 1299 ? 1200 : 0)) / 100).toString() + ':' + ('0' + (this_slot.id % 100).toString()).substr(-2)}
-                                        </Button>
+                                          {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
+                                        </IconButton>
+                                      </Box>
+                                    </Tooltip>
+                                  </React-fragment>
+                                  : null}
+                                {!kiosk_mode ?
+                                  (this_event.occData.signup_type !== 'time') ?
+                                    <Box display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                      <Button
+                                        key={'seat_button' + this_event.event_key}
+                                        disabled={this_event.slots[0].owner && (this_event.slots[0].owner !== person_id) && (this_event.slots[0].owner !== '') && (this_event.slots[0].owner !== 'available')}
+                                        variant={this_event.slots[0].owner === person_id ? "contained" : "outlined"}
+                                        className={this_event.slots[0].owner === person_id ? classes.confirm : null}
+                                        onClick={async () => {
+                                          await handleSeatSignup(this_event, index);
+                                        }}
+                                      >
+                                        {this_event.slots[0].owner === person_id ?
+                                          (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? "Reminder Set" : "Signed-up!")
+                                          : (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? "Remind me?" : "Sign up?")
+                                        }
+                                      </Button>
+                                    </Box>
+                                    :
+                                    <Box flexWrap='wrap' display='flex' mt={2} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                      {this_event.slots.map((this_slot, slotIndex) => (
+                                        slotIndex === 0 ? null :
+                                          <Button
+                                            key={'time_button' + this_slot.id + this_event.occData.date}
+                                            disabled={this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')}
+                                            variant={this_slot.owner === person_id ? "contained" : "text"}
+                                            className={this_slot.owner === person_id ? classes.confirm : ((this_slot.owner && (this_slot.owner !== person_id) && (this_slot.owner !== '') && (this_slot.owner !== 'available')) ? classes.unavailable : null)}
+                                            onClick={() => {
+                                              handleTimeSignup(this_event, this_slot, index, slotIndex);
+                                            }}
+                                          >
+                                            {Math.floor((this_slot.id - (this_slot.id > 1299 ? 1200 : 0)) / 100).toString() + ':' + ('0' + (this_slot.id % 100).toString()).substr(-2)}
+                                          </Button>
 
-                                    ))}
-                                  </Box>
-                                : null}
-                            </React.Fragment>
+                                      ))}
+                                    </Box>
+                                  : null}
+                              </React.Fragment>
+                            </Box>
                           </Box>
-                        </Box>
-                      </Paper>
-                    </GridListTile>
+                        </Paper>
+                      </GridListTile>
+                    }
                   </React-fragment>
                   : null
               ))}
