@@ -2902,6 +2902,18 @@
                             "deprecationReason": null
                         },
                         {
+                            "name": "adopted_client",
+                            "description": null,
+                            "args": [],
+                            "type": {
+                                "kind": "SCALAR",
+                                "name": "String",
+                                "ofType": null
+                            },
+                            "isDeprecated": false,
+                            "deprecationReason": null
+                        },
+                        {
                             "name": "device_id",
                             "description": null,
                             "args": [],
@@ -4027,6 +4039,16 @@
                         },
                         {
                             "name": "client_id",
+                            "description": null,
+                            "type": {
+                                "kind": "SCALAR",
+                                "name": "String",
+                                "ofType": null
+                            },
+                            "defaultValue": null
+                        },
+                        {
+                            "name": "adopted_client",
                             "description": null,
                             "type": {
                                 "kind": "SCALAR",

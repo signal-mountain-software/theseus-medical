@@ -176,7 +176,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         graphqlOperation(getCalendar, {
           input: {
             "action": `list_events#${event_time}`,
-            "clientId": patient.client_id,
+            "clientId": patient.adopted_client || patient.client_id,
             "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
             "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
             "person_id": patient.patient_id
@@ -219,7 +219,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         graphqlOperation(getCalendar, {
           input: {
             "action": `list_events#${event_time}`,
-            "clientId": patient.client_id,
+            "clientId": patient.adopted_client || patient.client_id,
             "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
             "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
             "person_id": patient.patient_id
