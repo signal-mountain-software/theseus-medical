@@ -287,6 +287,9 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
     setTheCalendar([]);
     let invokeFailed = false;
     let releaseSlot = false;
+    if (Number(pSlot.id) < 1000) {
+      pSlot.id = '0' + pSlot.id;
+    }
     if (!pSlot.owner || (pSlot.owner === 'available')) {
       releaseSlot = false;
       if ((pEvent.slots[0].owner === person_id) && (pEvent.slots[0].id !== pSlot.id)) {
