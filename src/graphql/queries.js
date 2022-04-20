@@ -285,6 +285,7 @@ export const getSession = /* GraphQL */ `
     getSession(session_id: $session_id) {
       session_id
       client_id
+      adopted_client
       device_id
       method
       status

@@ -133,6 +133,7 @@ export default ({ patient, picture, open, onClose }) => {
 
   const [changes, setChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(false);
+  const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
@@ -227,6 +228,7 @@ export default ({ patient, picture, open, onClose }) => {
 
   const handleAbort = () => {
     setResettingPwd(false);
+    setPwdConfirmed(false);
     setInputPWD('password');
     setChanges(false);
     onClose();
@@ -288,16 +290,18 @@ export default ({ patient, picture, open, onClose }) => {
     patient.name.last = lastName;
     setChanges(false);
     setResettingPwd(false);
+    setPwdConfirmed(false);
     onClose();
   };
 
   const handleResetPassword1 = event => {
     setResettingPwd(true);
+    setPwdConfirmed(false);
     setInputPWD('password');
   };
 
   const handleResetPassword2 = event => {
-    setChanges(true);
+    setPwdConfirmed(true);
   };
 
   const handleChangeFirstName = event => {
@@ -372,11 +376,11 @@ export default ({ patient, picture, open, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {changes ?
+            {changes || pwdConfirmed ?
               <Button
                 onClick={handleUpdate}
-                disabled={!changes}
-                hidden={!changes}
+                disabled={!changes && !pwdConfirmed}
+                hidden={!changes && !pwdConfirmed}
                 variant='contained'
                 className={classes.topButton}
               >
@@ -529,7 +533,7 @@ export default ({ patient, picture, open, onClose }) => {
           <Tooltip title={<Typography variant='caption'>{patient.person_id}</Typography>} placement='bottom-end'>
             <Button
               onClick={handleResetPassword1}
-              disabled={resettingPwd}
+              disabled={resettingPwd && !pwdConfirmed}
               variant='contained'
               className={classes.infoButton}
             >
@@ -541,12 +545,12 @@ export default ({ patient, picture, open, onClose }) => {
             <React.Fragment>
               <Button
                 onClick={handleResetPassword2}
-                disabled={!resettingPwd}
+                disabled={!resettingPwd || pwdConfirmed}
                 hidden={!resettingPwd}
                 variant='contained'
                 className={classes.resetButton}
               >
-                Confirm
+                {pwdConfirmed ? 'Confirmed!' : 'Confirm?'}
               </Button>
               {" "}
               <div>
@@ -556,7 +560,7 @@ export default ({ patient, picture, open, onClose }) => {
                   autoComplete='off'
                   type='text'
                   onChange={handleChangePassword}
-                  helperText={inputPWD === 'password' ? 'temporary password' : 'password'}
+                  helperText={'password'}
                 />
               </div>
             </React.Fragment>

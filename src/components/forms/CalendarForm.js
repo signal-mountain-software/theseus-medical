@@ -287,6 +287,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
     setTheCalendar([]);
     let invokeFailed = false;
     let releaseSlot = false;
+    pSlot.id = pSlot.id.padStart(4, '0');
     if (!pSlot.owner || (pSlot.owner === 'available')) {
       releaseSlot = false;
       if ((pEvent.slots[0].owner === person_id) && (pEvent.slots[0].id !== pSlot.id)) {
@@ -413,7 +414,12 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                             >
                               {formatDate(working_date)}
                             </Typography>
-                            {this_event.occData.status === 'message' ?
+                            {
+                              // an event can display a message under its name
+                              // To do this, put the message text in the description field
+                              //    force a line break on the screen with %%
+                            }
+                            {this_event.occData.status === 'message' ?          
                               this_event.occData.description.split('%%').map((messageLine) => (
                                 <Typography
                                   key={this_event.occData.date + 'message' + index}

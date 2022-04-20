@@ -176,7 +176,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         graphqlOperation(getCalendar, {
           input: {
             "action": `list_events#${event_time}`,
-            "clientId": patient.client_id,
+            "clientId": patient.adopted_client || patient.client_id,
             "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
             "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
             "person_id": patient.patient_id
@@ -188,7 +188,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         invokeFailed = true;
       });
     let theCalendar = [];
-    if (!invokeFailed) {
+    if (!invokeFailed && result.data.getCalendar.body) {
       result.data.getCalendar.body.forEach(cEv => {
         theCalendar.push(cEv);
       });
@@ -219,7 +219,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         graphqlOperation(getCalendar, {
           input: {
             "action": `list_events#${event_time}`,
-            "clientId": patient.client_id,
+            "clientId": patient.adopted_client || patient.client_id,
             "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
             "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
             "person_id": patient.patient_id
@@ -231,7 +231,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         invokeFailed = true;
       });
     let theCalendar = myCalendar;
-    if (!invokeFailed) {
+    if (!invokeFailed && result.data.getCalendar.body) {
       result.data.getCalendar.body.forEach(cEv => {
         theCalendar.push(cEv);
       });
@@ -313,7 +313,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
             alignItems='flex-start'
           >
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {patient.kiosk_mode ? `Calendar of Events` : `${patient.patient_display_name.split(',').pop()}'s Calendar`}
+              {(patient.kiosk_mode || !patient.patient_display_name) ? `Calendar of Events` : `${patient.patient_display_name.split(',').pop()}'s Calendar`}
             </DialogContentText>
             {(myCalendar.length > 0) ?
               <DialogContentText className={classes.subDescriptionText}>
