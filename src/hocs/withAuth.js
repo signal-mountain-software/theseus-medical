@@ -222,7 +222,12 @@ export default Component => props => {
       setSignedIn(false);
     }
     else {
-      setMessages(`We could not change your password at this time!  You may sign-in using your old password.`);
+      if (JSON.parse(fResp.Payload).body) {
+        setMessages(JSON.parse(fResp.Payload).body);
+      }
+      else {
+        setMessages(`We could not change your password at this time!  You may sign-in using your old password.`);
+      }
     }
   };
 

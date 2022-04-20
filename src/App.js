@@ -40,13 +40,19 @@ class ErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError(error) {
+    if (window.location.href.split('//')[1].slice(0, 1) !== 'd') { 
+      alert(`Error "${error.toString()}" caught by getDerviedStateFromError`);
+    }
     hasError = true;
-    handleWriteError(`Error "${error}" caught by getDerviedStateFromError`);
+    handleWriteError(`Error "${error.toString()}" caught by getDerviedStateFromError`);
   }
 
   componentDidCatch(error, info) {
+    if (window.location.href.split('//')[1].slice(0, 1) !== 'd') {
+      alert(`Error "${error.toString()}" encountered.`);
+    }
     hasError = true;
-    handleWriteError(`Error "${error}" encountered.  Stack is ${info.componentStack}`);
+    handleWriteError(`Error "${error.toString()}" encountered.  Info is ${JSON.stringify(info)}`);
   }
 
   render() {

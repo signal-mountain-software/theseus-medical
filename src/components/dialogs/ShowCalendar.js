@@ -188,7 +188,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         invokeFailed = true;
       });
     let theCalendar = [];
-    if (!invokeFailed) {
+    if (!invokeFailed && result.data.getCalendar.body) {
       result.data.getCalendar.body.forEach(cEv => {
         theCalendar.push(cEv);
       });
@@ -231,7 +231,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         invokeFailed = true;
       });
     let theCalendar = myCalendar;
-    if (!invokeFailed) {
+    if (!invokeFailed && result.data.getCalendar.body) {
       result.data.getCalendar.body.forEach(cEv => {
         theCalendar.push(cEv);
       });
@@ -313,7 +313,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
             alignItems='flex-start'
           >
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {patient.kiosk_mode ? `Calendar of Events` : `${patient.patient_display_name.split(',').pop()}'s Calendar`}
+              {(patient.kiosk_mode || !patient.patient_display_name) ? `Calendar of Events` : `${patient.patient_display_name.split(',').pop()}'s Calendar`}
             </DialogContentText>
             {(myCalendar.length > 0) ?
               <DialogContentText className={classes.subDescriptionText}>
