@@ -35,7 +35,8 @@
     "react-video-recorder": "^3.18.2",
     "recoil": "^0.1.3",
     "styled-components": "^4.4.1",
-    "use-sound": "^4.0.1"
+    "use-sound": "^4.0.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^4.2.4",
