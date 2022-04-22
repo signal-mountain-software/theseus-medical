@@ -129,7 +129,7 @@ export default Component => props => {
               });
             if (emulatingSession) { session = emulatingSession.data.getSession; }
           }
-          session.session_id = `v22.4.18${window.location.href.split('//')[1].slice(0, 1)}`;
+          session.session_id = `v22.4.25${window.location.href.split('//')[1].slice(0, 1)}`;
           let urlQuery = getParams();
           if (urlQuery?.user) {
             session.url_parameters = urlQuery;
