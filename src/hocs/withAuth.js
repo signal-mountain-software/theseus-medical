@@ -71,7 +71,7 @@ export default Component => props => {
         logSession();
         setSignedIn(true);
       }
-      else if (authState === AuthState.SignedOut || authState === AuthState.SignIn) {
+      else if (authState === AuthState.SignedOut) {
         if (localSignedIn) {
           setSignedIn(false);
         }
@@ -166,7 +166,7 @@ export default Component => props => {
     try {
       let user = {};
       let urlQuery = getParams();
-      if (urlQuery?.user) {        //third
+      if (urlQuery?.user) {        
         user = {
           username: urlQuery.user,
           attributes: {
@@ -179,7 +179,7 @@ export default Component => props => {
       else {
         user = await Auth.currentAuthenticatedUser();
       }
-      if (user) { setSignedIn(true); }      //fourth
+      if (user) { setSignedIn(true); }      
       else {
         enqueueSnackbar(`No authenticated user found.`, {
           variant: 'info'
@@ -256,6 +256,10 @@ export default Component => props => {
   const eHandler = async (data) => {
     switch (data.code) {
       case 'NotAuthorizedException': {
+        if (data.message.includes('expired')) { 
+          setMessages(`Your password has expired and must be reset`);
+          break;
+        };
         let newP;
         let c0 = inputCP.trim().charAt(0);
         if (c0 === c0.toUpperCase()) {   // first character was a capital letter
@@ -268,9 +272,10 @@ export default Component => props => {
           await Auth.signIn(inputName.trim(), newP);
           break;
         }
-        catch {
-          setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
-          console.log(`user ${data.message.split(' ')[0]} OK, bad password`);
+        catch (e) {
+          setMessages(data.message);
+         // setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
+          console.log(`user ${data.message}`);
           break;
         }
       }
@@ -281,6 +286,11 @@ export default Component => props => {
       }
       case 'UserNotFoundException': {
         setMessages(`The Username "${inputName.trim()}" does not exist`);
+        console.log('bad user, password entered');
+        break;
+      }
+      case 'UserNotConfirmedException': {
+        setMessages(`The Username "${inputName.trim()}" hasn't completed setup yet.`);
         console.log('bad user, password entered');
         break;
       }
@@ -406,8 +416,8 @@ export default Component => props => {
                 },
                 {
                   type: "email",
-                  label: "Location",
-                  placeholder: 'Apartment or Location Address numbers',
+                  label: "First Name",
+                  placeholder: 'Enter your First Name',
                   value: inputLocationNumbers,
                   handleInputChange:
                     (e) => {
