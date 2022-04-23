@@ -40,7 +40,7 @@ class ErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError(error) {
-    if (window.location.href.split('//')[1].slice(0, 1) !== 'd') { 
+    if (window.location.href.split('//')[1].slice(0, 1) !== 'd') {
       alert(`Error "${error.toString()}" caught by getDerviedStateFromError`);
     }
     hasError = true;
@@ -77,7 +77,7 @@ const handleWriteError = async (parmMessage) => {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = v22.4.18~${errorTime}`,
+    status: `Version = v22.4.25~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',

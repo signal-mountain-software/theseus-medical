@@ -514,7 +514,9 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                                       placement='bottom-start'>
                                       <Box display='flex' flexDirection='row' ml={-2} mt={0} mb={-2}>
                                         {
-                                          this_event.occData.signup_type === 'seats' &&
+                                          (this_event.occData.signup_type === 'seats'
+                                            || this_event.occData.signup_type === 'time')
+                                            &&
                                           <IconButton
                                             key={'sheet_button' + this_event.event_key}
                                             variant={"contained"}

@@ -13,6 +13,7 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import ShowCalendar from '../dialogs/ShowCalendar';
+import ShowMenu from '../dialogs/ShowMenu';
 
 import TextField from '@material-ui/core/TextField';
 
@@ -1146,6 +1147,14 @@ export default ({
           peopleList={values}
           currentEvents={currentEvents}
           showCalendar={true}
+          onClose={onSave}
+        />
+      );
+    case 'show_menu':
+      return (
+        <ShowMenu
+          pClient={session.client_id}
+          showMenu={true}
           onClose={onSave}
         />
       );
