@@ -2,9 +2,6 @@ import React from 'react';
 
 import { API, graphqlOperation } from 'aws-amplify';
 
-import Paper from '@material-ui/core/Paper';
-import TextField from '@material-ui/core/TextField';
-
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogContent from '@material-ui/core/DialogContent';
@@ -13,17 +10,14 @@ import DialogContentText from '@material-ui/core/DialogContentText';
 import IconButton from '@material-ui/core/IconButton';
 import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
-import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Input from '@material-ui/core/Input';
 import SearchIcon from '@material-ui/icons/Search';
 import InputAdornment from '@material-ui/core/InputAdornment';
 
-import List from '@material-ui/core/List';
-import ListItem from '@material-ui/core/ListItem';
-
 import CalendarForm from '../forms/CalendarForm';
+import PersonFilter from '../forms/PersonFilter';
 
 import { getCalendar } from '../../graphql/queries';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -143,7 +137,6 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
   const [myCalendar, setMyCalendar] = React.useState([]);
   const [filterText, setFilterText] = React.useState('');
   const [myFilter, setMyFilter] = React.useState('');
-  const [person_filter, setPersonFilter] = React.useState('');
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
 
   const [lastEndDate, setLastEndDate] = React.useState();
@@ -249,10 +242,6 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
     if (event.key === 'Enter' || event.type === 'blur') {
       handleFilterText(event.target.value);
     }
-  };
-
-  const handleChangePersonFilter = event => {
-    setPersonFilter(event.target.value);
   };
 
   const onChangeFilterText = event => {
@@ -370,6 +359,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
             kiosk_mode={patient.kiosk_mode}
             display_name={patient.patient_display_name}
             filter={myFilter}
+            peopleList={peopleList}
           />
         </DialogContent>
         <DialogActions style={{ justifyContent: 'center' }}>
@@ -397,46 +387,21 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
           </Button>
         </DialogActions>
         {showPersonSelect &&
-          <Dialog
-            p={2}
-            height={250}
-            fullWidth
-            variant={'elevation'} elevation={2}
-            open={showPersonSelect}
-            TransitionComponent={Transition}
+          <PersonFilter
+            peopleList={peopleList}
+            onCancel={() => {
+              setShowPersonSelect(false);
+              patient.kiosk_mode = false;
+              setCalendar();
+            }}
+            onSelect={(selectedPerson) => {
+              [patient.patient_display_name, patient.patient_id,] = selectedPerson.split(':');
+              setShowPersonSelect(false);
+              patient.kiosk_mode = false;
+              setCalendar();
+            }}
           >
-            <DialogContentText className={classes.title} id='scroll-dialog-title' dividers>
-              {'Find and tap your name in this list'}
-            </DialogContentText>
-            <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
-              <TextField
-                id='Type a few letters to filter the list'
-                value={person_filter}
-                onChange={handleChangePersonFilter}
-                className={classes.freeInput}
-                label='Type a few letters to filter the list'
-                variant={'standard'}
-                autoComplete='off'
-              />
-              <List component='nav'>
-                {peopleList.map((listEntry, x) => (
-                  (
-                    listEntry.includes(person_filter) ?
-                      <ListItem onClick={() => {
-                        [patient.patient_display_name, patient.patient_id,] = listEntry.split(':');
-                        setShowPersonSelect(false);
-                        patient.kiosk_mode = false;
-                        setCalendar();
-                      }} button>
-                        <Typography className={classes.listItemAVA}>
-                          {listEntry.split(':')[0]}
-                        </Typography>
-                      </ListItem> : null
-                  )
-                ))}
-              </List>
-            </Paper>
-          </Dialog>
+          </PersonFilter>
         }
       </Dialog>
     )

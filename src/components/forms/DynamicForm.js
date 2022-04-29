@@ -714,7 +714,14 @@ export default ({
         .catch(() => { }));
       qualifierTable[value].value = value;
       qualifierTable[value].qualifiers.length = 1;
-      qualifierTable[value].qualifiers.push('~~' + (result.data.getPerson.location || 'No Location given'));
+      if (!result.data.getPerson.location) {
+        qualifierTable[value].qualifiers.push('~~' + 'No Location given');
+      }
+      else {
+        result.data.getPerson.location.split('~').forEach(locLine => {
+        qualifierTable[value].qualifiers.push('~~' + locLine.trim());
+        });
+      }
       if (result?.data?.getPerson?.messaging?.email) {
         qualifierTable[value].qualifiers.push('~~e-Mail: ' + result.data.getPerson.messaging.email + (result.data.getPerson.preferred_method === 'email' ? '  - preferred' : ''));
       };
@@ -739,7 +746,6 @@ export default ({
       qualifierTable[value].qualifiers.push('~~Message:');
       qualifierTable[value].image_url = 'patients/' + person_id + '.jpg';
       setDialogImage(response);
-
       setPeopleMode(true);
       setChosenPerson(person_id);
     }

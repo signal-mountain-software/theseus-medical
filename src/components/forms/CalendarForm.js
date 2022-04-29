@@ -19,9 +19,11 @@ import AssignmentIcon from '@material-ui/icons/Assignment';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import DeleteIcon from '@material-ui/icons/Delete';
 import DeleteForeverIcon from '@material-ui/icons/DeleteForever';
+import PeopleAltIcon from '@material-ui/icons/PeopleAlt';
 import Tooltip from '@material-ui/core/Tooltip';
 
 import CircularProgress from '@material-ui/core/CircularProgress';
+import PersonFilter from './PersonFilter';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -108,10 +110,11 @@ const useStyles = makeStyles(theme => ({
 }));
 
 
-export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => {
+export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopleList }) => {
 
   let working_date = '';
   let usingAVAsignUp = false;   // code will change wording on screen to direct user to sign-up sheet
+  // let selectedPerson = '';
 
   const now = new Date(new Date().setHours(0, 0, 0, 0));
   const today = now.getTime();
@@ -124,6 +127,11 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
   if (filterText) { working_date = ''; };
 
   const [deletePending, setDeletePending] = React.useState();
+  const [proxyPerson, setProxyPerson] = React.useState('');
+  const [proxyName, setProxyName] = React.useState('');
+  const [proxyID, setProxyID] = React.useState('');
+  const [proxyRow, setProxyRow] = React.useState(0);
+  const [showPersonSelect, setShowPersonSelect] = React.useState(false);
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -172,10 +180,10 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
       clientId: pEvent.client,
       sign_up: {
         "event_key": pEvent.event_key,   // event and occurence is in here
-        "slot_id": person_id,
-        "owner": person_id,
+        "slot_id": proxyPerson ? proxyID : person_id,
+        "owner": proxyPerson ? proxyID : person_id,
         "requestor": person_id,
-        "display_name": display_name,
+        "display_name": proxyPerson ? proxyName : display_name,
         "new_list_key": releaseSlot ? 'release' : person_id,
       }
     });
@@ -190,6 +198,10 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
         invokeFailed = true;
       });
     if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
+      setProxyPerson('');
+      setProxyName('');
+      setProxyID('');
+      setProxyRow(0);
       if (releaseSlot) {
         myCalendar[myCalendarIndex].slots[0] = {
           'reminder_minutes': null,
@@ -213,8 +225,28 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
   };
 
   React.useEffect(() => {
-    /* console.log('in use Effect of CalendarForm.js'); */
+    console.log('in use Effect of CalendarForm.js');
   }, [theCalendar]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  const handleProxy = (pIndex) => {
+    setShowPersonSelect(true);
+    setProxyRow(pIndex);
+  };
+
+  const onSelectProxy = (selectedPerson) => {
+    setProxyPerson(selectedPerson);
+    let [namePart, IDPart,] = selectedPerson.split(':');
+    let [nameLast, nameFirst] = namePart.split(',');
+    setProxyName(((nameFirst ? nameFirst + ' ' : '') + nameLast).trim());
+    setProxyID(IDPart);
+    setShowPersonSelect(false);
+  };
+
+  const onCancelProxy = (selectedPerson) => {
+    setProxyPerson();
+    setShowPersonSelect(false);
+  };
 
   const handlePrint = async (pEvent, pType) => {
     let invokeFailed = false;
@@ -290,8 +322,13 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
     pSlot.id = pSlot.id.padStart(4, '0');
     if (!pSlot.owner || (pSlot.owner === 'available')) {
       releaseSlot = false;
-      if ((pEvent.slots[0].owner === person_id) && (pEvent.slots[0].id !== pSlot.id)) {
+      if (
+        (pEvent.slots[0].owner === person_id)
+        && (pEvent.slots[0].id !== pSlot.id)
+        && (!pEvent.occData.owner.includes(pEvent.slots[0].owner))
+      ) {
         // You selected a new time, but already have another time reserved
+        // This is OK if you are the event owner, otherwise
         // remove the first before booking the new one
         params.Payload = JSON.stringify({
           action: "sign_up",
@@ -323,20 +360,22 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
         }
       }
     }
-    else if (pSlot.owner === person_id) {
+    else if (pSlot.owner === person_id) {   // You clicked on a slot you already own... release it
       releaseSlot = true;
     }
-    else { return; }  // clicked a slot not owner by the current user
+    else { return; }  // clicked a slot not owned by the current user 
+
+    // Now, reserve the slot...
     params.Payload = JSON.stringify({
       action: "sign_up",
       clientId: pEvent.client,
       sign_up: {
         "event_key": pEvent.event_key,
         "slot_id": pSlot.id,
-        "owner": releaseSlot ? 'available' : person_id,
+        "owner": releaseSlot ? 'available' : (proxyPerson ? proxyID : person_id),
         "requestor": releaseSlot ? 'available' : person_id,
-        "display_name": releaseSlot ? null : display_name,
-        "new_list_key": (releaseSlot ? 'available' : person_id) + '#' + pEvent.schedule_key,
+        "display_name": releaseSlot ? null : (proxyPerson ? proxyName : display_name),
+        "new_list_key": (releaseSlot ? 'available' : (proxyPerson ? proxyID : person_id)) + '#' + pEvent.schedule_key,
       }
     });
     const fResp = await lambda
@@ -419,7 +458,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                               // To do this, put the message text in the description field
                               //    force a line break on the screen with %%
                             }
-                            {this_event.occData.status === 'message' ?          
+                            {this_event.occData.status === 'message' ?
                               this_event.occData.description.split('%%').map((messageLine) => (
                                 <Typography
                                   key={this_event.occData.date + 'message' + index}
@@ -512,11 +551,17 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                                         </Typography>
                                       }
                                       placement='bottom-start'>
-                                      <Box display='flex' flexDirection='row' ml={-2} mt={0} mb={-2}>
+                                      <Box display='flex'
+                                        flexDirection='row'
+                                        ml={-2}
+                                        mt={0}
+                                        mb={-2}
+                                        alignItems='center'
+                                      >
                                         {
                                           (this_event.occData.signup_type === 'seats'
                                             || this_event.occData.signup_type === 'time')
-                                            &&
+                                          &&
                                           <IconButton
                                             key={'sheet_button' + this_event.event_key}
                                             variant={"contained"}
@@ -549,6 +594,19 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                                         >
                                           {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
                                         </IconButton>
+                                        <IconButton
+                                          key={'people_select' + this_event.event_key}
+                                          variant={"contained"}
+                                          className={classes.warning}
+                                          onClick={async () => {
+                                            handleProxy(index);
+                                          }}
+                                        >
+                                          <PeopleAltIcon />
+                                        </IconButton>
+                                        {proxyName && (proxyRow === index) &&
+                                          <Typography >{proxyName}</Typography>
+                                        }
                                       </Box>
                                     </Tooltip>
                                   </React-fragment>
@@ -567,7 +625,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
                                       >
                                         {this_event.slots[0].owner === person_id ?
                                           (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? "Reminder Set" : "Signed-up!")
-                                          : (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? "Remind me?" : "Sign up?")
+                                          : (((this_event.occData.signup_type !== 'seats') || !usingAVAsignUp) ? (proxyPerson ? `Remind ${proxyName.split(' ')[0]}?` : "Remind me?") : (proxyPerson ? `Sign-up ${proxyName.split(' ')[0]}?` : "Sign-up?"))
                                         }
                                       </Button>
                                     </Box>
@@ -601,6 +659,14 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter }) => 
               ))}
           </GridList>
         </Grid>
+        {showPersonSelect &&
+          <PersonFilter
+            peopleList={peopleList}
+            onCancel={() => { onCancelProxy(); }}
+            onSelect={(selectedPerson) => { onSelectProxy(selectedPerson); }}
+          >
+          </PersonFilter>
+        }
       </Box>
   );
 };
