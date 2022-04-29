@@ -77,7 +77,7 @@ export default Component => props => {
         }
       }
       else {
-        console.log(authState);
+        console.log('fell through authStateChange check with ' + authState);
       }
     });
   };
