@@ -170,7 +170,7 @@ export default ({ pClient, showUpload, handleClose }) => {
           itemTypeNumber = 0;
           results.push({
             date: workingDate,
-            item: workingDate.toDateString(),
+            item: '~~' + workingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
             type: 'header'
           });
         }
