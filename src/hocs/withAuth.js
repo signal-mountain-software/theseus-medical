@@ -151,7 +151,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=v22.4.25${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          `Version=v22.5.5${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -166,7 +166,7 @@ export default Component => props => {
     try {
       let user = {};
       let urlQuery = getParams();
-      if (urlQuery?.user) {        
+      if (urlQuery?.user) {
         user = {
           username: urlQuery.user,
           attributes: {
@@ -179,14 +179,14 @@ export default Component => props => {
       else {
         user = await Auth.currentAuthenticatedUser();
       }
-      if (user) { setSignedIn(true); }      
+      if (user) { setSignedIn(true); }
       else {
         enqueueSnackbar(`No authenticated user found.`, {
           variant: 'info'
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.4.25${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.5.5${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
@@ -256,7 +256,7 @@ export default Component => props => {
   const eHandler = async (data) => {
     switch (data.code) {
       case 'NotAuthorizedException': {
-        if (data.message.includes('expired')) { 
+        if (data.message.includes('expired')) {
           setMessages(`Your password has expired and must be reset`);
           break;
         };
@@ -274,7 +274,7 @@ export default Component => props => {
         }
         catch (e) {
           setMessages(data.message);
-         // setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
+          // setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
           console.log(`user ${data.message}`);
           break;
         }

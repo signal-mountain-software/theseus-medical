@@ -130,7 +130,6 @@ export default ({ patient, session }) => {
 
   const [loading, setLoading] = React.useState(true); // a flag that shows/hides loading spinner
   const [showNewFactDialog, setShowNewFactDialog] = React.useState(false); // a flag that shows/hides the NewFactDialog
-  // const [actionCancelled, setActionCancelled] = React.useState(false);
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [homeState, setHomeState] = React.useState('home');
   var actionCancelled;
@@ -241,7 +240,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = v22.4.25~${errorTime}`,
+        status: `Version = v22.5.5~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -1001,7 +1000,7 @@ export default ({ patient, session }) => {
                         }}
                         square>
                         <Tooltip
-                          enterDelay={2000}
+                          enterDelay={5000}
                           title={
                             <Typography variant='caption'>
                               {`Activity ID = ${activity.code}`}

@@ -14,6 +14,7 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
+import ShowEventActivity from '../dialogs/ShowEventActivity';
 
 import TextField from '@material-ui/core/TextField';
 
@@ -715,7 +716,7 @@ export default ({
       qualifierTable[value].value = value;
       qualifierTable[value].qualifiers.length = 1;
       if (!result.data.getPerson.location) {
-        qualifierTable[value].qualifiers.push('~~' + 'No Location given');
+        qualifierTable[value].qualifiers.push('~~No Location given');
       }
       else {
         result.data.getPerson.location.split('~').forEach(locLine => {
@@ -1161,6 +1162,16 @@ export default ({
         <ShowMenu
           pClient={session.client_id}
           showMenu={true}
+          onClose={onSave}
+        />
+      );
+    case 'show_event':
+      return (
+        <ShowEventActivity
+          pSession={session}
+          pEvent_id={defaultValue}
+          pName={message}
+          showList={true}
           onClose={onSave}
         />
       );
