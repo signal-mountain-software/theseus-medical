@@ -130,7 +130,6 @@ export default ({ patient, session }) => {
 
   const [loading, setLoading] = React.useState(true); // a flag that shows/hides loading spinner
   const [showNewFactDialog, setShowNewFactDialog] = React.useState(false); // a flag that shows/hides the NewFactDialog
-  // const [actionCancelled, setActionCancelled] = React.useState(false);
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [homeState, setHomeState] = React.useState('home');
   var actionCancelled;
@@ -1001,7 +1000,7 @@ export default ({ patient, session }) => {
                         }}
                         square>
                         <Tooltip
-                          enterDelay={2000}
+                          enterDelay={5000}
                           title={
                             <Typography variant='caption'>
                               {`Activity ID = ${activity.code}`}
