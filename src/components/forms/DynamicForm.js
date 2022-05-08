@@ -15,6 +15,7 @@ import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
+import ShowGroup from '../dialogs/ShowGroup';
 
 import TextField from '@material-ui/core/TextField';
 
@@ -1171,6 +1172,17 @@ export default ({
           pSession={session}
           pEvent_id={defaultValue}
           pName={message}
+          showList={true}
+          onClose={onSave}
+        />
+      );
+    case 'show_groups':
+      return (
+        <ShowGroup 
+          pSession={session}
+          pGroup_id={defaultValue}
+          pGroup_name={message}
+          peopleList={values}
           showList={true}
           onClose={onSave}
         />

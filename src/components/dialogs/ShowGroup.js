@@ -11,8 +11,9 @@ import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import EventActivityForm from '../forms/EventActivityForm';
-import ActivityFilter from '../forms/ActivityFilter';
+import GroupForm from '../forms/GroupForm';
+import GroupFilter from '../forms/GroupFilter';
+import PersonFilter from '../forms/PersonFilter';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -63,13 +64,14 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
-  const [eventActivityList, setEventActivityList] = React.useState([]);
-  const [showEventSelect, setShowEventSelect] = React.useState(false);
-  const [entireActivityList, setEntireActivityList] = React.useState();
-  const [menuName, setMenuName] = React.useState('');
+export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClose }) => {
+  const [groupMemberList, setGroupMemberList] = React.useState([]);
+  const [groupsManagedObject, setGroupsManagedObject] = React.useState([]);
+  const [showGroupSelect, setShowGroupSelect] = React.useState(false);
+  const [showAddPrompt, setShowAddPrompt] = React.useState(false);
 
-  const [entireActivityObject, setEntireActivityObject] = React.useState();
+  const [groupName, setGroupName] = React.useState();
+  const [groupID, setGroupID] = React.useState();
 
   const classes = useStyles();
 
@@ -89,7 +91,7 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
   });
 
   let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:EventActivityMaintenance',
+    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
     InvocationType: 'RequestResponse',
     LogType: 'Tail',
     Payload: ''
@@ -97,77 +99,95 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const getEventActivitiesList = async (pEvent) => {
+  const getGroupMemberList = async (pGroup) => {
     let invokeFailed = false;
     params.Payload = JSON.stringify({
-      action: "get_activities",
+      action: "get_group_members",
       clientId: pSession.client_id,
       request: {
-        "event_id": pEvent,
+        "group_id": pGroup,
       }
     });
     const fResp = await lambda
       .invoke(params)
       .promise()
       .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving activity list.  Error is ${err.message}`, {
+        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
           variant: 'error'
         });
         invokeFailed = true;
       });
     if (!invokeFailed) {
-      let getEventActivities = JSON.parse(fResp.Payload);
-      if (getEventActivities.status === 200) {
-        setEventActivityList(getEventActivities.body);
-        return eventActivityList;
+      let groupMemberList = JSON.parse(fResp.Payload);
+      if (groupMemberList.status === 200) {
+        setGroupMemberList(groupMemberList.body);
+        return groupMemberList;
       }
     };
     return [];
   };
 
-  const getEventListFromMenu = async (pMenu) => {
-    let listForEdit = entireActivityObject[pMenu].map(aRec => {
-      return {
-        activity_code: aRec.aCode,
-        activity_name: aRec.aName,
-        client_event_id: 'na'
-      };
-    });
-    setEventActivityList(listForEdit);
-    return eventActivityList;
-  };
-
-  const buildDetailedMenuList = async () => {
+  const handleAddPersonToGroup = async (pPerson, pGroup) => { 
     let invokeFailed = false;
     params.Payload = JSON.stringify({
-      action: "build_menu",
+      action: "add_person_to_group",
       clientId: pSession.client_id,
       request: {
-        "person_id": pSession.patient_id,
+        "person_id": pPerson,
+        "group_id": pGroup,
+        "current_group_members": groupMemberList
       }
     });
     const fResp = await lambda
       .invoke(params)
       .promise()
       .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving activity list.  Error is ${err.message}`, {
+        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
           variant: 'error'
         });
         invokeFailed = true;
       });
     if (!invokeFailed) {
-      let getActivityMenus = JSON.parse(fResp.Payload);
-      if (getActivityMenus.status === 200) {
-        setEntireActivityList(Object.keys(getActivityMenus.body).sort());
-        setEntireActivityObject(getActivityMenus.body);
-        setShowEventSelect(true);
+      let groupMemberList = JSON.parse(fResp.Payload);
+      if (groupMemberList.status === 200) {
+        setGroupMemberList(groupMemberList.body);
+        return groupMemberList;
       }
     };
+    return [];
+  }
+
+  const getGroupsManagedObject = async (pPerson) => {
+    let invokeFailed = false;
+    params.Payload = JSON.stringify({
+      action: "get_groups_managed",
+      clientId: pSession.client_id,
+      request: {
+        "person_id": pPerson,
+      }
+    });
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
+          variant: 'error'
+        });
+        invokeFailed = true;
+      });
+    if (!invokeFailed) {
+      let groupsManagedReturn = JSON.parse(fResp.Payload);
+      if (groupsManagedReturn.status === 200) {
+        setGroupsManagedObject(groupsManagedReturn.body);
+        return groupsManagedReturn.body;
+      }
+    };
+    return [];
   };
 
   const handleAbort = () => {
     setChanges(false);
-    setShowEventSelect(true);
+    setShowGroupSelect(true);
     // onClose();
   };
 
@@ -177,19 +197,17 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
     let aList = [];
     let response = (
       async () => {
-        aList = await getEventActivitiesList(pEvent_id);
+        aList = await getGroupsManagedObject(pSession.patient_id);
       }
     );
-    if (!eventActivityList || eventActivityList.length === 0) {
-      if (pEvent_id) {
+    if (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0) {
+      if (pSession.patient_id) {
         response();
         console.log(aList);
-      }
-      else { 
-        buildDetailedMenuList();
+        setShowGroupSelect(true);
       }
     }
-  }, [pEvent_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   return (
@@ -219,19 +237,20 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
             alignItems='flex-start'
           >
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {menuName || `Activity Maintenance`}
+              {groupName || `Group Maintenance`}
             </DialogContentText>
             <DialogContentText className={classes.subDescriptionText}>
-              {eventActivityList.length === 0 ? 'Getting Activities' : ``}
+              {groupMemberList.length === 0 ? 'Getting Group' : ``}
             </DialogContentText>
           </Box>
         </Box>
         <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-          <EventActivityForm
-            eventActivityList={eventActivityList}
+          <GroupForm
+            groupMemberList={groupMemberList}
             pClient={pSession.client_id}
+            pGroup={groupID}
             onReset={async () => {
-              await getEventActivitiesList(pEvent_id);
+              await getGroupMemberList(groupID);
             }}
           />
         </DialogContent>
@@ -239,22 +258,44 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
           <Button className={classes.reject} size='small' variant='contained' onClick={handleAbort}>
             {'Done'}
           </Button>
+          <Button
+            className={classes.confirm}
+            size='small'
+            variant='contained'
+            onClick={() => {
+              setShowAddPrompt(true);
+            }}>
+            {'Add Member'}
+          </Button>
         </DialogActions>
-        {showEventSelect &&
-          <ActivityFilter
-            activityList={entireActivityList}
-            activityObject={entireActivityObject}
+        {showGroupSelect &&
+          <GroupFilter
+            groupsManagedObject={groupsManagedObject}
             onCancel={() => {
-              setShowEventSelect(false);
+              setShowGroupSelect(false);
               onClose();
             }}
-            onSelect={(selectedActivity) => {
-              setShowEventSelect(false);
-              setMenuName(selectedActivity);
-              getEventListFromMenu(selectedActivity);
+            onSelect={(selectedGroup) => {
+              setShowGroupSelect(false);
+              setGroupName(selectedGroup);
+              setGroupID(groupsManagedObject[selectedGroup]);
+              getGroupMemberList(groupsManagedObject[selectedGroup]);
             }}
           >
-          </ActivityFilter>
+          </GroupFilter>
+        }
+        {showAddPrompt &&
+          <PersonFilter
+            peopleList={peopleList}
+            onCancel={() => {
+              setShowAddPrompt(false);
+            }}
+            onSelect={(selectedPerson) => {
+              setShowAddPrompt(false);
+              handleAddPersonToGroup(selectedPerson.split(':')[1], groupID)
+            }}
+          >
+          </PersonFilter>
         }
       </Dialog>
     )
