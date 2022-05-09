@@ -77,7 +77,7 @@ const handleWriteError = async (parmMessage) => {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = v22.5.5~${errorTime}`,
+    status: `Version = v22.5.10~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',

@@ -151,7 +151,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=v22.5.5${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          `Version=v22.5.10${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -186,7 +186,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.5.5${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (v22.5.10${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
