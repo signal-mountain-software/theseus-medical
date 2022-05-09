@@ -1,9 +1,6 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
-import { API, graphqlOperation } from 'aws-amplify';
-
-import { getActivityData } from '../../graphql/queries';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';

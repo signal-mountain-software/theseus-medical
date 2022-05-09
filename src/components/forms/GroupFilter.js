@@ -1,0 +1,284 @@
+import React from 'react';
+
+import Paper from '@material-ui/core/Paper';
+import TextField from '@material-ui/core/TextField';
+
+import { Lambda } from 'aws-sdk';
+
+import Box from '@material-ui/core/Box';
+import Dialog from '@material-ui/core/Dialog';
+import DialogActions from '@material-ui/core/DialogActions';
+import DialogContentText from '@material-ui/core/DialogContentText';
+import Button from '@material-ui/core/Button';
+import IconButton from '@material-ui/core/IconButton';
+
+import Slide from '@material-ui/core/Slide';
+import Typography from '@material-ui/core/Typography';
+import makeStyles from '@material-ui/core/styles/makeStyles';
+
+import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+
+import List from '@material-ui/core/List';
+import ListItem from '@material-ui/core/ListItem';
+import CircularProgress from '@material-ui/core/CircularProgress';
+
+import AVATextInput from '../forms/AVATextInput';
+
+const useStyles = makeStyles(theme => ({
+  formControl: {
+    marginTop: theme.spacing(4),
+    marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    paddingTop: 3,
+  },
+  buttonArea: {
+    justifyContent: 'center',
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1)
+  },
+  formControlLbl: {
+    margin: 0,
+    paddingTop: 0,
+    height: theme.spacing(2.5),
+  },
+  freeInput: {
+    marginLeft: '25px',
+    marginRight: 2,
+    marginBottom: theme.spacing(2),
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingBottom: theme.spacing(5),
+    width: '60%',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
+    minHeight: theme.typography.fontSize * 2.8,
+  },
+  reject: {
+    backgroundColor: theme.palette.reject[theme.palette.type],
+  },
+  title: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '1.3rem',
+  },
+  titleText: {
+    fontSize: '1.3rem',
+  },
+  dialogBox: {
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    minWidth: '100%',
+  },
+  subDescriptionText: {
+    marginLeft: theme.spacing(3),
+    marginBottom: theme.spacing(1),
+    marginRight: theme.spacing(5),
+    fontSize: '0.8rem',
+  },
+
+  picture: {
+    width: theme.spacing(16),
+    height: theme.spacing(16),
+    [theme.breakpoints.down('xs')]: {
+      width: theme.spacing(8),
+      height: theme.spacing(8),
+    },
+  },
+  photoButton: {
+    alignSelf: 'center',
+    size: 'sm',
+    variant: 'outlined',
+    verticalAlign: 'middle',
+  },
+  defaultButton: {
+    alignSelf: 'end',
+    variant: 'outlined',
+    verticalAlign: 'end',
+    backgroundColor: theme.palette.confirm[theme.palette.type],
+  },
+  topButton: {
+    variant: 'outlined',
+    backgroundColor: theme.palette.primary[theme.palette.type],
+  },
+  greenButton: {
+    variant: 'outlined',
+    backgroundColor: 'green',
+  },
+  resetButton: {
+    variant: 'outlined',
+    backgroundColor: theme.palette.confirm[theme.palette.type],
+    marginRight: 10,
+  },
+  infoButton: {
+    variant: 'outlined',
+    backgroundColor: theme.palette.info[theme.palette.type],
+    marginRight: 10,
+    paddingRight: 10,
+    marginLeft: 10,
+    paddingLeft: 10,
+  },
+  radioText: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
+  listItemAVA: {
+    fontSize: theme.typography.fontSize * 1.5,
+  },
+  idText: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginTop: 10,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
+  radioButton: {
+    marginTop: 0,
+    marginRight: 0,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 5,
+  },
+}));
+
+const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
+
+export default ({ pSession, groupsManagedObject, onCancel, onSelect }) => {
+  const [activity_filter, setActivityFilter] = React.useState('');
+  const [promptForName, setPromptForName] = React.useState(false);
+
+  const classes = useStyles();
+
+  const handleChangeActivityFilter = event => {
+    setActivityFilter(event.target.value);
+  };
+
+  const handleCreateAGroup = async pGroupName => {
+    const lambda = new Lambda({
+      region: 'us-east-1',
+      accessKeyId: process.env.REACT_APP_AVA_ID,
+      secretAccessKey: process.env.REACT_APP_AVA_KEY,
+    });
+
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: ''
+    };
+
+    params.Payload = JSON.stringify({
+      action: "create_new_group",
+      clientId: pSession.client_id,
+      request: {
+        "person_id": pSession.patient_id,
+        "group_name": pGroupName
+      }
+    });
+    await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log(err);
+      });
+  };
+
+  // **************************
+
+  return (
+    <Dialog
+      open={true}
+      p={2}
+      height={250}
+      fullWidth
+      variant={'elevation'} elevation={2}
+      TransitionComponent={Transition}
+    >
+      {Object.keys(groupsManagedObject).length === 0
+        ?
+        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+          <Typography className={classes.formControl} variant='h5' >
+            {'Building the Group List'}
+          </Typography>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <CircularProgress />
+          </div>
+        </Box>
+        :
+        <React.Fragment>
+          <DialogContentText
+            className={classes.title}
+            id='scroll-dialog-title'
+          >
+            {'Select a group from this list'}
+          </DialogContentText>
+          <TextField
+            id='Type a few letters to filter the list'
+            value={activity_filter}
+            onChange={handleChangeActivityFilter}
+            className={classes.freeInput}
+            label='Type a few letters to filter the list'
+            variant={'standard'}
+            autoComplete='off'
+          />
+          <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
+            <List component='nav'>
+              {Object.keys(groupsManagedObject).sort().map((listEntry, x) => (
+                (
+                  listEntry.toLowerCase().includes(activity_filter.toLowerCase()) ?
+                    <ListItem
+                      key={'activity-list_' + listEntry}
+                      onClick={() => {
+                        onSelect(listEntry);
+                      }}
+                      button
+                    >
+                      <Typography className={classes.listItemAVA}>
+                        {listEntry}
+                      </Typography>
+                    </ListItem>
+                    : null
+                )
+              ))
+              }
+              {promptForName &&
+                <AVATextInput
+                promptText="Enter a Name for the Group you're creating"
+                buttonText='Create'
+                  onCancel={() => { setPromptForName(false); }}
+                  onSave={(newGroupName) => {
+                    setPromptForName(false);
+                    handleCreateAGroup(newGroupName);
+                  }}
+                />
+              }
+            </List>
+          </Paper>
+        </React.Fragment>
+      }
+      <DialogActions className={classes.buttonArea} >
+        <Button
+          className={classes.reject}
+          size='small'
+          variant='contained'
+          onClick={() => {
+            onCancel();
+          }}>
+          {'Done'}
+        </Button>
+        <IconButton
+          onClick={() => {
+            setPromptForName(true);
+          }}
+          variant='contained'
+          size='small'>
+          <AddCircleOutlineIcon />
+        </IconButton>
+      </DialogActions>
+    </Dialog>
+  );
+};

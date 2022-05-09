@@ -291,7 +291,7 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(false);
     setResettingPwd(false);
     setPwdConfirmed(false);
-    onClose();
+    onClose(updatePerson);
   };
 
   const handleResetPassword1 = event => {
