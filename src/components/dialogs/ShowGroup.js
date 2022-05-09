@@ -5,19 +5,25 @@ import { useSnackbar } from 'notistack';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogContent from '@material-ui/core/DialogContent';
-import DialogActions from '@material-ui/core/DialogActions';
-import DialogContentText from '@material-ui/core/DialogContentText';
-import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import CircularProgress from '@material-ui/core/CircularProgress';
+import Typography from '@material-ui/core/Typography';
+
 import GroupForm from '../forms/GroupForm';
 import GroupFilter from '../forms/GroupFilter';
-import PersonFilter from '../forms/PersonFilter';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
+  formControl: {
+    marginTop: theme.spacing(4),
+    marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    paddingTop: 3,
+  },
   pageHead: {
     paddingTop: theme.spacing(1),
     paddingLeft: theme.spacing(1),
@@ -33,14 +39,13 @@ const useStyles = makeStyles(theme => ({
   },
   subDescriptionText: {
     marginLeft: theme.spacing(3),
+    marginTop: theme.spacing(3),
     marginBottom: theme.spacing(1),
     marginRight: theme.spacing(5),
     fontSize: '0.8rem',
   },
   freeInput: {
     marginLeft: 0,
-    marginBottom: '10px',
-    marginRight: '2px',
     paddingLeft: 0,
     paddingRight: 0,
     verticalAlign: 'middle',
@@ -68,7 +73,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   const [groupMemberList, setGroupMemberList] = React.useState([]);
   const [groupsManagedObject, setGroupsManagedObject] = React.useState([]);
   const [showGroupSelect, setShowGroupSelect] = React.useState(false);
-  const [showAddPrompt, setShowAddPrompt] = React.useState(false);
 
   const [groupName, setGroupName] = React.useState();
   const [groupID, setGroupID] = React.useState();
@@ -101,6 +105,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const getGroupMemberList = async (pGroup) => {
     let invokeFailed = false;
+    setGroupMemberList([]);
     params.Payload = JSON.stringify({
       action: "get_group_members",
       clientId: pSession.client_id,
@@ -126,36 +131,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     };
     return [];
   };
-
-  const handleAddPersonToGroup = async (pPerson, pGroup) => { 
-    let invokeFailed = false;
-    params.Payload = JSON.stringify({
-      action: "add_person_to_group",
-      clientId: pSession.client_id,
-      request: {
-        "person_id": pPerson,
-        "group_id": pGroup,
-        "current_group_members": groupMemberList
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let groupMemberList = JSON.parse(fResp.Payload);
-      if (groupMemberList.status === 200) {
-        setGroupMemberList(groupMemberList.body);
-        return groupMemberList;
-      }
-    };
-    return [];
-  }
 
   const getGroupsManagedObject = async (pPerson) => {
     let invokeFailed = false;
@@ -221,55 +196,43 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       >
         <Box
           display='flex'
+          grow={1}
+          style={{ width: '90%' }}
           mb={0}
-          flexDirection='row'
-          className={classes.pageHead}
-          justifyContent='flex-start'
-          alignItems='center'
+          flexDirection='column'
+          justifyContent='center'
+          alignItems='flex-start'
         >
-          <Box
-            display='flex'
-            grow={1}
-            style={{ width: '90%' }}
-            mb={0}
-            flexDirection='column'
-            justifyContent='center'
-            alignItems='flex-start'
-          >
-            <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {groupName || `Group Maintenance`}
-            </DialogContentText>
-            <DialogContentText className={classes.subDescriptionText}>
-              {groupMemberList.length === 0 ? 'Getting Group' : ``}
-            </DialogContentText>
-          </Box>
+          <Typography className={classes.formControl} variant='h5' >
+            {groupName || 'Group Maintenance'}
+          </Typography>
         </Box>
         <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-          <GroupForm
-            groupMemberList={groupMemberList}
-            pClient={pSession.client_id}
-            pGroup={groupID}
-            onReset={async () => {
-              await getGroupMemberList(groupID);
-            }}
-          />
+          {groupMemberList.length === 0 && groupID
+            ?
+            <Box display='flex' marginBottom={5} flexDirection='column' justifyContent='center' alignItems='center'>
+              <Typography className={classes.formControl} variant='h5' >
+                {'Building the Member List'}
+              </Typography>
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <CircularProgress />
+              </div>
+            </Box>
+            :
+            <GroupForm
+              groupMemberList={groupMemberList}
+              peopleList={peopleList}
+              pPatient={pSession.patient_id}
+              pClient={pSession.client_id}
+              pGroup={groupID}
+              pGroupName={groupName}
+              onReset={handleAbort}
+            />
+          }
         </DialogContent>
-        <DialogActions style={{ justifyContent: 'center' }}>
-          <Button className={classes.reject} size='small' variant='contained' onClick={handleAbort}>
-            {'Done'}
-          </Button>
-          <Button
-            className={classes.confirm}
-            size='small'
-            variant='contained'
-            onClick={() => {
-              setShowAddPrompt(true);
-            }}>
-            {'Add Member'}
-          </Button>
-        </DialogActions>
         {showGroupSelect &&
           <GroupFilter
+            pSession={pSession}
             groupsManagedObject={groupsManagedObject}
             onCancel={() => {
               setShowGroupSelect(false);
@@ -283,19 +246,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             }}
           >
           </GroupFilter>
-        }
-        {showAddPrompt &&
-          <PersonFilter
-            peopleList={peopleList}
-            onCancel={() => {
-              setShowAddPrompt(false);
-            }}
-            onSelect={(selectedPerson) => {
-              setShowAddPrompt(false);
-              handleAddPersonToGroup(selectedPerson.split(':')[1], groupID)
-            }}
-          >
-          </PersonFilter>
         }
       </Dialog>
     )

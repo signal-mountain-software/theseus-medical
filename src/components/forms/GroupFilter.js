@@ -3,23 +3,39 @@ import React from 'react';
 import Paper from '@material-ui/core/Paper';
 import TextField from '@material-ui/core/TextField';
 
+import { Lambda } from 'aws-sdk';
+
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import Button from '@material-ui/core/Button';
+import IconButton from '@material-ui/core/IconButton';
+
 import Slide from '@material-ui/core/Slide';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+
+import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
+import AVATextInput from '../forms/AVATextInput';
+
 const useStyles = makeStyles(theme => ({
   formControl: {
-    margin: 2,
+    marginTop: theme.spacing(4),
+    marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
     paddingTop: 3,
+  },
+  buttonArea: {
+    justifyContent: 'center',
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1)
   },
   formControlLbl: {
     margin: 0,
@@ -28,12 +44,12 @@ const useStyles = makeStyles(theme => ({
   },
   freeInput: {
     marginLeft: '25px',
-    marginTop: '5px',
     marginRight: 2,
-    marginBottom: '10px',
+    marginBottom: theme.spacing(2),
     paddingLeft: 0,
     paddingRight: 0,
-    width: '90%',
+    paddingBottom: theme.spacing(5),
+    width: '60%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
     minHeight: theme.typography.fontSize * 2.8,
@@ -131,13 +147,44 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ groupsManagedObject, onCancel, onSelect }) => {
+export default ({ pSession, groupsManagedObject, onCancel, onSelect }) => {
   const [activity_filter, setActivityFilter] = React.useState('');
+  const [promptForName, setPromptForName] = React.useState(false);
 
   const classes = useStyles();
 
   const handleChangeActivityFilter = event => {
     setActivityFilter(event.target.value);
+  };
+
+  const handleCreateAGroup = async pGroupName => {
+    const lambda = new Lambda({
+      region: 'us-east-1',
+      accessKeyId: process.env.REACT_APP_AVA_ID,
+      secretAccessKey: process.env.REACT_APP_AVA_KEY,
+    });
+
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: ''
+    };
+
+    params.Payload = JSON.stringify({
+      action: "create_new_group",
+      clientId: pSession.client_id,
+      request: {
+        "person_id": pSession.patient_id,
+        "group_name": pGroupName
+      }
+    });
+    await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log(err);
+      });
   };
 
   // **************************
@@ -153,10 +200,10 @@ export default ({ groupsManagedObject, onCancel, onSelect }) => {
     >
       {Object.keys(groupsManagedObject).length === 0
         ?
-        <Box  display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
           <Typography className={classes.formControl} variant='h5' >
             {'Building the Group List'}
-           </Typography>
+          </Typography>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <CircularProgress />
           </div>
@@ -169,16 +216,16 @@ export default ({ groupsManagedObject, onCancel, onSelect }) => {
           >
             {'Select a group from this list'}
           </DialogContentText>
+          <TextField
+            id='Type a few letters to filter the list'
+            value={activity_filter}
+            onChange={handleChangeActivityFilter}
+            className={classes.freeInput}
+            label='Type a few letters to filter the list'
+            variant={'standard'}
+            autoComplete='off'
+          />
           <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
-            <TextField
-              id='Type a few letters to filter the list'
-              value={activity_filter}
-              onChange={handleChangeActivityFilter}
-              className={classes.freeInput}
-              label='Type a few letters to filter the list'
-              variant={'standard'}
-              autoComplete='off'
-            />
             <List component='nav'>
               {Object.keys(groupsManagedObject).sort().map((listEntry, x) => (
                 (
@@ -196,12 +243,24 @@ export default ({ groupsManagedObject, onCancel, onSelect }) => {
                     </ListItem>
                     : null
                 )
-              ))}
+              ))
+              }
+              {promptForName &&
+                <AVATextInput
+                promptText="Enter a Name for the Group you're creating"
+                buttonText='Create'
+                  onCancel={() => { setPromptForName(false); }}
+                  onSave={(newGroupName) => {
+                    setPromptForName(false);
+                    handleCreateAGroup(newGroupName);
+                  }}
+                />
+              }
             </List>
           </Paper>
         </React.Fragment>
       }
-      <DialogActions style={{ justifyContent: 'center' }}>
+      <DialogActions className={classes.buttonArea} >
         <Button
           className={classes.reject}
           size='small'
@@ -211,6 +270,14 @@ export default ({ groupsManagedObject, onCancel, onSelect }) => {
           }}>
           {'Done'}
         </Button>
+        <IconButton
+          onClick={() => {
+            setPromptForName(true);
+          }}
+          variant='contained'
+          size='small'>
+          <AddCircleOutlineIcon />
+        </IconButton>
       </DialogActions>
     </Dialog>
   );
