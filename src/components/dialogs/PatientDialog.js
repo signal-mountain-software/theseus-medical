@@ -406,55 +406,6 @@ export default ({ patient, picture, open, onClose }) => {
             flexDirection='row'
             justifyContent='center'
             alignItems='center'>
-            <Box flexGrow={1} mr={3}
-              display="flex"
-              flexDirection='column'
-              alignItems="center"
-              justifyContent="center"
-            >
-              <Box
-                component="img"
-                minWidth={150}
-                maxWidth={150}
-                alt='No photo available'
-                src={!patient.person_id.startsWith('*NEW~') ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
-              />
-              <br />
-              {!patient.person_id.startsWith('*NEW~') ?
-                <Button
-                  className={classes.photoButton}
-                  variant='outlined'
-                  color='primary'
-                  hidden={patient.person_id.startsWith('*NEW~')}
-                  size='small'
-                  startIcon={<CloudUploadIcon />}
-                  onClick={handlePhotoUpload}
-                >
-                  <Typography>Update photo?</Typography>
-                </Button>
-                : null
-              }
-              <input
-                type="file"
-                style={{ display: 'none' }}
-                ref={hiddenFileInput}
-                onChange={async (target) => {
-                  const pFile = {
-                    Bucket: 'theseus-medical-storage',
-                    Key: 'public/patients/' + patient.person_id + '.jpg',
-                    Body: target.target.files[0],
-                    ACL: 'public-read-write',
-                  };
-                  enqueueSnackbar(`Your photo is being updated!`, { variant: 'success', persist: false });
-                  s3.upload(pFile, function (err, data) {
-                    if (err) {
-                      enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                    }
-                  });
-                }
-                }
-              />
-            </Box>
             <Box flexGrow={2} display='flex' flexDirection='column'>
               <form className={classes.root} noValidate autoComplete='off'>
                 <div>
@@ -527,6 +478,73 @@ export default ({ patient, picture, open, onClose }) => {
             numberRows={patient.time_based_rules?.length || 1}
           />
           : null}
+        <Box m={2}>
+          <Paper component={Box} variant={'outlined'}>
+            <Box mt={1} py={1} px={3} borderBottom={2}>
+              <Box flexGrow={1}>
+                <Typography variant='h6'>Photo</Typography>
+              </Box>
+            </Box>
+          </Paper>
+          <Paper
+            component={Box}
+            p={3}
+            variant='outlined'
+            display='flex'
+            flexDirection='row'
+            justifyContent='center'
+            alignItems='center'>
+            <Box flexGrow={1} mr={3}
+              display="flex"
+              flexDirection='column'
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Box
+                component="img"
+                minWidth={150}
+                maxWidth={150}
+                alt='No photo available'
+                src={!patient.person_id.startsWith('*NEW~') ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
+              />
+              <br />
+              {!patient.person_id.startsWith('*NEW~') ?
+                <Button
+                  className={classes.photoButton}
+                  variant='outlined'
+                  color='primary'
+                  hidden={patient.person_id.startsWith('*NEW~')}
+                  size='small'
+                  startIcon={<CloudUploadIcon />}
+                  onClick={handlePhotoUpload}
+                >
+                  <Typography>Update photo?</Typography>
+                </Button>
+                : null
+              }
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                ref={hiddenFileInput}
+                onChange={async (target) => {
+                  const pFile = {
+                    Bucket: 'theseus-medical-storage',
+                    Key: 'public/patients/' + patient.person_id + '.jpg',
+                    Body: target.target.files[0],
+                    ACL: 'public-read-write',
+                  };
+                  enqueueSnackbar(`Your photo is being updated!`, { variant: 'success', persist: false });
+                  s3.upload(pFile, function (err, data) {
+                    if (err) {
+                      enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+                    }
+                  });
+                }
+                }
+              />
+            </Box>
+          </Paper>
+        </Box >
         <ClientsSection person={patient} updateGroups={handleChangeGroups} />
         <RelationshipSection person={patient} />
         <Toolbar>

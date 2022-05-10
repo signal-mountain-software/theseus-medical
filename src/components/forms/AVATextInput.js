@@ -1,7 +1,6 @@
 import React from 'react';
 
 import Input from '@material-ui/core/Input';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -65,8 +64,6 @@ export default ({ promptText, buttonText, onCancel, onSave }) => {
   const classes = useStyles();
 
   const [textInput, setTextInput] = React.useState();
-
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
   const handleChangeTextInput = event => {
     setTextInput(event.target.value);
