@@ -1,10 +1,9 @@
 import React from 'react';
 
-import TextField from '@material-ui/core/TextField';
+import Input from '@material-ui/core/Input';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContentText from '@material-ui/core/DialogContentText';
 
 import Paper from '@material-ui/core/Paper';
 import Box from '@material-ui/core/Box';
@@ -12,18 +11,19 @@ import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import { Typography } from '@material-ui/core';
 
 const useStyles = makeStyles(theme => ({
   freeInput: {
-    marginLeft: '25px',
-    marginTop: '5px',
-    marginRight: 2,
-    marginBottom: '10px',
-    paddingLeft: 0,
-    paddingRight: 0,
-    width: '90%',
-    verticalAlign: 'middle',
-    fontSize: theme.typography.fontSize * 0.4,
+    marginLeft: 20,
+    marginTop: 20,
+    marginRight: 20,
+    marginBottom: 20,
+    paddingLeft: 5,
+    paddingRight: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: theme.typography.fontSize,
     minHeight: theme.typography.fontSize * 2.8,
   },
   title: {
@@ -34,12 +34,26 @@ const useStyles = makeStyles(theme => ({
     fontSize: '1.3rem',
     fotWeight: 'bold'
   },
-  reject: {
-    backgroundColor: theme.palette.reject[theme.palette.type],
+  buttonArea: {
+    justifyContent: 'center',
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1)
   },
-  greenButton: {
+  rowButtonConfirm: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
     variant: 'outlined',
-    backgroundColor: 'green',
+    textTransform: 'none',
+    size: 'small',
+    backgroundColor: theme.palette.confirm[theme.palette.type],
+  },
+  rowButtonReject: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    backgroundColor: theme.palette.reject[theme.palette.type],
   },
 }));
 
@@ -65,26 +79,29 @@ export default ({ promptText, buttonText, onCancel, onSave }) => {
       variant={'elevation'} elevation={2}
       TransitionComponent={Transition}
     >
-      <DialogContentText
+      <Typography
         className={classes.title}
         id='scroll-dialog-title'
       >
         {promptText}
-      </DialogContentText>
-      <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
-        <TextField
-          id={promptText}
-          value={textInput}
-          multiline
-          onChange={handleChangeTextInput}
-          className={classes.freeInput}
-          variant={'standard'}
-          autoComplete='off'
-        />
+      </Typography>
+      <Paper component={Box} variant={'standard'} elevation={0} width='90%' overflow='auto' square>
+        <Box pl={5} pr={5} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+          <Input
+            id={promptText}
+            value={textInput}
+            multiline
+            fullWidth
+            onChange={handleChangeTextInput}
+            className={classes.freeInput}
+            variant={'standard'}
+            autoComplete='off'
+          />
+        </Box>
       </Paper>
-      <DialogActions style={{ justifyContent: 'center' }}>
+      <DialogActions className={classes.buttonArea}>
         <Button
-          className={classes.reject}
+          className={classes.rowButtonReject}
           size='small'
           variant='contained'
           onClick={() => {
@@ -93,7 +110,7 @@ export default ({ promptText, buttonText, onCancel, onSave }) => {
           {'Back'}
         </Button>
         <Button
-          className={classes.greenButton}
+          className={classes.rowButtonConfirm}
           size='small'
           variant='contained'
           onClick={() => {

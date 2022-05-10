@@ -2,11 +2,16 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 
-import Grid from '@material-ui/core/Grid';
-import GridList from '@material-ui/core/GridList';
-import GridListTile from '@material-ui/core/GridListTile';
+
+import List from '@material-ui/core/List';
+import ListItem from '@material-ui/core/ListItem';
+
+import Collapse from '@material-ui/core/Collapse';
+import MoreHorizIcon from '@material-ui/icons/MoreHoriz';
+import CloseIcon from '@material-ui/icons/HighlightOff';
 
 import Button from '@material-ui/core/Button';
+import IconButton from '@material-ui/core/IconButton';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -20,12 +25,13 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import TextField from '@material-ui/core/TextField';
 
-import IconButton from '@material-ui/core/IconButton';
 import EditIcon from '@material-ui/icons/Edit';
 import DeleteIcon from '@material-ui/icons/Delete';
 import PrintIcon from '@material-ui/icons/Print';
 import StorageOutlined from '@material-ui/icons/StorageOutlined';
 import SendIcon from '@material-ui/icons/Send';
+
+import GroupAddIcon from '@material-ui/icons/GroupAdd';
 
 import PatientDialog from '../dialogs/PatientDialog';
 import PersonFilter from '../forms/PersonFilter';
@@ -33,6 +39,10 @@ import AVAConfirm from './AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
 
 const useStyles = makeStyles(theme => ({
+  page: {
+    height: 950,
+    maxWidth: 1000
+  },
   freeInput: {
     marginLeft: '25px',
     marginRight: 2,
@@ -56,11 +66,51 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
   },
+  rowButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'contained',
+    size: 'small'
+  },
+  rowButtonDefault: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.primary[theme.palette.type],
+  },
+  rowButtonRed: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.reject[theme.palette.type],
+  },
+  rowButtonGreen: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.confirm[theme.palette.type],
+  },
+  rowButtonBlue: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.info[theme.palette.type],
+  },
+  listItem: {
+    justifyContent: 'space-between',
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1)
+  },
   preferenceLine: {
     fontSize: theme.typography.fontSize * 0.8,
-  },
-  redBackground: {
-    background: 'red',
   },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
@@ -78,7 +128,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, onReset }) => {
+export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, isMobile, onReset }) => {
 
   const classes = useStyles();
 
@@ -98,6 +148,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
+  const [open, setOpen] = React.useState([]);
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -121,6 +172,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   const handleAddPersonToGroup = async (pPerson, pGroup) => {
     let invokeFailed = false;
 
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
     params.Payload = JSON.stringify({
       action: "add_person_to_group",
       clientId: pClient,
@@ -150,6 +202,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   };
 
   const handleRemoveGroupMember = async (pPerson, pIndex) => {
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
     params.Payload = JSON.stringify({
       action: "remove_person_from_group",
       clientId: pClient,
@@ -170,7 +223,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     let tempMemberList = workingMemberList;
     tempMemberList.splice(pIndex, 1);
     setGroupMemberList(tempMemberList);
-    setForceRedisplay(true);
+    setForceRedisplay(!forceRedisplay);
     return tempMemberList;
   };
 
@@ -193,7 +246,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           variant: 'error'
         });
       });
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
     enqueueSnackbar(`Directory Print request for ${pGroupName} has been submitted.`, {
       variant: 'success'
     });
@@ -216,7 +268,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           variant: 'error'
         });
       });
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
     enqueueSnackbar(`Roster report request for ${pGroupName} has been submitted.`, {
       variant: 'success'
     });
@@ -224,7 +275,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
   const handleSendMessage = async (pMessage, pRecipient = null) => {
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-    if (!pRecipient) { pRecipient = pGroupName + ':group=' + pClient + '~' + pGroup }
+    if (!pRecipient) { pRecipient = pGroupName + ':group=' + pClient + '~' + pGroup; }
     params.Payload = JSON.stringify({
       "body": {
         "client": pClient,
@@ -240,16 +291,15 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           variant: 'error'
         });
       });
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
     enqueueSnackbar(`Sent "${pMessage}" to everyone in ${pGroupName}.`, {
       variant: 'success'
     });
   };
 
-  const handlePatientEdit = async (pPerson, pIndex) => {
+  const handlePatientEdit = async (pPerson) => {
     let invokeFailed = false;
-    setEditIndex(pIndex);
 
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
     params.Payload = JSON.stringify({
       action: "get_person_details",
       clientId: pClient,
@@ -273,12 +323,18 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     };
   };
 
+  const toggleOpen = pIndex => {
+    let workingOpen = open;
+    workingOpen[pIndex] = !workingOpen[pIndex];
+    setOpen(workingOpen);
+    setForceRedisplay(!forceRedisplay);
+  };
+
 
   return (
     <Dialog
       open={true || forceRedisplay}
       p={2}
-      height={250}
       fullWidth
       variant={'elevation'} elevation={2}
       TransitionComponent={Transition}
@@ -292,203 +348,301 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
             {`Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`}
           </DialogContentText>
           <TextField
-            id='Type a few letters to filter the list'
+            id='List Filter'
             value={person_filter}
             onChange={handleChangePersonFilter}
             className={classes.freeInput}
-            label='Type a few letters to filter the list'
+            label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
             variant={'standard'}
             autoComplete='off'
           />
-          <Paper component={Box} variant='outlined' overflow='auto' square>
-            <Box >
-              <Grid item>
-                <GridList cellHeight='auto' cols={1} key='gridList'>
-                  {workingMemberList.map((this_item, index) => (
-                    (!this_item.search_data ||
-                      this_item.search_data.includes(person_filter.toLowerCase()) ?
-                      <React-fragment key={this_item.person_id + 'frag' + index} >
-                        <GridListTile
-                          key={this_item.person_id + 'r' + index}
-                          style={{ marginBottom: '0px', marginTop: '0px' }}
-                          cols={1}
-                        >
-                          <Paper
-                            component={Box}
-                            p={2}
-                            mt={0} mb={1}
-                            style={{ marginBottom: '0px', marginTop: '5px' }}
-                            textAlign='left'
-                            onClick={() => {
+          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+            <List  >
 
+              {workingMemberList.map((this_item, index) => (
+                (!this_item.search_data ||
+                  this_item.search_data.includes(person_filter.toLowerCase()) ?
+                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
+                    <ListItem
+                      key={this_item.person_id + 'r' + index}
+                      className={classes.listItem}
+                      cols={1}
+                      onClick={() => { toggleOpen(index); }}
+                    >
+
+                      <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                        <Box display='flex' flexDirection='column'>
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                            <Typography variant='h5' className={classes.lastName} >{this_item.last || this_item.display_name}</Typography>
+                            <Typography variant='h5' className={classes.firstName}>{this_item.first}</Typography>
+                          </Box>
+                          <Typography variant='body1'>{this_item.location}</Typography>
+                          {(this_item.preferred_method === 'sms' ?
+                            <Typography className={classes.preferenceLine} >{`prefers text at ${this_item.cell}`}</Typography>
+                            :
+                            (this_item.preferred_method === 'voice' ?
+                              <Typography className={classes.preferenceLine} >{`prefers voice call to ${this_item.home}`}</Typography>
+                              :
+                              (this_item.preferred_method === 'email' ?
+                                <Typography className={classes.preferenceLine} >{`prefers e-Mail at ${this_item.email}`}</Typography>
+                                :
+                                (this_item.preferred_method === 'time_based' ?
+                                  <Typography className={classes.preferenceLine} >{`preference varies by time`}</Typography>
+                                  :
+                                  null))))
+                          }
+
+                        </Box>
+                      </Box>
+                      {!open[index] && <MoreHorizIcon />}
+                    </ListItem>
+                    <Collapse in={open[index]} timeout="auto" unmountOnExit>
+                      {!isMobile ?
+                        <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                          <Button
+                            onClick={() => {
+                              setEditIndex(index);
+                              handlePatientEdit(this_item.person_id);
                             }}
-                            square>
-                            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                              <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
-                                <React.Fragment key={`act_box_${this_item.person_id}`}>
-                                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                    <React.Fragment key={`normal_row_${this_item.person_id}`}>
-                                      <Box display='flex' flexGrow={1} flexDirection='column'>
-                                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                          <Typography variant='h5' className={classes.lastName} >{this_item.last || this_item.display_name}</Typography>
-                                          <Typography variant='h5' className={classes.firstName}>{this_item.first}</Typography>
-                                        </Box>
-                                        <Typography variant='body1'>{this_item.location}</Typography>
-                                        {!this_item.search_data &&
-                                          <Typography variant='body1'>{'No Search Data'}</Typography>
-                                        }
-                                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                          {(this_item.preferred_method === 'sms' ?
-                                            <Typography className={classes.preferenceLine} >{`prefers text at ${this_item.cell}`}</Typography>
-                                            :
-                                            (this_item.preferred_method === 'voice' ?
-                                              <Typography className={classes.preferenceLine} >{`prefers voice call to ${this_item.home}`}</Typography>
-                                              :
-                                              (this_item.preferred_method === 'email' ?
-                                                <Typography className={classes.preferenceLine} >{`prefers e-Mail at ${this_item.email}`}</Typography>
-                                                :
-                                                (this_item.preferred_method === 'time_based' ?
-                                                  <Typography className={classes.preferenceLine} >{`preference varies by time`}</Typography>
-                                                  :
-                                                  null))))
-                                          }
-                                        </Box>
-                                      </Box>
-                                      <IconButton
-                                        onClick={() => { handlePatientEdit(this_item.person_id, index); }}
-                                        variant='contained'
-                                        size='small'>
-                                        <EditIcon />
-                                      </IconButton>
-                                      <IconButton
-                                        onClick={() => {
-                                          setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                                          setConfirmPerson(this_item.person_id);
-                                          setConfirmIndex(index);
-                                          setDeletePending(true);
-                                          setForceRedisplay(false);
-                                        }}
-                                      >
-                                        <DeleteIcon />
-                                      </IconButton>
-                                      <IconButton
-                                        onClick={() => {
-                                          setPromptForMessage(true);
-                                          setMessageType(this_item.preferred_method);
-                                          setRecipient(`${this_item.first} ${this_item.last || this_item.display_name}:` + this_item.person_id);
-                                        }}
-                                        variant='contained'
-                                        size='small'>
-                                        <SendIcon />
-                                      </IconButton>
-                                    </React.Fragment>
-                                  </Box>
-                                </React.Fragment>
-                              </Box>
-                            </Box>
-                          </Paper>
-                        </GridListTile>
-                      </React-fragment>
-                      : null
-                    )
-                  ))}
-                </GridList>
-              </Grid>
-              {showPatientDialog &&
-                <PatientDialog
-                  patient={personRec}
-                  picture={""}
-                  open={true}
-                  onClose={(updatedPerson) => {
-                    if (updatedPerson) {
-                      workingMemberList[editIndex].preferred_method = updatedPerson.prefMethod;
-                      workingMemberList[editIndex].home = updatedPerson.voice;
-                      workingMemberList[editIndex].cell = updatedPerson.sms;
-                      workingMemberList[editIndex].email = updatedPerson.email;
-                      workingMemberList[editIndex].last = updatedPerson.last;
-                      workingMemberList[editIndex].first = updatedPerson.first;
-                      workingMemberList[editIndex].location = updatedPerson.location;
-                      workingMemberList[editIndex].search_data = updatedPerson.search_data.toLowerCase();
-                    }
-                    setShowPatientDialog(false);
-                  }}
-                />
-              }
-              {showAddPrompt &&
-                <PersonFilter
-                  peopleList={peopleList}
-                  onCancel={() => {
-                    setShowAddPrompt(false);
-                  }}
-                  onSelect={(selectedPerson) => {
-                    setShowAddPrompt(false);
-                    handleAddPersonToGroup(selectedPerson.split(':')[1], pGroup);
-                  }}
-                >
-                </PersonFilter>
-              }
-              {deletePending &&
-                <AVAConfirm
-                  promptText={confirmMessage}
-                  onCancel={() => {
-                    setDeletePending(false);
-                  }}
-                  onConfirm={() => {
-                    handleRemoveGroupMember(confirmPerson, confirmIndex);
-                    setDeletePending(false);
-                  }}
-                >
-                </AVAConfirm>
-              }
-              {promptForMessage &&
-                <AVATextInput
-                  promptText={`What should your ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : messageType)} message to ${recipient.split(':')[0]} say?`}
-                buttonText='Send'  
-                onCancel={() => { setPromptForMessage(false); }}
-                  onSave={(messageText) => {
-                    setPromptForMessage(false);
-                    handleSendMessage(messageText, recipient, messageType);
-                  }}
-                />
-              }
-            </Box>
+                            className={classes.rowButtonDefault}
+                            startIcon={<EditIcon fontSize="small" />}
+                          >
+                            View/Edit
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                              setConfirmPerson(this_item.person_id);
+                              setConfirmIndex(index);
+                              setDeletePending(true);
+                              setForceRedisplay(false);
+                            }}
+                            className={classes.rowButtonRed}
+                            startIcon={<DeleteIcon fontSize="small" />}
+                          >
+                            Remove from Group
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              setPromptForMessage(true);
+                              setMessageType(this_item.preferred_method);
+                              setRecipient(`${this_item.first} ${this_item.last || this_item.display_name}:` + this_item.person_id);
+                            }}
+                            className={classes.rowButtonGreen}
+                            startIcon={<SendIcon fontSize="small" />}
+                          >
+                            Message
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              toggleOpen(index);
+                            }}
+                            className={classes.rowButtonBlue}
+                            startIcon={<CloseIcon fontSize="small" />}
+                          >
+                            Close
+                          </Button>
+                        </Box>
+                        :
+                        <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                          <IconButton
+                            onClick={() => {
+                              setEditIndex(index);
+                              handlePatientEdit(this_item.person_id);
+                            }}
+                            className={classes.rowButtonDefault}
+                          >
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            onClick={() => {
+                              setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                              setConfirmPerson(this_item.person_id);
+                              setConfirmIndex(index);
+                              setDeletePending(true);
+                              setForceRedisplay(false);
+                            }}
+                            className={classes.rowButtonRed}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            onClick={() => {
+                              setPromptForMessage(true);
+                              setMessageType(this_item.preferred_method);
+                              setRecipient(`${this_item.first} ${this_item.last || this_item.display_name}:` + this_item.person_id);
+                            }}
+                            className={classes.rowButtonGreen}
+                          >
+                            <SendIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            onClick={() => {
+                              toggleOpen(index);
+                            }}
+                            className={classes.rowButtonBlue}
+                          >
+                            <CloseIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      }
+                    </Collapse>
+                  </Paper>
+                  : null
+                )
+              ))}
+
+            </List>
           </Paper>
-          <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-            <Button className={classes.reject} size='small' variant='contained' onClick={onReset}>
-              {'Done'}
-            </Button>
-            <Button
-              className={classes.confirm}
-              size='small'
-              variant='contained'
-              onClick={() => {
-                setShowAddPrompt(true);
-              }}>
-              {'Add Member'}
-            </Button>
-            <IconButton
-              onClick={() => { handlePrintDirectory(pGroup); }}
-              variant='contained'
-              size='small'>
-              <PrintIcon />
-            </IconButton>
-            <IconButton
-              onClick={() => { handlePrintRoster(pGroup); }}
-              variant='contained'
-              size='small'>
-              <StorageOutlined />
-            </IconButton>
-            <IconButton
-              onClick={() => {
-                setPromptForMessage(true);
-                setMessageType('Group');
-                setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup)
+          {showPatientDialog &&
+            <PatientDialog
+              patient={personRec}
+              picture={""}
+              open={true}
+              onClose={(updatedPerson) => {
+                if (updatedPerson) {
+                  workingMemberList[editIndex].preferred_method = updatedPerson.prefMethod;
+                  workingMemberList[editIndex].home = updatedPerson.voice;
+                  workingMemberList[editIndex].cell = updatedPerson.sms;
+                  workingMemberList[editIndex].email = updatedPerson.email;
+                  workingMemberList[editIndex].last = updatedPerson.last;
+                  workingMemberList[editIndex].first = updatedPerson.first;
+                  workingMemberList[editIndex].location = updatedPerson.location;
+                  workingMemberList[editIndex].search_data = updatedPerson.search_data.toLowerCase();
+                }
+                setShowPatientDialog(false);
               }}
-              variant='contained'
-              size='small'>
-              <SendIcon />
-            </IconButton>
-          </DialogActions>
+            />
+          }
+          {showAddPrompt &&
+            <PersonFilter
+              peopleList={peopleList}
+              onCancel={() => {
+                setShowAddPrompt(false);
+              }}
+              onSelect={(selectedPerson) => {
+                setShowAddPrompt(false);
+                handleAddPersonToGroup(selectedPerson.split(':')[1], pGroup);
+              }}
+            >
+            </PersonFilter>
+          }
+          {promptForMessage &&
+            <AVATextInput
+              promptText={`What should your ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : messageType)} message to ${recipient.split(':')[0]} say?`}
+              buttonText='Send'
+              onCancel={() => { setPromptForMessage(false); }}
+              onSave={(messageText) => {
+                setPromptForMessage(false);
+                handleSendMessage(messageText, recipient, messageType);
+              }}
+            />
+          }
+          {deletePending &&
+            <AVAConfirm
+              promptText={confirmMessage}
+              onCancel={() => {
+                setDeletePending(false);
+              }}
+              onConfirm={() => {
+                handleRemoveGroupMember(confirmPerson, confirmIndex);
+                setDeletePending(false);
+              }}
+            >
+            </AVAConfirm>
+          }
+
+          {isMobile ?
+            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+              <IconButton
+                className={classes.rowButtonRed}
+                onClick={onReset}
+              >
+                <CloseIcon size="small" />
+              </IconButton>
+              <IconButton
+                className={classes.rowButtonGreen}
+                onClick={() => {
+                  setShowAddPrompt(true);
+                }}
+              >
+                <GroupAddIcon size="small" />
+              </IconButton>
+              <IconButton
+                className={classes.rowButtonDefault}
+                onClick={() => { handlePrintDirectory(pGroup); }}
+              >
+                <PrintIcon size='small' />
+              </IconButton>
+              <IconButton
+                onClick={() => { handlePrintRoster(pGroup); }}
+                className={classes.rowButtonGreen}
+              >
+                <StorageOutlined size='small' />
+              </IconButton>
+              <IconButton
+                onClick={() => {
+                  setPromptForMessage(true);
+                  setMessageType('Group');
+                  setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                }}
+                className={classes.rowButtonGreen}
+              >
+                <SendIcon size='small' />
+              </IconButton>
+            </DialogActions>
+            :
+            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+              <Box display='flex' flexDirection='column'>
+                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                  <Button
+                    className={classes.rowButtonRed}
+                    onClick={onReset}
+                    startIcon={<CloseIcon size="small" />}
+                  >
+                    {'Close'}
+                  </Button>
+                  <Button
+                    className={classes.rowButtonGreen}
+                    onClick={() => {
+                      setShowAddPrompt(true);
+                    }}
+                    startIcon={<GroupAddIcon size="small" />}
+                  >
+                    {'Add Member'}
+                  </Button>
+                  <Button
+                    className={classes.rowButtonDefault}
+                    onClick={() => { handlePrintDirectory(pGroup); }}
+                    startIcon={<PrintIcon size='small' />}
+                  >
+                    {'Directory'}
+                  </Button>
+                </Box>
+                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                  <Button
+                    onClick={() => { handlePrintRoster(pGroup); }}
+                    className={classes.rowButtonGreen}
+                    startIcon={<StorageOutlined size='small' />}
+                  >
+                    {'Roster'}
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setPromptForMessage(true);
+                      setMessageType('Group');
+                      setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                    }}
+                    className={classes.rowButtonGreen}
+                    startIcon={<SendIcon size='small' />}
+                  >
+                    {'Message to the Group'}
+                  </Button>
+                </Box>
+              </Box>
+            </DialogActions>
+
+          }
         </React.Fragment>
       }
     </Dialog>

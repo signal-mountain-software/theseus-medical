@@ -82,7 +82,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
   if (isMobile) { }
 
   const AWS = require('aws-sdk');
@@ -226,6 +226,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               pClient={pSession.client_id}
               pGroup={groupID}
               pGroupName={groupName}
+              isMobile={isMobile}
               onReset={handleAbort}
             />
           }
@@ -233,6 +234,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
         {showGroupSelect &&
           <GroupFilter
             pSession={pSession}
+            isMobile={isMobile}
             groupsManagedObject={groupsManagedObject}
             onCancel={() => {
               setShowGroupSelect(false);

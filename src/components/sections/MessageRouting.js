@@ -63,7 +63,12 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
   topButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
     variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    fontSize: theme.typography.fontSize * 0.8,
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
   radioText: {
@@ -302,7 +307,7 @@ export default ({ person, updateSetChange, onChangeMethod, numRows }) => {
             : null}
         </Table>
       </TableContainer>
-      <Button onClick={handleAddRule} mt={2} pt={2} variant='contained' className={classes.topButton}>
+      <Button onClick={handleAddRule} className={classes.topButton}>
         Add a new Rule
       </Button>
     </Section>
