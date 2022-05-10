@@ -16,7 +16,8 @@ import Slide from '@material-ui/core/Slide';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+import GroupAddIcon from '@material-ui/icons/GroupAdd';
+import CloseIcon from '@material-ui/icons/ExitToApp';
 
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
@@ -25,6 +26,9 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 import AVATextInput from '../forms/AVATextInput';
 
 const useStyles = makeStyles(theme => ({
+  page: {
+    height: 800,
+  },
   formControl: {
     marginTop: theme.spacing(4),
     marginBottom: theme.spacing(2),
@@ -48,7 +52,7 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(2),
     paddingLeft: 0,
     paddingRight: 0,
-    paddingBottom: theme.spacing(5),
+    paddingBottom: theme.spacing(1),
     width: '60%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
@@ -78,7 +82,45 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(5),
     fontSize: '0.8rem',
   },
-
+  rowButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small'
+  },
+  rowButtonDefault: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+   // backgroundColor: theme.palette.primary[theme.palette.type],
+  },
+  rowButtonRed: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // backgroundColor: theme.palette.reject[theme.palette.type],
+  },
+  rowButtonGreen: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.confirm[theme.palette.type],
+  },
+  rowButtonBlue: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // backgroundColor: theme.palette.info[theme.palette.type],
+  },
   picture: {
     width: theme.spacing(16),
     height: theme.spacing(16),
@@ -147,7 +189,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pSession, groupsManagedObject, onCancel, onSelect }) => {
+export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect }) => {
   const [activity_filter, setActivityFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
 
@@ -193,7 +235,6 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect }) => {
     <Dialog
       open={true}
       p={2}
-      height={250}
       fullWidth
       variant={'elevation'} elevation={2}
       TransitionComponent={Transition}
@@ -217,11 +258,11 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect }) => {
             {'Select a group from this list'}
           </DialogContentText>
           <TextField
-            id='Type a few letters to filter the list'
+            id='List Filter'
             value={activity_filter}
             onChange={handleChangeActivityFilter}
             className={classes.freeInput}
-            label='Type a few letters to filter the list'
+            label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
             variant={'standard'}
             autoComplete='off'
           />
@@ -247,8 +288,8 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect }) => {
               }
               {promptForName &&
                 <AVATextInput
-                promptText="Enter a Name for the Group you're creating"
-                buttonText='Create'
+                  promptText="Enter a Name for the Group you're creating"
+                  buttonText='Create'
                   onCancel={() => { setPromptForName(false); }}
                   onSave={(newGroupName) => {
                     setPromptForName(false);
@@ -260,25 +301,51 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect }) => {
           </Paper>
         </React.Fragment>
       }
-      <DialogActions className={classes.buttonArea} >
-        <Button
-          className={classes.reject}
-          size='small'
-          variant='contained'
-          onClick={() => {
-            onCancel();
-          }}>
-          {'Done'}
-        </Button>
-        <IconButton
-          onClick={() => {
-            setPromptForName(true);
-          }}
-          variant='contained'
-          size='small'>
-          <AddCircleOutlineIcon />
-        </IconButton>
-      </DialogActions>
+      {!isMobile ?
+        <DialogActions className={classes.buttonArea} >
+          <Button
+            className={classes.rowButtonRed}
+            onClick={() => {
+              onCancel();
+            }}
+            startIcon={<CloseIcon fontSize="small" />}
+          >
+            {'Done'}
+          </Button>
+          {Object.keys(groupsManagedObject).length > 0 &&
+            <Button
+              onClick={() => {
+                setPromptForName(true);
+              }}
+              className={classes.rowButtonGreen}
+              startIcon={<GroupAddIcon fontSize="small" />}
+            >
+              {'Create New Group'}
+            </Button>
+          }
+        </DialogActions>
+        :
+        <DialogActions className={classes.buttonArea} >
+          <IconButton
+            className={classes.rowButton}
+            onClick={() => {
+              onCancel();
+            }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+          {Object.keys(groupsManagedObject).length > 0 &&
+            <IconButton
+              className={classes.rowButton}
+              onClick={() => {
+                setPromptForName(true);
+              }}
+            >
+              <GroupAddIcon fontSize="small" />
+            </IconButton>
+          }
+        </DialogActions>
+      }
     </Dialog>
   );
 };
