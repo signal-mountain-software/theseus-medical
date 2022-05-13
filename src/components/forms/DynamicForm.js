@@ -301,7 +301,6 @@ export default ({
   const [getSessionResult, setSessionResult] = React.useState({});
 
   var noToggle = false;
-  let currentEvents = [];
 
   var groupsManaged = [];
   if (session.groups_managed) {
@@ -1153,7 +1152,7 @@ export default ({
           patient={session}
           OGpatient={OGsession}
           peopleList={values}
-          currentEvents={currentEvents}
+          currentEvent={defaultValue || []}
           showCalendar={true}
           onClose={onSave}
         />
