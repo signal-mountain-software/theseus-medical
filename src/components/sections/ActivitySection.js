@@ -360,7 +360,7 @@ export default ({ patient, session }) => {
       factWasWritten = true;
       [, constructedValue] = newFact.value.replace('.', '^').split('^');
     } else {
-      if (newFact.hasOwnProperty('value') && newFact.value) {
+      if (newFact.hasOwnProperty('value') && newFact.value && !newFact.activity_key.startsWith('action.show')) {
         if (newFact.value.hasOwnProperty('mediaData')) {
           let valueSelectedString = '';
           if (newFact.value.selected) {
@@ -546,7 +546,7 @@ export default ({ patient, session }) => {
       window.location.replace(jumpTo);
     }
 
-    if (session?.url_parameters && factWasWritten) {
+    if (Object.keys(JSON.parse(session.url_parameters)).length > 0 && factWasWritten) {
       await API.graphql(
         graphqlOperation(updateSession, { input: { session_id: session.user_id, url_parameters: '' } })
       ).catch(error => { console.log(error); });
