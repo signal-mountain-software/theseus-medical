@@ -15,7 +15,6 @@ import IconButton from '@material-ui/core/IconButton';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContentText from '@material-ui/core/DialogContentText';
 
 import Slide from '@material-ui/core/Slide';
 import Box from '@material-ui/core/Box';
@@ -590,22 +589,12 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, onReset }
     >
 
       <React.Fragment>
-        <DialogContentText
-          className={classes.title}
-          id='scroll-dialog-title'
-        >
-          <Box display='flex' flexDirection='column'>
-            <Typography variant='h5' className={classes.standardIndent}>{pOccData.description}</Typography>
-            <Box display='flex' className={classes.standardIndent} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-              <Typography variant='body1'>{makeReadableDate(pOccData.date)}</Typography>
-              {occurrenceInfo.time_from &&
-                <Box ml={1} display="inline">
-                  <Typography variant='body1'>{`at  ${pOccData.time_from}`}</Typography>
-                </Box>
-              }
-            </Box>
-          </Box>
-        </DialogContentText>
+        <Box display='flex' className={classes.title} flexDirection='column'>
+          <Typography variant='h5' >{pOccData.description}</Typography>
+          <Typography className={classes.standardIndent} variant='body1'>
+            {`${makeReadableDate(pOccData.date)} ${occurrenceInfo.time_from ? ('at ' + pOccData.time_from) : ''}`}
+          </Typography>
+        </Box>
         {eventSlotList && eventSlotList.length > 0 &&
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
