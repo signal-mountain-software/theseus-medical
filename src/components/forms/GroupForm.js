@@ -9,6 +9,8 @@ import ListItem from '@material-ui/core/ListItem';
 import Collapse from '@material-ui/core/Collapse';
 import MoreHorizIcon from '@material-ui/icons/MoreHoriz';
 import CloseIcon from '@material-ui/icons/HighlightOff';
+import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
 
 import Button from '@material-ui/core/Button';
 import IconButton from '@material-ui/core/IconButton';
@@ -128,7 +130,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, isMobile, onReset }) => {
+export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, pRole, isMobile, onReset }) => {
 
   const classes = useStyles();
 
@@ -330,6 +332,9 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     setForceRedisplay(!forceRedisplay);
   };
 
+  // ******************
+
+  let myIndex = workingMemberList.findIndex(row => row.person_id === pPatient);
 
   return (
     <Dialog
@@ -399,29 +404,33 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                     <Collapse in={open[index]} timeout="auto" unmountOnExit>
                       {!isMobile ?
                         <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                          <Button
-                            onClick={() => {
-                              setEditIndex(index);
-                              handlePatientEdit(this_item.person_id);
-                            }}
-                            className={classes.rowButtonDefault}
-                            startIcon={<EditIcon fontSize="small" />}
-                          >
-                            View/Edit
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                              setConfirmPerson(this_item.person_id);
-                              setConfirmIndex(index);
-                              setDeletePending(true);
-                              setForceRedisplay(false);
-                            }}
-                            className={classes.rowButtonRed}
-                            startIcon={<DeleteIcon fontSize="small" />}
-                          >
-                            Remove from Group
-                          </Button>
+                          {pRole === 'reponsible' &&
+                            <Button
+                              onClick={() => {
+                                setEditIndex(index);
+                                handlePatientEdit(this_item.person_id);
+                              }}
+                              className={classes.rowButtonDefault}
+                              startIcon={<EditIcon fontSize="small" />}
+                            >
+                              View/Edit
+                            </Button>
+                          }
+                          {(pRole === 'admin' || pRole === 'responsible') &&
+                            <Button
+                              onClick={() => {
+                                setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                                setConfirmPerson(this_item.person_id);
+                                setConfirmIndex(index);
+                                setDeletePending(true);
+                                setForceRedisplay(false);
+                              }}
+                              className={classes.rowButtonRed}
+                              startIcon={<DeleteIcon fontSize="small" />}
+                            >
+                              Remove from Group
+                            </Button>
+                          }
                           <Button
                             onClick={() => {
                               setPromptForMessage(true);
@@ -445,27 +454,31 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                         </Box>
                         :
                         <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                          <IconButton
-                            onClick={() => {
-                              setEditIndex(index);
-                              handlePatientEdit(this_item.person_id);
-                            }}
-                            className={classes.rowButtonDefault}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            onClick={() => {
-                              setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                              setConfirmPerson(this_item.person_id);
-                              setConfirmIndex(index);
-                              setDeletePending(true);
-                              setForceRedisplay(false);
-                            }}
-                            className={classes.rowButtonRed}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                          {pRole === 'reponsible' &&
+                            <IconButton
+                              onClick={() => {
+                                setEditIndex(index);
+                                handlePatientEdit(this_item.person_id);
+                              }}
+                              className={classes.rowButtonDefault}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                          }
+                          {(pRole === 'admin' || pRole === 'responsible') &&
+                            <IconButton
+                              onClick={() => {
+                                setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                                setConfirmPerson(this_item.person_id);
+                                setConfirmIndex(index);
+                                setDeletePending(true);
+                                setForceRedisplay(false);
+                              }}
+                              className={classes.rowButtonRed}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          }
                           <IconButton
                             onClick={() => {
                               setPromptForMessage(true);
@@ -560,36 +573,64 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
               >
                 <CloseIcon size="small" />
               </IconButton>
-              <IconButton
-                className={classes.rowButtonGreen}
-                onClick={() => {
-                  setShowAddPrompt(true);
-                }}
-              >
-                <GroupAddIcon size="small" />
-              </IconButton>
-              <IconButton
-                className={classes.rowButtonDefault}
-                onClick={() => { handlePrintDirectory(pGroup); }}
-              >
-                <PrintIcon size='small' />
-              </IconButton>
-              <IconButton
-                onClick={() => { handlePrintRoster(pGroup); }}
-                className={classes.rowButtonGreen}
-              >
-                <StorageOutlined size='small' />
-              </IconButton>
-              <IconButton
-                onClick={() => {
-                  setPromptForMessage(true);
-                  setMessageType('Group');
-                  setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                }}
-                className={classes.rowButtonGreen}
-              >
-                <SendIcon size='small' />
-              </IconButton>
+              {(pRole === 'admin' || pRole === 'responsible') &&
+                <IconButton
+                  className={classes.rowButtonGreen}
+                  onClick={() => {
+                    setShowAddPrompt(true);
+                  }}
+                >
+                  <GroupAddIcon size="small" />
+                </IconButton>
+              }
+              {(pRole === 'non-member') &&
+                <IconButton
+                  className={classes.rowButtonGreen}
+                  onClick={() => {
+                    handleAddPersonToGroup(pPatient, pGroup);
+                  }}
+                >
+                  <AddCircleOutlineIcon size="small" />
+                </IconButton>
+              }
+              {(pRole !== 'non-member') &&
+                <IconButton
+                  className={classes.rowButtonGreen}
+                  onClick={() => {
+                    handleRemoveGroupMember(pPatient, myIndex);
+                  }}
+                >
+                  <RemoveCircleOutlineIcon size="small" />
+                </IconButton>
+              }
+              {(pRole === 'admin' || pRole === 'responsible') &&
+                <IconButton
+                  className={classes.rowButtonDefault}
+                  onClick={() => { handlePrintDirectory(pGroup); }}
+                >
+                  <PrintIcon size='small' />
+                </IconButton>
+              }
+              {(pRole === 'admin' || pRole === 'responsible') &&
+                <IconButton
+                  onClick={() => { handlePrintRoster(pGroup); }}
+                  className={classes.rowButtonGreen}
+                >
+                  <StorageOutlined size='small' />
+                </IconButton>
+              }
+              {(pRole === 'admin' || pRole === 'responsible') &&
+                <IconButton
+                  onClick={() => {
+                    setPromptForMessage(true);
+                    setMessageType('Group');
+                    setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                  }}
+                  className={classes.rowButtonGreen}
+                >
+                  <SendIcon size='small' />
+                </IconButton>
+              }
             </DialogActions>
             :
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
@@ -602,43 +643,71 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                   >
                     {'Close'}
                   </Button>
-                  <Button
-                    className={classes.rowButtonGreen}
-                    onClick={() => {
-                      setShowAddPrompt(true);
-                    }}
-                    startIcon={<GroupAddIcon size="small" />}
-                  >
-                    {'Add Member'}
-                  </Button>
-                  <Button
-                    className={classes.rowButtonDefault}
-                    onClick={() => { handlePrintDirectory(pGroup); }}
-                    startIcon={<PrintIcon size='small' />}
-                  >
-                    {'Directory'}
-                  </Button>
+                  {(pRole === 'admin' || pRole === 'responsible') &&
+                    <Button
+                      className={classes.rowButtonGreen}
+                      onClick={() => {
+                        setShowAddPrompt(true);
+                      }}
+                      startIcon={<GroupAddIcon size="small" />}
+                    >
+                      {'Add Member'}
+                    </Button>
+                  }
+                  {(pRole === 'non-member') &&
+                    <Button
+                      className={classes.rowButtonGreen}
+                      onClick={() => {
+                        handleAddPersonToGroup(pPatient, pGroup);
+                      }}
+                      startIcon={<AddCircleOutlineIcon size="small" />}
+                    >
+                      {'Add Myself'}
+                    </Button>
+                  }
+                  {(pRole !== 'non-member') &&
+                    <Button
+                      className={classes.rowButtonGreen}
+                      onClick={() => {
+                        handleRemoveGroupMember(pPatient, myIndex);
+                      }}
+                      startIcon={<RemoveCircleOutlineIcon size="small" />}
+                    >
+                      {'Remove Myself'}
+                    </Button>
+                  }
+                  {(pRole === 'admin' || pRole === 'responsible') &&
+                    <Button
+                      className={classes.rowButtonDefault}
+                      onClick={() => { handlePrintDirectory(pGroup); }}
+                      startIcon={<PrintIcon size='small' />}
+                    >
+                      {'Directory'}
+                    </Button>
+                  }
                 </Box>
-                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                  <Button
-                    onClick={() => { handlePrintRoster(pGroup); }}
-                    className={classes.rowButtonGreen}
-                    startIcon={<StorageOutlined size='small' />}
-                  >
-                    {'Roster'}
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setPromptForMessage(true);
-                      setMessageType('Group');
-                      setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                    }}
-                    className={classes.rowButtonGreen}
-                    startIcon={<SendIcon size='small' />}
-                  >
-                    {'Message to the Group'}
-                  </Button>
-                </Box>
+                {(pRole === 'admin' || pRole === 'responsible') &&
+                  <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                    <Button
+                      onClick={() => { handlePrintRoster(pGroup); }}
+                      className={classes.rowButtonGreen}
+                      startIcon={<StorageOutlined size='small' />}
+                    >
+                      {'Roster'}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('Group');
+                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                      }}
+                      className={classes.rowButtonGreen}
+                      startIcon={<SendIcon size='small' />}
+                    >
+                      {'Message to the Group'}
+                    </Button>
+                  </Box>
+                }
               </Box>
             </DialogActions>
 

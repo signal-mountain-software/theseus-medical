@@ -85,7 +85,7 @@ export default ({ promptText, buttonText, onCancel, onSave }) => {
       >
         {promptText}
       </Typography>
-      <Paper component={Box} variant={'standard'} elevation={0} width='90%' overflow='auto' square>
+      <Paper component={Box} elevation={0} width='90%' overflow='auto' square>
         <Box pl={5} pr={5} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
           <Input
             id={promptText}
