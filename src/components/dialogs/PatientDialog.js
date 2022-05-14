@@ -447,7 +447,7 @@ export default ({ patient, picture, open, onClose }) => {
                     </FormControl>
 
                     <Typography className={classes.idText1}>
-                      {`My userID is ${patient.person_id}`}
+                      {`My userID is ${patient?.person_id}`}
                     </Typography>
                     {patientPChange ?
                       <Typography className={classes.idText2}>{`My password was set on ${patientPChange.split('GMT')[0]} GMT`}</Typography>

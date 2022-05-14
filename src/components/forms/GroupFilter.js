@@ -10,7 +10,6 @@ import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import Button from '@material-ui/core/Button';
-import IconButton from '@material-ui/core/IconButton';
 
 import Slide from '@material-ui/core/Slide';
 import Typography from '@material-ui/core/Typography';
@@ -95,7 +94,7 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     textTransform: 'none',
     size: 'small',
-   // backgroundColor: theme.palette.primary[theme.palette.type],
+    // backgroundColor: theme.palette.primary[theme.palette.type],
   },
   rowButtonRed: {
     marginLeft: theme.spacing(1),
@@ -170,6 +169,19 @@ const useStyles = makeStyles(theme => ({
   },
   listItemAVA: {
     fontSize: theme.typography.fontSize * 1.5,
+  },
+  listItemAVALight: {
+    fontSize: theme.typography.fontSize * 1.5,
+    fontWeight: 'light'
+  },
+  listItemAVABold: {
+    fontSize: theme.typography.fontSize * 1.5,
+    fontWeight: 'bold'
+  },
+  rightEdgeSmall: {
+    fontSize: theme.typography.fontSize * 0.8,
+    justifyContent: 'right',
+    textTransform: 'capitalize'
   },
   idText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -278,9 +290,17 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect })
                       }}
                       button
                     >
-                      <Typography className={classes.listItemAVA}>
-                        {listEntry}
-                      </Typography>
+                      <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
+                        <Typography className=
+                          {groupsManagedObject[listEntry].role === 'member' ? classes.listItemAVA :
+                            (groupsManagedObject[listEntry].role === 'non-member' ? classes.listItemAVALight :
+                              classes.listItemAVABold)}>
+                          {listEntry}
+                        </Typography>
+                        <Typography className={classes.rightEdgeSmall}>
+                          {groupsManagedObject[listEntry].role}
+                        </Typography>
+                      </Box>
                     </ListItem>
                     : null
                 )
@@ -301,7 +321,6 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect })
           </Paper>
         </React.Fragment>
       }
-      {!isMobile ?
         <DialogActions className={classes.buttonArea} >
           <Button
             className={classes.rowButtonRed}
@@ -320,32 +339,10 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect })
               className={classes.rowButtonGreen}
               startIcon={<GroupAddIcon fontSize="small" />}
             >
-              {'Create New Group'}
+              {`Create ${!isMobile ? 'New Group' : ''}`}
             </Button>
           }
         </DialogActions>
-        :
-        <DialogActions className={classes.buttonArea} >
-          <IconButton
-            className={classes.rowButton}
-            onClick={() => {
-              onCancel();
-            }}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-          {Object.keys(groupsManagedObject).length > 0 &&
-            <IconButton
-              className={classes.rowButton}
-              onClick={() => {
-                setPromptForName(true);
-              }}
-            >
-              <GroupAddIcon fontSize="small" />
-            </IconButton>
-          }
-        </DialogActions>
-      }
     </Dialog>
   );
 };

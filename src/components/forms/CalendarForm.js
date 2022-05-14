@@ -24,6 +24,7 @@ import Tooltip from '@material-ui/core/Tooltip';
 
 import CircularProgress from '@material-ui/core/CircularProgress';
 import PersonFilter from './PersonFilter';
+import CalendarEventEditForm from './CalendarEventEditForm';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -130,7 +131,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopl
   const [proxyPerson, setProxyPerson] = React.useState('');
   const [proxyName, setProxyName] = React.useState('');
   const [proxyID, setProxyID] = React.useState('');
-  const [proxyRow, setProxyRow] = React.useState(0);
+  const [selectedEvent, setSelectedEvent] = React.useState();
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
 
   const lambda = new Lambda({
@@ -155,7 +156,8 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopl
 
   const { enqueueSnackbar } = useSnackbar();
 
-  function formatDate(pDate) {
+  function formatDate(pDate$) {
+    let pDate = pDate$.toString() || '19591021';
     let yyyy = pDate.substr(0, 4);
     let mm = pDate.substr(4, 2);
     let dd = pDate.substr(6, 2);
@@ -201,7 +203,6 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopl
       setProxyPerson('');
       setProxyName('');
       setProxyID('');
-      setProxyRow(0);
       if (releaseSlot) {
         myCalendar[myCalendarIndex].slots[0] = {
           'reminder_minutes': null,
@@ -229,9 +230,9 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopl
   }, [theCalendar]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
-  const handleProxy = (pIndex) => {
+  const handleProxy = (pEvent, pIndex) => {
     setShowPersonSelect(true);
-    setProxyRow(pIndex);
+    setSelectedEvent(pEvent);
   };
 
   const onSelectProxy = (selectedPerson) => {
@@ -599,14 +600,15 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopl
                                           variant={"contained"}
                                           className={classes.warning}
                                           onClick={async () => {
-                                            handleProxy(index);
+                                            handleProxy(this_event, index);
                                           }}
                                         >
                                           <PeopleAltIcon />
                                         </IconButton>
-                                        {proxyName && (proxyRow === index) &&
+                                        {/*
+                                          proxyName && (proxyRow === index) &&
                                           <Typography >{proxyName}</Typography>
-                                        }
+                                        */}
                                       </Box>
                                     </Tooltip>
                                   </React-fragment>
@@ -659,14 +661,23 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopl
               ))}
           </GridList>
         </Grid>
-        {showPersonSelect &&
+        {(showPersonSelect && false) &&       // old code depreciated
           <PersonFilter
             peopleList={peopleList}
             onCancel={() => { onCancelProxy(); }}
             onSelect={(selectedPerson) => { onSelectProxy(selectedPerson); }}
-          >
-          </PersonFilter>
+          />
+        }
+        {showPersonSelect &&
+          <CalendarEventEditForm
+            pEventCode={selectedEvent.event_key}
+            peopleList={peopleList}
+            pPatient={person_id}
+            pClient={selectedEvent.client}
+            pOccData={selectedEvent.occData}
+            onReset={() => { onCancelProxy(); }}
+          />
         }
       </Box>
   );
-};
+};;

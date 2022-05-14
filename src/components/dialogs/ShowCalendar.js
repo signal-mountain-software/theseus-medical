@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { API, graphqlOperation } from 'aws-amplify';
+import { Lambda } from 'aws-sdk';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -18,6 +19,7 @@ import InputAdornment from '@material-ui/core/InputAdornment';
 
 import CalendarForm from '../forms/CalendarForm';
 import PersonFilter from '../forms/PersonFilter';
+import CalendarEventEditForm from '../forms/CalendarEventEditForm';
 
 import { getCalendar } from '../../graphql/queries';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -133,11 +135,13 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, onClose }) => {
+export default ({ patient, OGpatient, peopleList, currentEvent, showCalendar, onClose }) => {
   const [myCalendar, setMyCalendar] = React.useState([]);
   const [filterText, setFilterText] = React.useState('');
   const [myFilter, setMyFilter] = React.useState('');
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
+
+  const [showAll, setShowAll] = React.useState(true);
 
   const [lastEndDate, setLastEndDate] = React.useState();
 
@@ -152,10 +156,22 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
+  const lambda = new Lambda({
+    region: 'us-east-1',
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY,
+  });
+
+  let params = {
+    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
+    InvocationType: 'RequestResponse',
+    LogType: 'Tail',
+    Payload: ''
+  };
+
   const setCalendar = async () => {
     let invokeFailed = false;
     let rightNow = new Date();
-    let event_time = rightNow.getTime();
     let this_year = rightNow.getFullYear();
     let this_month = rightNow.getMonth() + 1;
     let this_date = rightNow.getDate();
@@ -164,36 +180,45 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
     let fortnight_month = twoWeeksFromNow.getMonth() + 1;
     let fortnight_date = twoWeeksFromNow.getDate();
 
-    let result = await API
-      .graphql(
-        graphqlOperation(getCalendar, {
-          input: {
-            "action": `list_events#${event_time}`,
-            "clientId": patient.adopted_client || patient.client_id,
-            "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
-            "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
-            "person_id": patient.patient_id
-          }
-        })
-      )
-      .catch(error => {
-        console.log(error);
+    if (currentEvent && currentEvent.length > 0) {
+      params.Payload = JSON.stringify({
+        action: "get_event",
+        clientId: patient.adopted_client || patient.client_id,
+        event_id: currentEvent,
+        person_id: patient.patient_id
+      });
+      setShowAll(false);
+    }
+    else {
+      params.Payload = JSON.stringify({
+        action: "list_events",
+        clientId: patient.adopted_client || patient.client_id,
+        list_start: ((this_year * 10000) + (this_month * 100) + this_date).toString(),
+        list_end: ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
+        person_id: patient.patient_id
+      });
+      setShowAll(true);
+    }
+    let fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log("AVA couldn't complete the query.  Error is", JSON.stringify(err));
         invokeFailed = true;
       });
     let theCalendar = [];
-    if (!invokeFailed && result.data.getCalendar.body) {
-      result.data.getCalendar.body.forEach(cEv => {
-        theCalendar.push(cEv);
-      });
+    if (!invokeFailed) {
+      let fullResponse = JSON.parse(fResp.Payload);
+      if (fullResponse.status === 200) {
+        fullResponse.body.forEach(cEv => {
+          theCalendar.push(cEv);
+        });
+      };
+      setMyCalendar(theCalendar);
+      setLastEndDate(twoWeeksFromNow);
+      return theCalendar;
     };
-    setMyCalendar(theCalendar);
-    setLastEndDate(twoWeeksFromNow);
-    return theCalendar;
   };
-
-  React.useEffect(() => {
-    return (setCalendar);
-  }, [currentEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const extendDates = async () => {
     let invokeFailed = false;
@@ -207,7 +232,9 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
     let fortnight_year = twoWeeksFromNow.getFullYear();
     let fortnight_month = twoWeeksFromNow.getMonth() + 1;
     let fortnight_date = twoWeeksFromNow.getDate();
-    let result = await API
+    let result = {};
+    
+    result = await API
       .graphql(
         graphqlOperation(getCalendar, {
           input: {
@@ -223,6 +250,7 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         console.log(error);
         invokeFailed = true;
       });
+    
     let theCalendar = myCalendar;
     if (!invokeFailed && result.data.getCalendar.body) {
       result.data.getCalendar.body.forEach(cEv => {
@@ -256,7 +284,8 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
     // setFormState(resetter);
   };
 
-  function formatDate(pDate) {
+  function formatDate(pDate$) {
+    let pDate = pDate$.toString() || '19591021';
     let yyyy = pDate.substr(0, 4);
     let mm = pDate.substr(4, 2);
     let dd = pDate.substr(6, 2);
@@ -276,9 +305,16 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
   };
 
   // **************************
+  React.useEffect(() => {
+    async function buildIt() {
+      await setCalendar();
+    }
+    buildIt();
+  }, [currentEvent]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   return (
-    (showCalendar &&
+    showAll ?
       <Dialog
         open={showCalendar}
         onClose={handleAbort}
@@ -389,21 +425,36 @@ export default ({ patient, OGpatient, peopleList, currentEvents, showCalendar, o
         {showPersonSelect &&
           <PersonFilter
             peopleList={peopleList}
-            onCancel={() => {
+            onCancel={async () => {
               setShowPersonSelect(false);
               patient.kiosk_mode = false;
-              setCalendar();
+              await setCalendar();
             }}
-            onSelect={(selectedPerson) => {
+            onSelect={async (selectedPerson) => {
               [patient.patient_display_name, patient.patient_id,] = selectedPerson.split(':');
               setShowPersonSelect(false);
               patient.kiosk_mode = false;
-              setCalendar();
+              await setCalendar();
             }}
           >
           </PersonFilter>
         }
       </Dialog>
-    )
+      :
+      (
+        (myCalendar.length > 0) ?
+          <CalendarEventEditForm
+            pEventCode={currentEvent}
+            peopleList={peopleList}
+            pPatient={patient.patient_id}
+            pClient={patient.adopted_client || patient.client_id}
+            pOccData={myCalendar[0].occData}
+            onReset={() => { handleAbort(); }}
+          />
+          :
+          <DialogContentText className={classes.subDescriptionText}>
+            Getting your Event Info
+          </DialogContentText>
+      )
   );
 };

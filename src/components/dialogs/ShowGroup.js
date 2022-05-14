@@ -76,6 +76,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const [groupName, setGroupName] = React.useState();
   const [groupID, setGroupID] = React.useState();
+  const [groupRole, setGroupRole] = React.useState();
 
   const classes = useStyles();
 
@@ -110,7 +111,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       action: "get_group_members",
       clientId: pSession.client_id,
       request: {
-        "group_id": pGroup,
+        "group_id": pGroup.group_id,
       }
     });
     const fResp = await lambda
@@ -160,8 +161,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     return [];
   };
 
-  const handleAbort = () => {
+  const handleAbort = async () => {
     setChanges(false);
+    await getGroupsManagedObject(pSession.patient_id);
     setShowGroupSelect(true);
     // onClose();
   };
@@ -226,6 +228,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               pClient={pSession.client_id}
               pGroup={groupID}
               pGroupName={groupName}
+              pRole={groupRole}
               isMobile={isMobile}
               onReset={handleAbort}
             />
@@ -243,7 +246,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             onSelect={(selectedGroup) => {
               setShowGroupSelect(false);
               setGroupName(selectedGroup);
-              setGroupID(groupsManagedObject[selectedGroup]);
+              setGroupID(groupsManagedObject[selectedGroup].group_id);
+              setGroupRole(groupsManagedObject[selectedGroup].role);
               getGroupMemberList(groupsManagedObject[selectedGroup]);
             }}
           >
