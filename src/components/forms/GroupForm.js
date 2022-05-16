@@ -363,7 +363,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           />
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
-
               {workingMemberList.map((this_item, index) => (
                 (!this_item.search_data ||
                   this_item.search_data.includes(person_filter.toLowerCase()) ?

@@ -13,6 +13,9 @@ import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import LoadIcon from '@material-ui/icons/GetApp';
+import CloseIcon from '@material-ui/icons/HighlightOff';
+
 import MenuForm from '../forms/MenuForm';
 import LoadMenuSpreadsheet from '../forms/LoadMenuSpreadsheet';
 
@@ -46,6 +49,22 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 0,
     verticalAlign: 'middle',
     minHeight: theme.typography.fontSize * 2.8,
+  },
+  rowButtonRed: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.reject[theme.palette.type],
+  },
+  rowButtonGreen: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.confirm[theme.palette.type],
   },
   dialogBox: {
     paddingTop: theme.spacing(1),
@@ -259,10 +278,20 @@ export default ({ pClient, showMenu, onClose }) => {
           />
         </DialogContent>
         <DialogActions style={{ justifyContent: 'center' }}>
-          <Button className={classes.reject} size='small' variant='contained' onClick={handleAbort}>
+          <Button
+            className={classes.rowButtonRed}
+            size='small'
+            onClick={handleAbort}
+            startIcon={<CloseIcon size="small" />}
+          >
             {'Done'}
           </Button>
-          <Button className={classes.load} size='small' variant='contained' onClick={handleLoad}>
+          <Button
+            className={classes.rowButtonGreen}
+            size='small'
+            onClick={handleLoad}
+            startIcon={<LoadIcon size="small" />}
+          >
             {'Load'}
           </Button>
         </DialogActions>
