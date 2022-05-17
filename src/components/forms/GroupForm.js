@@ -275,9 +275,16 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     });
   };
 
-  const handleSendMessage = async (pMessage, pRecipient = null) => {
+  const handleSendMessage = async (pMessage, pRecipient = null, pMessageType) => {
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-    if (!pRecipient) { pRecipient = pGroupName + ':group=' + pClient + '~' + pGroup; }
+    let nqMessage = '';
+    if (!pRecipient) {
+      pRecipient = pGroupName + ':group=' + pClient + '~' + pGroup;
+      nqMessage = `Sent "${pMessage}" to everyone in ${pGroupName}`
+    }
+    else {
+      nqMessage = `Sent "${pMessage}" via ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : messageType)} to ${pRecipient.split(':')[0]}`
+    }
     params.Payload = JSON.stringify({
       "body": {
         "client": pClient,
@@ -293,7 +300,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           variant: 'error'
         });
       });
-    enqueueSnackbar(`Sent "${pMessage}" to everyone in ${pGroupName}.`, {
+    enqueueSnackbar(nqMessage, {
       variant: 'success'
     });
   };
