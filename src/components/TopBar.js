@@ -83,7 +83,8 @@ export default () => {
     setAnchorEl(null);
     Auth.signOut().then(() => {
       serviceWorker.unregister();
-      window.location.reload();
+      let jumpTo = window.location.origin;
+      window.location.replace(jumpTo);
     });
   };
 
