@@ -132,7 +132,7 @@ export default ({ peopleList, onCancel, onSelect }) => {
   const classes = useStyles();
 
   const handleChangePersonFilter = event => {
-    setPersonFilter(event.target.value);
+    setPersonFilter(event.target.value.toLowerCase());
   };
 
   // **************************
@@ -165,7 +165,7 @@ export default ({ peopleList, onCancel, onSelect }) => {
         <List component='nav'>
           {peopleList.map((listEntry, x) => (
             (
-              listEntry.includes(person_filter) ?
+              listEntry.toLowerCase().includes(person_filter) ?
                 <ListItem
                   key={'person-list_' + listEntry}
                   onClick={() => {
