@@ -52,7 +52,7 @@ export default () => {
   const [anchorEl, setAnchorEl] = React.useState(null);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const isStandalone = useMediaQuery('(display-mode: standalone)');
-  const [ platform, showIOS ] = useIosCheck();
+  const [platform, showIOS] = useIosCheck();
   const { state } = useSession();
   const { patient, roles, session } = state;
   if (session) { session.platform = platform; }
@@ -173,10 +173,19 @@ export default () => {
     <Box flexGrow={1}>
       <AppBar color='inherit'>
         <Toolbar>
-          <Box flexGrow={1}>
+          <Box display='flex'
+            flexDirection='row'
+            alignItems='center' flexGrow={1}>
             <PatientChip patient={patient} roles={roles} session={session} />
           </Box>
-          
+
+          {session?.kiosk_mode &&
+            <Box mr={2}>
+              <Typography variant='body1'>
+                {'Kiosk Mode'}
+              </Typography>
+            </Box>
+          }
           {!isMobile && !hideSwitchAccountButton && (
             <Box >
               <Tooltip
