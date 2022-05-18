@@ -250,6 +250,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               setGroupRole(groupsManagedObject[selectedGroup].role);
               getGroupMemberList(groupsManagedObject[selectedGroup]);
             }}
+            onRefresh={async () => { 
+              await getGroupsManagedObject(pSession.patient_id)
+            }}
           >
           </GroupFilter>
         }

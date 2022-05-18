@@ -371,8 +371,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
               {workingMemberList.map((this_item, index) => (
-                (!this_item.search_data ||
-                  this_item.search_data.includes(person_filter.toLowerCase()) ?
+                (!person_filter || this_item.search_data.includes(person_filter) ?
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                     <ListItem
                       key={this_item.person_id + 'r' + index}
@@ -384,8 +383,8 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                       <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
                         <Box display='flex' flexDirection='column'>
                           <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                            <Typography variant='h5' className={classes.lastName} >{this_item.last || this_item.display_name}</Typography>
-                            <Typography variant='h5' className={classes.firstName}>{this_item.first}</Typography>
+                            <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
+                            <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>
                           </Box>
                           <Typography variant='body1'>{this_item.location}</Typography>
                           {(this_item.preferred_method === 'sms' ?
@@ -410,7 +409,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                     <Collapse in={open[index]} timeout="auto" unmountOnExit>
                       {!isMobile ?
                         <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                          {pRole === 'reponsible' &&
+                          {pRole === 'responsible' &&
                             <Button
                               onClick={() => {
                                 setEditIndex(index);
@@ -425,7 +424,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                           {(pRole === 'admin' || pRole === 'responsible') &&
                             <Button
                               onClick={() => {
-                                setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                                setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
                                 setConfirmPerson(this_item.person_id);
                                 setConfirmIndex(index);
                                 setDeletePending(true);
@@ -441,7 +440,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                             onClick={() => {
                               setPromptForMessage(true);
                               setMessageType(this_item.preferred_method);
-                              setRecipient(`${this_item.first} ${this_item.last || this_item.display_name}:` + this_item.person_id);
+                              setRecipient(`${this_item.name.first} ${this_item.name.last || this_item.display_name}:` + this_item.person_id);
                             }}
                             className={classes.rowButtonGreen}
                             startIcon={<SendIcon fontSize="small" />}
@@ -460,7 +459,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                         </Box>
                         :
                         <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                          {pRole === 'reponsible' &&
+                          {pRole === 'responsible' &&
                             <IconButton
                               onClick={() => {
                                 setEditIndex(index);
@@ -474,7 +473,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                           {(pRole === 'admin' || pRole === 'responsible') &&
                             <IconButton
                               onClick={() => {
-                                setConfirmMessage(`Confirm removing ${this_item.first} ${this_item.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                                setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
                                 setConfirmPerson(this_item.person_id);
                                 setConfirmIndex(index);
                                 setDeletePending(true);
@@ -489,7 +488,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                             onClick={() => {
                               setPromptForMessage(true);
                               setMessageType(this_item.preferred_method);
-                              setRecipient(`${this_item.first} ${this_item.last || this_item.display_name}:` + this_item.person_id);
+                              setRecipient(`${this_item.name.first} ${this_item.name.last || this_item.display_name}:` + this_item.person_id);
                             }}
                             className={classes.rowButtonGreen}
                           >
@@ -524,8 +523,10 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                   workingMemberList[editIndex].home = updatedPerson.voice;
                   workingMemberList[editIndex].cell = updatedPerson.sms;
                   workingMemberList[editIndex].email = updatedPerson.email;
-                  workingMemberList[editIndex].last = updatedPerson.last;
-                  workingMemberList[editIndex].first = updatedPerson.first;
+                  workingMemberList[editIndex].name = {
+                    'last': updatedPerson.last,
+                    'first': updatedPerson.first
+                  };
                   workingMemberList[editIndex].location = updatedPerson.location;
                   workingMemberList[editIndex].search_data = updatedPerson.search_data.toLowerCase();
                 }
