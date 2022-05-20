@@ -381,7 +381,7 @@ export default Component => props => {
         await getPeopleList(urlQuery.client || 'SMSoft', urlQuery.group || 'AVT_residents');
       }
     }
-  }
+  };
 
   React.useEffect(() => {
     // let mounted;
@@ -395,39 +395,38 @@ export default Component => props => {
 
   return (
     !user || user.username !== 'paccess' ?
-    <Component {...props} />
-    :
-    (!peopleList || peopleList.length === 0
-      ?
-      <Box display='flex' marginBottom={5} marginTop={5} flexDirection='column' justifyContent='center' alignItems='center'>
-        <Typography sx={{
-          marginTop: 4,
-          marginBottom: 2,
-          marginLeft: 2,
-          marginRight: 2,
-          paddingTop: 3,
-        }} variant='h5' >
-          {'Building a List to Choose From'}
-        </Typography>
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <CircularProgress />
-        </div>
-      </Box>
+      <Component {...props} />
       :
-      <PersonFilter
-        peopleList={peopleList}
-        onCancel={async () => {
-          user.username = 'useDefault';
-          dispatch({ type: SET_USER, payload: user });
-          await onValidUser(user, true);       //sixth
-        }}
-        onSelect={async (selectedPerson) => {
-          user.username = selectedPerson.split(':')[1];
-          dispatch({ type: SET_USER, payload: user });
-          await onValidUser(user, true);      //sixth
-        }}
-      >
-      </PersonFilter>
-    )
+      (!peopleList || peopleList.length === 0
+        ?
+        <Box display='flex' marginBottom={5} marginTop={5} flexDirection='column' justifyContent='center' alignItems='center'>
+          <Typography sx={{
+            marginTop: 4,
+            marginBottom: 2,
+            marginLeft: 2,
+            marginRight: 2,
+            paddingTop: 3,
+          }} variant='h5' >
+            {'Building a List to Choose From'}
+          </Typography>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <CircularProgress />
+          </div>
+        </Box>
+        :
+        <PersonFilter
+          peopleList={peopleList}
+          onCancel={async () => {
+            let jumpTo = window.location.href.replace('theseus', 'thankyou');
+            window.location.replace(jumpTo);
+          }}
+          onSelect={async (selectedPerson) => {
+            user.username = selectedPerson.split(':')[1];
+            dispatch({ type: SET_USER, payload: user });
+            await onValidUser(user, true);      //sixth
+          }}
+        >
+        </PersonFilter>
+      )
   );
 };
