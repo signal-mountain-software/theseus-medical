@@ -15,13 +15,19 @@ import Typography from '@material-ui/core/Typography';
 import IconButton from '@material-ui/core/IconButton';
 import EditIcon from '@material-ui/icons/Edit';
 import DeleteIcon from '@material-ui/icons/Delete';
-import DeleteForeverIcon from '@material-ui/icons/DeleteForever';
+
+import AVAConfirm from './AVAConfirm';
 
 export default ({ eventActivityList, pClient, onReset }) => {
 
   const [editMode, setEditMode] = React.useState(false);
+  const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [deletePending, setDeletePending] = React.useState(null);
   const [selectedEventActivity, setSelectedEventActivity] = React.useState({});
+
+  const [deleteItem, setDeleteItem] = React.useState({});
+  const [confirmMessage, setConfirmMessage] = React.useState();
+  const [deleteIndex, setDeleteIndex] = React.useState();
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -30,7 +36,7 @@ export default ({ eventActivityList, pClient, onReset }) => {
     setSelectedEventActivity(pObs);
   };
 
-  const handleDeleteEventActivity = async (pObs) => {
+  const handleDeleteEventActivity = async (pObs, pIndex) => {
     const lambda = new Lambda({
       region: 'us-east-1',
       accessKeyId: process.env.REACT_APP_AVA_ID,
@@ -46,7 +52,7 @@ export default ({ eventActivityList, pClient, onReset }) => {
 
     params.Payload = JSON.stringify({
       action: "delete",
-      clientId: pObs.client_event_id.split(/[~_]/g)[0],
+      clientId: pObs.client_event_id.split(/[~_]/g)[0] || pClient,
       request: {
         "activity_code": pObs.activity_code,
         "event_id": pObs.client_event_id
@@ -60,11 +66,12 @@ export default ({ eventActivityList, pClient, onReset }) => {
           variant: 'error'
         });
       });
-    onReset();
+    eventActivityList.splice(pIndex, 1);
+    setForceRedisplay(!forceRedisplay);
   };
 
   return (
-    eventActivityList?.length > 0 &&
+    eventActivityList?.length > 0 && (true || forceRedisplay) &&
     <Box >
       <Grid item>
         <GridList cellHeight='auto' cols={1} key='gridList'>
@@ -104,17 +111,14 @@ export default ({ eventActivityList, pClient, onReset }) => {
                             <IconButton
                               aria-label="search_icon"
                               onClick={() => {
-                                if (deletePending === index) {
-                                  setDeletePending(null);
-                                  handleDeleteEventActivity(this_item);
-                                }
-                                else {
-                                  setDeletePending(index);
-                                }
+                                setDeletePending(true);
+                                setDeleteIndex(index);
+                                setDeleteItem(this_item);
+                                setConfirmMessage(`Confirm removal of "${this_item.activity_name}"?`);
                               }}
                               edge="end"
                             >
-                              {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
+                              <DeleteIcon />
                             </IconButton>
                           </React.Fragment>
                         </Box>
@@ -135,6 +139,19 @@ export default ({ eventActivityList, pClient, onReset }) => {
                 onReset();
               }}
             />
+          }
+          {deletePending &&
+            <AVAConfirm
+              promptText={confirmMessage}
+              onCancel={() => {
+                setDeletePending(false);
+              }}
+              onConfirm={() => {
+                setDeletePending(false);
+                handleDeleteEventActivity(deleteItem, deleteIndex);
+              }}
+            >
+            </AVAConfirm>
           }
         </GridList>
       </Grid>
