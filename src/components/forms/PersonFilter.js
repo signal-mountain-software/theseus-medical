@@ -27,9 +27,9 @@ const useStyles = makeStyles(theme => ({
   },
   freeInput: {
     marginLeft: '25px',
-    marginTop: '5px',
     marginRight: 2,
-    marginBottom: '10px',
+    marginBottom: '20px',
+    paddingBottom: '20px',
     paddingLeft: 0,
     paddingRight: 0,
     width: '90%',
@@ -108,6 +108,12 @@ const useStyles = makeStyles(theme => ({
   listItemAVA: {
     fontSize: theme.typography.fontSize * 1.5,
   },
+  firstName: {
+    marginLeft: theme.spacing(1),
+  },
+  lastName: {
+    fontWeight: 'bold',
+  },
   idText: {
     fontSize: theme.typography.fontSize * 0.8,
     marginTop: 10,
@@ -152,16 +158,16 @@ export default ({ peopleList, onCancel, onSelect }) => {
       >
         {'Find and tap a name in this list'}
       </DialogContentText>
+      <TextField
+        id='Type a few letters to filter the list'
+        value={person_filter}
+        onChange={handleChangePersonFilter}
+        className={classes.freeInput}
+        label='Type a few letters to filter the list'
+        variant={'standard'}
+        autoComplete='off'
+      />
       <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
-        <TextField
-          id='Type a few letters to filter the list'
-          value={person_filter}
-          onChange={handleChangePersonFilter}
-          className={classes.freeInput}
-          label='Type a few letters to filter the list'
-          variant={'standard'}
-          autoComplete='off'
-        />
         <List component='nav'>
           {peopleList.map((listEntry, x) => (
             (
@@ -173,9 +179,10 @@ export default ({ peopleList, onCancel, onSelect }) => {
                   }}
                   button
                 >
-                  <Typography className={classes.listItemAVA}>
-                    {listEntry.split(':')[0]}
-                  </Typography>
+                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                    <Typography variant='h5' className={classes.lastName}>{listEntry.split(/[:,]/)[0].trim()}</Typography>
+                    <Typography variant='h5' className={classes.firstName}>{listEntry.split(/[:,]/)[1].trim()}</Typography>
+                  </Box>
                 </ListItem> : null
             )
           ))}

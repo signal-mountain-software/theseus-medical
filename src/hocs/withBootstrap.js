@@ -417,7 +417,7 @@ export default Component => props => {
         <PersonFilter
           peopleList={peopleList}
           onCancel={async () => {
-            let jumpTo = window.location.href.replace('theseus', 'thankyou');
+            let jumpTo = window.location.href;
             window.location.replace(jumpTo);
           }}
           onSelect={async (selectedPerson) => {
