@@ -57,6 +57,8 @@ export default Component => props => {
   let [platform, showIOS] = useIosCheck();
   if (showIOS) { };
 
+  const [saveP, setSaveP] = React.useState([]);
+
   const lambda = new Lambda({
     region: 'us-east-1',
     accessKeyId: process.env.REACT_APP_AVA_ID,
@@ -128,7 +130,7 @@ export default Component => props => {
   const setMessages = (mText) => {
     if (count > 2) {
       calledFrom = 'failure';
-      enqueueSnackbar(`${mText.trim()}.  It seems you're having trouble.  Would you like to use AVA as a guest?  As a guest, you can perform basic tasks and use "Send a Message" to get help with your account.`, {
+      enqueueSnackbar(`${mText.trim()}.  It seems you're having trouble.  What would you like to do now?`, {
         variant: 'error',
         persist: true,
         preventDuplicate: true,
@@ -192,7 +194,7 @@ export default Component => props => {
     }
   };
 
-  const logChangeRequest = async (pUser, pLoc, pData) => {
+  const tryPwdUpdate = async (pUser, pLoc, pData) => {
     let invokeFailed = false;
     var payload =
     {
@@ -214,7 +216,12 @@ export default Component => props => {
         setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
         invokeFailed = true;
       });
-    if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
+    return [invokeFailed, JSON.parse(fResp.Payload)];
+  };
+
+  const logChangeRequest = async (pUser, pLoc, pData) => {
+    let [invokeFailed, response] = await tryPwdUpdate(pUser, pLoc, pData);
+    if (!invokeFailed && response.status === 200) {
       enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
         variant: 'success'
       });
@@ -222,8 +229,8 @@ export default Component => props => {
       setSignedIn(false);
     }
     else {
-      if (JSON.parse(fResp.Payload).body) {
-        setMessages(JSON.parse(fResp.Payload).body);
+      if (response.body) {
+        setMessages(response.body);
       }
       else {
         setMessages(`We could not change your password at this time!  You may sign-in using your old password.`);
@@ -259,9 +266,15 @@ export default Component => props => {
         if (data.message.includes('expired')) {
           setMessages(`Your password has expired and must be reset`);
           break;
+        }
+        else if (data.message.includes('exceeded')) {
+          setMessages(`You've used a wrong password too many times.`);
+          break;
         };
         let newP;
         let c0 = inputCP.trim().charAt(0);
+        saveP.push(c0.toLowerCase() + inputCP.trim().substring(1));
+        setSaveP(saveP);
         if (c0 === c0.toUpperCase()) {   // first character was a capital letter
           newP = c0.toLowerCase() + inputCP.trim().substring(1);
         }
@@ -273,30 +286,16 @@ export default Component => props => {
           break;
         }
         catch (e) {
-          let invokeFailed = false;
-          var payload =
-          {
-            person: inputName.trim(),
-            locationTest: 'checkUser',
-            newP: 'password'
-          };
-          let params = {
-            FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validatePRequest',
-            InvocationType: 'RequestResponse',
-            LogType: 'Tail',
-            Payload: JSON.stringify(payload)
-          };
-          const fResp = await lambda
-            .invoke(params)
-            .promise()
-            .catch(err => {
-              console.log('Call failed.  Error is', JSON.stringify(err));
-              invokeFailed = true;
-            });
-          if (!invokeFailed && JSON.parse(fResp.Payload).body === "That's not a valid AVA Username") {
+          let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'checkUser', 'password');
+          if (!invokeFailed && response.body === "That's not a valid AVA Username") {
             setMessages("That's not a valid AVA Username");
           }
           else {
+            if (saveP.length > 2 && (saveP[0] === saveP[1] && saveP[1] === saveP[2])) { 
+              await tryPwdUpdate(inputName.trim(), 'updatePwd', saveP[0]);
+              await Auth.signIn(inputName.trim(), saveP[0]);
+              break;
+            }
             setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
           }
           console.log(`user ${data.message}`);
