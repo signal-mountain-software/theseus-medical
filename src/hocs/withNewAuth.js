@@ -57,8 +57,6 @@ export default Component => props => {
   let [platform, showIOS] = useIosCheck();
   if (showIOS) { };
 
-  const [saveP, setSaveP] = React.useState([]);
-
   const lambda = new Lambda({
     region: 'us-east-1',
     accessKeyId: process.env.REACT_APP_AVA_ID,
@@ -114,13 +112,13 @@ export default Component => props => {
             }
             console.log(result);
           }}>
-            Use My Name
+            Guest Sign-in
           </Button>
           <Button onClick={() => {
             console.log(key);
             closeSnackbar(key);
           }}>
-            Try Password Again
+            Try Again
           </Button>
         </React-Fragment >
       );
@@ -130,7 +128,7 @@ export default Component => props => {
   const setMessages = (mText) => {
     if (count > 2) {
       calledFrom = 'failure';
-      enqueueSnackbar(`${mText.trim()}.  It seems you're having trouble.  What would you like to do now?`, {
+      enqueueSnackbar(`${mText.trim()}.  It seems you're having trouble.  Would you like to use AVA as a guest?  As a guest, you can perform basic tasks and use "Send a Message" to get help with your account.`, {
         variant: 'error',
         persist: true,
         preventDuplicate: true,
@@ -194,7 +192,7 @@ export default Component => props => {
     }
   };
 
-  const tryPwdUpdate = async (pUser, pLoc, pData) => {
+  const logChangeRequest = async (pUser, pLoc, pData) => {
     let invokeFailed = false;
     var payload =
     {
@@ -216,12 +214,7 @@ export default Component => props => {
         setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
         invokeFailed = true;
       });
-    return [invokeFailed, JSON.parse(fResp.Payload)];
-  };
-
-  const logChangeRequest = async (pUser, pLoc, pData) => {
-    let [invokeFailed, response] = await tryPwdUpdate(pUser, pLoc, pData);
-    if (!invokeFailed && response.status === 200) {
+    if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
       enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
         variant: 'success'
       });
@@ -229,8 +222,8 @@ export default Component => props => {
       setSignedIn(false);
     }
     else {
-      if (response.body) {
-        setMessages(response.body);
+      if (JSON.parse(fResp.Payload).body) {
+        setMessages(JSON.parse(fResp.Payload).body);
       }
       else {
         setMessages(`We could not change your password at this time!  You may sign-in using your old password.`);
@@ -266,15 +259,9 @@ export default Component => props => {
         if (data.message.includes('expired')) {
           setMessages(`Your password has expired and must be reset`);
           break;
-        }
-        else if (data.message.includes('exceeded')) {
-          setMessages(`You've used a wrong password too many times.`);
-          break;
         };
         let newP;
         let c0 = inputCP.trim().charAt(0);
-        saveP.push(c0.toLowerCase() + inputCP.trim().substring(1));
-        setSaveP(saveP);
         if (c0 === c0.toUpperCase()) {   // first character was a capital letter
           newP = c0.toLowerCase() + inputCP.trim().substring(1);
         }
@@ -286,18 +273,8 @@ export default Component => props => {
           break;
         }
         catch (e) {
-          let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'checkUser', 'password');
-          if (!invokeFailed && response.body === "That's not a valid AVA Username") {
-            setMessages("That's not a valid AVA Username");
-          }
-          else {
-            if (saveP.length > 2 && (saveP[0] === saveP[1] && saveP[1] === saveP[2])) { 
-              await tryPwdUpdate(inputName.trim(), 'updatePwd', saveP[0]);
-              await Auth.signIn(inputName.trim(), saveP[0]);
-              break;
-            }
-            setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
-          }
+          setMessages(data.message);
+          // setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
           console.log(`user ${data.message}`);
           break;
         }
@@ -352,119 +329,106 @@ export default Component => props => {
 
   if (!signedIn) {
     return (
-      <React-Fragment>
-        <TopBar />
-        <Paper  >
-          <AmplifyAuthenticator
-            hideToast
-            style={{ '--box-shadow': 'none' }}>
-            <AmplifySignIn
-              slot='sign-in'
-              hideSignUp
-              headerText='Welcome to AVA!'
-              formFields={[
-                {
-                  type: "username",
-                  label: "Username / ID",
-                  value: inputName,
-                  handleInputChange:
-                    (e) => {
-                      setInputName(e.target.value);
-                    },
-                  inputProps: { autocomplete: "off" },
-                },
-                {
-                  type: "password",
-                  label: "Password",
-                  value: inputCP,
-                  handleInputChange:
-                    (e) => {
-                      setInputCP(e.target.value);
-                    },
-                  inputProps: { required: true, type: "text", autocomplete: "off" },
-                },
-              ]}
-              handleSubmit={
-                async (event) => {
-                  event.preventDefault();
-                  try {
-                    calledFrom = 'signIn';
-                    enqueueSnackbar(`Signing into AVA`, {
-                      variant: 'info',
-                      action
-                    });
-                    let resp = await Auth.signIn(inputName.trim(), inputCP.trim());
-                    if (resp.challengeName === 'NEW_PASSWORD_REQUIRED') {
-                      setResetPW(true);
-                      enqueueSnackbar(`That's a temporary password.  Press "Reset password" to set a permanent one, please.`, {
-                        variant: 'info',
-                        action
-                      });
-                    }
-                    else {
-                      setResetPW(false);
-                    }
-                  }
-                  catch (e) {
-                    console.log(e);
-                    eHandler(e);
-                  }
-                }
-              }
+      <Dialog
+        open={true}
+        p={2}
+        fullWidth
+        variant={'elevation'} elevation={2}
+        TransitionComponent={Transition}
+      >
+        {Object.keys(groupsManagedObject).length === 0
+          ?
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+            <Typography className={classes.formControl} variant='h5' >
+              {'Welcome to AVA'}
+            </Typography>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <CircularProgress />
+            </div>
+          </Box>
+          :
+          <React.Fragment>
+            <DialogContentText
+              className={classes.title}
+              id='scroll-dialog-title'
+            >
+              {'Please identify yourself'}
+            </DialogContentText>
+            <TextField
+              id='UserID'
+              value={input_userID}
+              onChange={handleChangeUserID}
+              className={classes.freeInput}
+              label={isMobile ? 'ID or Name' : 'Type a few letters to filter the list'}
+              variant={'standard'}
+              autoComplete='off'
             />
-            <AmplifyForgotPassword
-              headerText={resetPW ? "Set your Password" : "Password Reset request"}
-              slot="forgot-password"
-              sendButtonText="Confirm"
-              handleSend={
-                async (event) => {
-                  console.log(`inputName is ${inputName}`);
-                  console.log(`inputLocationNumbers is ${inputLocationNumbers}`);
-                  setCount(0);
-                  event.preventDefault();
-                  await logChangeRequest(inputName, inputLocationNumbers, inputPassword);
+            <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
+              <List component='nav'>
+                {Object.keys(groupsManagedObject).sort().map((listEntry, x) => (
+                  (
+                    listEntry.toLowerCase().includes(activity_filter.toLowerCase()) ?
+                      <ListItem
+                        key={'activity-list_' + listEntry}
+                        onClick={() => {
+                          onSelect(listEntry);
+                        }}
+                        button
+                      >
+                        <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
+                          <Typography className=
+                            {groupsManagedObject[listEntry].role === 'member' ? classes.listItemAVA :
+                              (groupsManagedObject[listEntry].role === 'non-member' ? classes.listItemAVALight :
+                                classes.listItemAVABold)}>
+                            {listEntry}
+                          </Typography>
+                          <Typography className={classes.rightEdgeSmall}>
+                            {groupsManagedObject[listEntry].role}
+                          </Typography>
+                        </Box>
+                      </ListItem>
+                      : null
+                  )
+                ))
                 }
-              }
-              formFields={[
-                {
-                  type: "username",
-                  label: "Username / ID",
-                  value: inputName,
-                  handleInputChange:
-                    (e) => {
-                      console.log(`inputName is ${e.target.value}`);
-                      setInputName(e.target.value);
-                    },
-                  inputProps: { autocomplete: "off" },
-                },
-                {
-                  type: "email",
-                  label: "First Name",
-                  placeholder: 'Enter your First Name',
-                  value: inputLocationNumbers,
-                  handleInputChange:
-                    (e) => {
-                      console.log(`location is ${e.target.value}`);
-                      setInputLocationNumbers(e.target.value);
-                    },
-                  inputProps: { required: true, type: "text", autocomplete: "off" },
-                },
-                {
-                  type: "password",
-                  label: "New Password",
-                  placeholder: 'Change my password to...',
-                  value: inputPassword,
-                  handleInputChange:
-                    (e) => {
-                      setInputPassword(e.target.value);
-                    },
-                  inputProps: { required: true, type: "text", autocomplete: "off" },
-                },
-              ]}
-            />
-          </AmplifyAuthenticator>
-        </Paper >
-      </React-Fragment>
+                {promptForName &&
+                  <AVATextInput
+                    promptText="Enter a Name for the Group you're creating"
+                    buttonText='Create'
+                    onCancel={() => { setPromptForName(false); }}
+                    onSave={(newGroupName) => {
+                      setPromptForName(false);
+                      handleCreateAGroup(newGroupName);
+                    }}
+                  />
+                }
+              </List>
+            </Paper>
+          </React.Fragment>
+        }
+        <DialogActions className={classes.buttonArea} >
+          <Button
+            className={classes.rowButtonRed}
+            onClick={() => {
+              onCancel();
+            }}
+            startIcon={<CloseIcon fontSize="small" />}
+          >
+            {'Done'}
+          </Button>
+          {Object.keys(groupsManagedObject).length > 0 &&
+            <Button
+              onClick={() => {
+                setPromptForName(true);
+              }}
+              className={classes.rowButtonGreen}
+              startIcon={<GroupAddIcon fontSize="small" />}
+            >
+              {`Create ${!isMobile ? 'New Group' : ''}`}
+            </Button>
+          }
+        </DialogActions>
+      </Dialog>
     );
   } else {
     return <Component {

@@ -3,6 +3,7 @@ import Box from '@material-ui/core/Box';
 // import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 import AssignmentIcon from '@material-ui/icons/Assignment';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
+import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 // import ChatIcon from '@material-ui/icons/Chat';
 import { Auth } from '@aws-amplify/auth';
 
@@ -11,6 +12,8 @@ import withRecoil from './wrappers/withRecoil';
 import withRoot from './wrappers/withRoot';
 import hocFactory from './util/hocFactory';
 import TheseusScreen from './screens/TheseusScreen';
+import ThankYouScreen from './screens/ThankYouScreen';
+
 import Reloader from './screens/Reloader';
 import RootNavigation from './navigation/RootNavigation';
 import withAuth from './hocs/withAuth';
@@ -28,6 +31,7 @@ import { API, graphqlOperation } from 'aws-amplify';
 const menu = [
   { label: 'AVA', path: '/theseus', icon: <AssignmentIcon />, screen: <TheseusScreen /> },
   { label: 'Refresh', path: '/refresh', icon: <AutorenewIcon />, screen: <Reloader /> },
+  { label: 'Thanks', path: '/thankyou', icon: <ExitToAppIcon />, screen: <ThankYouScreen /> },
 ];
 
 const HOME = '/refresh';
@@ -77,7 +81,7 @@ const handleWriteError = async (parmMessage) => {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = 22.5.13~${errorTime}`,
+    status: `Version = 22.5.20~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',

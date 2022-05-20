@@ -201,7 +201,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect }) => {
+export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, onRefresh }) => {
   const [activity_filter, setActivityFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
 
@@ -239,6 +239,7 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect })
       .catch(err => {
         console.log(err);
       });
+    onRefresh();
   };
 
   // **************************
@@ -280,7 +281,7 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect })
           />
           <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
             <List component='nav'>
-              {Object.keys(groupsManagedObject).sort().map((listEntry, x) => (
+              {Object.keys(groupsManagedObject).map((listEntry, x) => (
                 (
                   listEntry.toLowerCase().includes(activity_filter.toLowerCase()) ?
                     <ListItem

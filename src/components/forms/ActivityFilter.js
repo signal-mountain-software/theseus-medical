@@ -163,7 +163,7 @@ export default ({ activityList, activityObject, onCancel, onSelect }) => {
           autoComplete='off'
         />
         <List component='nav'>
-          {activityList.map((listEntry, x) => (
+          {activityList.length > 0 && activityList.map((listEntry, x) => (
             (
               listEntry.toLowerCase().includes(activity_filter.toLowerCase()) ?
                 <ListItem

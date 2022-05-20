@@ -2,16 +2,16 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 
-import Grid from '@material-ui/core/Grid';
-import GridList from '@material-ui/core/GridList';
 import GridListTile from '@material-ui/core/GridListTile';
+
+import List from '@material-ui/core/List';
 
 import EditObservation from '../forms/EditObservation';
 import LoadMenuSpreadsheet from '../forms/LoadMenuSpreadsheet';
 
 import Box from '@material-ui/core/Box';
-import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
+import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import IconButton from '@material-ui/core/IconButton';
 import EditIcon from '@material-ui/icons/Edit';
@@ -19,7 +19,25 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import DeleteForeverIcon from '@material-ui/icons/DeleteForever';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 
+const useStyles = makeStyles(theme => ({
+  listItem: {
+    justifyContent: 'space-between',
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(2)
+  },
+  typeOfLine: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginBottom: 0,
+  },
+  observationLine: {
+    marginTop: 0,
+    fontSize: theme.typography.fontSize * 1.8,
+  },
+}));
+
 export default ({ observationList, pClient, keyDate, filter, onReset }) => {
+
+  const classes = useStyles()
 
   let filterText = filter ? filter.toLowerCase() : null;
 
@@ -93,106 +111,91 @@ export default ({ observationList, pClient, keyDate, filter, onReset }) => {
   return (
     observationList?.length > 0 &&
     <Box >
-      <Grid item>
-        <GridList cellHeight='auto' cols={1} key='gridList'>
-          {observationList.map((this_item, index) => (
-            (filterText && !this_item.observation_code.toLowerCase().includes(filterText))
-              ? null
-              :
-              <React-fragment key={this_item.composite_key + 'frag' + index} >
-                <GridListTile
-                  key={this_item.id + 'r' + index}
-                  style={{ marginBottom: '0px', marginTop: '0px' }}
-                  cols={1}
-                >
-                  <Paper
-                    component={Box}
-                    p={2}
-                    mt={0} mb={1}
-                    variant='outlined'
-                    style={{ marginBottom: '0px', marginTop: '5px' }}
-                    textAlign='left'
-                    onClick={() => {
-
-                    }}
-                    square>
-                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                      <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
-                        <React.Fragment key={`act_box_${this_item.id}`}>
-                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                            {this_item.observation_code === '%%add%%' ?
-                              <React.Fragment key={`add_row_${this_item.id}`}>
-                                <Box display='flex' flexGrow={1} flexDirection='column'>
-                                  <Typography variant='h5'>{index === 0 ? 'Add something?' : 'Add more?'}</Typography>
-                                </Box>
-                                <IconButton
-                                  aria-label="search_icon"
-                                  onClick={() => { handleAddObservation(); }}
-                                  edge="end"
-                                >
-                                  {<AddCircleOutlineIcon />}
-                                </IconButton>
-                              </React.Fragment>
-                              :
-                              <React.Fragment key={`normal_row_${this_item.id}`}>
-                                <Box display='flex' flexGrow={1} flexDirection='column'>
-                                  <Typography variant='h6'>{sentenceCase(this_item.composite_key.split(/[~_]/g).slice(1, -1).join('_'))}</Typography>
-                                  <Typography variant='h5'>{this_item.observation_code.replace(/~/g, '')}</Typography>
-                                </Box>
-                                <IconButton
-                                  aria-label="search_icon"
-                                  onClick={() => { handleEditObservation(this_item); }}
-                                  edge="end"
-                                >
-                                  {<EditIcon />}
-                                </IconButton>
-                                <IconButton
-                                  aria-label="search_icon"
-                                  onClick={() => {
-                                    if (deletePending === index) {
-                                      setDeletePending(null);
-                                      handleDeleteObservation(this_item);
-                                    }
-                                    else {
-                                      setDeletePending(index);
-                                    }
-                                  }}
-                                  edge="end"
-                                >
-                                  {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
-                                </IconButton>
-                              </React.Fragment>
-                            }
-
-                          </Box>
-                        </React.Fragment>
+      <List >
+        {observationList.map((this_item, index) => (
+          (filterText && !this_item.observation_code.toLowerCase().includes(filterText))
+            ? null
+            :
+            <React-fragment key={this_item.composite_key + 'frag' + index} >
+              <GridListTile
+                key={this_item.id + 'r' + index}
+                style={{ marginBottom: '0px', marginTop: '0px' }}
+                cols={1}
+              >
+                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                  <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
+                    <React.Fragment key={`act_box_${this_item.id}`}>
+                      <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                        {this_item.observation_code === '%%add%%' ?
+                          <React.Fragment key={`add_row_${this_item.id}`}>
+                            <Box display='flex' flexGrow={1} flexDirection='column'>
+                              <Typography variant='h5'>{index === 0 ? 'Add something?' : 'Add more?'}</Typography>
+                            </Box>
+                            <IconButton
+                              aria-label="search_icon"
+                              onClick={() => { handleAddObservation(); }}
+                              edge="end"
+                            >
+                              {<AddCircleOutlineIcon />}
+                            </IconButton>
+                          </React.Fragment>
+                          :
+                          <React.Fragment key={`normal_row_${this_item.id}`}>
+                            <Box className={classes.listItem} display='flex' flexGrow={1} flexDirection='column'>
+                              <Typography className={classes.typeOfLine}>{sentenceCase(this_item.composite_key.split(/[~_]/g).slice(1, -1).join('_'))}</Typography>
+                              <Typography className={classes.observationLine}>{this_item.observation_code.replace(/~/g, '')}</Typography>
+                            </Box>
+                            <IconButton
+                              aria-label="search_icon"
+                              onClick={() => { handleEditObservation(this_item); }}
+                              edge="end"
+                            >
+                              {<EditIcon />}
+                            </IconButton>
+                            <IconButton
+                              aria-label="search_icon"
+                              onClick={() => {
+                                if (deletePending === index) {
+                                  setDeletePending(null);
+                                  handleDeleteObservation(this_item);
+                                }
+                                else {
+                                  setDeletePending(index);
+                                }
+                              }}
+                              edge="end"
+                            >
+                              {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
+                            </IconButton>
+                          </React.Fragment>
+                        }
                       </Box>
-                    </Box>
-                  </Paper>
-                </GridListTile>
-              </React-fragment>
-          ))}
-          {editMode &&
-            <EditObservation
-              observation={selectedObservation}
-              showDialog={editMode}
-              handleClose={() => {
-                setEditMode(false);
-                onReset();
-              }}
-            />
-          }
-          {loadMode &&
-            <LoadMenuSpreadsheet
-              showUpload={loadMode}
-              handleClose={() => {
-                setLoadMode(false);
-                onReset();
-              }}
-            />
-          }
-        </GridList>
-      </Grid>
+                    </React.Fragment>
+                  </Box>
+                </Box>
+              </GridListTile>
+            </React-fragment>
+        ))}
+        {editMode &&
+          <EditObservation
+            observation={selectedObservation}
+            showDialog={editMode}
+            handleClose={() => {
+              setEditMode(false);
+              onReset();
+            }}
+          />
+        }
+        {loadMode &&
+          <LoadMenuSpreadsheet
+            showUpload={loadMode}
+            handleClose={() => {
+              setLoadMode(false);
+              onReset();
+            }}
+          />
+        }
+      </List>
     </Box>
   );
 };

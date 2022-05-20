@@ -130,7 +130,7 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
       return {
         activity_code: aRec.aCode,
         activity_name: aRec.aName,
-        client_event_id: 'na'
+        client_event_id: aRec.aEvent
       };
     });
     setEventActivityList(listForEdit);
