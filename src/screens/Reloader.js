@@ -9,14 +9,14 @@ export default () => {
     const { state } = useSession();
     const { session } = state;
     serviceWorker.unregister();
-   
+
     let jumpTo = window.location.href.replace('refresh', 'theseus');
     if (session?.url_parameters) {
         let url_variables = {};
         if (typeof (session.url_parameters) === 'string') {
             url_variables = JSON.parse(session.url_parameters);
         }
-        else { 
+        else {
             url_variables = session.url_parameters;
         }
         let link = '?';
@@ -26,11 +26,11 @@ export default () => {
         }
     }
     window.location.replace(jumpTo);
-    
+
     return (
         <Box mt={3}>
             <Typography align='center'>
-                {`Loading AVA version 22.5.20${window.location.href.split('//')[1].slice(0, 1)}`}
+                {`Loading AVA version 22.5.25${window.location.href.split('//')[1].slice(0, 1)}`}
             </Typography>
         </Box>
     );

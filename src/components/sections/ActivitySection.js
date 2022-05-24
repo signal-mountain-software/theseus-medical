@@ -240,7 +240,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = 22.5.20~${errorTime}`,
+        status: `Version = 22.5.25~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -1080,7 +1080,7 @@ export default ({ patient, session }) => {
             setShowNewFactDialog(false);
             if (session?.url_parameters.hasOwnProperty('activity')) {
               let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-              jumpTo += `?user=${session.url_parameters.user}`
+              jumpTo += `?user=${session.url_parameters.user}`;
               window.location.replace(jumpTo);
             }
             actionCancelled = true;
