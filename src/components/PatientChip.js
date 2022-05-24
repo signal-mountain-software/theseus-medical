@@ -18,10 +18,12 @@ export default ({ patient, roles, session }) => {
   const { enqueueSnackbar } = useSnackbar();
 
   const onClick = () => {
-    if (session.patient_id) {
-      setOpen(true);
-    } else {
-      history.push('/theseus');
+    if (!session?.kiosk_mode) {
+      if (session.patient_id) {
+        setOpen(true);
+      } else {
+        history.push('/theseus');
+      }
     }
   };
 
@@ -46,7 +48,7 @@ export default ({ patient, roles, session }) => {
           <Tooltip
             title={
               <Typography variant='caption'>
-                {'View/Update this Profile'}
+                {session?.kiosk_mode ? 'View/Update not available in Kiosk Mode' : 'View/Update this Profile'}
               </Typography>
             }
             placement='bottom-start'>

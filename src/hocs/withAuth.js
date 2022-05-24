@@ -127,10 +127,10 @@ export default Component => props => {
     }
   };
 
-  const setMessages = (mText) => {
-    if (count > 2) {
+  const setMessages = (mText, forceFail = false) => {
+    if (count > 2 || forceFail) {
       calledFrom = 'failure';
-      enqueueSnackbar(`${mText.trim()}.  It seems you're having trouble.  What would you like to do now?`, {
+      enqueueSnackbar(`${mText.trim()}.  What would you like to do now?`, {
         variant: 'error',
         persist: true,
         preventDuplicate: true,
@@ -264,11 +264,11 @@ export default Component => props => {
     switch (data.code) {
       case 'NotAuthorizedException': {
         if (data.message.includes('expired')) {
-          setMessages(`Your password has expired and must be reset`);
+          setMessages(`Your password has expired and must be reset`, true);
           break;
         }
         else if (data.message.includes('exceeded')) {
-          setMessages(`You've used a wrong password too many times.`);
+          setMessages(`You've used a wrong password too many times.`, true);
           break;
         };
         let newP;
@@ -291,14 +291,23 @@ export default Component => props => {
             setMessages("That's not a valid AVA Username");
           }
           else {
-            if (saveP.length > 2 && (saveP[0] === saveP[1] && saveP[1] === saveP[2])) { 
-              await tryPwdUpdate(inputName.trim(), 'updatePwd', saveP[0]);
-              await Auth.signIn(inputName.trim(), saveP[0]);
-              break;
+            if (saveP.length > 2 && (saveP[0] === saveP[1] && saveP[1] === saveP[2])) {
+              let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'updatePwd', saveP[0]);
+              if (!invokeFailed && response.status === 200) {
+                await Auth.signIn(inputName.trim(), saveP[0]);
+              }
+              else {
+                if (response.body) {
+                  let mOut = `The password "${saveP[0]}" doesn't work!  It looks like this is the problem...`;
+                  mOut += (response.body?.message
+                    ? response.body.message
+                    : `AVA is unable to validate or set "${saveP[0]}" as your password`);
+                  setMessages(mOut, true);
+                }
+              }
             }
-            setMessages(`That's not the correct password for Username "${inputName.trim()}"`);
+            else { setMessages(`That's not the correct password for Username "${inputName.trim()}"`); }
           }
-          console.log(`user ${data.message}`);
           break;
         }
       }
@@ -343,7 +352,6 @@ export default Component => props => {
 
   React.useEffect(() => {
     if (messageOut) {
-      console.log(`>${messageOut}<`);
       enqueueSnackbar(messageOut.trim(), {
         variant: 'error'
       });
