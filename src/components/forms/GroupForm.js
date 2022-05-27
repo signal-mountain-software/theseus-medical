@@ -11,6 +11,7 @@ import MoreHorizIcon from '@material-ui/icons/MoreHoriz';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
+import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 
 import Button from '@material-ui/core/Button';
 import IconButton from '@material-ui/core/IconButton';
@@ -88,7 +89,7 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     textTransform: 'none',
     size: 'small',
-    // color: theme.palette.reject[theme.palette.type],
+    color: theme.palette.reject[theme.palette.type],
   },
   rowButtonGreen: {
     marginLeft: theme.spacing(1),
@@ -280,18 +281,21 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     let nqMessage = '';
     if (!pRecipient) {
       pRecipient = pGroupName + ':group=' + pClient + '~' + pGroup;
-      nqMessage = `Sent "${pMessage}" to everyone in ${pGroupName}`
+      nqMessage = `Sent "${pMessage}" to everyone in ${pGroupName}`;
+      if (pMessageType.toLowerCase() === 'urgent group') { nqMessage += ` as an URGENT (phone call preferred) message!`; }
     }
     else {
-      nqMessage = `Sent "${pMessage}" via ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : messageType)} to ${pRecipient.split(':')[0]}`
+      nqMessage = `Sent "${pMessage}" via ${pMessageType === 'time_based' ? '' : (pMessageType === 'sms' ? 'text' : pMessageType)} to ${pRecipient.split(':')[0]}`;
     }
-    params.Payload = JSON.stringify({
+    let lambdaPayload = {
       "body": {
         "client": pClient,
         "author": pPatient,
         "values": pRecipient + ' ~ MessageText = ' + pMessage
       }
-    });
+    };
+    if (pMessageType.toLowerCase() === 'urgent group') { lambdaPayload.body.method = 'urgent'; }
+    params.Payload = JSON.stringify(lambdaPayload);
     lambda
       .invoke(params)
       .promise()
@@ -338,6 +342,31 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     setOpen(workingOpen);
     setForceRedisplay(!forceRedisplay);
   };
+
+  function formatPhone(pPhone) {
+    let match = ('' + pPhone).replace(/\D/g, '').match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
+    if (match) { return `(${match[2]}) ${match[3]}-${match[4]}`; }
+    else { return pPhone; }
+  }
+
+  function makeDefault(pMessaging, pPreference, pPerson) {
+    if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
+      try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
+      catch (e) { pPreference = 'AVA'; }
+    }
+
+    switch (pPreference) {
+      case 'sms': { return `prefers text at ${formatPhone(pMessaging.sms)}`; }
+      case 'voice': { return `prefers voice call to ${formatPhone(pMessaging.voice)}`; }
+      case 'email': { return `prefers e-Mail at ${pMessaging.email}`; }
+      case 'time_based': { return `preference varies by time`; }
+      case 'AVA': { return `AVA messages only`; }
+      default: {
+        console.log(pPerson);
+        return `prefers ${pPreference}`;
+      }
+    }
+  }
 
   // ******************
 
@@ -387,21 +416,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                             <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>
                           </Box>
                           <Typography variant='body1'>{this_item.location}</Typography>
-                          {(this_item.preferred_method === 'sms' ?
-                            <Typography className={classes.preferenceLine} >{`prefers text at ${this_item.cell}`}</Typography>
-                            :
-                            (this_item.preferred_method === 'voice' ?
-                              <Typography className={classes.preferenceLine} >{`prefers voice call to ${this_item.home}`}</Typography>
-                              :
-                              (this_item.preferred_method === 'email' ?
-                                <Typography className={classes.preferenceLine} >{`prefers e-Mail at ${this_item.email}`}</Typography>
-                                :
-                                (this_item.preferred_method === 'time_based' ?
-                                  <Typography className={classes.preferenceLine} >{`preference varies by time`}</Typography>
-                                  :
-                                  null))))
-                          }
-
+                          <Typography className={classes.preferenceLine} >{makeDefault(this_item.messaging, this_item.preferred_method, this_item)}</Typography>
                         </Box>
                       </Box>
                       {!open[index] && <MoreHorizIcon />}
@@ -430,7 +445,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                                 setDeletePending(true);
                                 setForceRedisplay(false);
                               }}
-                              className={classes.rowButtonRed}
+                              className={classes.rowButtonGreen}
                               startIcon={<DeleteIcon fontSize="small" />}
                             >
                               Remove from Group
@@ -479,7 +494,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                                 setDeletePending(true);
                                 setForceRedisplay(false);
                               }}
-                              className={classes.rowButtonRed}
+                              className={classes.rowButtonGreen}
                             >
                               <DeleteIcon fontSize="small" />
                             </IconButton>
@@ -509,7 +524,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                   : null
                 )
               ))}
-
             </List>
           </Paper>
           {showPatientDialog &&
@@ -574,94 +588,94 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
           {isMobile ?
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-              <IconButton
-                className={classes.rowButtonRed}
-                onClick={onReset}
-              >
-                <CloseIcon size="small" />
-              </IconButton>
-              {(pRole === 'admin' || pRole === 'responsible') &&
-                <IconButton
-                  className={classes.rowButtonGreen}
-                  onClick={() => {
-                    setShowAddPrompt(true);
-                  }}
-                >
-                  <GroupAddIcon size="small" />
-                </IconButton>
-              }
-              {(pRole === 'non-member') &&
-                <IconButton
-                  className={classes.rowButtonGreen}
-                  onClick={() => {
-                    handleAddPersonToGroup(pPatient, pGroup);
-                  }}
-                >
-                  <AddCircleOutlineIcon size="small" />
-                </IconButton>
-              }
-              {(pRole !== 'non-member') &&
-                <IconButton
-                  className={classes.rowButtonGreen}
-                  onClick={() => {
-                    handleRemoveGroupMember(pPatient, myIndex);
-                  }}
-                >
-                  <RemoveCircleOutlineIcon size="small" />
-                </IconButton>
-              }
-              {(pRole === 'admin' || pRole === 'responsible') &&
-                <IconButton
-                  className={classes.rowButtonDefault}
-                  onClick={() => { handlePrintDirectory(pGroup); }}
-                >
-                  <PrintIcon size='small' />
-                </IconButton>
-              }
-              {(pRole === 'admin' || pRole === 'responsible') &&
-                <IconButton
-                  onClick={() => { handlePrintRoster(pGroup); }}
-                  className={classes.rowButtonGreen}
-                >
-                  <StorageOutlined size='small' />
-                </IconButton>
-              }
-              {(pRole === 'admin' || pRole === 'responsible') &&
-                <IconButton
-                  onClick={() => {
-                    setPromptForMessage(true);
-                    setMessageType('Group');
-                    setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                  }}
-                  className={classes.rowButtonGreen}
-                >
-                  <SendIcon size='small' />
-                </IconButton>
-              }
+              <Box display='flex' flexDirection='column'>
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                  <IconButton
+                    className={classes.rowButtonGreen}
+                    onClick={onReset}
+                  >
+                    <CloseIcon size="small" />
+                  </IconButton>
+                  {(pRole === 'non-member') ?
+                    <IconButton
+                      className={classes.rowButtonGreen}
+                      onClick={() => {
+                        handleAddPersonToGroup(pPatient, pGroup);
+                      }}
+                    >
+                      <AddCircleOutlineIcon size="small" />
+                    </IconButton>
+                    :
+                    <IconButton
+                      className={classes.rowButtonGreen}
+                      onClick={() => {
+                        handleRemoveGroupMember(pPatient, myIndex);
+                      }}
+                    >
+                      <RemoveCircleOutlineIcon size="small" />
+                    </IconButton>
+                  }
+                  {(pRole === 'admin' || pRole === 'responsible') &&
+                    <IconButton
+                      className={classes.rowButtonGreen}
+                      onClick={() => {
+                        setShowAddPrompt(true);
+                      }}
+                    >
+                      <GroupAddIcon size="small" />
+                    </IconButton>
+                  }
+                </Box>
+                {(pRole === 'admin' || pRole === 'responsible') &&
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                    <IconButton
+                      className={classes.rowButtonDefault}
+                      onClick={() => { handlePrintDirectory(pGroup); }}
+                    >
+                      <PrintIcon size='small' />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => { handlePrintRoster(pGroup); }}
+                      className={classes.rowButtonGreen}
+                    >
+                      <StorageOutlined size='small' />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('Group');
+                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                      }}
+                      className={classes.rowButtonGreen}
+                    >
+                      <SendIcon size='small' />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('URGENT Group');
+                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                      }}
+                      className={classes.rowButtonRed}
+                    >
+                      <PhoneInTalkIcon size='small' />
+                    </IconButton>
+                  </Box>
+                }
+              </Box>
             </DialogActions>
             :
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
-                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
-                    className={classes.rowButtonRed}
+                    className={classes.rowButtonGreen}
                     onClick={onReset}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Close'}
                   </Button>
-                  {(pRole === 'admin' || pRole === 'responsible') &&
-                    <Button
-                      className={classes.rowButtonGreen}
-                      onClick={() => {
-                        setShowAddPrompt(true);
-                      }}
-                      startIcon={<GroupAddIcon size="small" />}
-                    >
-                      {'Add Member'}
-                    </Button>
-                  }
-                  {(pRole === 'non-member') &&
+                  {(pRole === 'non-member') ?
                     <Button
                       className={classes.rowButtonGreen}
                       onClick={() => {
@@ -671,8 +685,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                     >
                       {'Add Myself'}
                     </Button>
-                  }
-                  {(pRole !== 'non-member') &&
+                    :
                     <Button
                       className={classes.rowButtonGreen}
                       onClick={() => {
@@ -685,16 +698,25 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                   }
                   {(pRole === 'admin' || pRole === 'responsible') &&
                     <Button
+                      className={classes.rowButtonGreen}
+                      onClick={() => {
+                        setShowAddPrompt(true);
+                      }}
+                      startIcon={<GroupAddIcon size="small" />}
+                    >
+                      {'Add Member'}
+                    </Button>
+                  }
+                </Box>
+                {(pRole === 'admin' || pRole === 'responsible') &&
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                    <Button
                       className={classes.rowButtonDefault}
                       onClick={() => { handlePrintDirectory(pGroup); }}
                       startIcon={<PrintIcon size='small' />}
                     >
                       {'Directory'}
                     </Button>
-                  }
-                </Box>
-                {(pRole === 'admin' || pRole === 'responsible') &&
-                  <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                     <Button
                       onClick={() => { handlePrintRoster(pGroup); }}
                       className={classes.rowButtonGreen}
@@ -713,14 +735,24 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                     >
                       {'Message to the Group'}
                     </Button>
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('URGENT Group');
+                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                      }}
+                      className={classes.rowButtonRed}
+                      startIcon={<PhoneInTalkIcon size='small' />}
+                    >
+                      {'Urgent Message'}
+                    </Button>
                   </Box>
                 }
               </Box>
             </DialogActions>
-
           }
         </React.Fragment>
       }
-    </Dialog>
+    </Dialog >
   );
-};
+};;
