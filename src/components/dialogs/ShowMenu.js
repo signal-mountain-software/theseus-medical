@@ -12,9 +12,11 @@ import DialogContentText from '@material-ui/core/DialogContentText';
 import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
+import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+
+import EditObservation from '../forms/EditObservation';
 
 import MenuForm from '../forms/MenuForm';
 import LoadMenuSpreadsheet from '../forms/LoadMenuSpreadsheet';
@@ -88,6 +90,8 @@ export default ({ pClient, showMenu, onClose }) => {
   const [observationList, setObservationList] = React.useState([]);
   const [selectedDate, setSelectedDate] = React.useState();
   const [loadMode, setLoadMode] = React.useState(false);
+  const [addMode, setAddMode] = React.useState(false);
+  const [selectedObservation, setSelectedObservation] = React.useState({});
 
   const classes = useStyles();
 
@@ -149,6 +153,18 @@ export default ({ pClient, showMenu, onClose }) => {
       }
     };
     return getObservations.body;
+  };
+
+  const handleAddObservation = async () => {
+    setAddMode(true);
+    let pDate = new Date(selectedDate);
+    let pYMD = pDate.getFullYear() + '.' + (pDate.getMonth() + 1) + '.' + pDate.getDate();
+    let newEntry = {
+      "composite_key": `${pClient}~ _${pYMD}`,
+      "observation_code": '',
+      "sort_order": `${pYMD}_`
+    };
+    setSelectedObservation(newEntry);
   };
 
   function getSort(pKey) {
@@ -275,6 +291,8 @@ export default ({ pClient, showMenu, onClose }) => {
             onReset={() => {
               getObservations(selectedDate);
             }}
+            handleAbort={handleAbort}
+            handleLoad={handleLoad}
           />
         </DialogContent>
         <DialogActions style={{ justifyContent: 'center' }}>
@@ -294,7 +312,28 @@ export default ({ pClient, showMenu, onClose }) => {
           >
             {'Load'}
           </Button>
+          <Button
+            className={classes.rowButtonGreen}
+            size='small'
+            onClick={() => { handleAddObservation(); }}
+            startIcon={<AddCircleOutlineIcon size="small" />}
+          >
+            {'Add Items'}
+          </Button>
         </DialogActions>
+        {addMode &&
+          <EditObservation
+            observation={selectedObservation}
+            showDialog={addMode}
+            handleClose={() => {
+              setAddMode(false);
+              getObservations(selectedDate);
+            }}
+            handleCancel={() => {
+              setAddMode(false);
+            }}
+          />
+        }
         {loadMode &&
           <LoadMenuSpreadsheet
             pClient={pClient}
