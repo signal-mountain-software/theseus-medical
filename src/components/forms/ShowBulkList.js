@@ -41,7 +41,7 @@ export default ({ pClient, workingList, showList }) => {
 
   const classes = useStyles();
   const [bulkItemList, setBulkItemList] = React.useState(workingList);
-  const [printRequired, setPrintRequired] = React.useState(1);
+  const [forceRedisplay, setForceRedisplay] = React.useState(1);
   const [editMode, setEditMode] = React.useState(false);
   const [selectedObservation, setSelectedObservation] = React.useState({});
   const [updateIndex, setUpdateIndex] = React.useState();
@@ -66,7 +66,7 @@ export default ({ pClient, workingList, showList }) => {
     workingArray[updateIndex].item = updatedRow.observation_code;
     console.log(updatedRow);
     setBulkItemList(workingArray);
-    setPrintRequired(printRequired + 1);
+    setForceRedisplay(forceRedisplay + 1);
   }
 
   const handleDeleteItem = async (pItem, pIndex) => {
@@ -74,7 +74,7 @@ export default ({ pClient, workingList, showList }) => {
     let removedItem = workingArray.splice(pIndex, 1);
     console.log(removedItem);
     setBulkItemList(workingArray);
-    setPrintRequired(printRequired + 1);
+    setForceRedisplay(forceRedisplay + 1);
   };
 
 
@@ -84,7 +84,7 @@ export default ({ pClient, workingList, showList }) => {
 
 
   return (
-    printRequired > 0 &&
+    forceRedisplay > 0 &&
     <Box >
       <List >
         {bulkItemList.map((this_item, index) => (
@@ -154,12 +154,15 @@ export default ({ pClient, workingList, showList }) => {
         ))}
           {editMode &&
             <EditObservation
-              observation={selectedObservation}
-              showDialog={editMode}
-              handleClose={(updatedRow) => {
-                setEditMode(false);
-                onReset(updatedRow, );
-              }}
+            observation={selectedObservation}
+            showDialog={editMode}
+            handleClose={(updatedRow) => {
+              setEditMode(false);
+              onReset(updatedRow);
+            }}
+            handleCancel={() => {
+              setEditMode(false);
+            }}
             />
           }
       </List>

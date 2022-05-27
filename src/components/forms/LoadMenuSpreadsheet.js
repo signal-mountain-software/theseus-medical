@@ -197,7 +197,7 @@ export default ({ pClient, showUpload, handleClose }) => {
         previousRow = cellRow;
         if (isNaN(Number(cellValue)) && cellValue.length < 3) { continue; }
         if (cellValue.toString().includes('+++++')) { continue; }
-        cellKey = cellValue.toString().trim().split(' ')[0].toLowerCase().replace(/[^a-z]+/, '');
+        cellKey = cellValue.toString().trim().toLowerCase().replace(/[^a-z]+/, '');
         if (cellKey && dateWords.includes(cellKey)) {
           dateString = cellValue;
           needDate = true;
