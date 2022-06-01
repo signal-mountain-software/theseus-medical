@@ -47,7 +47,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ observation, showDialog, handleClose }) => {
+export default ({ observation, showDialog, handleClose, handleCancel }) => {
 
   const classes = useStyles();
 
@@ -151,7 +151,7 @@ export default ({ observation, showDialog, handleClose }) => {
               defaultValue="" 
               fullWidth
               label={'Type'}
-              value={observationType || ""}
+              value={observationType || ''}
               onChange={onChangeType}
             >
               {entryTypes.map((eType) => (
@@ -171,7 +171,7 @@ export default ({ observation, showDialog, handleClose }) => {
           </Box>
         </DialogContent>
         <DialogActions style={{ justifyContent: 'center' }}>
-          <Button className={classes.reject} size='small' variant='contained' onClick={handleClose}>
+          <Button className={classes.reject} size='small' variant='contained' onClick={handleCancel}>
             Cancel
           </Button>
           {changeDetected &&

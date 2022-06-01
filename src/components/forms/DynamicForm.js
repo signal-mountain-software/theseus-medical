@@ -130,11 +130,11 @@ const useStyles = makeStyles(theme => ({
     // height: theme.typography.fontSize * 2.8,
   },
   lastName: {
-    fontSize: theme.typography.fontSize * 2.5,
+    fontSize: theme.typography.fontSize * 2.0,
     fontWeight: 'bold'
   },
   firstName: {
-    fontSize: theme.typography.fontSize * 2.2,
+    fontSize: theme.typography.fontSize * 1.7,
   },
   messageInput: {
     marginLeft: 0,
@@ -720,7 +720,7 @@ export default ({
       }
       else {
         result.data.getPerson.location.split('~').forEach(locLine => {
-        qualifierTable[value].qualifiers.push('~~' + locLine.trim());
+          qualifierTable[value].qualifiers.push('~~' + locLine.trim());
         });
       }
       if (result?.data?.getPerson?.messaging?.email) {
@@ -1177,7 +1177,7 @@ export default ({
       );
     case 'show_groups':
       return (
-        <ShowGroup 
+        <ShowGroup
           pSession={session}
           pGroup_id={defaultValue}
           pGroup_name={message}
@@ -1547,22 +1547,10 @@ export default ({
               aria-labelledby='qualifier-dialog'>
               <Box
                 display='flex'
-                flexDirection='column'
-                justifyContent='center'
+                flexDirection='row'
+                justifyContent='space-around'
                 alignItems='center'
               >
-                {qualifierData.image_url ?
-                  (
-                    <Box
-                      marginTop={5}
-                      component="img"
-                      width={200}
-                      maxWidth={200}
-                      alt='No photo available'
-                      src={qualifierImage}
-                    />
-                  ) : null
-                }
                 <Box display='flex' pt={3} flexDirection='column' justifyContent='center' alignItems='center'>
                   <Typography variant={'h5'} className={classes.lastName} noWrap={false}>
                     {qualifierData.value ? qualifierData.value.split(':')[0].split(',')[0].trim() : null}
@@ -1577,6 +1565,16 @@ export default ({
                   )
                     : null}
                 </Box>
+                {qualifierData.image_url &&
+                  <Box
+                    marginTop={5}
+                    component="img"
+                    minWidth={120}
+                    maxWidth={120}
+                    alt='No photo available'
+                    src={qualifierImage}
+                  />
+                }
               </Box>
               <DialogContent pt={0}>
                 <FormControl fullWidth>

@@ -449,6 +449,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, showCalendar, on
             pPatient={patient.patient_id}
             pClient={patient.adopted_client || patient.client_id}
             pOccData={myCalendar[0].occData}
+            pPatientRec={patient}
             onReset={() => { handleAbort(); }}
           />
           :

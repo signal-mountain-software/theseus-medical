@@ -2,6 +2,8 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 
+import AVAConfirm from './AVAConfirm';
+
 import GridListTile from '@material-ui/core/GridListTile';
 
 import List from '@material-ui/core/List';
@@ -16,8 +18,6 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import IconButton from '@material-ui/core/IconButton';
 import EditIcon from '@material-ui/icons/Edit';
 import DeleteIcon from '@material-ui/icons/Delete';
-import DeleteForeverIcon from '@material-ui/icons/DeleteForever';
-import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 
 const useStyles = makeStyles(theme => ({
   listItem: {
@@ -35,22 +35,20 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ observationList, pClient, keyDate, filter, onReset }) => {
+export default ({ observationList, pClient, keyDate, filter, onReset, handleAbort, handleLoad }) => {
 
-  const classes = useStyles()
+  const classes = useStyles();
 
   let filterText = filter ? filter.toLowerCase() : null;
 
   const [editMode, setEditMode] = React.useState(false);
   const [loadMode, setLoadMode] = React.useState(false);
   const [deletePending, setDeletePending] = React.useState(null);
+  const [deleteObs, setDeleteObs] = React.useState();
   const [selectedObservation, setSelectedObservation] = React.useState({});
+  const [confirmMessage, setConfirmMessage] = React.useState('');
 
   const { enqueueSnackbar } = useSnackbar();
-
-  if ((observationList.length === 0) || (observationList[observationList.length - 1].observation_code !== '%%add%%')) {
-    observationList.push({ observation_code: '%%add%%' });
-  }
 
   function sentenceCase(pString) {
     return pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase();
@@ -59,18 +57,6 @@ export default ({ observationList, pClient, keyDate, filter, onReset }) => {
   const handleEditObservation = async (pObs) => {
     setEditMode(true);
     setSelectedObservation(pObs);
-  };
-
-  const handleAddObservation = async () => {
-    setEditMode(true);
-    let pDate = new Date(keyDate);
-    let pYMD = pDate.getFullYear() + '.' + (pDate.getMonth() + 1) + '.' + pDate.getDate();
-    let newEntry = {
-      "composite_key": `${pClient}~ _${pYMD}`,
-      "observation_code": '',
-      "sort_order": `${pYMD}_`
-    };
-    setSelectedObservation(newEntry);
   };
 
   const handleDeleteObservation = async (pObs) => {
@@ -126,49 +112,30 @@ export default ({ observationList, pClient, keyDate, filter, onReset }) => {
                   <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
                     <React.Fragment key={`act_box_${this_item.id}`}>
                       <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                        {this_item.observation_code === '%%add%%' ?
-                          <React.Fragment key={`add_row_${this_item.id}`}>
-                            <Box display='flex' flexGrow={1} flexDirection='column'>
-                              <Typography variant='h5'>{index === 0 ? 'Add something?' : 'Add more?'}</Typography>
-                            </Box>
-                            <IconButton
-                              aria-label="search_icon"
-                              onClick={() => { handleAddObservation(); }}
-                              edge="end"
-                            >
-                              {<AddCircleOutlineIcon />}
-                            </IconButton>
-                          </React.Fragment>
-                          :
-                          <React.Fragment key={`normal_row_${this_item.id}`}>
-                            <Box className={classes.listItem} display='flex' flexGrow={1} flexDirection='column'>
-                              <Typography className={classes.typeOfLine}>{sentenceCase(this_item.composite_key.split(/[~_]/g).slice(1, -1).join('_'))}</Typography>
-                              <Typography className={classes.observationLine}>{this_item.observation_code.replace(/~/g, '')}</Typography>
-                            </Box>
-                            <IconButton
-                              aria-label="search_icon"
-                              onClick={() => { handleEditObservation(this_item); }}
-                              edge="end"
-                            >
-                              {<EditIcon />}
-                            </IconButton>
-                            <IconButton
-                              aria-label="search_icon"
-                              onClick={() => {
-                                if (deletePending === index) {
-                                  setDeletePending(null);
-                                  handleDeleteObservation(this_item);
-                                }
-                                else {
-                                  setDeletePending(index);
-                                }
-                              }}
-                              edge="end"
-                            >
-                              {deletePending === index ? <DeleteForeverIcon /> : <DeleteIcon />}
-                            </IconButton>
-                          </React.Fragment>
-                        }
+                        <React.Fragment key={`normal_row_${this_item.id}`}>
+                          <Box className={classes.listItem} display='flex' flexGrow={1} flexDirection='column'>
+                            <Typography className={classes.typeOfLine}>{sentenceCase(this_item.composite_key.split(/[~_]/g).slice(1, -1).join('_'))}</Typography>
+                            <Typography className={classes.observationLine}>{this_item.observation_code.replace(/~/g, '')}</Typography>
+                          </Box>
+                          <IconButton
+                            aria-label="search_icon"
+                            onClick={() => { handleEditObservation(this_item); }}
+                            edge="end"
+                          >
+                            {<EditIcon />}
+                          </IconButton>
+                          <IconButton
+                            aria-label="search_icon"
+                            onClick={() => {
+                              setConfirmMessage(`Confirm removing ${this_item.observation_code.replace(/~/g, '')} from the ${keyDate} menu?`);
+                              setDeleteObs(this_item);
+                              setDeletePending(true);
+                            }}
+                            edge="end"
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </React.Fragment>
                       </Box>
                     </React.Fragment>
                   </Box>
@@ -184,6 +151,9 @@ export default ({ observationList, pClient, keyDate, filter, onReset }) => {
               setEditMode(false);
               onReset();
             }}
+            handleCancel={() => {
+              setEditMode(false);
+            }}
           />
         }
         {loadMode &&
@@ -194,6 +164,19 @@ export default ({ observationList, pClient, keyDate, filter, onReset }) => {
               onReset();
             }}
           />
+        }
+        {deletePending &&
+          <AVAConfirm
+            promptText={confirmMessage}
+            onCancel={() => {
+              setDeletePending(false);
+            }}
+            onConfirm={() => {
+              handleDeleteObservation(deleteObs);
+              setDeletePending(false);
+            }}
+          >
+          </AVAConfirm>
         }
       </List>
     </Box>
