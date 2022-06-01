@@ -183,7 +183,7 @@ export default Component => props => {
             });
           if (emulatingSession) { session = emulatingSession.data.getSession; }
         }
-        session.session_id = `22.5.28${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `22.6.2${window.location.href.split('//')[1].slice(0, 1)}`;
         let urlQuery = getParams();
         if (urlQuery?.user) {
           session.url_parameters = urlQuery;
