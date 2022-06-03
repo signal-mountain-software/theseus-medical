@@ -24,8 +24,6 @@ import DialogTitle from '@material-ui/core/DialogTitle';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
 
-import Tooltip from '@material-ui/core/Tooltip';
-
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 
@@ -1001,54 +999,45 @@ export default ({ patient, session }) => {
                           onChooseActivity(activity);
                         }}
                         square>
-                        <Tooltip
-                          enterDelay={5000}
-                          title={
-                            <Typography variant='caption'>
-                              {`Activity ID = ${activity.code}`}
-                            </Typography>
-                          }
-                          placement='bottom-start'>
-                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                            <Box
-                              display='flex'
-                              flexDirection='column'
-                              className={classes.activityText}
-                              textOverflow='ellipsis'
-                            >
-                              {activity.type === 'document' ?
-                                <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
+                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                          <Box
+                            display='flex'
+                            flexDirection='column'
+                            className={classes.activityText}
+                            textOverflow='ellipsis'
+                          >
+                            {activity.type === 'document' ?
+                              <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
+                                <Typography variant='h5'>{activity.name}</Typography>
+                              </a>
+                              :
+                              <React.Fragment key={`act_box_${activity.name}`}>
+                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                   <Typography variant='h5'>{activity.name}</Typography>
-                                </a>
-                                :
-                                <React.Fragment key={`act_box_${activity.name}`}>
-                                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                    <Typography variant='h5'>{activity.name}</Typography>
-                                  </Box>
-                                  <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
-                                    {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
-                                      <Typography key={activity.name + 'h' + hNdx} variant='body2'>
-                                        {hNdx > 0 ? <br /> : null}
-                                        {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
-                                      </Typography>
-                                    )) : null}
-                                  </Box>
-                                </React.Fragment>
-                              }
-                            </Box>
-                            {activity.fact_history ?
-                              <IconButton
-                                aria-label='showHistory'
-                                onClick={() => {
-                                  toggledRow = true;
-                                  let newRowOpen = rowOpen;
-                                  newRowOpen[index] = !newRowOpen[index];
-                                  setRowOpen(newRowOpen);
-                                }}>
-                                {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                              </IconButton> : null}
+                                </Box>
+                                <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
+                                  {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
+                                    <Typography key={activity.name + 'h' + hNdx} variant='body2'>
+                                      {hNdx > 0 ? <br /> : null}
+                                      {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
+                                    </Typography>
+                                  )) : null}
+                                </Box>
+                              </React.Fragment>
+                            }
                           </Box>
-                        </Tooltip>
+                          {activity.fact_history ?
+                            <IconButton
+                              aria-label='showHistory'
+                              onClick={() => {
+                                toggledRow = true;
+                                let newRowOpen = rowOpen;
+                                newRowOpen[index] = !newRowOpen[index];
+                                setRowOpen(newRowOpen);
+                              }}>
+                              {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                            </IconButton> : null}
+                        </Box>
                       </Paper>
                     }
                   </GridListTile>
