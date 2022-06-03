@@ -1122,7 +1122,8 @@ export default ({
         </FormControl>
       );
     case 'document':
-      window.open(defaultValue, message);  // intentionally fall through to the message case
+      let nowJ = new Date().getTime();
+      window.open(`${defaultValue}?qt=${nowJ.toString()}`, message);  // intentionally fall through to the message case
     case 'message':
       return (
         <FreeTextForm

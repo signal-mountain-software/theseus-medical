@@ -14,10 +14,28 @@ import { getGroup } from '../graphql/queries';
 import { getPerson, getRoles, getSession, getCustomizations } from '../graphql/queries';
 import PersonFilter from '../components/forms/PersonFilter';
 
+import Button from '@material-ui/core/Button';
+
 import { SET_PATIENT, SET_PATIENTS, SET_PROFILE, SET_ROLES, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 
+import makeStyles from '@material-ui/core/styles/makeStyles';
+const useStyles = makeStyles(theme => ({
+  buttonFormat: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginTop: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+  },
+}));
+
+
 export default Component => props => {
-  const { enqueueSnackbar } = useSnackbar();
+
+  const classes = useStyles();
+
+  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const { state, dispatch } = useSession();
   const { user } = state;
 
@@ -31,21 +49,23 @@ export default Component => props => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
+  let params = {
+    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
+    InvocationType: 'RequestResponse',
+    LogType: 'Tail',
+  };
+
   const getPeopleList = async (pClient, pGroup) => {
     let invokeFailed = false;
-    let payload = {
+    let lambdaPayload = {
       action: "get_group_members",
       clientId: pClient,
       request: {
         "group_id": pGroup,
       }
     };
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
+    params.Payload = JSON.stringify(lambdaPayload);
     setCallPending(true);
     const fResp = await lambda
       .invoke(params)
@@ -73,6 +93,61 @@ export default Component => props => {
 
   const allParams = useParams();
 
+
+  const action = key => {
+    return (
+      <React-Fragment>
+        <Button
+          className={classes.buttonFormat}
+          size='small'
+          variant='contained'
+          onClick={async () => {
+            params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
+            let lambdaPayload = {
+              "body": {
+                "client": user.attributes['custom:client'],
+                "author": user.username,
+                "values": `AVA Support:ava_support ~ MessageText = ${user.username} entered kiosk mode and is asking for help`
+              }
+            };
+            params.Payload = JSON.stringify(lambdaPayload);
+            let eMsg = false;
+            lambda
+              .invoke(params)
+              .promise()
+              .catch(err => {
+                eMsg = true;
+                enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
+                  variant: 'error'
+                });
+              });
+            if (!eMsg) {
+              enqueueSnackbar(`AVA support has been contacted.  You may continue to use AVA with limited functionality if you wish.`, {
+                variant: 'success'
+              });
+            }
+          }
+          }
+        >
+          {`Have someone contact me, please`}
+        </Button>
+        <Button
+          className={classes.buttonFormat}
+          size='small'
+          variant='contained'
+          onClick={() => {
+            closeSnackbar(key);
+            enqueueSnackbar(`Send a message to AVA support if you need any assistance. Thanks for using AVA!`, {
+              variant: 'success'
+            });
+          }}>
+          {`I'm OK`}
+        </Button>
+      </React-Fragment >
+    );
+  };
+
+
   function getParams() {
     let returnObject = {};
     allParams.forEach((value, key) => {
@@ -91,7 +166,8 @@ export default Component => props => {
           attributes: {
             email: 'no-email@none.com',
             phone_number: '+12225559999',
-            'custom:client': urlQuery.client
+            'custom:client': urlQuery.client,
+            'custom:kiosk': (urlQuery.kiosk === 'true') || false
           }
         };
         try {
@@ -359,7 +435,14 @@ export default Component => props => {
         };
       }
 
-      if (pKiosk) { session.kiosk_mode = true; }
+      if (pKiosk || user.attributes['custom:kiosk']) {
+        session.kiosk_mode = true;
+        enqueueSnackbar(`Welcome to AVA! Without using a valid password, there are some AVA functions that are unavailable.`, {
+          variant: 'error',
+          persist: true,
+          action
+        });
+      }
 
       if (mounted) {
         dispatch({ type: SET_SESSION, payload: session });

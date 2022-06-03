@@ -156,7 +156,7 @@ export default ({ peopleList, onCancel, onSelect }) => {
         className={classes.title}
         id='scroll-dialog-title'
       >
-        {'Find and tap a name in this list'}
+        {'Find and tap your name in this list'}
       </DialogContentText>
       <TextField
         id='Type a few letters to filter the list'

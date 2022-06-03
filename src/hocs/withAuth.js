@@ -32,7 +32,22 @@ import Paper from '@material-ui/core/Paper';
 
 import TopBar from '../components/TopBar';
 
+import makeStyles from '@material-ui/core/styles/makeStyles';
+const useStyles = makeStyles(theme => ({
+  buttonFormat: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginTop: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+  },
+}));
+
 export default Component => props => {
+
+  const classes = useStyles();
+
   const [signedIn, setSigned] = React.useState(true);
   let localSignedIn = true;
   const setSignedIn = (setV) => {
@@ -43,8 +58,6 @@ export default Component => props => {
   const {
     enqueueSnackbar, closeSnackbar
   } = useSnackbar();
-
-  let calledFrom = '';
 
   const [count, setCount] = React.useState(0);
   const [messageOut, setMessageOut] = React.useState('');
@@ -58,6 +71,7 @@ export default Component => props => {
   if (showIOS) { };
 
   const [saveP, setSaveP] = React.useState([]);
+  const [saveU, setSaveU] = React.useState([]);
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -99,37 +113,104 @@ export default Component => props => {
     return returnObject;
   }
 
-  const action = key => {
-    if (calledFrom !== 'signIn') {
+  const pwdMessage = (mText) => {
+
+    const action = key => {
       return (
         <React-Fragment>
-          <Button onClick={async () => {
-            let result;
-            closeSnackbar(key);
-            try {
-              result = await Auth
-                .signIn(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP);
-            } catch (e) {
-              console.log(e);
-            }
-            console.log(result);
-          }}>
-            Use My Name
+          <Button
+            className={classes.buttonFormat}
+            size='small'
+            variant='contained'
+            onClick={async () => {
+              let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'updatePwd', inputCP.trim());
+              if (!invokeFailed && response.status === 200) {
+                enqueueSnackbar(`Your password has been reset to ${saveP[0]}.  Signing-in now...`, {
+                  variant: 'warning'
+                });
+                try {
+                  await Auth.signIn(inputName.trim(), inputCP.trim());
+                }
+                catch (e) {
+                  console.log(e);
+                  eHandler(e);
+                }
+              }
+              else {
+                if (response.body) {
+                  let mOut = `The password "${inputCP.trim()}" doesn't work!  It looks like this is the problem...`;
+                  mOut += (response.body?.message
+                    ? response.body.message
+                    : `AVA is unable to set "${inputCP.trim()}" as your password`);
+                  setMessages(mOut);
+                }
+              }
+            }}>
+            {`Reset my password to "${inputCP.trim()}"`}
           </Button>
-          <Button onClick={() => {
-            console.log(key);
-            closeSnackbar(key);
-          }}>
+          <Button
+            className={classes.buttonFormat}
+            size='small'
+            variant='contained'
+            onClick={() => {
+              console.log(key);
+              closeSnackbar(key);
+            }}>
+            Try Again
+          </Button>
+        </React-Fragment >
+      );
+    };
+
+    enqueueSnackbar(mText.trim(), {
+      variant: 'error',
+      persist: true,
+      preventDuplicate: true,
+      action
+    });
+
+  };
+
+  const setMessages = (mText, forceFail = false) => {
+
+    const action = key => {
+      return (
+        <React-Fragment>
+          <Button
+            className={classes.buttonFormat}
+            size='small'
+            variant='contained'
+            onClick={async () => {
+              let result;
+              closeSnackbar(key);
+              let jumpTo = window.location.href.split('?')[0];
+              jumpTo += `?user=${saveU[saveU.length - 1]}&kiosk=true`;
+              window.location.replace(jumpTo);
+              try {
+                result = await Auth
+                  .signIn(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP);
+              } catch (e) {
+                console.log(e);
+              }
+              console.log(result);
+            }}>
+            {`Use AVA as "${saveU[saveU.length - 1]}" with limited functionality?`}
+          </Button>
+          <Button
+            className={classes.buttonFormat}
+            size='small'
+            variant='contained'
+            onClick={() => {
+              console.log(key);
+              closeSnackbar(key);
+            }}>
             Try Password Again
           </Button>
         </React-Fragment >
       );
-    }
-  };
+    };
 
-  const setMessages = (mText, forceFail = false) => {
     if (count > 2 || forceFail) {
-      calledFrom = 'failure';
       enqueueSnackbar(`${mText.trim()}.  What would you like to do now?`, {
         variant: 'error',
         persist: true,
@@ -174,7 +255,8 @@ export default Component => props => {
           attributes: {
             email: 'no-email@none.com',
             phone_number: '+12225559999',
-            'custom:client': urlQuery.client
+            'custom:client': urlQuery.client,
+            'custom:kiosk': urlQuery.kiosk || false
           }
         };
       }
@@ -261,10 +343,12 @@ export default Component => props => {
   };
 
   const eHandler = async (data) => {
+    saveU.push(inputName.trim().toLowerCase());
+    setSaveU(saveU);
     switch (data.code) {
       case 'NotAuthorizedException': {
         if (data.message.includes('expired')) {
-          setMessages(`Your password has expired and must be reset`, true);
+          pwdMessage(`Your password has expired and must be reset.  What would you like to do now?`);
           break;
         }
         else if (data.message.includes('exceeded')) {
@@ -291,20 +375,11 @@ export default Component => props => {
             setMessages("That's not a valid AVA Username");
           }
           else {
-            if (saveP.length > 2 && (saveP[0] === saveP[1] && saveP[1] === saveP[2])) {
-              let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'updatePwd', saveP[0]);
-              if (!invokeFailed && response.status === 200) {
-                await Auth.signIn(inputName.trim(), saveP[0]);
-              }
-              else {
-                if (response.body) {
-                  let mOut = `The password "${saveP[0]}" doesn't work!  It looks like this is the problem...`;
-                  mOut += (response.body?.message
-                    ? response.body.message
-                    : `AVA is unable to validate or set "${saveP[0]}" as your password`);
-                  setMessages(mOut, true);
-                }
-              }
+            // If the last three attempts have all been the same exact user and password, then offer to reset 
+            // the password to the one they keep trying
+            let tries = saveP.length - 1;
+            if (tries > 2 && (saveP[tries] === saveP[tries - 1] && saveP[tries - 1] === saveP[tries - 2]) && (saveU[tries] === saveU[tries - 1] && saveU[tries - 1] === saveU[tries - 2])) {
+              pwdMessage(`That isn't your current password.  Should I reset your password to "${inputCP.trim()}"?`);
             }
             else { setMessages(`That's not the correct password for Username "${inputName.trim()}"`); }
           }
@@ -396,17 +471,14 @@ export default Component => props => {
                 async (event) => {
                   event.preventDefault();
                   try {
-                    calledFrom = 'signIn';
                     enqueueSnackbar(`Signing into AVA`, {
                       variant: 'info',
-                      action
                     });
                     let resp = await Auth.signIn(inputName.trim(), inputCP.trim());
                     if (resp.challengeName === 'NEW_PASSWORD_REQUIRED') {
                       setResetPW(true);
                       enqueueSnackbar(`That's a temporary password.  Press "Reset password" to set a permanent one, please.`, {
                         variant: 'info',
-                        action
                       });
                     }
                     else {
