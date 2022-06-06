@@ -259,7 +259,7 @@ export default Component => props => {
             });
           if (emulatingSession) { session = emulatingSession.data.getSession; }
         }
-        session.session_id = `22.6.2${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `22.6.7${window.location.href.split('//')[1].slice(0, 1)}`;
         let urlQuery = getParams();
         if (urlQuery?.user) {
           session.url_parameters = urlQuery;
@@ -507,6 +507,12 @@ export default Component => props => {
             user.username = selectedPerson.split(':')[1];
             dispatch({ type: SET_USER, payload: user });
             await onValidUser(user, true);      //sixth
+          }}
+          onSignOut={async () => {
+            Auth.signOut().then(() => {
+              let jumpTo = window.location.origin;
+              window.location.replace(jumpTo);
+            });
           }}
         >
         </PersonFilter>

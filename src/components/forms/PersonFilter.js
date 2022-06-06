@@ -132,13 +132,14 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ peopleList, onCancel, onSelect }) => {
+export default ({ peopleList, onCancel, onSelect, onSignOut }) => {
   const [person_filter, setPersonFilter] = React.useState('');
 
   const classes = useStyles();
 
   const handleChangePersonFilter = event => {
     setPersonFilter(event.target.value.toLowerCase());
+    if (event.target.value.toLowerCase() === 'sign out') { onSignOut() }
   };
 
   // **************************
