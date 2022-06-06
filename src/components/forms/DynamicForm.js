@@ -859,16 +859,15 @@ export default ({
       if (filterPromptValue) {
         searchTerms = filterPromptValue
           .toLowerCase()
-          .split(/\W+/g)
+          .split(/\s+/g)
           .map(arrayElement => {
             if (session.search_terms?.hasOwnProperty(arrayElement)) {
               return session.search_terms[arrayElement];
             }
             if (/^\d+$/.test(arrayElement)) {       // all digits only
-              if (arrayElement.length < 3) { return `-${arrayElement}`; }
+              if (arrayElement.length < 4) { return `-${arrayElement}`; }
               return arrayElement;
             }
-            if (arrayElement.length < 3) { return `${arrayElement}-`; }
             return arrayElement;
           });
         searching = (searchTerms.length > 0);
@@ -896,9 +895,15 @@ export default ({
           filtering = false;
           return true;
         }
+        let lowerListEntry = valuesListEntry.toLowerCase();
         if (
           !searching ||
-          searchTerms.every(searchTerm => { return valuesListEntry.toLowerCase().includes(searchTerm); })
+          searchTerms.every(searchTerm => {
+            if (searchTerm.length === 1) { 
+              return (lowerListEntry.startsWith(searchTerm) || lowerListEntry.includes(searchTerm + '-'));
+            }
+            return lowerListEntry.includes(searchTerm);
+          })
         ) {
           filteredCount++;
           return true;
