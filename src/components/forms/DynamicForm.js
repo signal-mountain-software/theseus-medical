@@ -48,7 +48,6 @@ import ListItemIcon from '@material-ui/core/ListItemIcon';
 
 import Input from '@material-ui/core/Input';
 import IconButton from '@material-ui/core/IconButton';
-import SearchIcon from '@material-ui/icons/Search';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import CallIcon from '@material-ui/icons/Call';
 import EmailIcon from '@material-ui/icons/Email';
@@ -1408,7 +1407,6 @@ export default ({
                                   variant='contained'
                                   id={'testthis'}
                                   aria-label='trigger-filter-action'
-                                  endIcon={<SearchIcon />}
                                   onClick={() => { handleFilterText(freeTextFieldName); }}>
                                   Search
                                 </Button>
