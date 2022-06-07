@@ -48,7 +48,6 @@ import ListItemIcon from '@material-ui/core/ListItemIcon';
 
 import Input from '@material-ui/core/Input';
 import IconButton from '@material-ui/core/IconButton';
-import SearchIcon from '@material-ui/icons/Search';
 import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import CallIcon from '@material-ui/icons/Call';
 import EmailIcon from '@material-ui/icons/Email';
@@ -859,16 +858,15 @@ export default ({
       if (filterPromptValue) {
         searchTerms = filterPromptValue
           .toLowerCase()
-          .split(/\W+/g)
+          .split(/\s+/g)
           .map(arrayElement => {
             if (session.search_terms?.hasOwnProperty(arrayElement)) {
               return session.search_terms[arrayElement];
             }
             if (/^\d+$/.test(arrayElement)) {       // all digits only
-              if (arrayElement.length < 3) { return `-${arrayElement}`; }
+              if (arrayElement.length < 4) { return `-${arrayElement}`; }
               return arrayElement;
             }
-            if (arrayElement.length < 3) { return `${arrayElement}-`; }
             return arrayElement;
           });
         searching = (searchTerms.length > 0);
@@ -896,9 +894,15 @@ export default ({
           filtering = false;
           return true;
         }
+        let lowerListEntry = valuesListEntry.toLowerCase();
         if (
           !searching ||
-          searchTerms.every(searchTerm => { return valuesListEntry.toLowerCase().includes(searchTerm); })
+          searchTerms.every(searchTerm => {
+            if (searchTerm.length === 1) { 
+              return (lowerListEntry.startsWith(searchTerm) || lowerListEntry.includes(searchTerm + '-'));
+            }
+            return lowerListEntry.includes(searchTerm);
+          })
         ) {
           filteredCount++;
           return true;
@@ -1122,7 +1126,8 @@ export default ({
         </FormControl>
       );
     case 'document':
-      window.open(defaultValue, message);  // intentionally fall through to the message case
+      let nowJ = new Date().getTime();
+      window.open(`${defaultValue}?qt=${nowJ.toString()}`, message);  // intentionally fall through to the message case
     case 'message':
       return (
         <FreeTextForm
@@ -1402,7 +1407,6 @@ export default ({
                                   variant='contained'
                                   id={'testthis'}
                                   aria-label='trigger-filter-action'
-                                  endIcon={<SearchIcon />}
                                   onClick={() => { handleFilterText(freeTextFieldName); }}>
                                   Search
                                 </Button>

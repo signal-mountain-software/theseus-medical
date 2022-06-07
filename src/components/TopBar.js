@@ -178,11 +178,10 @@ export default () => {
             alignItems='center' flexGrow={1}>
             <PatientChip patient={patient} roles={roles} session={session} />
           </Box>
-
           {session?.kiosk_mode &&
             <Box mr={2}>
               <Typography variant='body1'>
-                {'Kiosk Mode'}
+                {'Limited Access'}
               </Typography>
             </Box>
           }

@@ -48,7 +48,7 @@ export default ({ patient, roles, session }) => {
           <Tooltip
             title={
               <Typography variant='caption'>
-                {session?.kiosk_mode ? 'View/Update not available in Kiosk Mode' : 'View/Update this Profile'}
+                {session?.kiosk_mode ? 'View/Update not available' : 'View/Update this Profile'}
               </Typography>
             }
             placement='bottom-start'>
