@@ -25,10 +25,6 @@ const useStyles = makeStyles(theme => ({
     paddingTop: 3,
   },
   pageHead: {
-    paddingTop: theme.spacing(1),
-    paddingLeft: theme.spacing(1),
-    paddingRight: theme.spacing(1),
-    paddingBottom: theme.spacing(1),
   },
   title: {
     marginTop: theme.spacing(3),
@@ -52,8 +48,6 @@ const useStyles = makeStyles(theme => ({
     minHeight: theme.typography.fontSize * 2.8,
   },
   dialogBox: {
-    paddingTop: theme.spacing(1),
-    paddingBottom: theme.spacing(1),
     minWidth: '100%',
   },
   reject: {
@@ -162,6 +156,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   };
 
   const handleAbort = async () => {
+    if (pGroup_id) ( onClose() )
     setChanges(false);
     await getGroupsManagedObject(pSession.patient_id);
     setShowGroupSelect(true);
@@ -177,7 +172,14 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
         aList = await getGroupsManagedObject(pSession.patient_id);
       }
     );
-    if (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0) {
+    if (pGroup_id) { 
+      setShowGroupSelect(false);
+      setGroupName(pGroup_id.split('~')[1]);
+      setGroupID(pGroup_id.split('~')[0]);
+      setGroupRole('admin');
+      getGroupMemberList({ 'group_id': pGroup_id.split('~')[0] });
+    }
+    else if (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0) {
       if (pSession.patient_id) {
         response();
         console.log(aList);
@@ -209,7 +211,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             {groupName || 'Group Maintenance'}
           </Typography>
         </Box>
-        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+        <DialogContent dividers={true} className={classes.dialogBox}>
           {groupMemberList.length === 0 && groupID
             ?
             <Box display='flex' marginBottom={5} flexDirection='column' justifyContent='center' alignItems='center'>

@@ -4,10 +4,10 @@ import { useSnackbar } from 'notistack';
 
 
 import List from '@material-ui/core/List';
-import ListItem from '@material-ui/core/ListItem';
 
 import Collapse from '@material-ui/core/Collapse';
-import MoreHorizIcon from '@material-ui/icons/MoreHoriz';
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
@@ -20,7 +20,6 @@ import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContentText from '@material-ui/core/DialogContentText';
 
-import Slide from '@material-ui/core/Slide';
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
@@ -110,7 +109,16 @@ const useStyles = makeStyles(theme => ({
   listItem: {
     justifyContent: 'space-between',
     marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(1)
+    marginBottom: theme.spacing(1),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(1),
+  },
+  noDisplay: {
+    display: 'none',
+    visibility: 'hidden'
+  },
+  locationLine: {
+    fontSize: theme.typography.fontSize * 1.0,
   },
   preferenceLine: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -122,20 +130,21 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: 'green',
   },
   firstName: {
-    marginLeft: theme.spacing(1),
+
   },
   lastName: {
     fontWeight: 'bold',
+    marginRight: theme.spacing(1),
   }
 }));
-
-const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, pRole, isMobile, onReset }) => {
 
   const classes = useStyles();
 
   const [person_filter, setPersonFilter] = React.useState('');
+  const [person_filter_lower, setPersonFilterLower] = React.useState('');
+  const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -153,7 +162,14 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   const [messageType, setMessageType] = React.useState();
   const [open, setOpen] = React.useState([]);
 
+  const [rowLimit, setRowLimit] = React.useState(20);
+  const [previousY, setCurrentY] = React.useState(0);
+  const scrollValue = 20;
+  var rowsWritten;
+
   const { enqueueSnackbar } = useSnackbar();
+
+  const s3Bucket = 'https://theseus-medical-storage.s3.amazonaws.com/public/patients/';
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -169,10 +185,19 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   };
 
   const handleChangePersonFilter = event => {
-    setPersonFilter(event.target.value);
+    if (event.target.value.length === 0) {
+      setPersonFilter(null);
+      setPersonFilterLower(null);
+    }
+    else {
+      setPersonFilter(event.target.value);
+      setPersonFilterLower(event.target.value.toLowerCase());
+      setSingleFilterDigit(event.target.value.length === 1);
+    }
+    setRowLimit(scrollValue);
   };
 
-  const handleAddPersonToGroup = async (pPerson, pGroup) => {
+  const handleAddPersonToGroup = async (pPerson, pGroup, pDisplayName) => {
     let invokeFailed = false;
 
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
@@ -197,6 +222,10 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     if (!invokeFailed) {
       let workingMemberList = JSON.parse(fResp.Payload);
       if (workingMemberList.status === 200) {
+        let pName = pDisplayName.split(',');
+        enqueueSnackbar(`AVA added ${pName.length > 1 ? pName[1] : ''} ${pName[0]} to the group!`, {
+          variant: 'success'
+        });
         setGroupMemberList(workingMemberList.body);
         return workingMemberList;
       }
@@ -336,6 +365,17 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     };
   };
 
+  const onScroll = event => {
+    if (rowLimit < workingMemberList.length) {
+      let currentY = window.scrollY;
+      if (currentY - (previousY + 50)) {
+        setCurrentY(currentY);
+        setRowLimit(rowLimit + scrollValue);
+        setForceRedisplay(!forceRedisplay);
+      }
+    }
+  };
+
   const toggleOpen = pIndex => {
     let workingOpen = open;
     workingOpen[pIndex] = !workingOpen[pIndex];
@@ -349,21 +389,39 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     else { return pPhone; }
   }
 
-  function makeDefault(pMessaging, pPreference, pPerson) {
+  function filteredPerson(pName = { last: '*$*' }, pLoc, pMessaging = { sms: '*$*' }) {
+    if (singleFilterDigit) {
+      return (pName.last.toLowerCase().startsWith(person_filter_lower) || pLoc.toLowerCase().startsWith(person_filter_lower + '-'));
+    }
+    else {
+      let searchString = [...Object.values(pName), pLoc, ...Object.values(pMessaging)].join(' ');
+      return searchString.toLowerCase().includes(person_filter_lower);
+    }
+  }
+
+  function makePreferenceLine(pMessaging, pPreference, pPerson) {
     if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
       try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
       catch (e) { pPreference = 'AVA'; }
     }
 
     switch (pPreference) {
-      case 'sms': { return `prefers text at ${formatPhone(pMessaging.sms)}`; }
-      case 'voice': { return `prefers voice call to ${formatPhone(pMessaging.voice)}`; }
-      case 'email': { return `prefers e-Mail at ${pMessaging.email}`; }
-      case 'time_based': { return `preference varies by time`; }
-      case 'AVA': { return `AVA messages only`; }
+      case 'sms': { return ['prefers text at', formatPhone(pMessaging.sms)]; }
+      case 'voice': { return ['prefers voice call to', formatPhone(pMessaging.voice)]; }
+      case 'email': {
+        let emailLines = [];
+        if ((pMessaging.email.length < 30) || !isMobile) { emailLines.push(pMessaging.email); }
+        else {
+          emailLines = pMessaging.email.split('@');
+          emailLines[0] += '@';
+        }
+        return ['prefers e-Mail at', ...emailLines];
+      }
+      case 'time_based': { return ['preference varies by time']; }
+      case 'AVA': { return ['AVA messages only']; }
       default: {
         console.log(pPerson);
-        return `prefers ${pPreference}`;
+        return [`prefers ${pPreference}`];
       }
     }
   }
@@ -375,10 +433,9 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   return (
     <Dialog
       open={true || forceRedisplay}
+      onScroll={onScroll}
       p={2}
       fullWidth
-      variant={'elevation'} elevation={2}
-      TransitionComponent={Transition}
     >
       {workingMemberList && workingMemberList.length > 0 &&
         <React.Fragment>
@@ -399,28 +456,47 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           />
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
+              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                {rowsWritten = 0}
+              </Typography>
               {workingMemberList.map((this_item, index) => (
-                (!person_filter || this_item.search_data.includes(person_filter) ?
+                ((rowsWritten <= rowLimit) && (!person_filter || filteredPerson(this_item.name, this_item.location || '*na*', this_item.messaging)) ?
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
-                    <ListItem
+                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                      { rowsWritten++ }
+                    </Typography>
+                    <Box
+                      display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
                       key={this_item.person_id + 'r' + index}
                       className={classes.listItem}
-                      cols={1}
                       onClick={() => { toggleOpen(index); }}
                     >
-
-                      <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                      <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                         <Box display='flex' flexDirection='column'>
                           <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                             <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
-                            <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>
+                            {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
                           </Box>
-                          <Typography variant='body1'>{this_item.location}</Typography>
-                          <Typography className={classes.preferenceLine} >{makeDefault(this_item.messaging, this_item.preferred_method, this_item)}</Typography>
+                          {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                          {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (<Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>))}
+                          {makePreferenceLine(this_item.messaging, this_item.preferred_method, this_item).map((prefLine, prefIndex) => (
+                            <Typography key={`prefLine-${index}.${prefIndex}`} className={classes.preferenceLine}>{prefLine}</Typography>
+                          ))}
                         </Box>
                       </Box>
-                      {!open[index] && <MoreHorizIcon />}
-                    </ListItem>
+                      <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                        <Box
+                          component="img"
+                          ml={isMobile ? 2 : 5}
+                          mr={1}
+                          minWidth={isMobile ? 75 : 150}
+                          maxWidth={isMobile ? 75 : 150}
+                          alt=''
+                          src={s3Bucket + this_item.person_id + '.jpg'}
+                        />
+                      </Box>
+                      {!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+                    </Box>
                     <Collapse in={open[index]} timeout="auto" unmountOnExit>
                       {!isMobile ?
                         <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
@@ -555,8 +631,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                 setShowAddPrompt(false);
               }}
               onSelect={(selectedPerson) => {
-                setShowAddPrompt(false);
-                handleAddPersonToGroup(selectedPerson.split(':')[1], pGroup);
+                handleAddPersonToGroup(selectedPerson.split(':')[1], pGroup, selectedPerson.split(':')[0]);
               }}
             >
             </PersonFilter>
@@ -600,7 +675,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                     <IconButton
                       className={classes.rowButtonGreen}
                       onClick={() => {
-                        handleAddPersonToGroup(pPatient, pGroup);
+                        handleAddPersonToGroup(pPatient, pGroup, 'you');
                       }}
                     >
                       <AddCircleOutlineIcon size="small" />
@@ -679,7 +754,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                     <Button
                       className={classes.rowButtonGreen}
                       onClick={() => {
-                        handleAddPersonToGroup(pPatient, pGroup);
+                        handleAddPersonToGroup(pPatient, pGroup, 'you');
                       }}
                       startIcon={<AddCircleOutlineIcon size="small" />}
                     >
