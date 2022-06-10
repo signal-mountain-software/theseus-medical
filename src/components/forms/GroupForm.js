@@ -454,7 +454,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
             variant={'standard'}
             autoComplete='off'
           />
-          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+          <Paper component={Box} className={classes.page} fullWidth variant='outlined' overflow='auto' square>
             <List  >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsWritten = 0}
@@ -538,15 +538,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                           >
                             Message
                           </Button>
-                          <Button
-                            onClick={() => {
-                              toggleOpen(index);
-                            }}
-                            className={classes.rowButtonBlue}
-                            startIcon={<CloseIcon fontSize="small" />}
-                          >
-                            Close
-                          </Button>
                         </Box>
                         :
                         <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
@@ -584,14 +575,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                             className={classes.rowButtonGreen}
                           >
                             <SendIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            onClick={() => {
-                              toggleOpen(index);
-                            }}
-                            className={classes.rowButtonBlue}
-                          >
-                            <CloseIcon fontSize="small" />
                           </IconButton>
                         </Box>
                       }
