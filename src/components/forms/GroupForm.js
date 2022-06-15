@@ -2,7 +2,6 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 
-
 import List from '@material-ui/core/List';
 
 import Collapse from '@material-ui/core/Collapse';
@@ -13,8 +12,11 @@ import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 
+import TextSMSIcon from '@material-ui/icons/Textsms';
+import CallIcon from '@material-ui/icons/Call';
+import EmailIcon from '@material-ui/icons/Email';
+
 import Button from '@material-ui/core/Button';
-import IconButton from '@material-ui/core/IconButton';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -117,11 +119,22 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
+  makeIconStyle: {
+    marginRight: theme.spacing(1),
+  },
   locationLine: {
     fontSize: theme.typography.fontSize * 1.0,
   },
   preferenceLine: {
     fontSize: theme.typography.fontSize * 0.8,
+  },
+  techInfoLine: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: theme.spacing(2),
+  },
+  techInfoLine2: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: theme.spacing(4),
   },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
@@ -153,6 +166,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
   const [deletePending, setDeletePending] = React.useState(false);
   const [personRec, setPersonRec] = React.useState();
+  const [sessionRec, setSessionRec] = React.useState();
   const [showPatientDialog, setShowPatientDialog] = React.useState(false);
   const [confirmMessage, setConfirmMessage] = React.useState('');
   const [confirmPerson, setConfirmPerson] = React.useState('');
@@ -365,6 +379,34 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     };
   };
 
+
+
+  const getSessionInfo = async (pPerson) => {
+    let invokeFailed = false;
+
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
+    params.Payload = JSON.stringify({
+      action: "get_session_details",
+      clientId: pClient,
+      request: {
+        "person_id": pPerson,
+      }
+    });
+    let lambdaResponse = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        invokeFailed = true;
+      });
+    if (!invokeFailed) {
+      let returnedSession = JSON.parse(lambdaResponse.Payload);
+      if (returnedSession.status === 200) {
+        setSessionRec(returnedSession.body);
+        return returnedSession.body;
+      }
+    };
+  };
+
   const onScroll = event => {
     if (rowLimit < workingMemberList.length) {
       let currentY = window.scrollY;
@@ -376,9 +418,15 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     }
   };
 
-  const toggleOpen = pIndex => {
-    let workingOpen = open;
-    workingOpen[pIndex] = !workingOpen[pIndex];
+  const toggleOpen = async (pIndex) => {
+    let workingOpen = [];
+    setSessionRec(null);
+    if (!open[pIndex]) {
+      workingOpen[pIndex] = true;
+      if (pRole === 'admin' || pRole === 'responsible') {
+        getSessionInfo(workingMemberList[pIndex].person_id);
+      }
+    }
     setOpen(workingOpen);
     setForceRedisplay(!forceRedisplay);
   };
@@ -399,6 +447,37 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     }
   }
 
+  function makeLink(pMessaging, pPreference) {
+    if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
+      try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
+      catch (e) { pPreference = 'AVA'; }
+    }
+
+    switch (pPreference) {
+      case 'sms': { return `sms:${pMessaging.sms}`; }
+      case 'voice': { return `tel:${pMessaging.voice}`; }
+      case 'email': { return `mailto:${pMessaging.email}`; }
+      default: {
+        return null;
+      }
+    }
+  }
+
+  function makeIcon(pMessaging, pPreference, pIndex) {
+    if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
+      try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
+      catch (e) { pPreference = 'AVA'; }
+    }
+    switch (pPreference) {
+      case 'sms': { return (isMobile ? <TextSMSIcon className={classes.makeIconStyle} key={`sms-icon.${pIndex}`} /> : null); }
+      case 'voice': { return (isMobile ? <CallIcon className={classes.makeIconStyle} key={`call-icon.${pIndex}`} /> : null); }
+      case 'email': { return <EmailIcon className={classes.makeIconStyle} key={`email-icon.${pIndex}`} />; }
+      default: {
+        return null;
+      }
+    }
+  }
+
   function makePreferenceLine(pMessaging, pPreference, pPerson) {
     if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
       try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
@@ -406,8 +485,8 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     }
 
     switch (pPreference) {
-      case 'sms': { return ['prefers text at', formatPhone(pMessaging.sms)]; }
-      case 'voice': { return ['prefers voice call to', formatPhone(pMessaging.voice)]; }
+      case 'sms': { return ['prefers text', formatPhone(pMessaging.sms)]; }
+      case 'voice': { return ['prefers voice call', formatPhone(pMessaging.voice)]; }
       case 'email': {
         let emailLines = [];
         if ((pMessaging.email.length < 30) || !isMobile) { emailLines.push(pMessaging.email); }
@@ -415,7 +494,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           emailLines = pMessaging.email.split('@');
           emailLines[0] += '@';
         }
-        return ['prefers e-Mail at', ...emailLines];
+        return ['prefers e-Mail', ...emailLines];
       }
       case 'time_based': { return ['preference varies by time']; }
       case 'AVA': { return ['AVA messages only']; }
@@ -425,6 +504,70 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       }
     }
   }
+
+  function makeNonPreferenceLine(pMessaging, pPreference, pPerson) {
+    let returnArray = [];
+    for (const messageType in pMessaging) {
+      if (pPreference !== messageType) {
+        switch (messageType) {
+          case 'sms': {
+            if (pMessaging.sms) {
+              returnArray.push(`cell ${formatPhone(pMessaging.sms)}`);
+            }
+            break;
+          }
+          case 'voice': {
+            if (pMessaging.voice) {
+              returnArray.push(`home ${formatPhone(pMessaging.voice)}`);
+            }
+            break;
+          }
+          case 'email': {
+            if (pMessaging.email) {
+              let emailLines = [];
+              if ((pMessaging.email.length < 30) || !isMobile) { returnArray.push(`e-Mail ${pMessaging.email}`); }
+              else {
+                emailLines = pMessaging.email.split('@');
+                returnArray.push(`e-Mail ${emailLines[0]}@`);
+                returnArray.push(`  ${emailLines[1]}`);
+              }
+            }
+            break;
+          }
+          default: { break; }
+        }
+      }
+    }
+    if (returnArray.length > 0) { returnArray.unshift('~~~'); }
+    return returnArray;
+  }
+
+  const getSession = (pPerson) => {
+    if (sessionRec) {
+      let lastVersion = null;
+      let lastUse = null;
+      if (sessionRec.status) { [, lastVersion, lastUse] = sessionRec.status.split(/=|~|\(/); };
+      let sessionData = [
+        '~~ Tech Info ~~',
+        `User ID: ${pPerson}`,
+        `Platform: ${sessionRec.platform}`,
+        `Version: ${lastVersion || 'not recorded'}`,
+        `Last use: ${lastUse || 'not recorded'}`,
+        `Log in results: ${sessionRec.event_description || 'no data'}`,
+        `Recent Transactions:`
+      ];
+      if (sessionRec.recentFacts.length > 0) {
+        sessionRec.recentFacts.forEach(fact => {
+          sessionData.push(fact);
+        });
+      }
+      else {
+        sessionData.push('None');
+      }
+      return sessionData;
+    }
+    else { return []; }
+  };
 
   // ******************
 
@@ -454,7 +597,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
             variant={'standard'}
             autoComplete='off'
           />
-          <Paper component={Box} className={classes.page} fullWidth variant='outlined' overflow='auto' square>
+          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsWritten = 0}
@@ -463,122 +606,128 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                 ((rowsWritten <= rowLimit) && (!person_filter || filteredPerson(this_item.name, this_item.location || '*na*', this_item.messaging)) ?
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      { rowsWritten++ }
+                      {rowsWritten++}
                     </Typography>
-                    <Box
-                      display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                      key={this_item.person_id + 'r' + index}
-                      className={classes.listItem}
-                      onClick={() => { toggleOpen(index); }}
-                    >
-                      <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                        <Box display='flex' flexDirection='column'>
-                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                            <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
-                            {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                    <Box display='flex' flexDirection='column'>
+                      <Box
+                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                        key={this_item.person_id + 'r' + index}
+                        className={classes.listItem}
+                        onClick={() => { toggleOpen(index); }}
+                      >
+                        <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                          <Box display='flex' flexDirection='column'>
+                            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                              <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
+                              {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                            </Box>
+                            {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                            {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (<Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>))}
+                            <a href={makeLink(this_item.messaging, this_item.preferred_method)}
+                              style={{ color: 'inherit', textDecoration: 'none' }}>
+                              <Box
+                                display='flex'
+                                flexDirection='row'
+                                justifyContent='flex-start'
+                                alignItems='center'
+                                key={`contactRows.${index}`}
+                                onClick={() => { toggleOpen(index); }}
+                              >
+                                {makeIcon(this_item.messaging, this_item.preferred_method, index)}
+                                <Box display='flex' flexDirection='column'>
+                                  {makePreferenceLine(this_item.messaging, this_item.preferred_method, this_item).map((prefLine, prefIndex) => (
+                                    <Typography
+                                      key={`prefLine-${index}.${prefIndex}`}
+                                      className={classes.preferenceLine}
+                                    >
+                                      {prefLine}
+                                    </Typography>
+                                  ))}
+                                </Box>
+                              </Box>
+                            </a>
+                            {open[index] &&
+                              (makeNonPreferenceLine(this_item.messaging, this_item.preferred_method, this_item)
+                                .map((prefLine, prefIndex) => (
+                                  <Typography key={`prefLine-${index}.${prefIndex}`} className={classes.preferenceLine}>{prefLine}</Typography>
+                                )))
+                            }
                           </Box>
-                          {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
-                          {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (<Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>))}
-                          {makePreferenceLine(this_item.messaging, this_item.preferred_method, this_item).map((prefLine, prefIndex) => (
-                            <Typography key={`prefLine-${index}.${prefIndex}`} className={classes.preferenceLine}>{prefLine}</Typography>
-                          ))}
                         </Box>
+                        <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                          <Box
+                            component="img"
+                            ml={isMobile ? 2 : 5}
+                            mr={1}
+                            minWidth={isMobile ? 75 : 150}
+                            maxWidth={isMobile ? 75 : 150}
+                            alt=''
+                            src={s3Bucket + this_item.person_id + '.jpg'}
+                          />
+                        </Box>
+                        {!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}
                       </Box>
-                      <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-                        <Box
-                          component="img"
-                          ml={isMobile ? 2 : 5}
-                          mr={1}
-                          minWidth={isMobile ? 75 : 150}
-                          maxWidth={isMobile ? 75 : 150}
-                          alt=''
-                          src={s3Bucket + this_item.person_id + '.jpg'}
-                        />
-                      </Box>
-                      {!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-                    </Box>
-                    <Collapse in={open[index]} timeout="auto" unmountOnExit>
-                      {!isMobile ?
-                        <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                          {pRole === 'responsible' &&
-                            <Button
-                              onClick={() => {
-                                setEditIndex(index);
-                                handlePatientEdit(this_item.person_id);
-                              }}
-                              className={classes.rowButtonDefault}
-                              startIcon={<EditIcon fontSize="small" />}
+                      {open[index] &&
+                        (pRole === 'admin' || pRole === 'responsible') &&
+                        (getSession(this_item.person_id)
+                          .map((sessLine, sessIndex) => (
+                            <Typography
+                              key={`prefLine-${index}.${sessIndex}`}
+                              className={(sessIndex < 7) ? classes.techInfoLine : classes.techInfoLine2}
                             >
-                              View/Edit
-                            </Button>
-                          }
-                          {(pRole === 'admin' || pRole === 'responsible') &&
-                            <Button
-                              onClick={() => {
-                                setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                                setConfirmPerson(this_item.person_id);
-                                setConfirmIndex(index);
-                                setDeletePending(true);
-                                setForceRedisplay(false);
-                              }}
-                              className={classes.rowButtonGreen}
-                              startIcon={<DeleteIcon fontSize="small" />}
-                            >
-                              Remove from Group
-                            </Button>
-                          }
-                          <Button
-                            onClick={() => {
-                              setPromptForMessage(true);
-                              setMessageType(this_item.preferred_method);
-                              setRecipient(`${this_item.name.first} ${this_item.name.last || this_item.display_name}:` + this_item.person_id);
-                            }}
-                            className={classes.rowButtonGreen}
-                            startIcon={<SendIcon fontSize="small" />}
-                          >
-                            Message
-                          </Button>
-                        </Box>
-                        :
-                        <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                          {pRole === 'responsible' &&
-                            <IconButton
-                              onClick={() => {
-                                setEditIndex(index);
-                                handlePatientEdit(this_item.person_id);
-                              }}
-                              className={classes.rowButtonDefault}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                          }
-                          {(pRole === 'admin' || pRole === 'responsible') &&
-                            <IconButton
-                              onClick={() => {
-                                setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                                setConfirmPerson(this_item.person_id);
-                                setConfirmIndex(index);
-                                setDeletePending(true);
-                                setForceRedisplay(false);
-                              }}
-                              className={classes.rowButtonGreen}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          }
-                          <IconButton
-                            onClick={() => {
-                              setPromptForMessage(true);
-                              setMessageType(this_item.preferred_method);
-                              setRecipient(`${this_item.name.first} ${this_item.name.last || this_item.display_name}:` + this_item.person_id);
-                            }}
-                            className={classes.rowButtonGreen}
-                          >
-                            <SendIcon fontSize="small" />
-                          </IconButton>
-                        </Box>
+                              {sessLine}
+                            </Typography>
+                          )))
                       }
-                    </Collapse>
+                      <Collapse in={open[index]} timeout="auto" unmountOnExit>
+                        {
+                          <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
+                            <Box display='flex' flexDirection='column'>
+                              <Button
+                                onClick={() => {
+                                  setPromptForMessage(true);
+                                  setMessageType(this_item.preferred_method);
+                                  setRecipient(`${this_item.name.first} ${this_item.name.last || this_item.display_name}:` + this_item.person_id);
+                                }}
+                                className={classes.rowButtonGreen}
+                                startIcon={<SendIcon fontSize="small" />}
+                              >
+                                Message
+                              </Button>
+                              <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
+                                {pRole === 'responsible' &&
+                                  <Button
+                                    onClick={() => {
+                                      setEditIndex(index);
+                                      handlePatientEdit(this_item.person_id);
+                                    }}
+                                    className={classes.rowButtonDefault}
+                                    startIcon={<EditIcon fontSize="small" />}
+                                  >
+                                    View/Edit
+                                  </Button>
+                                }
+                                {(pRole === 'admin' || pRole === 'responsible') &&
+                                  <Button
+                                    onClick={() => {
+                                      setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                                      setConfirmPerson(this_item.person_id);
+                                      setConfirmIndex(index);
+                                      setDeletePending(true);
+                                      setForceRedisplay(false);
+                                    }}
+                                    className={classes.rowButtonGreen}
+                                    startIcon={<DeleteIcon fontSize="small" />}
+                                  >
+                                    Remove from Group
+                                  </Button>
+                                }
+                              </Box>
+                            </Box>
+                          </Box>
+                        }
+                      </Collapse>
+                    </Box>
                   </Paper>
                   : null
                 )
@@ -644,85 +793,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
             </AVAConfirm>
           }
 
-          {isMobile ?
-            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-              <Box display='flex' flexDirection='column'>
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                  <IconButton
-                    className={classes.rowButtonGreen}
-                    onClick={onReset}
-                  >
-                    <CloseIcon size="small" />
-                  </IconButton>
-                  {(pRole === 'non-member') ?
-                    <IconButton
-                      className={classes.rowButtonGreen}
-                      onClick={() => {
-                        handleAddPersonToGroup(pPatient, pGroup, 'you');
-                      }}
-                    >
-                      <AddCircleOutlineIcon size="small" />
-                    </IconButton>
-                    :
-                    <IconButton
-                      className={classes.rowButtonGreen}
-                      onClick={() => {
-                        handleRemoveGroupMember(pPatient, myIndex);
-                      }}
-                    >
-                      <RemoveCircleOutlineIcon size="small" />
-                    </IconButton>
-                  }
-                  {(pRole === 'admin' || pRole === 'responsible') &&
-                    <IconButton
-                      className={classes.rowButtonGreen}
-                      onClick={() => {
-                        setShowAddPrompt(true);
-                      }}
-                    >
-                      <GroupAddIcon size="small" />
-                    </IconButton>
-                  }
-                </Box>
-                {(pRole === 'admin' || pRole === 'responsible') &&
-                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                    <IconButton
-                      className={classes.rowButtonDefault}
-                      onClick={() => { handlePrintDirectory(pGroup); }}
-                    >
-                      <PrintIcon size='small' />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => { handlePrintRoster(pGroup); }}
-                      className={classes.rowButtonGreen}
-                    >
-                      <StorageOutlined size='small' />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('Group');
-                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                      }}
-                      className={classes.rowButtonGreen}
-                    >
-                      <SendIcon size='small' />
-                    </IconButton>
-                    <IconButton
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('URGENT Group');
-                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                      }}
-                      className={classes.rowButtonRed}
-                    >
-                      <PhoneInTalkIcon size='small' />
-                    </IconButton>
-                  </Box>
-                }
-              </Box>
-            </DialogActions>
-            :
+          { // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
@@ -754,7 +825,9 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                       {'Remove Myself'}
                     </Button>
                   }
-                  {(pRole === 'admin' || pRole === 'responsible') &&
+                </Box>
+                {(pRole === 'admin' || pRole === 'responsible') &&
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                     <Button
                       className={classes.rowButtonGreen}
                       onClick={() => {
@@ -764,8 +837,34 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                     >
                       {'Add Member'}
                     </Button>
-                  }
-                </Box>
+                  </Box>
+                }
+                {(pRole === 'admin' || pRole === 'responsible') &&
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('Group');
+                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                      }}
+                      className={classes.rowButtonGreen}
+                      startIcon={<SendIcon size='small' />}
+                    >
+                      {`Group ${isMobile ? 'Msg' : 'Message'}`}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('URGENT Group');
+                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                      }}
+                      className={classes.rowButtonRed}
+                      startIcon={<PhoneInTalkIcon size='small' />}
+                    >
+                      {`Urgent ${isMobile ? 'Msg' : 'Message'}`}
+                    </Button>
+                  </Box>
+                }
                 {(pRole === 'admin' || pRole === 'responsible') &&
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                     <Button
@@ -781,28 +880,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                       startIcon={<StorageOutlined size='small' />}
                     >
                       {'Roster'}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('Group');
-                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                      }}
-                      className={classes.rowButtonGreen}
-                      startIcon={<SendIcon size='small' />}
-                    >
-                      {'Message to the Group'}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('URGENT Group');
-                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                      }}
-                      className={classes.rowButtonRed}
-                      startIcon={<PhoneInTalkIcon size='small' />}
-                    >
-                      {'Urgent Message'}
                     </Button>
                   </Box>
                 }

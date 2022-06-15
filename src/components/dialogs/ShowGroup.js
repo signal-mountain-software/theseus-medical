@@ -156,11 +156,12 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   };
 
   const handleAbort = async () => {
-    if (pGroup_id) ( onClose() )
-    setChanges(false);
-    await getGroupsManagedObject(pSession.patient_id);
-    setShowGroupSelect(true);
-    // onClose();
+    if (pGroup_id) { onClose(); }
+    else {
+      setChanges(false);
+      await getGroupsManagedObject(pSession.patient_id);
+      setShowGroupSelect(true);
+    }
   };
 
   // **************************
@@ -174,9 +175,10 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     );
     if (pGroup_id) { 
       setShowGroupSelect(false);
-      setGroupName(pGroup_id.split('~')[1]);
-      setGroupID(pGroup_id.split('~')[0]);
-      setGroupRole('admin');
+      let [gID, gName, gRole] = pGroup_id.split('~');
+      setGroupName(gName);
+      setGroupID(gID);
+      setGroupRole(gRole);
       getGroupMemberList({ 'group_id': pGroup_id.split('~')[0] });
     }
     else if (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0) {
