@@ -151,6 +151,12 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
+const AWS = require('aws-sdk');
+const s3 = new AWS.S3({
+  accessKeyId: 'AKIAR2O24AQ2HGHS4SFF',
+  secretAccessKey: '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'
+});
+
 export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, pRole, isMobile, onReset }) => {
 
   const classes = useStyles();
@@ -181,9 +187,10 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   const scrollValue = 20;
   var rowsWritten;
 
-  const { enqueueSnackbar } = useSnackbar();
+  const imageBucket = 'theseus-medical-storage';
+  const imageURI = 'public/patients/[person_id].jpg';
 
-  const s3Bucket = 'https://theseus-medical-storage.s3.amazonaws.com/public/patients/';
+  const { enqueueSnackbar } = useSnackbar();
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -499,10 +506,17 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       case 'time_based': { return ['preference varies by time']; }
       case 'AVA': { return ['AVA messages only']; }
       default: {
-        console.log(pPerson);
         return [`prefers ${pPreference}`];
       }
     }
+  }
+
+  function getImage(pPerson) { 
+    return s3.getSignedUrl('getObject', {
+      Bucket: imageBucket,
+      Key: imageURI.replace('[person_id]', pPerson),
+      Expires: 60
+    });
   }
 
   function makeNonPreferenceLine(pMessaging, pPreference, pPerson) {
@@ -556,7 +570,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
         `Log in results: ${sessionRec.event_description || 'no data'}`,
         `Recent Transactions:`
       ];
-      if (sessionRec.recentFacts.length > 0) {
+      if (sessionRec.recentFacts && sessionRec.recentFacts.length > 0) {
         sessionRec.recentFacts.forEach(fact => {
           sessionData.push(fact);
         });
@@ -662,7 +676,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                             minWidth={isMobile ? 75 : 150}
                             maxWidth={isMobile ? 75 : 150}
                             alt=''
-                            src={s3Bucket + this_item.person_id + '.jpg'}
+                            src={getImage(this_item.person_id)}
                           />
                         </Box>
                         {!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}

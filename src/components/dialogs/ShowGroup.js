@@ -124,6 +124,10 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
         return groupMemberList;
       }
     };
+    enqueueSnackbar(`AVA encountered an error while retrieving Group list.`, {
+      variant: 'error'
+    });
+    onClose();
     return [];
   };
 
@@ -167,10 +171,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   // **************************
 
   React.useEffect(() => {
-    let aList = [];
     let response = (
       async () => {
-        aList = await getGroupsManagedObject(pSession.patient_id);
+        await getGroupsManagedObject(pSession.patient_id);
       }
     );
     if (pGroup_id) { 
@@ -184,7 +187,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     else if (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0) {
       if (pSession.patient_id) {
         response();
-        console.log(aList);
         setShowGroupSelect(true);
       }
     }
