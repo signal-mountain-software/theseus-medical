@@ -515,7 +515,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     return s3.getSignedUrl('getObject', {
       Bucket: imageBucket,
       Key: imageURI.replace('[person_id]', pPerson),
-      Expires: 60
+      Expires: 3600
     });
   }
 
