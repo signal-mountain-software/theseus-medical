@@ -592,7 +592,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       open={true || forceRedisplay}
       onScroll={onScroll}
       p={2}
-      fullWidth
+      fullScreen
     >
       {workingMemberList && workingMemberList.length > 0 &&
         <React.Fragment>
