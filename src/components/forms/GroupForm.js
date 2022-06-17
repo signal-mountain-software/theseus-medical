@@ -572,11 +572,20 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       ];
       if (sessionRec.recentFacts && sessionRec.recentFacts.length > 0) {
         sessionRec.recentFacts.forEach(fact => {
-          sessionData.push(fact);
+          sessionData.push('->' + fact);
         });
       }
       else {
-        sessionData.push('None');
+        sessionData.push('->None');
+      }
+      sessionData.push('Associated accounts:');
+      if (sessionRec.associated_account && sessionRec.associated_account.length > 0) {
+        sessionRec.associated_account.forEach(aInfo => {
+          sessionData.push('->' + aInfo);
+        });
+      }
+      else {
+        sessionData.push('->None');
       }
       return sessionData;
     }
@@ -687,9 +696,9 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                           .map((sessLine, sessIndex) => (
                             <Typography
                               key={`prefLine-${index}.${sessIndex}`}
-                              className={(sessIndex < 7) ? classes.techInfoLine : classes.techInfoLine2}
+                              className={(!sessLine.startsWith('->')) ? classes.techInfoLine : classes.techInfoLine2}
                             >
-                              {sessLine}
+                              {sessLine.replace('->','')}
                             </Typography>
                           )))
                       }

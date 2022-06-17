@@ -125,6 +125,7 @@ export default Component => props => {
             onClick={async () => {
               let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'updatePwd', inputCP.trim());
               if (!invokeFailed && response.status === 200) {
+                accessLog(inputName.trim(), inputCP.trim(), `Reset successful`);
                 enqueueSnackbar(`Your password has been reset to ${saveP[0]}.  Signing-in now...`, {
                   variant: 'warning'
                 });
@@ -162,6 +163,7 @@ export default Component => props => {
       );
     };
 
+    accessLog(inputName.trim(), inputCP.trim(), mText.trim());
     enqueueSnackbar(mText.trim(), {
       variant: 'error',
       persist: true,
@@ -211,6 +213,7 @@ export default Component => props => {
     };
 
     if (count > 2 || forceFail) {
+      accessLog(inputName.trim(), inputCP.trim(), mText.trim());
       enqueueSnackbar(`${mText.trim()}.  What would you like to do now?`, {
         variant: 'error',
         persist: true,
@@ -221,6 +224,7 @@ export default Component => props => {
     else {
       setCount(count + 1);
       if (messageOut === mText) { mText += ' '; }
+      accessLog(inputName.trim(), inputCP.trim(), mText);
       setMessageOut(mText);
     }
     console.log(count, mText);
@@ -250,6 +254,7 @@ export default Component => props => {
       let user = {};
       let urlQuery = getParams();
       if (urlQuery?.user) {
+        accessLog(urlQuery.user, `*na*`, `URL supplied user ID`);
         user = {
           username: urlQuery.user,
           attributes: {
@@ -263,7 +268,10 @@ export default Component => props => {
       else {
         user = await Auth.currentAuthenticatedUser();
       }
-      if (user) { setSignedIn(true); }
+      if (user) {
+        accessLog(user, `*na*`, `Access granted`);
+        setSignedIn(true);
+      }
       else {
         enqueueSnackbar(`No authenticated user found.`, {
           variant: 'info'
@@ -274,6 +282,31 @@ export default Component => props => {
         variant: 'info'
       });
     }
+  };
+
+  const accessLog = async (pUser, pPwd, pMessage) => {
+    var payload =
+    {
+      'test': false,
+      'action': "add_entry",
+      'request': {
+        'attempted_user': pUser,
+        'attempted_password': pPwd,
+        'result': pMessage
+      }
+    };
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:AccessLogMaintenance',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log('Access log call failed.  Error is', JSON.stringify(err));
+      });
   };
 
   const tryPwdUpdate = async (pUser, pLoc, pData) => {
@@ -304,6 +337,7 @@ export default Component => props => {
   const logChangeRequest = async (pUser, pLoc, pData) => {
     let [invokeFailed, response] = await tryPwdUpdate(pUser, pLoc, pData);
     if (!invokeFailed && response.status === 200) {
+      accessLog(pUser, pData, `Manual password change was successful`);
       enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
         variant: 'success'
       });
@@ -477,11 +511,13 @@ export default Component => props => {
                     let resp = await Auth.signIn(inputName.trim(), inputCP.trim());
                     if (resp.challengeName === 'NEW_PASSWORD_REQUIRED') {
                       setResetPW(true);
+                      accessLog(inputName, inputCP, `Temporary password used.  Must be reset.`);
                       enqueueSnackbar(`That's a temporary password.  Press "Reset password" to set a permanent one, please.`, {
                         variant: 'info',
                       });
                     }
                     else {
+                      accessLog(inputName, inputCP, `Login successful`);
                       setResetPW(false);
                     }
                   }
