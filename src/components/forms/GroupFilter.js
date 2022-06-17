@@ -247,7 +247,6 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, o
   return (
     <Dialog
       open={true}
-      p={2}
       fullWidth
       variant={'elevation'} elevation={2}
       TransitionComponent={Transition}

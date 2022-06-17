@@ -238,7 +238,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = 22.6.7~${errorTime}`,
+        status: `Version = 22.6.16~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -358,7 +358,7 @@ export default ({ patient, session }) => {
       factWasWritten = true;
       [, constructedValue] = newFact.value.replace('.', '^').split('^');
     } else {
-      if (newFact.hasOwnProperty('value') && newFact.value && !newFact.activity_key.startsWith('action.show')) {
+      if (newFact.hasOwnProperty('value') && newFact.value && !newFact.activity_key.startsWith('action.')) {
         if (newFact.value.hasOwnProperty('mediaData')) {
           let valueSelectedString = '';
           if (newFact.value.selected) {
