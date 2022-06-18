@@ -556,7 +556,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     return returnArray;
   }
 
-  const getSession = (pPerson) => {
+  const getPersonSession = (pPerson) => {
     if (sessionRec) {
       let lastVersion = null;
       let lastUse = null;
@@ -567,9 +567,19 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
         `Platform: ${sessionRec.platform}`,
         `Version: ${lastVersion || 'not recorded'}`,
         `Last use: ${lastUse || 'not recorded'}`,
-        `Log in results: ${sessionRec.event_description || 'no data'}`,
-        `Recent Transactions:`
       ];
+
+      sessionData.push('Log-in history:');
+      if (sessionRec.access_log && sessionRec.access_log.length > 0) {
+        sessionRec.access_log.forEach(lRec => {
+          sessionData.push('->' + lRec);
+        });
+      }
+      else {
+        sessionData.push('->None');
+      }
+      
+      sessionData.push('Recent Transactions:');
       if (sessionRec.recentFacts && sessionRec.recentFacts.length > 0) {
         sessionRec.recentFacts.forEach(fact => {
           sessionData.push('->' + fact);
@@ -578,6 +588,17 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       else {
         sessionData.push('->None');
       }
+
+      sessionData.push('Recent Activity:');
+      if (sessionRec.activity_log && sessionRec.activity_log.length > 0) {
+        sessionRec.activity_log.forEach(actL => {
+          sessionData.push('->' + actL);
+        });
+      }
+      else {
+        sessionData.push('->None');
+      }
+     
       sessionData.push('Associated accounts:');
       if (sessionRec.associated_account && sessionRec.associated_account.length > 0) {
         sessionRec.associated_account.forEach(aInfo => {
@@ -587,6 +608,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       else {
         sessionData.push('->None');
       }
+
       return sessionData;
     }
     else { return []; }
@@ -692,7 +714,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                       </Box>
                       {open[index] &&
                         (pRole === 'admin' || pRole === 'responsible') &&
-                        (getSession(this_item.person_id)
+                        (getPersonSession(this_item.person_id)
                           .map((sessLine, sessIndex) => (
                             <Typography
                               key={`prefLine-${index}.${sessIndex}`}

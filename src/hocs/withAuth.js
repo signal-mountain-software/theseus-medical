@@ -421,7 +421,9 @@ export default Component => props => {
         }
       }
       case 'InvalidParameterException': {
-        setMessages(`There are invalid characters in the Username "${inputName.trim()}".  Please try again.`);
+        if (inputCP.trim() === '') { setMessages(`You left the password blank!  Please try again.`); }
+        else if (inputName.trim() === '') { setMessages(`You left the User ID blank!  Please try again.`); }
+        else { setMessages(`There are invalid characters in either the Username or the Password.  Please try again.`); }
         console.log(data.message);
         break;
       }
