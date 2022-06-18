@@ -238,7 +238,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=22.6.16${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          `Version=22.6.19${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -278,7 +278,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (22.6.16${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (22.6.19${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
@@ -421,7 +421,9 @@ export default Component => props => {
         }
       }
       case 'InvalidParameterException': {
-        setMessages(`There are invalid characters in the Username "${inputName.trim()}".  Please try again.`);
+        if (inputCP.trim() === '') { setMessages(`You left the password blank!  Please try again.`); }
+        else if (inputName.trim() === '') { setMessages(`You left the User ID blank!  Please try again.`); }
+        else { setMessages(`There are invalid characters in either the Username or the Password.  Please try again.`); }
         console.log(data.message);
         break;
       }

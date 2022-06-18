@@ -1,5 +1,6 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
+import { Lambda } from 'aws-sdk';
 import IdleTimer from 'react-idle-timer';
 import avaAlert from '../../ava_alert.mp3';
 import { useSnackbar } from 'notistack';
@@ -152,6 +153,38 @@ export default ({ patient, session }) => {
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const classes = useStyles();
 
+  const lambda = new Lambda({
+    region: 'us-east-1',
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY,
+  });
+
+  const activityLog = (pUser, pCode, pName) => {
+    var payload =
+    {
+      'test': false,
+      'action': "add_entry",
+      'request': {
+        user_id: pUser,
+        activity_code: pCode,
+        activity_name: pName,
+        AVA_version: `22.6.19${window.location.href.split('//')[1].slice(0, 1)}`
+      }
+    };
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ActivityLogMaintenance',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log('Access log call failed.  Error is', JSON.stringify(err));
+      });
+  };
+
   var priorReason = '';
   var sectionColor = '';
   var selectedActivityName = '';
@@ -238,7 +271,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = 22.6.16~${errorTime}`,
+        status: `Version = 22.6.19~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -251,6 +284,7 @@ export default ({ patient, session }) => {
   };
 
   const onChooseActivity = async activity => {
+    activityLog(patient?.person_id || session.patient_id, activity?.code || activity, activity.name);
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
       addedAFavorite = false;
