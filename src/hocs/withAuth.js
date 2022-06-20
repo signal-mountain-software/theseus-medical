@@ -407,16 +407,16 @@ export default Component => props => {
         catch (e) {
           let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'checkUser', 'password');
           if (!invokeFailed && response.body === "That's not a valid AVA Username") {
-            setMessages("That's not a valid AVA Username");
+            setMessages(`"${inputName.trim()}" is not a valid AVA Username`);
           }
           else {
             // If the last three attempts have all been the same exact user and password, then offer to reset 
             // the password to the one they keep trying
             let tries = saveP.length - 1;
             if (tries > 2 && (saveP[tries] === saveP[tries - 1] && saveP[tries - 1] === saveP[tries - 2]) && (saveU[tries] === saveU[tries - 1] && saveU[tries - 1] === saveU[tries - 2])) {
-              pwdMessage(`That isn't your current password.  Should I reset your password to "${inputCP.trim()}"?`);
+              pwdMessage(`"${inputCP.trim()}" isn't your current password.  Should I reset your password to "${inputCP.trim()}"?`);
             }
-            else { setMessages(`That's not the correct password for Username "${inputName.trim()}"`); }
+            else { setMessages(`"${inputCP.trim()}" is not the correct password for Username "${inputName.trim()}"`); }
           }
           break;
         }
@@ -424,7 +424,9 @@ export default Component => props => {
       case 'InvalidParameterException': {
         if (inputCP.trim() === '') { setMessages(`You left the password blank!  Please try again.`); }
         else if (inputName.trim() === '') { setMessages(`You left the User ID blank!  Please try again.`); }
-        else { setMessages(`There are invalid characters in either the Username or the Password.  Please try again.`); }
+        else {
+          setMessages(`There are invalid characters in either the Username ("${inputName.trim()}") or the Password ("${inputCP.trim()}")`);
+        }
         console.log(data.message);
         break;
       }
