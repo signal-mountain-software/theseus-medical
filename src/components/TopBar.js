@@ -1,6 +1,7 @@
 import React from 'react';
 import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
+import { Lambda } from 'aws-sdk';
 
 import { API, graphqlOperation } from 'aws-amplify';
 import { updateSession } from '../graphql/mutations';
@@ -79,7 +80,39 @@ export default () => {
     setShowIOSDialog(false);
   };
 
+  const lambda = new Lambda({
+    region: 'us-east-1',
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY,
+  });
+
+  const accessLog = async (pUser, pPwd, pMessage) => {
+    var payload =
+    {
+      'test': false,
+      'action': "add_entry",
+      'request': {
+        'attempted_user': pUser,
+        'attempted_password': pPwd,
+        'result': pMessage
+      }
+    };
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:AccessLogMaintenance',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log('Access log call failed.  Error is', JSON.stringify(err));
+      });
+  };
+
   const onSignOut = () => {
+    accessLog(session.user_id, `*na*`, `Manual sign-out`);
     setAnchorEl(null);
     Auth.signOut().then(() => {
       serviceWorker.unregister();

@@ -238,7 +238,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform,
-          `Version=22.6.19${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          `Version=22.6.19.1${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -266,10 +266,11 @@ export default Component => props => {
         };
       }
       else {
+        let awsSession = await Auth.currentSession();
+        console.log(awsSession);
         user = await Auth.currentAuthenticatedUser();
       }
       if (user) {
-        accessLog(user, `*na*`, `Access granted`);
         setSignedIn(true);
       }
       else {
@@ -278,7 +279,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (22.6.19${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (22.6.19.1${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
