@@ -558,15 +558,12 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
   const getPersonSession = (pPerson) => {
     if (sessionRec) {
-      let lastVersion = null;
-      let lastUse = null;
-      if (sessionRec.status) { [, lastVersion, lastUse] = sessionRec.status.split(/=|~|\(/); };
       let sessionData = [
         '~~ Tech Info ~~',
         `User ID: ${pPerson}`,
         `Platform: ${sessionRec.platform}`,
-        `Version: ${lastVersion || 'not recorded'}`,
-        `Last use: ${lastUse || 'not recorded'}`,
+        `Version: ${sessionRec.lastVersion || 'not recorded'}`,
+        `Last use: ${sessionRec.lastUse || 'not recorded'}`,
       ];
 
       sessionData.push('Log-in history:');
