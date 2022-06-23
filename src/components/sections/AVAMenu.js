@@ -357,7 +357,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
         });
         for (const key in pFact.value.freeText) {
           if (key !== '%filter%' && !foundText.includes(key)) {
-            valueArray.push(` ~ ${key} = ${pFact.value.freeText[key]}`);
+            valueArray.push(`${key} = ${pFact.value.freeText[key]}`);
           }
         }
         let isMedia = (pFact.value.hasOwnProperty('mediaData'));
@@ -369,11 +369,14 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
         else if (isForm && pFact.status !== 'confirmed') {
           let cMessage = [
             'Review & Confirm please',
-            pFactName,
-            '~~~~',
-            'Your selections are:',
-            ...valueArray
-          ];
+            pFactName];
+          if (valueArray.length > 0) {
+            cMessage.push(
+              '~~~~',
+              'Your selections are:',
+              ...valueArray
+            );
+          }
           setConfirmMessage(cMessage);
           setNeedsConfirmation(true);
           return;
@@ -766,7 +769,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
                           key={this_row.activity_code + 'detailrow' + index}
                           className={classes.listItem}
                           onClick={async () => {
-                            if (!toggleClick) {
+                            if (!toggleClick && (this_row.row_type !== 'document')) {
                               await getActivityDetail(this_row.activity_code);
                               setShowNewFactDialog(true);
                             }
@@ -774,11 +777,13 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
                           }}
                         >
                           <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                            <Box display='flex' flexDirection='column'>
-                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                            {this_row.row_type === 'document' ?
+                              <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
                                 <Typography variant='h5' className={classes.firstName}>{this_row.activity_name}</Typography>
-                              </Box>
-                            </Box>
+                              </a>
+                              :
+                              <Typography variant='h5' className={classes.firstName}>{this_row.activity_name}</Typography>
+                            }
                           </Box>
                           <IconButton
                             aria-label='showActivities'

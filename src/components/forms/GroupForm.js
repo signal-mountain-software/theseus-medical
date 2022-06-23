@@ -372,7 +372,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       if (pMessageType.toLowerCase() === 'urgent group') { nqMessage += ` as an URGENT (phone call preferred) message!`; }
     }
     else {
-      nqMessage = `Sent "${pMessage}" via ${pMessageType === 'time_based' ? '' : (pMessageType === 'sms' ? 'text' : pMessageType)} to ${pRecipient.split(':')[0]}`;
+      nqMessage = `Sent "${pMessage}" ${pMessageType === 'time_based' ? '' : (pMessageType === 'sms' ? 'via text' : ('via ' + pMessageType))} to ${pRecipient.split(':')[0]}`;
     }
     let lambdaPayload = {
       "body": {
