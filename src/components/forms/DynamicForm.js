@@ -29,6 +29,8 @@ import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
 
+import AVAMenu from '../sections/AVAMenu';
+
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 
@@ -924,6 +926,16 @@ export default ({
   }, [checked, filterPromptValue, searchTextFromParent, values, session.search_terms]);
 
   switch (type) {
+    case 'special_test':
+      return (
+        <AVAMenu
+          pPerson={session.patient_id}
+          pClient={session.client_id}
+          isMobile={isMobile}
+          session={session}
+          onReset={onError}
+        />
+      );
     case 'characteristic_num':
       return (
         <NumberForm
