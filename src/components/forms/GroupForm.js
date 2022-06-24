@@ -14,6 +14,7 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
+import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
 
 import TextSMSIcon from '@material-ui/icons/Textsms';
 import CallIcon from '@material-ui/icons/Call';
@@ -371,8 +372,11 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       nqMessage = `Sent "${pMessage}" to everyone in ${pGroupName}`;
       if (pMessageType.toLowerCase() === 'urgent group') { nqMessage += ` as an URGENT (phone call preferred) message!`; }
     }
-    else {
+    else if (pMessageType !== 'AVA') {
       nqMessage = `Sent "${pMessage}" ${pMessageType === 'time_based' ? '' : (pMessageType === 'sms' ? 'via text' : ('via ' + pMessageType))} to ${pRecipient.split(':')[0]}`;
+    }
+    else { 
+      nqMessage = `Posted "${pMessage}" as an AVA alert for ${pRecipient.split(':')[0]}`;
     }
     let lambdaPayload = {
       "body": {
@@ -382,6 +386,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       }
     };
     if (pMessageType.toLowerCase() === 'urgent group') { lambdaPayload.body.method = 'urgent'; }
+    else if (pMessageType === 'AVA') { lambdaPayload.body.method = 'AVA'; }
     params.Payload = JSON.stringify(lambdaPayload);
     lambda
       .invoke(params)
@@ -960,6 +965,17 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                       startIcon={<PhoneInTalkIcon size='small' />}
                     >
                       {`Urgent ${isMobile ? 'Msg' : 'Message'}`}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('AVA');
+                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                      }}
+                      className={classes.rowButtonGreen}
+                      startIcon={<ContactMailOutlinedIcon size='small' />}
+                    >
+                      {`AVA alert ${isMobile ? 'Msg' : 'Message'}`}
                     </Button>
                   </Box>
                 }
