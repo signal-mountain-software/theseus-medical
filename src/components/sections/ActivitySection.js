@@ -160,13 +160,16 @@ export default ({ patient, session }) => {
   });
 
   const activityLog = (pUser, pCode, pName) => {
+    let pCodeOut = '';
+    if (typeof (pCode) === 'object') { pCodeOut = JSON.stringify(pCode); }
+    else { pCodeOut = pCode }
     var payload =
     {
       'test': false,
       'action': "add_entry",
       'request': {
         user_id: pUser,
-        activity_code: pCode,
+        activity_code: pCodeOut,
         activity_name: pName,
         AVA_version: `22.6.24${window.location.href.split('//')[1].slice(0, 1)}`
       }
@@ -284,15 +287,16 @@ export default ({ patient, session }) => {
   };
 
   const onChooseActivity = async activity => {
+    if (toggledSection) {
+      toggledSection = false;
+      activityLog(patient?.person_id || session.patient_id, `${activity.toggleAction ? 'Open/Show' : 'Close/Hide'} section`, activity.reason);
+      setLimit(limit + 1);
+      return;
+    }
     activityLog(patient?.person_id || session.patient_id, activity?.code || activity, activity?.name || activity);
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
       addedAFavorite = false;
-      return;
-    }
-    if (toggledSection) {
-      toggledSection = false;
-      setLimit(limit + 1);
       return;
     }
     if (activity?.code?.startsWith('event')) {
@@ -986,7 +990,8 @@ export default ({ patient, session }) => {
                             : newSectionOpen[activity.reason] = !newSectionOpen[activity.reason];
                           setSectionOpen(newSectionOpen);
                           updateSessionPreferences(newSectionOpen);
-                          onChooseActivity(null);
+                          activity.toggleAction = newSectionOpen[activity.reason];
+                          onChooseActivity(activity);
                         }}
                         square>
                         <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>

@@ -219,7 +219,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
   const [confirmMessage, setConfirmMessage] = React.useState('');
   const [pendingFact, setPendingFact] = React.useState('');
 
-  const [sectionOpen, setSectionOpen] = React.useState(JSON.parse(session.current_event));
+  const [sectionOpen, setSectionOpen] = React.useState();
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showNewFactDialog, setShowNewFactDialog] = React.useState(false);
   const [needsConfirmation, setNeedsConfirmation] = React.useState(false);
@@ -274,6 +274,15 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
     if (!invokeFailed) {
       let MakeAVAMenuResponse = JSON.parse(fResp.Payload);
       if (MakeAVAMenuResponse.status === 200) {
+        if (!sectionOpen) {
+          let tempSectionOpen = {};
+          tempSectionOpen[MakeAVAMenuResponse.body[0].section_name] = true;
+          setSectionOpen(tempSectionOpen);
+        }
+        else {
+          sectionOpen[MakeAVAMenuResponse.body[0].section_name] = true;
+          setSectionOpen(sectionOpen);
+        }
         setMainMenu(MakeAVAMenuResponse.body);
         setLoading(false);
         return MakeAVAMenuResponse.body;
@@ -743,12 +752,14 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
                               </Box>
                             </Box>
                           </Box>
-                          <IconButton
-                            aria-label='showActivities'
-                            size='small'
-                          >
-                            {!sectionOpen[this_row.section_name] ? 'Show' : 'Hide'}
-                          </IconButton>
+                          {index > 0 &&
+                            <IconButton
+                              aria-label='showActivities'
+                              size='small'
+                            >
+                              {!sectionOpen[this_row.section_name] ? 'Show' : 'Hide'}
+                            </IconButton>
+                          }
                         </Box>
                       </Box>
                     </Paper>
