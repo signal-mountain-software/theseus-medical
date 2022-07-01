@@ -383,6 +383,10 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     let slotIDString = updateSlot.slotData.id.toString();
     eventParts[2] = (slotIDString.length < 4 ? '0' : '') + slotIDString;
 
+    if (!newPersonID) {
+      sendAVASupportAlert(`${pPatient} atempted null update to Calendar event ${eventParts[0] + '#' + eventParts[1]} at slot ${eventParts[2]}`);
+    }
+
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance';
     params.Payload = JSON.stringify({
       action: "update_slot",
@@ -414,6 +418,27 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
       }
     };
   };
+
+  const sendAVASupportAlert = async (pMessage) => { 
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
+    let lambdaPayload = {
+      "body": {
+        "client": 'SMSoft',
+        "author": 'rsteele',
+        "subject": 'AVA alert - Invalid Calendar update',
+        "values": `AVA Support:ava_support ~ MessageText = ${pMessage}`
+      }
+    };
+    params.Payload = JSON.stringify(lambdaPayload);
+    lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
+          variant: 'error'
+        });
+      });
+  }
 
   const handleAllocateSlot = async (pPerson, pRelease = false, pIndex = null) => {
     let invokeFailed = false;
@@ -585,7 +610,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     <Box display='flex' flexDirection='row' alignItems='center'>
                       {isNaN(Number(this_item.slotData.id)) ?
                         null :
-                        (Number(this_item.slotData.id) >= 100 ?
+                        (Number(this_item.slotData.id) >= 100 ?    // Numbers that are times are in the range 100 through 1200; otherwise assume seat number 1, 2, 3, etc...
                           <Box display='flex' width={60} flexDirection='row' justifyContent='center' alignItems='center'>
                             <Typography variant='body1' className={classes.standardIndent} >{makeReadableTime(this_item.slotData.id, false)}</Typography>
                           </Box>
@@ -957,7 +982,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                   onClick={onReset}
                   startIcon={<ArrowBackIcon size="small" />}
                 >
-                  {'Back'}
+                  {'Exit'}
                 </Button>
                 {pOccData.signup_type === 'time' && isOwner &&
                   <Button
