@@ -982,9 +982,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     startIcon={<PersonAddIcon size="small" />}
                   >
                     {isOwner ?
-                      {'Add a person'}
+                      'Add a person'
                       :
-                      {'Add myself to the list'}
+                      'Add myself to the list'
                     }
                   </Button>
                 }
