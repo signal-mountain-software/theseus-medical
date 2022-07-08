@@ -624,7 +624,7 @@ export default ({ patient, session }) => {
     async function putFile(params) {    // Uploading files to the bucket
       let mediaData = newFact.value.mediaData;
       let uploadGood = true;
-      await s3.upload(mediaData)
+      await s3.putObject(mediaData)
         .promise()
         .catch(err => {
           enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });

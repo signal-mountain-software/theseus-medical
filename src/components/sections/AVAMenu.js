@@ -332,7 +332,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
     enqueueSnackbar(`AVA is saving ${newName}...`, { variant: 'info', persist: true });
     let uploadOK = true;
     let uploadResult = await s3
-      .upload(mediaData)
+      .putObject(mediaData)
       .promise()
       .catch(err => {
         uploadOK = false;
