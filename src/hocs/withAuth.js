@@ -6,6 +6,7 @@ import {
   AmplifyForgotPassword
 } from '@aws-amplify/ui-react';
 import useIosCheck from '../hooks/useIosCheck';
+import { deviceDetect } from 'react-device-detect';
 import {
   Auth,
   appendToCognitoUserAgent
@@ -69,6 +70,8 @@ export default Component => props => {
   const [resetPW, setResetPW] = React.useState(false);
   let [platform, showIOS] = useIosCheck();
   if (showIOS) { };
+
+  let deviceObj = deviceDetect();
 
   const [saveP, setSaveP] = React.useState([]);
   const [saveU, setSaveU] = React.useState([]);
@@ -237,7 +240,7 @@ export default Component => props => {
         let timeStamp = new Date().toString();
         logAVAAccess(
           data.idToken.payload['cognito:username'],
-          platform,
+          platform + (deviceObj ? ' ' + JSON.stringify(deviceObj) : ''),
           `Version=22.6.24${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
@@ -250,6 +253,7 @@ export default Component => props => {
 
   const setUser = async () => {
     setSignedIn(false);
+    
     try {
       let user = {};
       let urlQuery = getParams();
@@ -285,7 +289,7 @@ export default Component => props => {
     }
   };
 
-  const accessLog = async (pUser, pPwd, pMessage) => {
+  const accessLog = async (pUser, pPwd, pMessage, pDevice) => {
     var payload =
     {
       'test': false,
