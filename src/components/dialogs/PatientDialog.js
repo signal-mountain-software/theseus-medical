@@ -1,6 +1,7 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
-import { createPutFact } from '../../graphql/mutations';
+import { Lambda } from 'aws-sdk';
+import { createPutFact, updateSession } from '../../graphql/mutations';
 import { getSession, getPerson } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
 
@@ -28,6 +29,7 @@ import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import ClientsSection from '../sections/ClientsSection';
 import RelationshipSection from '../sections/RelationshipSection';
+import LinkedAccountsSection from '../sections/LinkedAccountsSection';
 import MessageRouting from '../sections/MessageRouting';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -122,6 +124,7 @@ export default ({ patient, picture, open, onClose }) => {
   const [lastName, setLastName] = React.useState();
   const [email, setEmail] = React.useState();
   const [cell, setCell] = React.useState();
+  const [groupMemberList, setGroupMemberList] = React.useState([]);
   const [surrogate, setSurrogate] = React.useState();
   const [searchTerm, setSearchTerm] = React.useState();
   const [voice, setVoice] = React.useState();
@@ -129,7 +132,11 @@ export default ({ patient, picture, open, onClose }) => {
   const [inputPWD, setInputPWD] = React.useState();
   const [prefMethod, setMethod] = React.useState();
   const [patientGroups, setPatientGroups] = React.useState();
+  const [responsibleArray, setResponsibleArray] = React.useState();
+  const [proxy, setProxy] = React.useState();
   const [patientPChange, setPatientPChange] = React.useState();
+  const [patientSession, setPatientSession] = React.useState();
+  const [sessionVersion, setSessionVersion] = React.useState(0);
 
   const [changes, setChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(false);
@@ -151,14 +158,37 @@ export default ({ patient, picture, open, onClose }) => {
   function formatPhone(pNumber) {
     var match = '' + pNumber.replace(/\D/g, '').substr(-10);
     let formatted = '';
-    if (match.length > 0) { formatted += '(' + match.substr(0, 3); }
-    if (match.length > 3) { formatted += ') ' + match.substr(3, 3); }
-    if (match.length > 6) { formatted += '-' + match.substr(6, 4); }
+    if (match.length > 0) { formatted += '(' + match.substring(0, 3); }
+    if (match.length > 3) { formatted += ') ' + match.substring(3, 6); }
+    if (match.length > 6) { formatted += '-' + match.substring(6, 10); }
     return formatted;
   }
 
+  const lambda = new Lambda({
+    region: 'us-east-1',
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY,
+  });
+
+  let params = {
+    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
+    InvocationType: 'RequestResponse',
+    LogType: 'Tail',
+    Payload: ''
+  };
+
   React.useEffect(() => {
     if (patient) {
+      let asyncGetGroupMemberList = (
+        async () => {
+          await getGroupMemberList();
+        }
+      );
+      let asyncGetSession = (
+        async () => {     
+          await getSessionQL();
+        }
+      );
       setFirstName(patient.name.first);
       setLastName(patient.name.last);
       setCell(patient.messaging?.sms ? formatPhone(patient.messaging?.sms) : '');
@@ -203,22 +233,48 @@ export default ({ patient, picture, open, onClose }) => {
           }
         });
       }
-      if (patient.person_id === state.session.user_id) {
-        setPatientPChange(state.session.password_change_date);
-      }
-      else {
-        [patient.person_id].forEach(async (pPerson) => {
-          let pSessionResult = await API
-            .graphql(graphqlOperation(getSession, { session_id: pPerson }))
-            .catch(() => { });
-          if (pSessionResult) {
-            setPatientPChange(pSessionResult.data.getSession.password_change_date);
-          }
-        });
+      asyncGetSession();
+      if (!groupMemberList || groupMemberList.length === 0) {
+        asyncGetGroupMemberList();
       }
     }
   }, [patient]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  const getSessionQL = async () => {
+    let pSessionResult = await API
+      .graphql(graphqlOperation(getSession, { session_id: patient.person_id }))
+      .catch(() => { });
+    if (pSessionResult) {
+      setPatientSession(pSessionResult.data.getSession);
+      setPatientPChange(pSessionResult.data.getSession.password_change_date);
+    }
+  };
+
+  const getGroupMemberList = async () => {
+    let invokeFailed = false;
+    setGroupMemberList([]);
+    params.Payload = JSON.stringify({
+      action: "get_group_members",
+      clientId: patient.client_id,
+      request: {
+        "group_id": '*ALL',
+      }
+    });
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`);
+      });
+    if (!invokeFailed) {
+      let groupMemberList = JSON.parse(fResp.Payload);
+      if (groupMemberList.status === 200) {
+        setGroupMemberList(groupMemberList.body);
+        return groupMemberList;
+      }
+    };
+    return [];
+  };
 
   const hiddenFileInput = React.useRef(null);
 
@@ -285,6 +341,19 @@ export default ({ patient, picture, open, onClose }) => {
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
       console.log(error);
     });
+    await API
+      .graphql(graphqlOperation(
+        updateSession, {
+        input: {
+            session_id: patient.person_id,
+            responsible_for: responsibleArray,
+            patient_id: proxy
+        }
+      }
+      ))
+      .catch(error => {
+        console.log(`Can't update session in logusage: ${error.errors[0].message}`);
+      });
     enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
     patient.name.first = firstName;
     patient.name.last = lastName;
@@ -357,6 +426,22 @@ export default ({ patient, picture, open, onClose }) => {
 
   const handleChangeGroups = updatedGroupArray => {
     setPatientGroups(updatedGroupArray);
+    setChanges(true);
+  };
+
+  const handleChangeLinkedAccounts = updatedResponsibleArray => {
+    setResponsibleArray(updatedResponsibleArray);
+    patientSession.responsible_for = updatedResponsibleArray;
+    setSessionVersion(sessionVersion + 1)
+    setChanges(true);
+  };
+
+  const handleChangeProxy = event => {
+    let newProxy = event.target.value;
+    if (!newProxy || newProxy === '') { newProxy = patientSession.user_id; }
+    setProxy(newProxy);
+    patientSession.patient_id = newProxy;
+    setSessionVersion(sessionVersion + 1);
     setChanges(true);
   };
 
@@ -547,6 +632,13 @@ export default ({ patient, picture, open, onClose }) => {
         </Box >
         <ClientsSection person={patient} updateGroups={handleChangeGroups} />
         <RelationshipSection person={patient} />
+        <LinkedAccountsSection
+          groupMemberList={groupMemberList}
+          session={patientSession}
+          updateSession={handleChangeLinkedAccounts}
+          updateProxy={handleChangeProxy}
+          version={sessionVersion}
+        />
         <Toolbar>
           <Tooltip title={<Typography variant='caption'>{patient.person_id}</Typography>} placement='bottom-end'>
             <Button
