@@ -241,7 +241,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform + (deviceObj ? ' ' + JSON.stringify(deviceObj) : ''),
-          `Version=22.6.24${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          `Version=22.7.11${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -253,7 +253,7 @@ export default Component => props => {
 
   const setUser = async () => {
     setSignedIn(false);
-    
+
     try {
       let user = {};
       let urlQuery = getParams();
@@ -283,7 +283,7 @@ export default Component => props => {
         });
       }
     } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (22.6.24${window.location.href.split('//')[1].slice(0, 1)})`, {
+      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (22.7.11${window.location.href.split('//')[1].slice(0, 1)})`, {
         variant: 'info'
       });
     }
