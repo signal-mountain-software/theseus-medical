@@ -779,6 +779,10 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
                           key={this_row.activity_code + 'detailrow' + index}
                           className={classes.listItem}
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            enqueueSnackbar(`AVA function=${this_row.activity_code} type=${this_row.row_type} user=${session.user_id}`, { variant: 'info', persist: true });
+                          }}
                           onClick={async () => {
                             if (!toggleClick && (this_row.row_type !== 'document')) {
                               await getActivityDetail(this_row.activity_code);

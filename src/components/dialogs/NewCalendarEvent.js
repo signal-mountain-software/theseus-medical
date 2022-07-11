@@ -7,6 +7,7 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 
 import { Lambda } from 'aws-sdk';
+import AVAConfirm from '../forms/AVAConfirm';
 
 // import "react-datepicker/dist/react-datepicker.css";
 
@@ -52,6 +53,13 @@ const useStyles = makeStyles(theme => ({
   formControl: {
     margin: 0,
     paddingTop: 0,
+  },
+  rowButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small'
   },
   formControlLbl: {
     margin: 0,
@@ -157,6 +165,15 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
 
   const [description, setDescription] = React.useState();
   const [event_date, setEventDate] = React.useState();
+  const [copy_from_date, setCopyFromDate] = React.useState();
+  const [copyFromAsADate, setCopyFromAsADate] = React.useState();
+  const [copy_to_date, setCopyToDate] = React.useState();
+  const [copyToAsADate, setCopyToAsADate] = React.useState();
+  const [eventList, setEventList] = React.useState();
+  const [copyPending, setCopyPending] = React.useState(false);
+  const [rememberedSelection, setRememberedSelection] = React.useState();
+  const [confirmMessage, setConfirmMessage] = React.useState('');
+
   const [last_date, setLastDate] = React.useState();
   const [eventAsADate, setEventAsADate] = React.useState();
   const [lastAsADate, setLastAsADate] = React.useState();
@@ -172,6 +189,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [location, setLocation] = React.useState();
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
+  const [showCopyFromPrevious, setShowCopyFromPrevious] = React.useState(false);
   const [person_filter, setPersonFilter] = React.useState('');
   const [restrictionList, setRestrictionList] = React.useState([]);
 
@@ -288,6 +306,17 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     setEventDate(event.target.value);
     setEventAsADate(null);
     if (description && time_from_display_string) { setChanges(true); }
+  };
+
+  const handleChangeCopyFromDate = event => {
+    setCopyFromDate(event.target.value);
+    setCopyFromAsADate(null);
+  };
+
+  const handleChangeCopyToDate = event => {
+    setCopyToDate(event.target.value);
+    setCopyToAsADate(null);
+    setCopyPending(false);
   };
 
   const handleChangeTimeFrom = event => {
@@ -425,34 +454,137 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
 
   const handleDateExit = event => {
     if (event.key === 'Enter' || event.type === 'blur') {
-      let goodDate = new Date(event_date);
-      if (isNaN(goodDate)) {
-        let jump = 0;
-        let tDate = event_date.substr(0, 3).toLowerCase();
-        let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
-        goodDate = new Date(Date.now());
-        if (dOfw > -1) {
-          goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + jump);
-        }
-        else if (tDate === 'tom') {
-          goodDate.setDate(goodDate.getDate() + 1);
-        }
-        else if (tDate !== 'tod') {
-          goodDate = new Date(event_date);
-        }
-      }
-      let current = new Date(Date.now());
-      current.setHours(0, 0, 0, 0);
-      if (goodDate < current) {
-        let yyyy = current.getFullYear();
-        goodDate.setFullYear(yyyy);
-        if (goodDate < current) { goodDate.setFullYear(yyyy + 1); }
-      };
+      let goodDate = makeDate(event_date);
       setEventAsADate(goodDate);
       if (!prefMethod) { setMethod('specific_date'); };
       setEventDate(goodDate.toDateString());
     }
   };
+
+  const handleCopyFromDateExit = async (event) => {
+    if (event.key === 'Enter' || event.type === 'blur') {
+      let goodDate = makeDate(event_date);
+      setCopyFromDate(goodDate.toDateString());
+      let formattedDate = (goodDate.getFullYear() * 10000) + ((goodDate.getMonth() + 1) * 100) + (goodDate.getDate());
+      setCopyFromAsADate(formattedDate);
+      let invokeFailed = false;
+      var payload = {
+        "action": "list_events",
+        "clientId": patient.client_id,
+        "list_filter": {
+          "list_start": formattedDate,
+          "list_end": formattedDate
+        }
+      };
+      let params = {
+        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
+        InvocationType: 'RequestResponse',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+      };
+      const fResp = await lambda
+        .invoke(params)
+        .promise()
+        .catch(err => {
+          enqueueSnackbar(`AVA couldn't retrieve events.  Error is ${err.message}`, {
+            variant: 'error'
+          });
+          invokeFailed = true;
+        });
+      if (!invokeFailed) {
+        let returnData = JSON.parse(fResp.Payload);
+        if (returnData.status === 200) {
+          setEventList(returnData.body.map(e => { return [e.calData.description, e.calData.id]; }));
+          return;
+        }
+      }
+      setEventList(['No Events Found', '']);
+    }
+  };
+
+  const handleCopyToDateExit = async (event) => {
+    if (event.key === 'Enter' || event.type === 'blur') {
+      let goodDate = makeDate(event_date);
+      setCopyToDate(goodDate.toDateString());
+      setCopyToAsADate((goodDate.getFullYear() * 10000) + ((goodDate.getMonth() + 1) * 100) + (goodDate.getDate()));
+      if (rememberedSelection) {
+        setConfirmMessage(`Confirm copying ${rememberedSelection[0]} from ${copy_from_date} to ${copy_to_date}`);
+        setCopyPending(true);
+      }
+    }
+    setCopyPending(false);
+  };
+
+  const handleSelectEventToCopy = async (pEvent) => {
+    setRememberedSelection(pEvent);
+    if (copyToAsADate) {
+      setConfirmMessage(`Confirm copying ${rememberedSelection[0]} from ${copy_from_date} to ${copy_to_date}`);
+      setCopyPending(true);
+    }
+  };
+
+  const executeCopy = async () => {
+    let invokeFailed = false;
+    var payload = {
+      "action": "copy_events",
+      "clientId": patient.client_id,
+      "request": {
+        "id": rememberedSelection[1],
+        "occ_date": copyFromAsADate,
+        "to_date": copyToAsADate
+      }
+    };
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`AVA couldn't retrieve events.  Error is ${err.message}`, {
+          variant: 'error'
+        });
+        invokeFailed = true;
+      });
+    if (!invokeFailed) {
+      let returnData = JSON.parse(fResp.Payload);
+      if (returnData.status === 200) {
+        enqueueSnackbar(`Your event has been copied!`, { variant: 'success' });
+        return;
+      }
+    }
+    enqueueSnackbar(`AVA could not copy that event`, { variant: 'error' });
+  };
+
+  function makeDate(pDate) {
+    let goodDate = new Date(pDate);
+    if (isNaN(goodDate)) {
+      let jump = 0;
+      let tDate = pDate.substr(0, 3).toLowerCase();
+      let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
+      goodDate = new Date(Date.now());
+      if (dOfw > -1) {
+        goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + jump);
+      }
+      else if (tDate === 'tom') {
+        goodDate.setDate(goodDate.getDate() + 1);
+      }
+      else if (tDate !== 'tod') {
+        goodDate = new Date(pDate);
+      }
+    }
+    let current = new Date(Date.now());
+    current.setHours(0, 0, 0, 0);
+    if (goodDate < current) {
+      let yyyy = current.getFullYear();
+      goodDate.setFullYear(yyyy);
+      if (goodDate < current) { goodDate.setFullYear(yyyy + 1); }
+    };
+    return goodDate;
+  }
 
   const handleChangeLastDate = event => {
     setLastAsADate(null);
@@ -888,6 +1020,27 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
               </form>
             </Box>
           </Paper>
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+              <DialogActions className={classes.buttonArea} >
+                <Button
+                  className={classes.rowButton}
+                  onClick={() => { onClose(); }}
+                  startIcon={<CloseIcon fontSize="small" />}
+                >
+                  {'Done'}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowCopyFromPrevious(true);
+                  }}
+                  className={classes.rowButton}
+                >
+                  {`Copy`}
+                </Button>
+              </DialogActions>
+            </Box>
+          </Box>
         </Box>
         {showPersonSelect &&
           <Dialog
@@ -937,6 +1090,74 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
               </Button>
             </DialogActions>
           </Dialog>
+        }
+        {showCopyFromPrevious &&
+          <Dialog
+            p={2}
+            height={250}
+            fullWidth
+            variant={'elevation'} elevation={2}
+            open={showCopyFromPrevious}
+            TransitionComponent={Transition}
+          >
+            <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
+              <TextField
+                id='Enter the date of the event you are copying from'
+                value={copy_from_date}
+                onKeyPress={handleCopyFromDateExit}
+                onChange={handleChangeCopyFromDate}
+                onBlur={handleCopyFromDateExit}
+                helperText='Copy From'
+              />
+              <TextField
+                id='Enter the date you want for the copy of the event'
+                value={copy_to_date}
+                onKeyPress={handleCopyToDateExit}
+                onChange={handleChangeCopyToDate}
+                onBlur={handleCopyToDateExit}
+                helperText='Copy To'
+              />
+              {eventList && eventList.length > 0 &&
+                <List component='nav'>
+                  {eventList.map((listEntry, x) => (
+                    <ListItem
+                      key={`${listEntry[1]}_select_${x}`}
+                      onClick={() => { handleSelectEventToCopy(listEntry[1]); }}
+                      button>
+                      <Typography
+                        className={classes.listItemAVA}>
+                        {listEntry[0]}
+                      </Typography>
+                    </ListItem>
+                  ))}
+                </List>
+              }
+            </Paper>
+            <DialogActions style={{ justifyContent: 'center' }}>
+              <Button
+                className={classes.reject}
+                size='small'
+                variant='contained'
+                onClick={() => {
+                  setShowPersonSelect(false);
+                }}>
+                {'Done'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        }
+        {copyPending &&
+          <AVAConfirm
+            promptText={confirmMessage}
+            onCancel={() => {
+              setCopyPending(false);
+            }}
+            onConfirm={() => {
+              executeCopy();
+              setCopyPending(false);
+            }}
+          >
+          </AVAConfirm>
         }
       </Dialog>
       : null
