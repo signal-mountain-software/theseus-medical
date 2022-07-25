@@ -71,6 +71,7 @@ const useStyles = makeStyles(theme => ({
     fontSize: '1.3rem',
   },
   buttonArea: {
+    maxWidth: 1000,
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)

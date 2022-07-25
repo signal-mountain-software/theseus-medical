@@ -81,7 +81,7 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
   function filteredPerson(pID, pName = { last: '*$*_null', first: '*$*_null' }) {
     filterCount++;
     let inTheList = (
-      (respArray.includes(pID) || 
+      (respArray.includes(pID) ||
         ((enoughFilterDigits) &&
           (pName.last.toLowerCase().includes(person_filter_lower)
             || pName.first.toLowerCase().includes(person_filter_lower))
