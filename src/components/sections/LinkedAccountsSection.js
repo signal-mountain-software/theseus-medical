@@ -86,9 +86,9 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
           (pName.last.toLowerCase().includes(person_filter_lower)
             || pName.first.toLowerCase().includes(person_filter_lower))
         ))
-      && (pID !== session.session_id)
+      && (session && (pID !== session.session_id))
     );
-    if (inTheList || session.patient_id === pID) {
+    if (inTheList || (session && session.patient_id === pID)) {
       nameObj[pID] = `${pName.first}${pName.last.substring(0, 1)}${!inTheList ? ' (from a Group)' : ''}`;
     }
     return inTheList;
