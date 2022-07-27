@@ -132,7 +132,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ peopleList, onCancel, onSelect, onSignOut }) => {
+export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
   const [person_filter, setPersonFilter] = React.useState('');
 
   const classes = useStyles();
@@ -157,7 +157,7 @@ export default ({ peopleList, onCancel, onSelect, onSignOut }) => {
         className={classes.title}
         id='scroll-dialog-title'
       >
-        {'Find and tap your name'}
+        {prompt}
       </DialogContentText>
       <TextField
         id='Type a few letters to filter the list'

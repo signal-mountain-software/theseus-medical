@@ -498,6 +498,7 @@ export default Component => props => {
         </Box>
         :
         <PersonFilter
+          prompt={'Find and tap your name'}
           peopleList={peopleList}
           onCancel={async () => {
             let jumpTo = window.location.href;

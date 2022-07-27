@@ -862,6 +862,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           }
           {showAddPrompt &&
             <PersonFilter
+              prompt={'Tap the name of the person you wish to add'}
               peopleList={peopleList}
               onCancel={() => {
                 setShowAddPrompt(false);

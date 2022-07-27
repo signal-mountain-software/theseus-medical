@@ -820,6 +820,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         }
         {selectNewSlotOwner &&
           <PersonFilter
+            prompt={'Who are you signing-up?'}
             peopleList={peopleList}
             onCancel={() => {
               setSelectNewSlotOwner(false);

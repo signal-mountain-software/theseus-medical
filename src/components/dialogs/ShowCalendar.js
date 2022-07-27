@@ -424,6 +424,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, showCalendar, on
         </DialogActions>
         {showPersonSelect &&
           <PersonFilter
+            prompt={'Whose Calendar do you wish to view?'}
             peopleList={peopleList}
             onCancel={async () => {
               setShowPersonSelect(false);
