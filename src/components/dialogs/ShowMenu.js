@@ -14,9 +14,11 @@ import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
+import FileCopyIcon from '@material-ui/icons/FileCopy';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 
 import EditObservation from '../forms/EditObservation';
+import CopyMenu from '../forms/CopyMenu';
 
 import MenuForm from '../forms/MenuForm';
 import LoadMenuSpreadsheet from '../forms/LoadMenuSpreadsheet';
@@ -91,6 +93,7 @@ export default ({ pClient, showMenu, onClose }) => {
   const [selectedDate, setSelectedDate] = React.useState();
   const [loadMode, setLoadMode] = React.useState(false);
   const [addMode, setAddMode] = React.useState(false);
+  const [copyMode, setCopyMode] = React.useState(false);
   const [selectedObservation, setSelectedObservation] = React.useState({});
 
   const classes = useStyles();
@@ -126,7 +129,7 @@ export default ({ pClient, showMenu, onClose }) => {
     if (!(pDate instanceof Date) || isNaN(pDate)) {
       pDate = new Date(pDate);
     }
-    let pYMD = pDate.getFullYear() + '.' + (pDate.getMonth() + 1) + '.' + pDate.getDate();
+    let pYMD = pDate.getFullYear() + '.' + ((pDate.getMonth() + 101).toString()).substring(1) + '.' + ((pDate.getDate() + 100).toString()).substring(1);
 
     params.Payload = JSON.stringify({
       action: "get_by_sort_date",
@@ -174,6 +177,10 @@ export default ({ pClient, showMenu, onClose }) => {
 
   const handleLoad = async () => {
     setLoadMode(true);
+  };
+
+  const handleCopy = async () => {
+    setCopyMode(true);
   };
 
   const handleDateExit = event => {
@@ -315,6 +322,14 @@ export default ({ pClient, showMenu, onClose }) => {
           <Button
             className={classes.rowButtonGreen}
             size='small'
+            onClick={() => { handleCopy(); }}
+            startIcon={<FileCopyIcon size="small" />}
+          >
+            {'Copy'}
+          </Button>
+          <Button
+            className={classes.rowButtonGreen}
+            size='small'
             onClick={() => { handleAddObservation(); }}
             startIcon={<AddCircleOutlineIcon size="small" />}
           >
@@ -342,6 +357,15 @@ export default ({ pClient, showMenu, onClose }) => {
               setLoadMode(false);
               getObservations(selectedDate);
             }}
+          />
+        }
+        {copyMode &&
+          <CopyMenu
+          pClient={pClient}
+          showUpload={copyMode}
+          handleClose={() => {
+            setCopyMode(false);
+          }}
           />
         }
       </Dialog>
