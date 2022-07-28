@@ -302,6 +302,7 @@ export default ({ pClient, showUpload, handleClose }) => {
                       Key: 'public_uploads/' + fObj.name,
                       Body: fObj,
                       ACL: 'public-read-write',
+                      ContentType: fObj.ContentType
                     };
                     enqueueSnackbar(`Uploading your file`, { variant: 'success', persist: false });
                     let s3Resp = await s3

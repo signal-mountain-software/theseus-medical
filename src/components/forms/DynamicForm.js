@@ -972,6 +972,7 @@ export default ({
                   Key: fName,
                   Body: fObj,
                   ACL: 'public-read-write',
+                  ContentType: fObj.ContentType
                 };
                 newFact.value.tag = freeText || oName;
                 newFact.value.mediaData = pFile;
@@ -1438,6 +1439,7 @@ export default ({
                                   Key: freeTextFieldName + fName,
                                   Body: fObj,
                                   ACL: 'public-read-write',
+                                  ContentType: fObj.ContentType
                                 };
                                 newFact.value.tag = freeText || oName;
                                 newFact.value.mediaData = pFile;

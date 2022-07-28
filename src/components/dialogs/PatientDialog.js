@@ -617,6 +617,7 @@ export default ({ patient, picture, open, onClose }) => {
                     Key: 'public/patients/' + patient.person_id + '.jpg',
                     Body: target.target.files[0],
                     ACL: 'public-read-write',
+                    ContentType: target.target.files[0].ContentType
                   };
                   enqueueSnackbar(`Your photo is being updated!`, { variant: 'success', persist: false });
                   s3.upload(pFile, function (err, data) {
