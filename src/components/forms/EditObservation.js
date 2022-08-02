@@ -54,9 +54,13 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
   let oCode = observation.composite_key.split(/[~_]/g);
   const [observationType, setObservationType] = React.useState(oCode.slice(1, -1).join('_').trim());
   const [observationCode, setObservationCode] = React.useState(observation.observation_code);
+  const [observationKey, setObservationKey] = React.useState(observation.observation_key);
   const [changeDetected, setChangeDetected] = React.useState(false);
   const observationClient = oCode[0];
   const observationDate = oCode.pop();
+  let oD = observationDate.split('.');
+  const observationLongDate = oD[0] + '.' + ((Number(oD[1]) + 100).toString()).substring(1) + '.' + ((Number(oD[2]) + 100).toString()).substring(1);
+
   let editMode = (observationType || observationCode);
 
   const lambda = new Lambda({
@@ -86,6 +90,11 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
     setChangeDetected(true);
   };
 
+  const onChangeKey = event => {
+    setObservationKey(event.target.value);
+    setChangeDetected(true);
+  };
+
   const handleSave = async () => {
     params.Payload = JSON.stringify({
       action: "update",
@@ -97,6 +106,8 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
         },
         "new_code": `${observationType === 'header' ? '~~' : ''}${observationCode}`,
         "new_key": `${observationClient}~${observationType}_${observationDate}`,
+        "new_oKey": observationKey,
+        "new_date": observationLongDate,
         "new_sort": `${observationDate}${observationType !== 'header' ? observationType : ''}`
       }
     });
@@ -167,6 +178,14 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
               fullWidth
               value={observationCode}
               onChange={onChangeCode}
+            />
+            <TextField
+              classes={{ root: classes.idText }}
+              id={'obs-key'}
+              label={'Recipe key'}
+              fullWidth
+              value={observationKey}
+              onChange={onChangeKey}
             />
           </Box>
         </DialogContent>
