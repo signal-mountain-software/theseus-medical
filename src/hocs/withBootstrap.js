@@ -158,7 +158,12 @@ export default Component => props => {
 
   React.useEffect(() => {
     (async () => {
-      let user = {};
+      let user = await Auth.currentAuthenticatedUser();
+      console.log(user.signInUserSession.accessToken.payload.client_id);
+      let cognitoSession = await Auth.currentSession();
+      enqueueSnackbar(`Session data: client_id=${cognitoSession.accessToken.payload.client_id}`, {
+        variant: 'info', persist: true
+      });
       let urlQuery = getParams();
       if (urlQuery?.user) {        //first
         user = {
@@ -177,9 +182,6 @@ export default Component => props => {
         catch (e) {
           console.log(e);
         }
-      }
-      else {
-        user = await Auth.currentAuthenticatedUser();
       }
       dispatch({ type: SET_USER, payload: user });       //sixth
     })().catch(error => {
