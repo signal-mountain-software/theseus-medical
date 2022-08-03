@@ -161,7 +161,7 @@ export default Component => props => {
       let user = await Auth.currentAuthenticatedUser();
       console.log(user.signInUserSession.accessToken.payload.client_id);
       let cognitoSession = await Auth.currentSession();
-      enqueueSnackbar(`Session data: client_id=${cognitoSession.accessToken.payload.client_id}`, {
+      enqueueSnackbar(`Session data: event_id=${cognitoSession.accessToken.payload.event_id}/jti=${cognitoSession.accessToken.payload.jti}/sub=${cognitoSession.accessToken.payload.sub}`, {
         variant: 'info', persist: true
       });
       let urlQuery = getParams();
