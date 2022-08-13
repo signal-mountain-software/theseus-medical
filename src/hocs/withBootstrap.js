@@ -5,6 +5,8 @@ import { useLocation } from 'react-router-dom';
 
 import { Lambda } from 'aws-sdk';
 
+import { useCookies } from 'react-cookie';
+
 import Box from '@material-ui/core/Box';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
@@ -38,6 +40,8 @@ export default Component => props => {
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const { state, dispatch } = useSession();
   const { user } = state;
+
+  const [cookies, , removeCookie] = useCookies(['AVAuser']);
 
   const [peopleList, setPeopleList] = React.useState();
   const [callPending, setCallPending] = React.useState(false);
@@ -508,6 +512,7 @@ export default Component => props => {
             await onValidUser(user, true);      //sixth
           }}
           onSignOut={async () => {
+            removeCookie("AVAuser");
             Auth.signOut().then(() => {
               let jumpTo = window.location.origin;
               window.location.replace(jumpTo);

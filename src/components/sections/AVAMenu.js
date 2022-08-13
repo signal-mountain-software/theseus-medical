@@ -4,6 +4,8 @@ import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import { useCookies } from 'react-cookie';
+
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import NewFactDialog from '../dialogs/NewFactDialog';
@@ -210,6 +212,8 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
   const { roles, session } = state;
 
   const [selected, setSelected] = React.useState(null);
+
+  const [cookies, , removeCookie] = useCookies(['AVAuser']);
 
   const [mainMenu, setMainMenu] = React.useState([]);
   const [messageText, setMessageText] = React.useState('');
@@ -649,7 +653,8 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
                 </MenuItem>
               )}
               <MenuItem onClick={() => {
-                accessLog(session.user_id, `*na*`, `Manual sign-out`);
+                await accessLog(session.user_id, `*na*`, `Manual sign-out`);
+                removeCookie("AVAuser");
                 Auth.signOut().then(() => {
                   let jumpTo = window.location.origin;
                   window.location.replace(jumpTo);

@@ -3,6 +3,8 @@ import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
 import { Lambda } from 'aws-sdk';
 
+import { useCookies } from 'react-cookie';
+
 import { API, graphqlOperation } from 'aws-amplify';
 import { updateSession } from '../graphql/mutations';
 import { SET_PATIENT, SET_SESSION } from '../contexts/Session/actions';
@@ -61,6 +63,8 @@ export default () => {
 
   const [prompt, setPrompt] = useRecoilState(promptState);
 
+  const [cookies, , removeCookie] = useCookies(['AVAuser']);
+
   const showInstall = () => showIOS || !isStandalone;
 
   const handleClick = event => {
@@ -113,6 +117,7 @@ export default () => {
 
   const onSignOut = () => {
     accessLog(session.user_id, `*na*`, `Manual sign-out`);
+    removeCookie("AVAuser");
     setAnchorEl(null);
     Auth.signOut().then(() => {
       serviceWorker.unregister();
