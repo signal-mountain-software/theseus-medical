@@ -652,7 +652,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
                   </Box>
                 </MenuItem>
               )}
-              <MenuItem onClick={() => {
+              <MenuItem onClick={async () => {
                 await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                 removeCookie("AVAuser");
                 Auth.signOut().then(() => {
