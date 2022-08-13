@@ -23,6 +23,7 @@
     "node-machine-id": "^1.1.12",
     "notistack": "^1.0.0",
     "react": "^16.13.1",
+    "react-cookie": "^4.1.1",
     "react-date-picker": "^8.2.0",
     "react-device-detect": "^2.2.2",
     "react-dom": "^16.13.1",
