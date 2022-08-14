@@ -68,6 +68,10 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '600px',
     marginBottom: '15px'
   },
+  logoSmall: {
+    maxWidth: '100px',
+    marginBottom: '15px'
+  },
   mainPaper: {
   },
   defaultButton: {
@@ -160,15 +164,18 @@ export default ({ patient, session }) => {
   });
 
   const activityLog = (pUser, pCode, pName) => {
+    let pCodeOut = '';
+    if (typeof (pCode) === 'object') { pCodeOut = JSON.stringify(pCode); }
+    else { pCodeOut = pCode; }
     var payload =
     {
       'test': false,
       'action': "add_entry",
       'request': {
         user_id: pUser,
-        activity_code: pCode,
+        activity_code: pCodeOut,
         activity_name: pName,
-        AVA_version: `22.6.19.1${window.location.href.split('//')[1].slice(0, 1)}`
+        AVA_version: `22.8.15${window.location.href.split('//')[1].slice(0, 1)}`
       }
     };
     let params = {
@@ -271,7 +278,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = 22.6.19.1~${errorTime}`,
+        status: `Version = 22.8.15~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -284,15 +291,16 @@ export default ({ patient, session }) => {
   };
 
   const onChooseActivity = async activity => {
+    if (toggledSection) {
+      toggledSection = false;
+      activityLog(patient?.person_id || session.patient_id, `${activity.toggleAction ? 'Open/Show' : 'Close/Hide'} section`, activity.reason);
+      setLimit(limit + 1);
+      return;
+    }
     activityLog(patient?.person_id || session.patient_id, activity?.code || activity, activity?.name || activity);
     actionCancelled = false;
     if (addedAFavorite || activity?.code?.startsWith('document')) {
       addedAFavorite = false;
-      return;
-    }
-    if (toggledSection) {
-      toggledSection = false;
-      setLimit(limit + 1);
       return;
     }
     if (activity?.code?.startsWith('event')) {
@@ -620,7 +628,7 @@ export default ({ patient, session }) => {
     async function putFile(params) {    // Uploading files to the bucket
       let mediaData = newFact.value.mediaData;
       let uploadGood = true;
-      await s3.upload(mediaData)
+      await s3.putObject(mediaData)
         .promise()
         .catch(err => {
           enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
@@ -907,185 +915,206 @@ export default ({ patient, session }) => {
 
       {/* Main Activity List and Selection */}
       <Box p={3}  >
-        <Grid item>
-          <Card
-            className={classes.logoDisplay}
-            raised={false}
-            variant='elevation' elevation={0}
-          >
-            <CardMedia
-              component="img"
-              image={session?.client_icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg'}
-              alt='AVA'
-            />
-          </Card>
-          <GridList cellHeight='auto' cols={1}>
-            {homeState === 'event' ?
-              <GridListTile
-                key={'ReturnHomeHeader'}
-                style={{ marginBottom: '0px', marginTop: '0px' }}
-                cols={1}
-              >
-                <Paper
-                  component={Box}
-                  p={2}
-                  style={{ background: '#d25958', marginTop: '5px', marginBottom: '5px' }}
-                  textAlign='left'
-                  onClick={doneWithEvent}
-                  square>
-                  <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                    {('Dont display me')}
-                  </Typography>
-                  <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-                    <Box
-                      display='flex'
-                      flexDirection='row'
-                      alignItems='center'
-                      marginRight={4}
-                    >
-                      <Avatar
-                        src={`https://ava-icons.s3.amazonaws.com/back.png`}
-                        sx={{ width: 30, height: 30 }}
-                        alt=""
-                        variant="square"
-                      />
-                      <Typography className={classes.gridList} variant='h5'>
-                        {'Return to Main Menu'}
-                      </Typography>
+        {session &&
+          <Grid item>
+            <Card
+              className={classes.logoDisplay}
+              raised={false}
+              variant='elevation' elevation={0}
+            >
+              <CardMedia
+                component="img"
+                image={session?.client_icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg'}
+                alt='AVA'
+              />
+            </Card>
+            <GridList cellHeight='auto' cols={1}>
+              {homeState === 'event' ?
+                <GridListTile
+                  key={'ReturnHomeHeader'}
+                  style={{ marginBottom: '0px', marginTop: '0px' }}
+                  cols={1}
+                >
+                  <Paper
+                    component={Box}
+                    p={2}
+                    style={{ background: '#d25958', marginTop: '5px', marginBottom: '5px' }}
+                    textAlign='left'
+                    onClick={doneWithEvent}
+                    square>
+                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                      {('Dont display me')}
+                    </Typography>
+                    <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                      <Box
+                        display='flex'
+                        flexDirection='row'
+                        alignItems='center'
+                        marginRight={4}
+                      >
+                        <Avatar
+                          src={`https://ava-icons.s3.amazonaws.com/back.png`}
+                          sx={{ width: 30, height: 30 }}
+                          alt=""
+                          variant="square"
+                        />
+                        <Typography className={classes.gridList} variant='h5'>
+                          {'Return to Main Menu'}
+                        </Typography>
+                      </Box>
+                      <IconButton
+                        aria-label='showActivities'
+                        size='small'
+                      >
+                        {'Back'}
+                      </IconButton>
                     </Box>
-                    <IconButton
-                      aria-label='showActivities'
-                      size='small'
+                  </Paper>
+                </GridListTile>
+                : 'none'}
+              {!activities || activities.length === 0
+                ? null
+                : activities.map((activity, index) => (
+                  !sectionOpen[activity.reason] && (activity.reason === priorReason) ? null :
+                    <GridListTile
+                      key={activity.reason + 'r' + index}
+                      style={{ marginBottom: '0px', marginTop: '0px' }}
+                      cols={1}
                     >
-                      {'Back'}
-                    </IconButton>
-                  </Box>
-                </Paper>
-              </GridListTile>
-              : 'none'}
-            {!activities || activities.length === 0
-              ? null
-              : activities.map((activity, index) => (
-                !sectionOpen[activity.reason] && (activity.reason === priorReason) ? null :
-                  <GridListTile
-                    key={activity.reason + 'r' + index}
-                    style={{ marginBottom: '0px', marginTop: '0px' }}
-                    cols={1}
-                  >
-                    {activity.reason === priorReason ? null :
-                      <Paper
-                        component={Box}
-                        p={2}
-                        style={{ background: activity.color || stringToColor(activity.reason), marginTop: '5px', marginBottom: '5px' }}
-                        textAlign='left'
-                        onClick={() => {
-                          toggledSection = true;
-                          let newSectionOpen = sectionOpen;
-                          !sectionOpen.hasOwnProperty(activity.reason)
-                            ? newSectionOpen[activity.reason] = true
-                            : newSectionOpen[activity.reason] = !newSectionOpen[activity.reason];
-                          setSectionOpen(newSectionOpen);
-                          updateSessionPreferences(newSectionOpen);
-                          onChooseActivity(null);
-                        }}
-                        square>
-                        <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                          {(sectionColor = activity.color || stringToColor(activity.reason))}
-                        </Typography>
-                        <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-                          <Box
-                            display='flex'
-                            flexDirection='row'
-                            alignItems='center'
-                            marginRight={4}
-                          >
-                            <Avatar
-                              src={activity.icon || `https://ava-icons.s3.amazonaws.com/dining-room.png`}
-                              sx={{ width: 30, height: 30 }}
-                              alt=""
-                              variant="square"
-                            />
-                            <Typography className={classes.gridList} variant='h5'>
-                              {(priorReason = activity.reason)}
-                            </Typography>
-                          </Box>
-                          <IconButton
-                            aria-label='showActivities'
-                            size='small'
-                          >
-                            {!sectionOpen[activity.reason] ? 'Show' : 'Hide'}
-                          </IconButton>
-                        </Box>
-                        <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                          {false}
-                        </Typography>
-                      </Paper>
-                    }
-                    {!sectionOpen[activity.reason] ? null :
-                      <Paper
-                        component={Box}
-                        p={2}
-                        variant='outlined'
-                        style={{ background: activity.color || sectionColor, marginBottom: '0px', marginTop: '0px' }}
-                        textAlign='left'
-                        onClick={() => {
-                          closeSnackbar();
-                          onChooseActivity(activity);
-                        }}
-                        square>
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                          <Box
-                            display='flex'
-                            flexDirection='column'
-                            className={classes.activityText}
-                            textOverflow='ellipsis'
-                          >
-                            {activity.type === 'document' ?
-                              <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
-                                <Typography variant='h5'>{activity.name}</Typography>
-                              </a>
-                              :
-                              <React.Fragment key={`act_box_${activity.name}`}>
-                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                  <Typography variant='h5'>{activity.name}</Typography>
-                                </Box>
-                                <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
-                                  {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
-                                    <Typography key={activity.name + 'h' + hNdx} variant='body2'>
-                                      {hNdx > 0 ? <br /> : null}
-                                      {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
-                                    </Typography>
-                                  )) : null}
-                                </Box>
-                              </React.Fragment>
-                            }
-                          </Box>
-                          {activity.fact_history ?
+                      {activity.reason === priorReason ? null :
+                        <Paper
+                          component={Box}
+                          p={2}
+                          style={{ background: activity.color || stringToColor(activity.reason), marginTop: '5px', marginBottom: '5px' }}
+                          textAlign='left'
+                          onClick={() => {
+                            toggledSection = true;
+                            let newSectionOpen = sectionOpen;
+                            !sectionOpen.hasOwnProperty(activity.reason)
+                              ? newSectionOpen[activity.reason] = true
+                              : newSectionOpen[activity.reason] = !newSectionOpen[activity.reason];
+                            setSectionOpen(newSectionOpen);
+                            updateSessionPreferences(newSectionOpen);
+                            activity.toggleAction = newSectionOpen[activity.reason];
+                            onChooseActivity(activity);
+                          }}
+                          square>
+                          <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                            {(sectionColor = activity.color || stringToColor(activity.reason))}
+                          </Typography>
+                          <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                            <Box
+                              display='flex'
+                              flexDirection='row'
+                              alignItems='center'
+                              marginRight={4}
+                            >
+                              <Avatar
+                                src={activity.icon || `https://ava-icons.s3.amazonaws.com/dining-room.png`}
+                                sx={{ width: 30, height: 30 }}
+                                alt=""
+                                variant="square"
+                              />
+                              <Typography className={classes.gridList} variant='h5'>
+                                {(priorReason = activity.reason)}
+                              </Typography>
+                            </Box>
                             <IconButton
-                              aria-label='showHistory'
-                              onClick={() => {
-                                toggledRow = true;
-                                let newRowOpen = rowOpen;
-                                newRowOpen[index] = !newRowOpen[index];
-                                setRowOpen(newRowOpen);
-                              }}>
-                              {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                            </IconButton> : null}
-                        </Box>
-                      </Paper>
-                    }
-                  </GridListTile>
-              ))}
-            <GridListTile cols={1} >
-              <Typography variant='caption' noWrap={true}>
-                {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
-              </Typography>
-            </GridListTile>
-          </GridList>
-        </Grid>
-        {loading ?
+                              aria-label='showActivities'
+                              size='small'
+                            >
+                              {!sectionOpen[activity.reason] ? 'Show' : 'Hide'}
+                            </IconButton>
+                          </Box>
+                          <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                            {false}
+                          </Typography>
+                        </Paper>
+                      }
+                      {!sectionOpen[activity.reason] ? null :
+                        <Paper
+                          component={Box}
+                          p={2}
+                          variant='outlined'
+                          style={{ background: activity.color || sectionColor, marginBottom: '0px', marginTop: '0px' }}
+                          textAlign='left'
+                          onClick={() => {
+                            closeSnackbar();
+                            onChooseActivity(activity);
+                          }}
+                          square>
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                            <Box
+                              display='flex'
+                              flexDirection='column'
+                              className={classes.activityText}
+                              textOverflow='ellipsis'
+                            >
+                              {activity.type === 'document' ?
+                                <a href={activity.default_value + (!activity.default_value.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
+                                  <Typography variant='h5'>{activity.name}</Typography>
+                                </a>
+                                :
+                                <React.Fragment key={`act_box_${activity.name}`}>
+                                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                    <Typography variant='h5'>{activity.name}</Typography>
+                                  </Box>
+                                  <Box display={activity.fact_history && rowOpen[index] ? 'block' : 'none'}>
+                                    {activity.fact_history ? activity.fact_history.map((hItem, hNdx) => (
+                                      <Typography key={activity.name + 'h' + hNdx} variant='body2'>
+                                        {hNdx > 0 ? <br /> : null}
+                                        {new Date(hItem.posted_time).toLocaleString()} <br /> {hItem.value.replace('.', '^').split('^')[1]}
+                                      </Typography>
+                                    )) : null}
+                                  </Box>
+                                </React.Fragment>
+                              }
+                            </Box>
+                            {activity.fact_history ?
+                              <IconButton
+                                aria-label='showHistory'
+                                onClick={() => {
+                                  toggledRow = true;
+                                  let newRowOpen = rowOpen;
+                                  newRowOpen[index] = !newRowOpen[index];
+                                  setRowOpen(newRowOpen);
+                                }}>
+                                {rowOpen[index] ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                              </IconButton> : null}
+                          </Box>
+                        </Paper>
+                      }
+                    </GridListTile>
+                ))}
+              <GridListTile cols={1} >
+                <Typography variant='caption' noWrap={true}>
+                  {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
+                </Typography>
+              </GridListTile>
+            </GridList>
+          </Grid>
+        }
+        {(loading || !session) ?
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <CircularProgress />
+            <Box mt={3} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+              {!session &&
+                <Card
+                className={classes.logoSmall}
+                raised={false}
+                variant='elevation' elevation={0}
+              >
+                <CardMedia
+                  component="img"
+                  image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                  alt='AVA'
+                />
+              </Card>
+              }
+              <Typography align='center'>
+                {`Loading AVA version 22.8.15${window.location.href.split('//')[1].slice(0, 1)}`}
+              </Typography>
+              <CircularProgress />
+            </Box>
           </div>
           : null
         }

@@ -1,11 +1,13 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
+import { useCookies } from 'react-cookie';
 import {
   AmplifyAuthenticator,
   AmplifySignIn,
   AmplifyForgotPassword
 } from '@aws-amplify/ui-react';
 import useIosCheck from '../hooks/useIosCheck';
+import { deviceDetect } from 'react-device-detect';
 import {
   Auth,
   appendToCognitoUserAgent
@@ -66,9 +68,13 @@ export default Component => props => {
   const [inputPassword, setInputPassword] = React.useState('');
   const [inputCP, setInputCP] = React.useState('');
 
+  const [cookies, setCookie] = useCookies(['AVAuser']);
+
   const [resetPW, setResetPW] = React.useState(false);
   let [platform, showIOS] = useIosCheck();
   if (showIOS) { };
+
+  let deviceObj = deviceDetect();
 
   const [saveP, setSaveP] = React.useState([]);
   const [saveU, setSaveU] = React.useState([]);
@@ -125,7 +131,7 @@ export default Component => props => {
             onClick={async () => {
               let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'updatePwd', inputCP.trim());
               if (!invokeFailed && response.status === 200) {
-                accessLog(inputName.trim(), inputCP.trim(), `Reset successful`);
+                accessLog(inputName.trim(), inputCP.trim(), `Reset successful`, true);
                 enqueueSnackbar(`Your password has been reset to ${saveP[0]}.  Signing-in now...`, {
                   variant: 'warning'
                 });
@@ -163,7 +169,7 @@ export default Component => props => {
       );
     };
 
-    accessLog(inputName.trim(), inputCP.trim(), mText.trim());
+    accessLog(inputName.trim(), inputCP.trim(), mText.trim(), false);
     enqueueSnackbar(mText.trim(), {
       variant: 'error',
       persist: true,
@@ -213,7 +219,7 @@ export default Component => props => {
     };
 
     if (count > 2 || forceFail) {
-      accessLog(inputName.trim(), inputCP.trim(), mText.trim());
+      accessLog(inputName.trim(), inputCP.trim(), mText.trim(), false);
       enqueueSnackbar(`${mText.trim()}.  What would you like to do now?`, {
         variant: 'error',
         persist: true,
@@ -224,7 +230,7 @@ export default Component => props => {
     else {
       setCount(count + 1);
       if (messageOut === mText) { mText += ' '; }
-      accessLog(inputName.trim(), inputCP.trim(), mText);
+      accessLog(inputName.trim(), inputCP.trim(), mText, false);
       setMessageOut(mText);
     }
     console.log(count, mText);
@@ -237,8 +243,8 @@ export default Component => props => {
         let timeStamp = new Date().toString();
         logAVAAccess(
           data.idToken.payload['cognito:username'],
-          platform,
-          `Version=22.6.19.1${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          platform + (deviceObj ? ' ' + JSON.stringify(deviceObj) : ''),
+          `Version=22.8.15${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -254,7 +260,7 @@ export default Component => props => {
       let user = {};
       let urlQuery = getParams();
       if (urlQuery?.user) {
-        accessLog(urlQuery.user, `*na*`, `URL supplied user ID`);
+        accessLog(urlQuery.user, `*na*`, `URL supplied user ID`, false);
         user = {
           username: urlQuery.user,
           attributes: {
@@ -266,26 +272,64 @@ export default Component => props => {
         };
       }
       else {
-        let awsSession = await Auth.currentSession();
-        console.log(awsSession);
         user = await Auth.currentAuthenticatedUser();
+        if (user && (user.username !== process.env.REACT_APP_AVA_PU)) {
+          setCookie('AVAuser', JSON.stringify({
+            user_id: user.username
+          }), { path: '/' });
+          setSignedIn(true);
+        }
+        else {
+          Auth.signOut();
+          throw new Error('Active session for an invalid user (perhaps default account?)');
+        }
       }
-      if (user) {
-        setSignedIn(true);
+    }
+    catch (err) {
+      // nothing in URL parameters AND not any active session... look for cookie
+      let cookieValues = getCookie();
+      if (cookieValues.user_id) {
+        if (cookieValues.last_login) {
+          try {
+            await Auth.signIn(cookieValues.user_id, cookieValues.last_login);
+            enqueueSnackbar(`AVA recognizes this device.  Welcome back ${cookieValues.user_id}!  We're logging you in now.`, {
+              variant: 'info'
+            });
+            accessLog(cookieValues.user_id, cookieValues.last_login, `Login from Cookie Data`, true);
+          }
+          catch {
+            enqueueSnackbar(`AVA recognizes this device, but we aren't able to log you in automatically.  Please log in manually.`, {
+              variant: 'warning'
+            });
+          }
+        }
+        else {
+          let vData = await validateLogin(cookieValues.user_id, null, null, null, null, 'person-only');
+          if (vData?.sessionRec && vData.sessionRec.last_login) {
+            try {
+              await Auth.signIn(cookieValues.user_id, vData.sessionRec.last_login);
+              bakeCookie(cookieValues.user_id, vData.sessionRec.last_login, vData.sessionRec.client_id);
+              accessLog(cookieValues.user_id, vData.sessionRec.last_login, `Login using Name & Number`, true);
+              setResetPW(false);
+            }
+            catch (e) {
+              setMessages(`AVA recognizes this device, but we aren't able to log you in automatically. AVA's needs to update some details for you.  Please log in manually.`);
+            }
+          }
+          else {
+            setMessages(`AVA recognizes this device, but we don't have enough information to log you in. (${vData?.sessionRec?.session_id})`);
+          }
+        }
       }
       else {
-        enqueueSnackbar(`No authenticated user found.`, {
+        enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (AVA version 22.8.15${window.location.href.split('//')[1].slice(0, 1)})`, {
           variant: 'info'
         });
       }
-    } catch (err) {
-      enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (22.6.19.1${window.location.href.split('//')[1].slice(0, 1)})`, {
-        variant: 'info'
-      });
     }
   };
 
-  const accessLog = async (pUser, pPwd, pMessage) => {
+  const accessLog = async (pUser, pPwd, pMessage, pGood) => {
     var payload =
     {
       'test': false,
@@ -296,6 +340,9 @@ export default Component => props => {
         'result': pMessage
       }
     };
+    if (pGood) {
+      payload.last_login = pPwd;
+    }
     let params = {
       FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:AccessLogMaintenance',
       InvocationType: 'RequestResponse',
@@ -338,7 +385,7 @@ export default Component => props => {
   const logChangeRequest = async (pUser, pLoc, pData) => {
     let [invokeFailed, response] = await tryPwdUpdate(pUser, pLoc, pData);
     if (!invokeFailed && response.status === 200) {
-      accessLog(pUser, pData, `Manual password change was successful`);
+      accessLog(pUser, pData, `Manual password change was successful`, true);
       enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
         variant: 'success'
       });
@@ -377,7 +424,7 @@ export default Component => props => {
       });
   };
 
-  const eHandler = async (data) => {
+  const eHandler = async (data, pUser, pPwd) => {
     saveU.push(inputName.trim().toLowerCase());
     setSaveU(saveU);
     switch (data.code) {
@@ -402,21 +449,23 @@ export default Component => props => {
         }
         try {
           await Auth.signIn(inputName.trim(), newP);
+          accessLog(inputName.trim(), newP, `Login with case-corrected Password`, true);
+          bakeCookie(inputName.trim(), newP, null);
           break;
         }
         catch (e) {
           let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'checkUser', 'password');
           if (!invokeFailed && response.body === "That's not a valid AVA Username") {
-            setMessages("That's not a valid AVA Username");
+            setMessages(`"${inputName.trim()}" is not a valid AVA Username`);
           }
           else {
             // If the last three attempts have all been the same exact user and password, then offer to reset 
             // the password to the one they keep trying
             let tries = saveP.length - 1;
             if (tries > 2 && (saveP[tries] === saveP[tries - 1] && saveP[tries - 1] === saveP[tries - 2]) && (saveU[tries] === saveU[tries - 1] && saveU[tries - 1] === saveU[tries - 2])) {
-              pwdMessage(`That isn't your current password.  Should I reset your password to "${inputCP.trim()}"?`);
+              pwdMessage(`"${inputCP.trim()}" isn't your current password.  Should I reset your password to "${inputCP.trim()}"?`);
             }
-            else { setMessages(`That's not the correct password for Username "${inputName.trim()}"`); }
+            else { setMessages(`"${inputCP.trim()}" is not the correct password for Username "${inputName.trim()}"`); }
           }
           break;
         }
@@ -424,7 +473,29 @@ export default Component => props => {
       case 'InvalidParameterException': {
         if (inputCP.trim() === '') { setMessages(`You left the password blank!  Please try again.`); }
         else if (inputName.trim() === '') { setMessages(`You left the User ID blank!  Please try again.`); }
-        else { setMessages(`There are invalid characters in either the Username or the Password.  Please try again.`); }
+        else {
+          enqueueSnackbar(`Still trying...`, { variant: 'info', });
+          let vData = await validateLogin(null, null, null, pUser.trim(), pPwd.trim(), 'Login with Name/Number');
+          if (vData?.sessionRec) {
+            if (vData.sessionRec.last_login) {
+              try {
+                await Auth.signIn(vData.sessionRec.session_id, vData.sessionRec.last_login);
+                bakeCookie(vData.sessionRec.session_id, vData.sessionRec.last_login, vData.sessionRec.client_id);
+                accessLog(vData.sessionRec.session_id, vData.sessionRec.last_login, `Login using Name & Number`, true);
+                setResetPW(false);
+              }
+              catch (e) {
+                setMessages(`That's a match!  Your User ID is ${vData.sessionRec.session_id}.  AVA's data is not up-to-date, however, and we can't log you in.`);
+              }
+            }
+            else {
+              setMessages(`That's a match!  Your User ID is ${vData.sessionRec.session_id}. AVA needs more information to log you in with your name, however.  Contact AVA support if you'd like to have this option in he future.`);
+            }
+          }
+          else {
+            setMessages(`That didn't work as a User ID/Password or Name/Number combination.  User IDs and passwords cannot contain spaces. ("${inputName.trim()}" "${inputCP.trim()}")`);
+          }
+        }
         console.log(data.message);
         break;
       }
@@ -451,6 +522,68 @@ export default Component => props => {
         }
         console.log('unknown error at login');
       }
+    }
+  };
+
+  function bakeCookie(pUser, pPwd, pClient) {
+    setCookie('AVAuser', JSON.stringify({
+      user_id: pUser,
+      client: pClient,
+      last_login: pPwd
+    }), { path: '/' });
+  }
+
+  function getCookie() {
+    if (cookies.AVAuser && cookies.AVAuser !== 'undefined') {
+      if (typeof (cookies.AVAuser) === 'string') { return JSON.parse(cookies.AVAuser); }
+      else { return cookies.AVAuser; }
+    }
+    else {
+      return {};
+    }
+  }
+
+  const validateLogin = async (pUser, pPwd, pClient, pName, pNumbers, pSource) => {
+    let goodCall = true;
+    let timeStamp = new Date().toString();
+    var payload;
+    if (pSource === 'person-only') {
+      payload = { person: pUser };
+    }
+    else {
+      payload =
+      {
+        client: pClient,
+        nameTest: pName,
+        numbersTest: pNumbers,
+        newP: pPwd,
+        person: pUser,
+        called_from: pSource,
+        version: `Version=22.8.15${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+      };
+    }
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validatePRequest',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log('Call failed.  Error is', JSON.stringify(err));
+        enqueueSnackbar(`There was a technical problem.  Contact AVA Support.`, { variant: 'error' });
+        goodCall = false;
+      });
+    if (goodCall) {
+      let fResponse = JSON.parse(fResp.Payload);
+      if (fResponse.status === 200) {
+        return fResponse.body;
+      }
+    }
+    else {
+      return {};
     }
   };
 
@@ -485,7 +618,8 @@ export default Component => props => {
               formFields={[
                 {
                   type: "username",
-                  label: "Username / ID",
+                  label: "UserID / Name",
+                  placeholder: 'Enter your User ID or First and Last Names',
                   value: inputName,
                   handleInputChange:
                     (e) => {
@@ -495,7 +629,8 @@ export default Component => props => {
                 },
                 {
                   type: "password",
-                  label: "Password",
+                  label: "Password / Apartment Number / Phone Number",
+                  placeholder: 'Enter your Password, Apartment or Phone Number',
                   value: inputCP,
                   handleInputChange:
                     (e) => {
@@ -514,19 +649,20 @@ export default Component => props => {
                     let resp = await Auth.signIn(inputName.trim(), inputCP.trim());
                     if (resp.challengeName === 'NEW_PASSWORD_REQUIRED') {
                       setResetPW(true);
-                      accessLog(inputName, inputCP, `Temporary password used.  Must be reset.`);
+                      accessLog(inputName, inputCP, `Temporary password used.  Must be reset.`, false);
                       enqueueSnackbar(`That's a temporary password.  Press "Reset password" to set a permanent one, please.`, {
                         variant: 'info',
                       });
                     }
                     else {
-                      accessLog(inputName, inputCP, `Login successful`);
+                      bakeCookie(inputName.trim(), inputCP.trim(), null);
+                      accessLog(inputName, inputCP, `Login successful`, true);
                       setResetPW(false);
                     }
                   }
                   catch (e) {
                     console.log(e);
-                    eHandler(e);
+                    eHandler(e, inputName, inputCP);
                   }
                 }
               }

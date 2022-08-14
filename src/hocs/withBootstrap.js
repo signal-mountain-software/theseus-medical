@@ -5,6 +5,8 @@ import { useLocation } from 'react-router-dom';
 
 import { Lambda } from 'aws-sdk';
 
+import { useCookies } from 'react-cookie';
+
 import Box from '@material-ui/core/Box';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
@@ -38,6 +40,8 @@ export default Component => props => {
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const { state, dispatch } = useSession();
   const { user } = state;
+
+  const [cookies, , removeCookie] = useCookies(['AVAuser']);
 
   const [peopleList, setPeopleList] = React.useState();
   const [callPending, setCallPending] = React.useState(false);
@@ -158,7 +162,8 @@ export default Component => props => {
 
   React.useEffect(() => {
     (async () => {
-      let user = {};
+      let user = await Auth.currentAuthenticatedUser();
+      console.log(user.signInUserSession.accessToken.payload.client_id);
       let urlQuery = getParams();
       if (urlQuery?.user) {        //first
         user = {
@@ -177,9 +182,6 @@ export default Component => props => {
         catch (e) {
           console.log(e);
         }
-      }
-      else {
-        user = await Auth.currentAuthenticatedUser();
       }
       dispatch({ type: SET_USER, payload: user });       //sixth
     })().catch(error => {
@@ -259,7 +261,7 @@ export default Component => props => {
             });
           if (emulatingSession) { session = emulatingSession.data.getSession; }
         }
-        session.session_id = `22.6.19.1${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `22.8.15${window.location.href.split('//')[1].slice(0, 1)}`;
         let urlQuery = getParams();
         if (urlQuery?.user) {
           session.url_parameters = urlQuery;
@@ -498,6 +500,7 @@ export default Component => props => {
         </Box>
         :
         <PersonFilter
+          prompt={'Find and tap your name'}
           peopleList={peopleList}
           onCancel={async () => {
             let jumpTo = window.location.href;
@@ -509,6 +512,7 @@ export default Component => props => {
             await onValidUser(user, true);      //sixth
           }}
           onSignOut={async () => {
+            removeCookie("AVAuser");
             Auth.signOut().then(() => {
               let jumpTo = window.location.origin;
               window.location.replace(jumpTo);

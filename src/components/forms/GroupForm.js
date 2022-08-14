@@ -2,6 +2,9 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 
+import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
+import useSession from '../../hooks/useSession';
+
 import List from '@material-ui/core/List';
 
 import Collapse from '@material-ui/core/Collapse';
@@ -11,10 +14,12 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
+import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
 
 import TextSMSIcon from '@material-ui/icons/Textsms';
 import CallIcon from '@material-ui/icons/Call';
 import EmailIcon from '@material-ui/icons/Email';
+import SwapIcon from '@material-ui/icons/SwapHoriz';
 
 import Button from '@material-ui/core/Button';
 
@@ -66,6 +71,7 @@ const useStyles = makeStyles(theme => ({
     fontSize: '1.3rem',
   },
   buttonArea: {
+    maxWidth: 1000,
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
@@ -160,6 +166,7 @@ const s3 = new AWS.S3({
 export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, pRole, isMobile, onReset }) => {
 
   const classes = useStyles();
+  const { dispatch } = useSession();
 
   const [person_filter, setPersonFilter] = React.useState('');
   const [person_filter_lower, setPersonFilterLower] = React.useState('');
@@ -216,6 +223,38 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       setSingleFilterDigit(event.target.value.length === 1);
     }
     setRowLimit(scrollValue);
+  };
+
+  const prepareSwitch = async (pUser, pSwitchTo, pSwitchName) => {
+    let invokeFailed = false;
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:SwitchAccount';
+    params.Payload = JSON.stringify({
+      action: "prepare_switch",
+      request: {
+        current_session_user: pUser,
+        switch_to_person: pSwitchTo,
+        switch_to_name: pSwitchName
+      }
+    });
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
+          variant: 'error'
+        });
+        invokeFailed = true;
+      });
+    if (!invokeFailed) {
+      let switchResponse = JSON.parse(fResp.Payload);
+      if (switchResponse.status === 200) {
+        if (Array.isArray(switchResponse.body[0].groups_managed)) {
+          switchResponse.body[0].groups_managed = JSON.stringify(switchResponse.body[0].groups_managed);
+        }
+        return switchResponse.body;
+      }
+    };
+    return [];
   };
 
   const handleAddPersonToGroup = async (pPerson, pGroup, pDisplayName) => {
@@ -334,8 +373,11 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       nqMessage = `Sent "${pMessage}" to everyone in ${pGroupName}`;
       if (pMessageType.toLowerCase() === 'urgent group') { nqMessage += ` as an URGENT (phone call preferred) message!`; }
     }
-    else {
-      nqMessage = `Sent "${pMessage}" via ${pMessageType === 'time_based' ? '' : (pMessageType === 'sms' ? 'text' : pMessageType)} to ${pRecipient.split(':')[0]}`;
+    else if (pMessageType !== 'AVA') {
+      nqMessage = `Sent "${pMessage}" ${pMessageType === 'time_based' ? '' : (pMessageType === 'sms' ? 'via text' : ('via ' + pMessageType))} to ${pRecipient.split(':')[0]}`;
+    }
+    else { 
+      nqMessage = `Posted "${pMessage}" as an AVA alert for ${pRecipient.split(':')[0]}`;
     }
     let lambdaPayload = {
       "body": {
@@ -345,6 +387,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       }
     };
     if (pMessageType.toLowerCase() === 'urgent group') { lambdaPayload.body.method = 'urgent'; }
+    else if (pMessageType === 'AVA') { lambdaPayload.body.method = 'AVA'; }
     params.Payload = JSON.stringify(lambdaPayload);
     lambda
       .invoke(params)
@@ -737,6 +780,25 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                                 Message
                               </Button>
                               <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
+                                {(pRole === 'admin' || pRole === 'responsible') &&
+                                  <Button
+                                    onClick={async () => {
+                                      let switchData = await prepareSwitch(
+                                        pPatient,
+                                        this_item.person_id,
+                                        `${this_item.name.first} ${this_item.name.last || this_item.display_name}:`
+                                      );
+                                      dispatch({ type: SET_SESSION, payload: switchData[0] });
+                                      dispatch({ type: SET_PATIENT, payload: switchData[1] });
+                                      let jumpTo = window.location.href.replace('refresh', 'theseus');
+                                      window.location.replace(jumpTo);
+                                    }}
+                                    className={classes.rowButtonGreen}
+                                    startIcon={<SwapIcon fontSize="small" />}
+                                  >
+                                    Switch to
+                                  </Button>
+                                }
                                 {pRole === 'responsible' &&
                                   <Button
                                     onClick={() => {
@@ -800,6 +862,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           }
           {showAddPrompt &&
             <PersonFilter
+              prompt={'Tap the name of the person you wish to add'}
               peopleList={peopleList}
               onCancel={() => {
                 setShowAddPrompt(false);
@@ -904,6 +967,17 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                       startIcon={<PhoneInTalkIcon size='small' />}
                     >
                       {`Urgent ${isMobile ? 'Msg' : 'Message'}`}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('AVA');
+                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                      }}
+                      className={classes.rowButtonGreen}
+                      startIcon={<ContactMailOutlinedIcon size='small' />}
+                    >
+                      {`AVA alert ${isMobile ? 'Msg' : 'Message'}`}
                     </Button>
                   </Box>
                 }
