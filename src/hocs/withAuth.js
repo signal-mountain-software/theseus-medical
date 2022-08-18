@@ -655,7 +655,7 @@ export default Component => props => {
                       });
                     }
                     else {
-                      bakeCookie(inputName.trim(), inputCP.trim(), null);
+                      bakeCookie(inputName.trim(), inputCP.trim(), resp.attributes['custom:client'] || null);
                       accessLog(inputName, inputCP, `Login successful`, true);
                       setResetPW(false);
                     }

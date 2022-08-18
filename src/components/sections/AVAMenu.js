@@ -213,7 +213,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
 
   const [selected, setSelected] = React.useState(null);
 
-  const [cookies, , removeCookie] = useCookies(['AVAuser']);
+  const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [mainMenu, setMainMenu] = React.useState([]);
   const [messageText, setMessageText] = React.useState('');

@@ -41,7 +41,7 @@ export default Component => props => {
   const { state, dispatch } = useSession();
   const { user } = state;
 
-  const [cookies, , removeCookie] = useCookies(['AVAuser']);
+  const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [peopleList, setPeopleList] = React.useState();
   const [callPending, setCallPending] = React.useState(false);

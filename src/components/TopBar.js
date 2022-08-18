@@ -63,7 +63,7 @@ export default () => {
 
   const [prompt, setPrompt] = useRecoilState(promptState);
 
-  const [cookies, , removeCookie] = useCookies(['AVAuser']);
+  const [, , removeCookie] = useCookies(['AVAuser']);
 
   const showInstall = () => showIOS || !isStandalone;
 
