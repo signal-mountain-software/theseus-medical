@@ -9,6 +9,7 @@ import ListItem from '@material-ui/core/ListItem';
 import Collapse from '@material-ui/core/Collapse';
 import MoreHorizIcon from '@material-ui/icons/MoreHoriz';
 import CloseIcon from '@material-ui/icons/HighlightOff';
+import CheckIcon from '@material-ui/icons/Check';
 
 import Button from '@material-ui/core/Button';
 import IconButton from '@material-ui/core/IconButton';
@@ -807,7 +808,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                           }}
                           className={classes.rowButtonBlue}
                         >
-                          <CloseIcon fontSize="small" />
+                          <CheckIcon fontSize="small" />
                         </IconButton>
                       </Box>
                     }
@@ -900,7 +901,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 className={classes.rowButtonRed}
                 onClick={onReset}
               >
-                <CloseIcon size="small" />
+                <CheckIcon size="small" />
               </IconButton>
             </Tooltip>
             {pOccData.signup_type === 'time' && isOwner &&

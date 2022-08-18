@@ -61,6 +61,7 @@ import Box from '@material-ui/core/Box';
 
 import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
+import DynamicSignup from './DynamicSignup';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -1155,6 +1156,16 @@ export default ({
     case 'new_event':
       return (
         <NewCalendarEvent
+          patient={session}
+          peopleList={values}
+          picture={null}
+          showNewEvent={true}
+          onClose={onSave}
+        />
+      );
+    case 'new_appointment':
+      return (
+        <DynamicSignup
           patient={session}
           peopleList={values}
           picture={null}
