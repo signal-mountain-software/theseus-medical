@@ -76,6 +76,9 @@ export default Component => props => {
 
   let deviceObj = deviceDetect();
 
+  const allParams = useParams();
+  let urlQuery = getParams();
+
   const [saveP, setSaveP] = React.useState([]);
   const [saveU, setSaveU] = React.useState([]);
 
@@ -108,8 +111,6 @@ export default Component => props => {
     const { search } = useLocation();
     return React.useMemo(() => new URLSearchParams(search), [search]);
   };
-
-  const allParams = useParams();
 
   function getParams() {
     let returnObject = {};
@@ -258,7 +259,7 @@ export default Component => props => {
     setSignedIn(false);
     try {
       let user = {};
-      let urlQuery = getParams();
+      urlQuery = getParams();
       if (urlQuery?.user) {
         accessLog(urlQuery.user, `*na*`, `URL supplied user ID`, false);
         user = {
@@ -304,7 +305,7 @@ export default Component => props => {
           }
         }
         else {
-          let vData = await validateLogin(cookieValues.user_id, null, null, null, null, 'person-only');
+          let vData = await validateLogin(cookieValues.user_id, null, urlQuery.client, null, null, 'person-only');
           if (vData?.sessionRec && vData.sessionRec.last_login) {
             try {
               await Auth.signIn(cookieValues.user_id, vData.sessionRec.last_login);
@@ -448,9 +449,9 @@ export default Component => props => {
           newP = c0.toUpperCase() + inputCP.trim().substring(1);
         }
         try {
-          await Auth.signIn(inputName.trim(), newP);
+          let resp = await Auth.signIn(inputName.trim(), newP);
           accessLog(inputName.trim(), newP, `Login with case-corrected Password`, true);
-          bakeCookie(inputName.trim(), newP, null);
+          bakeCookie(inputName.trim(), newP, resp.attributes['custom:client'] || urlQuery.client || null);
           break;
         }
         catch (e) {
@@ -474,8 +475,8 @@ export default Component => props => {
         if (inputCP.trim() === '') { setMessages(`You left the password blank!  Please try again.`); }
         else if (inputName.trim() === '') { setMessages(`You left the User ID blank!  Please try again.`); }
         else {
-          enqueueSnackbar(`Still trying...`, { variant: 'info', });
-          let vData = await validateLogin(null, null, null, pUser.trim(), pPwd.trim(), 'Login with Name/Number');
+          enqueueSnackbar(`Checking Name and Location...`, { variant: 'info', });
+          let vData = await validateLogin(null, null, urlQuery.client, pUser.trim(), pPwd.trim(), 'Login with Name/Number');
           if (vData?.sessionRec) {
             if (vData.sessionRec.last_login) {
               try {
@@ -655,7 +656,7 @@ export default Component => props => {
                       });
                     }
                     else {
-                      bakeCookie(inputName.trim(), inputCP.trim(), resp.attributes['custom:client'] || null);
+                      bakeCookie(inputName.trim(), inputCP.trim(), resp.attributes['custom:client'] || urlQuery.client || null);
                       accessLog(inputName, inputCP, `Login successful`, true);
                       setResetPW(false);
                     }
