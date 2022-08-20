@@ -287,7 +287,7 @@ export default Component => props => {
             });
           if (emulatingSession) { session = emulatingSession.data.getSession; }
         }
-        session.session_id = `22.8.15${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `22.8.20${window.location.href.split('//')[1].slice(0, 1)}`;
         let urlQuery = getParams();
         if (urlQuery?.user) {
           session.url_parameters = urlQuery;
@@ -432,9 +432,9 @@ export default Component => props => {
               else {
                 pList = await getPeopleList(session.client_id, respArray[r]);
               }
-              unSortedList.push(...pList)
+              unSortedList.push(...pList);
             }
-            if (respArray.length > 1) { 
+            if (respArray.length > 1) {
               // sort resulting array and remove duplicates
               let pSet = unSortedList.sort((a, b) => {
                 return (a.person_id > b.person_id ? 1 : -1);

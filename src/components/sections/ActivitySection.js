@@ -175,7 +175,7 @@ export default ({ patient, session }) => {
         user_id: pUser,
         activity_code: pCodeOut,
         activity_name: pName,
-        AVA_version: `22.8.15${window.location.href.split('//')[1].slice(0, 1)}`
+        AVA_version: `22.8.20${window.location.href.split('//')[1].slice(0, 1)}`
       }
     };
     let params = {
@@ -278,7 +278,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = 22.8.15~${errorTime}`,
+        status: `Version = 22.8.20~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -1099,19 +1099,19 @@ export default ({ patient, session }) => {
             <Box mt={3} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
               {!session &&
                 <Card
-                className={classes.logoSmall}
-                raised={false}
-                variant='elevation' elevation={0}
-              >
-                <CardMedia
-                  component="img"
-                  image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
-                  alt='AVA'
-                />
-              </Card>
+                  className={classes.logoSmall}
+                  raised={false}
+                  variant='elevation' elevation={0}
+                >
+                  <CardMedia
+                    component="img"
+                    image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                    alt='AVA'
+                  />
+                </Card>
               }
               <Typography align='center'>
-                {`Loading AVA version 22.8.15${window.location.href.split('//')[1].slice(0, 1)}`}
+                {`Loading AVA version 22.8.20${window.location.href.split('//')[1].slice(0, 1)}`}
               </Typography>
               <CircularProgress />
             </Box>
