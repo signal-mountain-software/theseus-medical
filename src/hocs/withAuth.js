@@ -490,7 +490,7 @@ export default Component => props => {
               }
             }
             else {
-              setMessages(`That's a match!  Your User ID is ${vData.sessionRec.session_id}. AVA needs more information to log you in with your name, however.  Contact AVA support if you'd like to have this option in he future.`);
+              setMessages(`That's a match!  Your User ID is ${vData.sessionRec.session_id}. AVA needs more information to log you in with your name, however.  Contact AVA support if you'd like to have this option in the future.`);
             }
           }
           else {
