@@ -88,6 +88,34 @@ export default Component => props => {
     return [];
   };
 
+  const getGroupsManaged = async (pClient, pPerson) => {
+    let invokeFailed = false;
+    params.Payload = JSON.stringify({
+      action: "get_groups_managed",
+      clientId: pClient,
+      request: {
+        "person_id": pPerson,
+      }
+    });
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
+          variant: 'error'
+        });
+        invokeFailed = true;
+      });
+    if (!invokeFailed) {
+      let groupsManagedReturn = JSON.parse(fResp.Payload);
+      if (groupsManagedReturn.status === 200) {
+        return groupsManagedReturn.body;
+      }
+    };
+    return [];
+  };
+
   function useParams() {
     const { search } = useLocation();
     return React.useMemo(() => new URLSearchParams(search), [search]);
@@ -383,11 +411,18 @@ export default Component => props => {
         else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
         else { respArray.push(session.responsible_for); }
         if (respArray.length > 0) {
-          if (respArray.includes('*all')) {
+          if (respArray.some(g => { return g.toLowerCase() === '*all'; })) {   // case insensitive array search
             pArray = await getPeopleList(session.client_id, '*all');
           }
           else {
             let unSortedList;
+            let groupsFound = getGroupsManaged(session.client_id, session.patient_id);
+            for (let gName in groupsFound) {
+              let foundGroup = groupsFound[gName].group_id;
+              if (!respArray.includes(foundGroup)) {
+                respArray.push(foundGroup);
+              }
+            }
             for (let r = 0; r < respArray.length; r++) {
               let pList;
               if (respArray[r].inclues('~')) {
