@@ -305,7 +305,7 @@ export default Component => props => {
           }
         }
         else {
-          let vData = await validateLogin(cookieValues.user_id, null, urlQuery.client, null, null, 'person-only');
+          let vData = await validateLogin(cookieValues.user_id, null, cookieValues.client || urlQuery.client || null, null, null, 'person-only');
           if (vData?.sessionRec && vData.sessionRec.last_login) {
             try {
               await Auth.signIn(cookieValues.user_id, vData.sessionRec.last_login);
