@@ -7,13 +7,14 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 
 import { Lambda } from 'aws-sdk';
-import AVAConfirm from '../forms/AVAConfirm';
 
 // import "react-datepicker/dist/react-datepicker.css";
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import CloseIcon from '@material-ui/icons/Close';
+import SaveIcon from '@material-ui/icons/Save';
+import SendIcon from '@material-ui/icons/Send';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import IconButton from '@material-ui/core/IconButton';
@@ -33,12 +34,7 @@ import FormControl from '@material-ui/core/FormControl';
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 
-// import ClientsSection from '../sections/ClientsSection';
-
-import useMediaQuery from '@material-ui/core/useMediaQuery';
-
 import CalendarEventEditForm from '../forms/CalendarEventEditForm';
-
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -65,7 +61,9 @@ const useStyles = makeStyles(theme => ({
     size: 'small'
   },
   formControlLbl: {
-    margin: 0,
+    marginTop: 6,
+    marginLeft: theme.spacing(1),
+    marginBottom: 6,
     paddingTop: 0,
     height: theme.spacing(2.5),
   },
@@ -141,8 +139,14 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 1.5,
     backgroundColor: 'yellow'
   },
+  radioPrompt: {
+    fontSize: theme.typography.fontSize * 1.5,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
   radioText: {
-    fontSize: theme.typography.fontSize * 0.8,
+    fontSize: theme.typography.fontSize * 1.0,
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 10,
@@ -177,11 +181,10 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const classes = useStyles();
 
-  const [description, setDescription] = React.useState(patient.patient_display_name);
+  const [personName, setPersonName] = React.useState(patient.patient_display_name);
   const [event_date, setEventDate] = React.useState();
   const [eventAsADate, setEventAsADate] = React.useState();
-  const [prefMethod, setMethod] = React.useState();
-  const [specificPeople, setSpecificPeople] = React.useState();
+  const [prefMethod, setMethod] = React.useState('none');
   const [signup_type, setSignUpType] = React.useState('none');
   const [time_from_display_string, setTimeFromAsDisplayString] = React.useState();
   const [timeFromAs24HourNumber, setTimeFromAs24HourNumber] = React.useState();
@@ -200,8 +203,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   // const [patientGroups, setPatientGroups] = React.useState();
 
   const [changes, setChanges] = React.useState(false);
-
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
@@ -247,13 +248,13 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       setEventAsADate(nDate);
       handleUpdate(nDate);
     }
-    else if (pMethod === 'monthly_by_dayOfWeek') { 
+    else if (pMethod === 'monthly_by_dayOfWeek') {
       if (loopCount > 3) { handleAbort(); }
       else { setLoopCount(loopCount + 1); }
       let weekNumber = (Math.min(Math.floor(pDate.getDate() / 7.1) + 1, 4));
       let weekdayNumber = pDate.getDay();
       let rDate = new Date(pDate);
-      let nextMonth = new Date(rDate.setMonth(rDate.getMonth() + 1))
+      let nextMonth = new Date(rDate.setMonth(rDate.getMonth() + 1));
       nextMonth.setDate(1);
       let dOne = nextMonth.getDay();
       let targetDate = ((weekNumber - 1) * 7) + (((weekdayNumber + 7) + 1 - dOne) % 7.1);
@@ -262,7 +263,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       handleUpdate(nDate);
     }
     else { handleAbort(); }
-  }
+  };
 
   const handleUpdate = async (pDate) => {
     if (dateRestricted) {
@@ -286,7 +287,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         });
       if (!invokeFailed) {
         let fullResponse = JSON.parse(fResp.Payload);
-        if (fullResponse.status === 200) {
+        if (fullResponse.status === 200 && (fullResponse.body.length > 0)) {
           fullResponse.body.forEach(cEv => {
             setCalendarOcc(cEv.occData);
           });
@@ -301,7 +302,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       enqueueSnackbar(`AVA is sending a message to the Salon for you!`, {
         variant: 'info'
       });
-      let pMessage = `${description} is requesting `;
+      let pMessage = `${personName} is requesting `;
       pMessage += (signup_type === 'perm' ? 'Perm' : 'Color') + ' and Style service.';
       pMessage += ` They would prefer an appointment on ${event_date}`;
       if (time_from_display_string) { pMessage += ` at ${time_from_display_string}`; }
@@ -324,13 +325,14 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
             variant: 'error'
           });
         });
+      handleAbort();
     }
   };
 
   // **************************
 
-  const handleChangeDescription = event => {
-    setDescription(event.target.value);
+  const handleChangePersonName = event => {
+    setPersonName(event.target.value);
     okToSave(event.target.value, eventAsADate, signup_type, prefMethod);
   };
 
@@ -338,10 +340,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     let newRList = restrictionList;
     newRList.push(pPerson.replace(':', '%%').split(':')[0]);
     setRestrictionList(newRList);
-  };
-
-  const choosePerson = () => {
-    setShowPersonSelect(true);
   };
 
   const handleChangePersonFilter = event => {
@@ -402,17 +400,24 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const handleDateExit = event => {
     if (event.key === 'Enter' || event.type === 'blur') {
       let goodDate = makeDate(event_date);
-      setEventAsADate(goodDate);
-      setEventDate(goodDate.toDateString());
-      okToSave(description, goodDate, signup_type, prefMethod);
+      if (goodDate) {
+        setEventAsADate(goodDate);
+        setEventDate(goodDate.toDateString());
+        okToSave(personName, goodDate, signup_type, prefMethod);
+      }
     }
   };
 
   function makeDate(pDate) {
+    if (!pDate) { return null; }
     let goodDate = new Date(pDate);
     if (isNaN(goodDate)) {
       let jump = 0;
-      let tDate = pDate.substr(0, 3).toLowerCase();
+      if (pDate.includes('next')) {
+        jump = 7;
+        pDate = pDate.replace('next', '');
+      }
+      let tDate = pDate.trim().substr(0, 3).toLowerCase();
       let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
       goodDate = new Date(Date.now());
       if (dOfw > -1) {
@@ -437,11 +442,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
 
   const handleChangeMethod = event => {
     setMethod(event.target.value);
-    okToSave(description, eventAsADate, signup_type, event.target.value);
-  };
-
-  const handleChangePeopleToggle = event => {
-    setSpecificPeople(event.target.value);
+    okToSave(personName, eventAsADate, signup_type, event.target.value);
   };
 
   const okToSave = (pName, pDate, pService, pFreq) => {
@@ -459,10 +460,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       else {
         setChanges(true);
       }
-      setChanges(pName && pFreq);
+      setChanges(pName && (pFreq && (pFreq !== 'none')));
     }
     else {
-      setChanges(pName && (pService !== 'none'));
+      setChanges(pName && (pService && (pService !== 'none')));
     }
     return;
   };
@@ -470,7 +471,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const handleChangeSignUp = event => {
     setSignUpType(event.target.value);
     // basic, cut, beardtrim, perm, or color
-    okToSave(description, eventAsADate, event.target.value, prefMethod);
+    okToSave(personName, eventAsADate, event.target.value, prefMethod);
     if (!dateRestrictedTypes.includes(event.target.value)) {
       let timeMessage = '';
       if (eventAsADate) {
@@ -505,22 +506,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {'Make a Salon Appointment'}
             </Typography>
-            {changes ?
-              <Button
-                onClick={() => {
-                  setChanges(false);
-                  setLoopCount(1);
-                  handleUpdate(eventAsADate);
-                }}
-                disabled={!changes}
-                hidden={!changes}
-                variant='contained'
-                className={classes.topButton}
-              >
-                {isMobile ? 'Save' : 'Save Changes'}
-              </Button>
-              : null
-            }
           </Toolbar>
         </AppBar>
         <Toolbar />
@@ -544,10 +529,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
               <form className={classes.root} noValidate autoComplete='off'>
                 <div>
                   <TextField
-                    id='description'
-                    value={description}
+                    id='personName'
+                    value={personName}
                     fullWidth
-                    onChange={handleChangeDescription}
+                    onChange={handleChangePersonName}
                     helperText='Who is this appointment for?'
                   />
                 </div>
@@ -558,10 +543,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                   flexDirection='column'
                   justifyContent="center"
                 >
-                  <Typography className={classes.radioText}>What service do you need?</Typography>
+                  <Typography className={classes.radioPropmt}>What service do you need?</Typography>
                   <FormControl className={classes.formControl} component="fieldset">
                     <RadioGroup
-                      row
+                      row={false}
                       defaultValue={signup_type}
                       aria-label="Service"
                       name="signup"
@@ -705,6 +690,23 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                 >
                   {'Cancel'}
                 </Button>
+                {changes &&
+                  <Button
+                    onClick={() => {
+                      setChanges(false);
+                      setLoopCount(1);
+                      handleUpdate(eventAsADate);
+                    }}
+                    startIcon={
+                      dateRestricted ? <SaveIcon fontSize="small" /> : <SendIcon fontSize="small" />
+                    }
+                    disabled={!changes}
+                    hidden={!changes}
+                    className={classes.rowButton}
+                  >
+                    {dateRestricted ? 'Schedule' : 'Send'}
+                  </Button>
+                }
               </DialogActions>
             </Box>
           </Box>
@@ -717,7 +719,11 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
             pClient={patient.adopted_client || patient.client_id}
             pOccData={calendarOcc}
             pPatientRec={patient}
-          onReset={() => { handleNextDate(eventAsADate, prefMethod); }}
+            pName={personName || null}
+            pInfo={(signup_type === 'basic' ? 'Style' : (signup_type === 'cut' ? 'Cut' : 'Cut & Beard'))}
+            onReset={() => {
+              handleNextDate(eventAsADate, prefMethod);
+            }}
           />
         }
         {showPersonSelect &&

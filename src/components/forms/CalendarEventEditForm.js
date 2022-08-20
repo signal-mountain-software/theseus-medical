@@ -32,7 +32,6 @@ import SendIcon from '@material-ui/icons/Send';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
 import UpdateIcon from '@material-ui/icons/Update';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 
 import PersonFilter from '../forms/PersonFilter';
 import AVAConfirm from './AVAConfirm';
@@ -128,7 +127,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientRec, onReset }) => {
+export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientRec, onReset, pName = null, pInfo = null }) => {
 
   const classes = useStyles();
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
@@ -398,7 +397,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         slot_id: eventParts[2],
         owner: newPersonID,
         requestor: pPatient,
-        display_name: newPersonName,
+        display_name: (pName || newPersonName) + (pInfo ? ` (${pInfo})` : ''),
       }
     });
     let lambdaResponse = await lambda
@@ -412,7 +411,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
       if (returnedSlot.status === 200) {
         let workingList = eventSlotList;
         workingList[pIndexOfSlot].slotData.owner = newPersonID;
-        workingList[pIndexOfSlot].slotData.name = newPersonName;
+        workingList[pIndexOfSlot].slotData.name = (pName || newPersonName) + (pInfo ? ` (${pInfo})` : '');
         setEventSlotList(workingList);
         setForceRedisplay(!forceRedisplay);
         return workingList;
@@ -982,9 +981,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 <Button
                   className={classes.rowButtonRed}
                   onClick={onReset}
-                  startIcon={<ArrowBackIcon size="small" />}
+                  startIcon={<CheckIcon size="small" />}
                 >
-                  {'Exit'}
+                  {'Done'}
                 </Button>
                 {pOccData.signup_type === 'time' && isOwner &&
                   <Button
