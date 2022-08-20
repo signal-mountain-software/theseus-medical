@@ -12,7 +12,6 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
 
 import useSession from '../hooks/useSession';
-import { getGroup } from '../graphql/queries';
 import { getPerson, getRoles, getSession, getCustomizations } from '../graphql/queries';
 import PersonFilter from '../components/forms/PersonFilter';
 
@@ -81,13 +80,12 @@ export default Component => props => {
     if (!invokeFailed) {
       let groupMemberList = JSON.parse(fResp.Payload);
       if (groupMemberList.status === 200) {
-        let people = groupMemberList.body.map(p => {
-          return `${p.name.last}, ${p.name.first}:${p.person_id}`;
-        });
-        setPeopleList(people);
+        setCallPending(false);
+        return groupMemberList.body;
       }
     };
     setCallPending(false);
+    return [];
   };
 
   function useParams() {
@@ -377,7 +375,7 @@ export default Component => props => {
       // get a group of patients a user is responsible for
       let patients = [];
 
-      if (session.responsible_for) {
+      if (session.responsible_for && (patients.length === 0)) {
         roles.push('responsible_for');  // remove this line when ready to fully depreciate OG switch account process
         let pArray = [];
         let respArray = [];
@@ -385,43 +383,34 @@ export default Component => props => {
         else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
         else { respArray.push(session.responsible_for); }
         if (respArray.length > 0) {
-          for (let r = 0; r < respArray.length; r++) {
-            let pRec = await API
-              .graphql(graphqlOperation(getPerson, { person_id: respArray[r] }))
-              .catch(
-                (err) => {
-                  // console.log(`${respArray[r]} not found.  Trying Group table`);
-                });
-            if (pRec?.data?.getPerson) {
-              pArray.push({
-                display_name: `${pRec.data.getPerson.name.last}, ${pRec.data.getPerson.name.first}`,
-                person_id: pRec.data.getPerson.person_id,
-                roles: ['patient'],
-                client_group_id: 'na'
+          if (respArray.includes('*all')) {
+            pArray = await getPeopleList(session.client_id, '*all');
+          }
+          else {
+            let unSortedList;
+            for (let r = 0; r < respArray.length; r++) {
+              let pList;
+              if (respArray[r].inclues('~')) {
+                let [qClient, qGroup] = respArray[r].split('~');
+                pList = await getPeopleList(qClient, qGroup);
+              }
+              else {
+                pList = await getPeopleList(session.client_id, respArray[r]);
+              }
+              unSortedList.push(...pList)
+            }
+            if (respArray.length > 1) { 
+              // sort resulting array and remove duplicates
+              let pSet = unSortedList.sort((a, b) => {
+                return (a.person_id > b.person_id ? 1 : -1);
               });
-              continue;
+              pArray = pSet.filter((e, x, a) => {
+                return (x === 0 || e.person_id !== a[x - 1].person_id);
+              });
             }
-            if (!respArray[r].includes('~')) { respArray[r] = session.client_id + '~' + respArray[r]; }
-            getPeopleByGroupResult = await API
-              .graphql(graphqlOperation(getGroup, { client_group_id: respArray[r] }))
-              .catch(
-                (error) => {
-                  console.log(`Warning! We couldn't get the names of the people in the ${respArray[r]} group.  
-                              Error is: ${error.errors[0].message}`);
-                }
-              );
-            if (getPeopleByGroupResult) {
-              pArray.push(...getPeopleByGroupResult.data.getGroup);
-            }
-          };
-          // sort resulting array and remove duplicates
-          let pSet = pArray.sort((a, b) => {
-            return (a.person_id > b.person_id ? 1 : -1);
-          });
-          let aSet = pSet.filter((e, x, a) => {
-            return (x === 0 || e.person_id !== a[x - 1].person_id);
-          });
-          patients = aSet.sort((a, b) => {
+            else { pArray = unSortedList; }
+          }
+          patients = pArray.sort((a, b) => {
             return (a.display_name > b.display_name ? 1 : -1);
           });
         }
@@ -463,7 +452,11 @@ export default Component => props => {
     else {
       let urlQuery = getParams();
       if ((!peopleList || peopleList.length === 0) && !callPending) {
-        await getPeopleList(urlQuery.client || 'SMSoft', urlQuery.group || 'AVT_residents');
+        let gotPeople = await getPeopleList(urlQuery.client || 'SMSoft', urlQuery.group || 'AVT_residents');
+        let people = gotPeople.map(p => {
+          return `${p.name.last}, ${p.name.first}:${p.person_id}`;
+        });
+        setPeopleList(people);
       }
     }
   };
