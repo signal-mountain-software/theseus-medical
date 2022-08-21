@@ -293,7 +293,7 @@ export default ({ patient, picture, open, onClose }) => {
   const handleUpdate = async () => {
     if (patient.person_id.startsWith('*NEW~')) {
       let tryAgain;
-      let namePart = firstName.substr(0, 1).toLowerCase() + lastName.toLowerCase();
+      let namePart = firstName.trim().substr(0, 1).toLowerCase() + lastName.toLowerCase().replace(/\W/g, '');
       let numberPart = 1;
       patient.person_id = namePart;
       do {

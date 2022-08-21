@@ -213,7 +213,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
 
   const [selected, setSelected] = React.useState(null);
 
-  const [cookies, , removeCookie] = useCookies(['AVAuser']);
+  const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [mainMenu, setMainMenu] = React.useState([]);
   const [messageText, setMessageText] = React.useState('');
@@ -463,7 +463,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
         user_id: pUser,
         activity_code: pCode,
         activity_name: pName,
-        AVA_version: `22.8.15${window.location.href.split('//')[1].slice(0, 1)}`
+        AVA_version: `22.8.20${window.location.href.split('//')[1].slice(0, 1)}`
       }
     };
     let params = {
@@ -696,7 +696,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
             ml={2} mr={2}
           >
             <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-            <Typography variant='caption' >{`version 22.8.15${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
+            <Typography variant='caption' >{`version 22.8.20${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
             <CircularProgress />
           </Box>
         }

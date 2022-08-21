@@ -9,6 +9,7 @@ import ListItem from '@material-ui/core/ListItem';
 import Collapse from '@material-ui/core/Collapse';
 import MoreHorizIcon from '@material-ui/icons/MoreHoriz';
 import CloseIcon from '@material-ui/icons/HighlightOff';
+import CheckIcon from '@material-ui/icons/Check';
 
 import Button from '@material-ui/core/Button';
 import IconButton from '@material-ui/core/IconButton';
@@ -31,7 +32,6 @@ import SendIcon from '@material-ui/icons/Send';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
 import UpdateIcon from '@material-ui/icons/Update';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 
 import PersonFilter from '../forms/PersonFilter';
 import AVAConfirm from './AVAConfirm';
@@ -127,7 +127,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientRec, onReset }) => {
+export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientRec, onReset, pName = null, pInfo = null }) => {
 
   const classes = useStyles();
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
@@ -397,7 +397,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         slot_id: eventParts[2],
         owner: newPersonID,
         requestor: pPatient,
-        display_name: newPersonName,
+        display_name: (pName || newPersonName) + (pInfo ? ` (${pInfo})` : ''),
       }
     });
     let lambdaResponse = await lambda
@@ -411,7 +411,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
       if (returnedSlot.status === 200) {
         let workingList = eventSlotList;
         workingList[pIndexOfSlot].slotData.owner = newPersonID;
-        workingList[pIndexOfSlot].slotData.name = newPersonName;
+        workingList[pIndexOfSlot].slotData.name = (pName || newPersonName) + (pInfo ? ` (${pInfo})` : '');
         setEventSlotList(workingList);
         setForceRedisplay(!forceRedisplay);
         return workingList;
@@ -807,7 +807,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                           }}
                           className={classes.rowButtonBlue}
                         >
-                          <CloseIcon fontSize="small" />
+                          <CheckIcon fontSize="small" />
                         </IconButton>
                       </Box>
                     }
@@ -900,7 +900,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 className={classes.rowButtonRed}
                 onClick={onReset}
               >
-                <CloseIcon size="small" />
+                <CheckIcon size="small" />
               </IconButton>
             </Tooltip>
             {pOccData.signup_type === 'time' && isOwner &&
@@ -981,9 +981,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 <Button
                   className={classes.rowButtonRed}
                   onClick={onReset}
-                  startIcon={<ArrowBackIcon size="small" />}
+                  startIcon={<CheckIcon size="small" />}
                 >
-                  {'Exit'}
+                  {'Done'}
                 </Button>
                 {pOccData.signup_type === 'time' && isOwner &&
                   <Button
