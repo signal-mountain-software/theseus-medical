@@ -402,6 +402,7 @@ export default Component => props => {
 
       // get a group of patients a user is responsible for
       let patients = [];
+      let unSortedList = [];
 
       if (session.responsible_for && (patients.length === 0)) {
         roles.push('responsible_for');  // remove this line when ready to fully depreciate OG switch account process
@@ -415,7 +416,6 @@ export default Component => props => {
             pArray = await getPeopleList(session.client_id, '*all');
           }
           else {
-            let unSortedList;
             let groupsFound = getGroupsManaged(session.client_id, session.patient_id);
             for (let gName in groupsFound) {
               let foundGroup = groupsFound[gName].group_id;
@@ -425,7 +425,7 @@ export default Component => props => {
             }
             for (let r = 0; r < respArray.length; r++) {
               let pList;
-              if (respArray[r].inclues('~')) {
+              if (respArray[r].includes('~')) {
                 let [qClient, qGroup] = respArray[r].split('~');
                 pList = await getPeopleList(qClient, qGroup);
               }
