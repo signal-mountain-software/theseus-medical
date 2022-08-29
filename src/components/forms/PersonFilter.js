@@ -12,6 +12,8 @@ import Slide from '@material-ui/core/Slide';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import CloseIcon from '@material-ui/icons/Close';
+
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 
@@ -38,7 +40,12 @@ const useStyles = makeStyles(theme => ({
     minHeight: theme.typography.fontSize * 2.8,
   },
   reject: {
-    backgroundColor: theme.palette.reject[theme.palette.type],
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.confirm[theme.palette.type],
   },
   title: {
     marginTop: theme.spacing(3),
@@ -142,6 +149,11 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
     if (event.target.value.toLowerCase() === 'sign out') { onSignOut() }
   };
 
+  function goodEntry(pLine, x) {
+    if (!pLine) { return x; }
+    else { return pLine.toLowerCase().includes(person_filter); }
+  }
+
   function makeFirstName(pName) {
     let [, ans] = pName.split(/[:,]/);
     if (ans.startsWith('group=')) { return ''; }
@@ -178,7 +190,7 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
         <List component='nav'>
           {peopleList.map((listEntry, x) => (
             (
-              listEntry.toLowerCase().includes(person_filter) ?
+              goodEntry(listEntry, x) &&
                 <ListItem
                   key={'person-list_' + listEntry}
                   onClick={() => {
@@ -190,7 +202,7 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
                     <Typography variant='h5' className={classes.lastName}>{listEntry.split(/[:,]/)[0].trim()}</Typography>
                     <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
                   </Box>
-                </ListItem> : null
+                </ListItem>
             )
           ))}
         </List>
@@ -198,12 +210,12 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
           className={classes.reject}
-          size='small'
-          variant='contained'
           onClick={() => {
             onCancel();
-          }}>
-          {'Done'}
+          }}
+          startIcon={<CloseIcon fontSize="small" />}
+        >
+          {'Close/Exit'}
         </Button>
       </DialogActions>
     </Dialog>

@@ -81,7 +81,9 @@ export default Component => props => {
       let groupMemberList = JSON.parse(fResp.Payload);
       if (groupMemberList.status === 200) {
         setCallPending(false);
-        return groupMemberList.body;
+        return (groupMemberList.body.map(p => {
+            return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
+          }));
       }
     };
     setCallPending(false);
@@ -413,7 +415,7 @@ export default Component => props => {
         else { respArray.push(session.responsible_for); }
         if (respArray.length > 0) {
           if (respArray.some(g => { return g.toLowerCase() === '*all'; })) {   // case insensitive array search
-            pArray = await getPeopleList(session.client_id, '*all');
+            patients = await getPeopleList(session.client_id, '*all');
           }
           else {
             let groupsFound = getGroupsManaged(session.client_id, session.patient_id);
@@ -445,18 +447,11 @@ export default Component => props => {
             }
             else { pArray = unSortedList; }
           }
-          patients = pArray.sort((a, b) => {
-            return (a.display_name > b.display_name ? 1 : -1);
-          });
+          patients.sort()
         }
 
         if (patients.length > 0) {
-          patients.unshift({
-            display_name: `${profile.name.last}, ${profile.name.first}`,
-            person_id: profile.person_id,
-            roles: ['patient'],
-            client_group_id: 'na'
-          });
+          patients.unshift(`${profile.name.last}, ${profile.name.first}:${profile.person_id}:${profile.search_data}`);
           roles.push('responsible_for');
         };
       }
@@ -487,10 +482,7 @@ export default Component => props => {
     else {
       let urlQuery = getParams();
       if ((!peopleList || peopleList.length === 0) && !callPending) {
-        let gotPeople = await getPeopleList(urlQuery.client || 'SMSoft', urlQuery.group || 'AVT_residents');
-        let people = gotPeople.map(p => {
-          return `${p.name.last}, ${p.name.first}:${p.person_id}`;
-        });
+        let people = await getPeopleList(urlQuery.client || 'SMSoft', urlQuery.group || 'AVT_residents');
         setPeopleList(people);
       }
     }

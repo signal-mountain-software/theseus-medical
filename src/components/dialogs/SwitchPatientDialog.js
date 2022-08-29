@@ -20,6 +20,7 @@ import { getPerson } from '../../graphql/queries';
 import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 import PatientListItem from '../PatientListItem';
+import PersonFilter from '../forms/PersonFilter';
 
 const useStyles = makeStyles(theme => ({
   appBar: {
@@ -40,9 +41,9 @@ export default ({ open, roles, onClose }) => {
 
   const parsePersonObject = person => {
     const patient_id = person.person_id;
-    const patient_display_name = person.display_name;
-    // const { first, last, suffix } = person.name;
-    // const patient_display_name = `${first} ${last}${suffix ? ' ' + suffix : ''}`;
+    let patient_display_name;
+    try { patient_display_name = `${person.name.first} ${person.name.last}`; }
+    catch { patient_display_name = '*Name invalid*'; }
     return { patient_id, patient_display_name };
   };
 
@@ -54,15 +55,16 @@ export default ({ open, roles, onClose }) => {
     onClose();
   };
 
-  const handlePatientClick = newPatient => event => {
-    setSelected(newPatient);
+  const handlePatientClick = newPatient => {
+    setSelected({ patient_id: newPatient.split(':')[1] });
   };
 
-  const handleConfirmation = () => {
+  const handleConfirmation = (newPatient) => {
     (async () => {
+      
       if (session) {
         const result1 = await API.graphql(
-          graphqlOperation(updateSession, { input: { session_id: session.user_id, ...selected } })
+          graphqlOperation(updateSession, { input: { session_id: session.user_id, patient_id: newPatient.split(':')[1] } })
         ).catch(error => {
           enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.errors[0].message}`, {
             variant: 'error',
@@ -114,24 +116,27 @@ export default ({ open, roles, onClose }) => {
         <Box p={3}>
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
             <List component='nav'>
-              {patients.length === 0 ? (
+              {patients.length > 0 ?
+                <PersonFilter
+                prompt={'Switch to which account?'}
+                peopleList={patients}
+                onCancel={() => {
+                  onClose();
+                }}
+                onSelect={(selectedPerson) => {
+                  handleConfirmation(selectedPerson);
+                }}
+                />
+                :
                 <PatientListItem
                   patient={{
                     patient_id: null,
                     patient_display_name: roles.includes('responsible_for') ? 'No group' : 'No patient',
                   }}
                   selected={selected}
-                  onClick={handlePatientClick({ patient_id: null, patient_display_name: null })}
+                  onClick={handleConfirmation({ patient_id: null, patient_display_name: null })}
                 />
-              ) : null}
-              {patients.map((patient, x) => (
-                <PatientListItem
-                  key={patient.person_id + x}
-                  patient={parsePersonObject(patient)}
-                  selected={selected}
-                  onClick={handlePatientClick(parsePersonObject(patient))}
-                />
-              ))}
+              }
             </List>
           </Paper>
         </Box>
