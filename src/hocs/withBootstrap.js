@@ -82,8 +82,8 @@ export default Component => props => {
       if (groupMemberList.status === 200) {
         setCallPending(false);
         return (groupMemberList.body.map(p => {
-            return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
-          }));
+          return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
+        }));
       }
     };
     setCallPending(false);
@@ -289,7 +289,7 @@ export default Component => props => {
             });
           if (emulatingSession) { session = emulatingSession.data.getSession; }
         }
-        session.session_id = `22.8.20${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `22.8.31${window.location.href.split('//')[1].slice(0, 1)}`;
         let urlQuery = getParams();
         if (urlQuery?.user) {
           session.url_parameters = urlQuery;
@@ -447,7 +447,7 @@ export default Component => props => {
             }
             else { pArray = unSortedList; }
           }
-          patients.sort()
+          patients.sort();
         }
 
         if (patients.length > 0) {

@@ -245,7 +245,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform + (deviceObj ? ' ' + JSON.stringify(deviceObj) : ''),
-          `Version=22.8.20${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          `Version=22.8.31${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -323,7 +323,7 @@ export default Component => props => {
         }
       }
       else {
-        enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (AVA version 22.8.20${window.location.href.split('//')[1].slice(0, 1)})`, {
+        enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (AVA version 22.8.31${window.location.href.split('//')[1].slice(0, 1)})`, {
           variant: 'info'
         });
       }
@@ -560,7 +560,7 @@ export default Component => props => {
         newP: pPwd,
         person: pUser,
         called_from: pSource,
-        version: `Version=22.8.20${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
+        version: `Version=22.8.31${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
       };
     }
     let params = {
