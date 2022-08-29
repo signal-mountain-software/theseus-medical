@@ -12,6 +12,7 @@ import FormGroup from '@material-ui/core/FormGroup';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
+import MessageForm from '../forms/MessageForm';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
@@ -1151,6 +1152,17 @@ export default ({
           message={mOut}
           onChange={onChangeMessage}
           onError={onError}
+        />
+      );
+    case 'message_list':
+      return (
+        <MessageForm
+          pPerson={session.patient_id}
+          pClient={session.client_id}
+          pMessageList={
+            values.map(v => { return (JSON.parse(v)); })
+          }
+          onReset={onSave}
         />
       );
     case 'new_event':
