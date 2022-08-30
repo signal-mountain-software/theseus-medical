@@ -408,7 +408,6 @@ export default Component => props => {
 
       if (session.responsible_for && (patients.length === 0)) {
         roles.push('responsible_for');  // remove this line when ready to fully depreciate OG switch account process
-        let pArray = [];
         let respArray = [];
         if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
         else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
@@ -441,11 +440,11 @@ export default Component => props => {
               let pSet = unSortedList.sort((a, b) => {
                 return (a.person_id > b.person_id ? 1 : -1);
               });
-              pArray = pSet.filter((e, x, a) => {
+              patients = pSet.filter((e, x, a) => {
                 return (x === 0 || e.person_id !== a[x - 1].person_id);
               });
             }
-            else { pArray = unSortedList; }
+            else { patients = unSortedList; }
           }
           patients.sort();
         }

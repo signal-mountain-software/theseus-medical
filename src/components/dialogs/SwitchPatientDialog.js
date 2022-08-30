@@ -39,24 +39,12 @@ export default ({ open, roles, onClose }) => {
   const { patients, session } = state;
   const classes = useStyles();
 
-  const parsePersonObject = person => {
-    const patient_id = person.person_id;
-    let patient_display_name;
-    try { patient_display_name = `${person.name.first} ${person.name.last}`; }
-    catch { patient_display_name = '*Name invalid*'; }
-    return { patient_id, patient_display_name };
-  };
-
   const handleClose = () => {
     if (session) {
       const { patient_id, patient_display_name } = session;
       setSelected({ patient_id, patient_display_name });
     }
     onClose();
-  };
-
-  const handlePatientClick = newPatient => {
-    setSelected({ patient_id: newPatient.split(':')[1] });
   };
 
   const handleConfirmation = (newPatient) => {
