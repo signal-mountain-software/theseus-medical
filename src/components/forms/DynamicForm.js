@@ -13,6 +13,7 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
+import ObservationForm from '../forms/ObservationForm';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
@@ -244,6 +245,7 @@ export default ({
   newFact,
   setNewFact,
   type,
+  factName,
   session,
   message,
   statusMessage,
@@ -258,7 +260,7 @@ export default ({
   observationKey,
   onError,
   onSave,
-  onNext,
+  onClose,
 }) => {
 
   const { dispatch } = useSession();
@@ -974,7 +976,8 @@ export default ({
                   Key: fName,
                   Body: fObj,
                   ACL: 'public-read-write',
-                  ContentType: fObj.ContentType
+                  ContentType: fObj.type,
+                  Metadata: { 'Content-Type': fObj.type }
                 };
                 newFact.value.tag = freeText || oName;
                 newFact.value.mediaData = pFile;
@@ -1163,6 +1166,24 @@ export default ({
             values.map(v => { return (JSON.parse(v)); })
           }
           onReset={onSave}
+        />
+      );
+    case 'observation_form':
+      return (
+        <ObservationForm
+          factName={factName}
+          defaultValue={defaultValue}
+          pClient={session.client_id}
+          qualifiers={qualifierTable}
+          listValues={values}
+          onSave={(oSelected, fText) => { 
+            newFact.value.selected = oSelected; 
+            newFact.value.freeText = fText;
+            newFact.status = 'confirmed';
+            setNewFact(newFact);
+            onSave();
+          }}
+          onClose={onClose}
         />
       );
     case 'new_event':
@@ -1462,7 +1483,8 @@ export default ({
                                   Key: freeTextFieldName + fName,
                                   Body: fObj,
                                   ACL: 'public-read-write',
-                                  ContentType: fObj.ContentType
+                                  ContentType: fObj.type,
+                                  Metadata: {'Content-Type': fObj.type}
                                 };
                                 newFact.value.tag = freeText || oName;
                                 newFact.value.mediaData = pFile;
