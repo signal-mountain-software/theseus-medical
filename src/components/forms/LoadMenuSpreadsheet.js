@@ -176,7 +176,7 @@ export default ({ pClient, showUpload, handleClose }) => {
     let dateString = '';
     let results = [];
     let needDate = true;
-    let cellValue, cellKey;
+    let fullValue, cellValue, cellKey, cellOKey;
     let workingDate;
     let messages = [];
     let itemTypeNumber = 0;
@@ -187,7 +187,16 @@ export default ({ pClient, showUpload, handleClose }) => {
       let dateRow = 0;
       for (const currentCell in currentSheet) {
         if (!currentSheet[currentCell].v) { continue; }
-        cellValue = currentSheet[currentCell].v;
+        fullValue = currentSheet[currentCell].v;
+        let valueArray = fullValue.toString().split('~');
+        if (!valueArray || valueArray.length < 2) {
+          cellValue = fullValue;
+          cellOKey = null
+        }
+        else {
+          cellValue = valueArray[0];
+          cellOKey = valueArray[1];
+        }
         let cellColumn = currentCell.replace(/[^A-Z]+/, '');
         let cellRow = Number(currentCell.replace(cellColumn, ''));
         if ((cellRow - previousRow) > 1) {
@@ -259,11 +268,12 @@ export default ({ pClient, showUpload, handleClose }) => {
         results.push({
           date: workingDate,
           item: cellValue,
-          type: itemType[itemTypeNumber]
+          type: itemType[itemTypeNumber],
+          oKey: cellOKey || null
         });
       }
     });
-    results.forEach(o => { o.sort_order = o.date.getFullYear() + '.' + (o.date.getMonth() + 101) + '.' + o.date.getDate() + (entryTypes.indexOf(o.type) + 100).toString() + o.item; });
+    results.forEach(o => { o.sort_order = o.date.getFullYear() + '.' + (o.date.getMonth() + 101) + '.' + (o.date.getDate() + 100).toString() + '.' + (entryTypes.indexOf(o.type) + 100).toString() + o.item; });
     results.sort((a, b) => { return (a.sort_order > b.sort_order ? 1 : -1); });
     setBulkItemList(results);
   }

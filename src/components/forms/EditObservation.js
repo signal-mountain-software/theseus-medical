@@ -123,6 +123,7 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
       {
         "observation_code": `${observationType === 'header' ? '~~' : ''}${observationCode}`,
         "composite_key": `${observationClient}~${observationType}_${observationDate}`,
+        "observation_key": `${observationKey}`,
       }
     );
   };

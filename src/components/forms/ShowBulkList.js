@@ -54,7 +54,8 @@ export default ({ pClient, workingList, showList }) => {
     setEditMode(true);
     let pObs = {
       composite_key: pClient + '~' + pItem.type + '_' + pItem.date.getFullYear() + '.' + (pItem.date.getMonth() + 1) + '.' + pItem.date.getDate(),
-      observation_code: pItem.item
+      observation_code: pItem.item,
+      observation_key: pItem.oKey
     }
     setSelectedObservation(pObs);
     setUpdateIndex(pIndex);
@@ -64,6 +65,7 @@ export default ({ pClient, workingList, showList }) => {
     let workingArray = bulkItemList;
     workingArray[updateIndex].type = updatedRow.composite_key.split(/[~_]/g).slice(1, -1).join('_').trim();
     workingArray[updateIndex].item = updatedRow.observation_code;
+    workingArray[updateIndex].oKey = updatedRow.observation_key;
     console.log(updatedRow);
     setBulkItemList(workingArray);
     setForceRedisplay(forceRedisplay + 1);
