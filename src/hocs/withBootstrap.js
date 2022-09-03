@@ -81,7 +81,9 @@ export default Component => props => {
       let groupMemberList = JSON.parse(fResp.Payload);
       if (groupMemberList.status === 200) {
         setCallPending(false);
-        return groupMemberList.body;
+        return (groupMemberList.body.map(p => {
+          return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
+        }));
       }
     };
     setCallPending(false);
@@ -287,7 +289,7 @@ export default Component => props => {
             });
           if (emulatingSession) { session = emulatingSession.data.getSession; }
         }
-        session.session_id = `22.8.20${window.location.href.split('//')[1].slice(0, 1)}`;
+        session.session_id = `22.8.31${window.location.href.split('//')[1].slice(0, 1)}`;
         let urlQuery = getParams();
         if (urlQuery?.user) {
           session.url_parameters = urlQuery;
@@ -406,14 +408,13 @@ export default Component => props => {
 
       if (session.responsible_for && (patients.length === 0)) {
         roles.push('responsible_for');  // remove this line when ready to fully depreciate OG switch account process
-        let pArray = [];
         let respArray = [];
         if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
         else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
         else { respArray.push(session.responsible_for); }
         if (respArray.length > 0) {
           if (respArray.some(g => { return g.toLowerCase() === '*all'; })) {   // case insensitive array search
-            pArray = await getPeopleList(session.client_id, '*all');
+            patients = await getPeopleList(session.client_id, '*all');
           }
           else {
             let groupsFound = getGroupsManaged(session.client_id, session.patient_id);
@@ -439,24 +440,17 @@ export default Component => props => {
               let pSet = unSortedList.sort((a, b) => {
                 return (a.person_id > b.person_id ? 1 : -1);
               });
-              pArray = pSet.filter((e, x, a) => {
+              patients = pSet.filter((e, x, a) => {
                 return (x === 0 || e.person_id !== a[x - 1].person_id);
               });
             }
-            else { pArray = unSortedList; }
+            else { patients = unSortedList; }
           }
-          patients = pArray.sort((a, b) => {
-            return (a.display_name > b.display_name ? 1 : -1);
-          });
+          patients.sort();
         }
 
         if (patients.length > 0) {
-          patients.unshift({
-            display_name: `${profile.name.last}, ${profile.name.first}`,
-            person_id: profile.person_id,
-            roles: ['patient'],
-            client_group_id: 'na'
-          });
+          patients.unshift(`${profile.name.last}, ${profile.name.first}:${profile.person_id}:${profile.search_data}`);
           roles.push('responsible_for');
         };
       }
@@ -487,10 +481,7 @@ export default Component => props => {
     else {
       let urlQuery = getParams();
       if ((!peopleList || peopleList.length === 0) && !callPending) {
-        let gotPeople = await getPeopleList(urlQuery.client || 'SMSoft', urlQuery.group || 'AVT_residents');
-        let people = gotPeople.map(p => {
-          return `${p.name.last}, ${p.name.first}:${p.person_id}`;
-        });
+        let people = await getPeopleList(urlQuery.client || 'SMSoft', urlQuery.group || 'AVT_residents');
         setPeopleList(people);
       }
     }

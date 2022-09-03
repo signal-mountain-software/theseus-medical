@@ -297,13 +297,15 @@ export default () => {
         </Toolbar>
       </AppBar>
       <Toolbar />
-      <SwitchPatientDialog
-        open={open}
-        roles={roles}
-        onClose={() => {
-          setOpen(false);
-        }}
-      />
+      {open &&
+        <SwitchPatientDialog
+          open={open}
+          roles={roles}
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
+      }
       <IosInstall open={showIOSDialog} onClose={onIOSInstallClose} />
       {addAccount && (
         <PatientDialog

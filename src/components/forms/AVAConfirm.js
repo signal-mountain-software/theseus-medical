@@ -58,7 +58,7 @@ export default ({ promptText, onCancel, onConfirm }) => {
           {pLine}
         </Typography>
       ))}
-      <DialogActions style={{ justifyContent: 'center' }}>
+      <DialogActions style={{ justifyContent: 'center', marginTop: 10 }}>
         <Button
           className={classes.reject}
           size='small'

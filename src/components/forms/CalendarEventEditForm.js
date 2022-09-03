@@ -895,14 +895,24 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         }
         {isMobile ?
           <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-            <Tooltip title={`Exit`} >
-              <IconButton
+            {isOwner ?
+              <Tooltip title={`Exit`} >
+                <IconButton
+                  className={classes.rowButtonRed}
+                  onClick={onReset}
+                >
+                  <CheckIcon size="small" />
+                </IconButton>
+              </Tooltip>
+              :
+              <Button
                 className={classes.rowButtonRed}
                 onClick={onReset}
+                startIcon={<CheckIcon size="small" />}
               >
-                <CheckIcon size="small" />
-              </IconButton>
-            </Tooltip>
+                {'Done'}
+              </Button>
+            }
             {pOccData.signup_type === 'time' && isOwner &&
               <Tooltip title={`Add another time slot`} >
                 <IconButton

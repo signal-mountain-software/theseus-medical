@@ -528,6 +528,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             newFact={newFact}
             setNewFact={setNewFact}
             type={fact.type}
+            factName={fact.name}
             session={session}
             message={message}
             statusMessage={statusMessage}
@@ -542,7 +543,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}
-            onNext={handleNext}
+            onClose={handleClose}
           />
         ) : null}
       </DialogContent>
