@@ -26,6 +26,7 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(3.0),
     marginBottom: theme.spacing(1.0),
     fontSize: theme.typography.fontSize * 1.5,
+    fontWeight: 'bold'
   },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -35,11 +36,19 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 50,
   },
+  descText: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: theme.spacing(3),
+    marginBottom: 10,
+    marginTop: 0,
+    paddingLeft: 0,
+    paddingRight: 50,
+  },
   qualText: {
     fontSize: theme.typography.fontSize * 1.0,
     marginLeft: 0,
     marginBottom: 0,
-    marginTop: 0,
+    marginTop: 10,
     paddingLeft: 0,
     paddingRight: 50,
     fontWeight: 'bold'
@@ -124,13 +133,16 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
   const [cancelPending, setCancelPending] = React.useState(false);
   const [confirmPending, setConfirmPending] = React.useState(false);
   const [confirmPrompt, setConfirmPrompt] = React.useState(false);
-  const [checked, setChecked] = React.useState();
+
   const [checkedToSave, setCheckedToSave] = React.useState();
-  const [chosenQual, setChosenQual] = React.useState();
+
   const [textInput, setTextInput] = React.useState();
   const [initialLoadComplete, setLoadComplete] = React.useState();
-  const [displayRows, setDisplayRows] = React.useState();
-  const [qualifierRows, setQualifierRows] = React.useState();
+  // const [displayRows, setDisplayRows] = React.useState();
+
+  const [dataRows, setDataRows] = React.useState();
+  // const [checked, setChecked] = React.useState();
+  // const [chosenQual, setChosenQual] = React.useState();
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -176,7 +188,14 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
   let checkbox = true;
   let ignore = false;
 
-  async function getObservations(pText, pObsKey) {
+  async function getObservations(pText, pObsKey, pChecked) {
+    let workDataRows = dataRows;
+    workDataRows.checked = pChecked;
+    if (dataRows.hasOwnProperty(pText)) {
+      setDataRows(workDataRows);
+      setForceRedisplay(!forceRedisplay);
+      return;
+    }
     params.Payload = JSON.stringify({
       action: "get_observation_items",
       clientId: pClient,
@@ -195,12 +214,10 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
       let oRecs = JSON.parse(fResp.Payload);
       if (oRecs.status === 200) {
         if (oRecs.body.options) {
-          let workQRows = {};
-          if (qualifierRows) { workQRows = qualifierRows; }
-          workQRows[pText] = oRecs.body.options.display_value;
+          workDataRows[pText] = oRecs.body.options.display_value;
           let workChosenQ = {};
-          if (chosenQual) {
-            workChosenQ = chosenQual;
+          if (workDataRows.hasOwnProperty('chosenQual')) {
+            workChosenQ = workDataRows.chosenQual;
           }
           if (!workChosenQ.hasOwnProperty(pText)) {
             workChosenQ[pText] = {};
@@ -212,16 +229,17 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
               else { workChosenQ[pText][v.title] = []; }
             });
           }
-          setChosenQual(workChosenQ);
-          setQualifierRows(workQRows);
+          workDataRows.chosenQual = workChosenQ;
         }
       }
     };
+    setDataRows(workDataRows);
+    setForceRedisplay(!forceRedisplay);
   }
 
   function handleQualChecked(pOrderOption, pQualifier, pQualChoice) {
-    let qRule = qualifierRows[pOrderOption].find(r => { return (r.title === pQualifier); });
-    let workChosenQ = chosenQual;
+    let qRule = dataRows[pOrderOption].find(r => { return (r.title === pQualifier); });
+    let workChosenQ = dataRows.chosenQual;
     if (!workChosenQ) {
       workChosenQ[pOrderOption] = {};
     }
@@ -246,7 +264,8 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
       workChosenQ[pOrderOption][pQualifier] = workArray;
     }
     // Checking Rules
-    setChosenQual(workChosenQ);
+    dataRows.chosenQual = workChosenQ;
+    setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
   }
 
@@ -256,6 +275,15 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
       if (qKey) { return qKey.substr(6); }
     }
     return null;
+  }
+
+  function getDescription(pText) {
+    if (qualifiers.hasOwnProperty(pText)) {
+      return qualifiers[pText].description;
+    }
+    else {
+      return null;
+    }
   }
 
   if (!initialLoadComplete) {
@@ -283,6 +311,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
           checkbox,
           text: instruction[0],
           oKey: getKey(instruction[0]),
+          desc: getDescription(instruction[0]),
           input: false
         });
         continue;
@@ -293,6 +322,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
           checkbox: (instruction[1] === 'withCheckBox'),
           text: instruction[2],
           oKey: getKey(instruction[2]),
+          desc: getDescription(instruction[2]),
           input: instruction[1]
         });
         continue;
@@ -302,12 +332,13 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
         checkbox: false,
         text: instruction[1],
         oKey: getKey(instruction[1]),
+        desc: getDescription(instruction[1]),
         input: false,
         header: true
       });
     }
     setLoadComplete(true);
-    setDisplayRows(displayRowList);
+    setDataRows({ displayRows: displayRowList, dataRows: {}, checked: [] });
   }
 
   const onCheckEnter = (event, this_item) => {
@@ -392,27 +423,43 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
     setTextInput(textInput);
   };
 
-  function makeConfirm(displayRows, checked, textInput) {
+  function isChecked(pObj) {
+    return (dataRows.hasOwnProperty('checked') && dataRows.checked.includes(pObj.text) && pObj.checkbox);
+  }
+
+  function isQChecked(pObj, pQualName, pChoice) {
+    return (dataRows.hasOwnProperty('chosenQual')
+      && dataRows.chosenQual[pObj.text]
+      && dataRows.chosenQual[pObj.text].hasOwnProperty(pQualName.title)
+      && dataRows.chosenQual[pObj.text][pQualName.title].includes(pChoice));
+  }
+
+  function showQualifier(pObj) {
+    return (isChecked(pObj) && !!dataRows && dataRows.hasOwnProperty(pObj.text));
+  }
+
+  function makeConfirm(pDisplayRows, pChecked, textInput) {
     let workChecked = [];
     let responseArray = [`Please confirm your selections`, '----'];
-    displayRows.forEach(r => {
-      let rText = '';
-      if (checked.includes(r.text) || textInput[r.text]) { rText = r.text; }
-      if (textInput[r.text]) { rText += (rText.length > 0 ? ': ' : '') + textInput[r.text]; }
-      if (rText) {
-        let linker = '';
-        if (chosenQual[r.text]) {
-          rText += ' (';
-          for (let key in chosenQual[r.text]) {
-            if (chosenQual[r.text][key] && (chosenQual[r.text][key].length > 0)) {
-              rText += linker + chosenQual[r.text][key].join(', ');
+    pDisplayRows.forEach(r => {
+      if (r.checkbox || textInput.hasOwnProperty(r.text)) {
+        let rText = '';
+        if (pChecked.includes(r.text) || textInput[r.text]) { rText = r.text; }
+        if (textInput[r.text]) { rText += (rText.length > 0 ? ': ' : '') + textInput[r.text]; }
+        if (rText) {
+          let linker = ' (';
+          if (dataRows.chosenQual[r.text]) {
+            for (let key in dataRows.chosenQual[r.text]) {
+              if (dataRows.chosenQual[r.text][key] && (dataRows.chosenQual[r.text][key].length > 0)) {
+                rText += linker + dataRows.chosenQual[r.text][key].join(', ');
+                linker = ', ';
+              }
             }
-            linker = ', ';
+            if (linker === ', ') { rText += ')'; }
           }
-          rText += ')';
+          if (pChecked.includes(r.text)) { workChecked.push(rText); }
+          responseArray.push(rText);
         }
-        if (checked.includes(r.text)) { workChecked.push(rText); }
-        responseArray.push(rText);
       }
     });
     setCheckedToSave(workChecked);
@@ -425,7 +472,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
       p={2}
       fullScreen
     >
-      {displayRows && displayRows.length > 0 &&
+      {!!dataRows && dataRows.hasOwnProperty('displayRows') && dataRows.displayRows.length > 0 &&
         <React.Fragment>
           <Box display='flex' flexDirection='column' key={'titlesection'}>
             <Typography
@@ -441,8 +488,13 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
           </Box>
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
-              {displayRows.map((this_item, this_index) => (
-                <Box display='flex' flexDirection='column' key={'fullRow' + this_index}>
+              {dataRows.displayRows.map((this_item, this_index) => (
+                <Box display='flex'
+                  flexDirection='column'
+                  margin={isChecked(this_item) ? 2 : 0}
+                  border={isChecked(this_item) ? 1 : 0}
+                  key={'fullRow' + this_index}
+                >
                   <Box
                     display='flex'
                     flexDirection='row'
@@ -454,25 +506,27 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
                     {this_item.checkbox &&
                       <Checkbox
                         edge='start'
-                        checked={(!!checked && (checked.length > 0) && (checked.includes(this_item.text)))}
+                        checked={isChecked(this_item)}
                         disableRipple
-                        flexGrow={0}
                         key={'checkbox' + this_index}
                         onClick={async () => {
-                          if (!checked || (checked.length === 0)) {
-                            setChecked([this_item.text]);
-                            await getObservations(this_item.text, this_item.oKey);
+                          if (!dataRows.hasOwnProperty('checked') || (dataRows.checked.length === 0)) {
+                            dataRows.checked = [this_item.text];
+                            await getObservations(this_item.text, this_item.oKey, dataRows.checked);
                           }
                           else {
-                            let x = checked.indexOf(this_item.text);
-                            let workChecked = checked;
+                            let x = dataRows.checked.indexOf(this_item.text);
+                            let workChecked = dataRows.checked;
                             if (x === -1) {
                               workChecked.push(this_item.text);
-                              await getObservations(this_item.text, this_item.oKey);
+                              await getObservations(this_item.text, this_item.oKey, workChecked);
                             }
-                            else { workChecked.splice(x, 1); }
-                            setChecked(workChecked);
-                            setForceRedisplay(!forceRedisplay);
+                            else {
+                              workChecked.splice(x, 1);
+                              dataRows.checked = workChecked;
+                              setDataRows(dataRows);
+                              setForceRedisplay(!forceRedisplay);
+                            }
                           }
                         }}
                       />
@@ -512,8 +566,11 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
                       />
                     }
                   </Box>
-                  {checked && checked.includes(this_item.text) && qualifierRows && qualifierRows[this_item.text] &&
-                    qualifierRows[this_item.text].map((qR, qRndx) => (
+                  {(this_item.desc && isChecked(this_item)) &&
+                    <Typography className={classes.descText}>{this_item.desc}</Typography>
+                  }
+                  {showQualifier(this_item) &&
+                    dataRows[this_item.text].map((qR, qRndx) => (
                       <Box
                         key={'qRow' + qRndx}
                         display="flex"
@@ -521,24 +578,27 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
                         flexDirection='column'
                         justifyContent="center"
                       >
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                          alignItems='center' key={'qrRow' + qR.title}>
+                        <Box display='flex' flexDirection='column' justifyContent='center'
+                          alignItems='flex-start' key={'qrRow' + qR.title}>
                           <Typography className={classes.qualText}>{qR.title}</Typography>
-                          {qR.option.map((opt, oX) => (
-                            <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                              alignItems='center' key={'qrOpt' + opt.display}
-                              onClick={() => {
-                                handleQualChecked(this_item.text, qR.title, opt.display);
-                              }}
-                            >
-                              <Checkbox
-                                className={classes.radioButton}
-                                size="small"
-                                checked={chosenQual && chosenQual[this_item.text] && chosenQual[this_item.text][qR.title] && chosenQual[this_item.text][qR.title].includes(opt.display)}
-                              />
-                              <Typography className={classes.radioText}>{opt.display}</Typography>
-                            </Box>
-                          ))}
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                            alignItems='center' flexWrap='wrap' key={'qrOpt' + qR.title}
+                          >
+                            {qR.option.map((opt, oX) => (
+                              <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                alignItems='center' key={'qrOpt2' + oX}
+                                onClick={() => {
+                                  handleQualChecked(this_item.text, qR.title, opt.display);
+                                }}
+                              >
+                                <Checkbox
+                                  className={classes.radioButton}
+                                  size="small"
+                                  checked={isQChecked(this_item, qR, opt.display)} />
+                                <Typography className={classes.radioText}>{opt.display}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
                         </Box>
                       </Box>
                     ))
@@ -587,7 +647,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
                   <Button
                     className={classes.rowButtonDefault}
                     onClick={() => {
-                      setConfirmPrompt(makeConfirm(displayRows, checked, textInput));
+                      setConfirmPrompt(makeConfirm(dataRows.displayRows, dataRows.checked, textInput));
                       setConfirmPending(true);
                     }}
                     startIcon={<CheckIcon size="small" />}
