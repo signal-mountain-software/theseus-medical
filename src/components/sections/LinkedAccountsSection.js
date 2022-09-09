@@ -154,7 +154,21 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
                 >
                   {respArray.map((presp) => (
                     nameObj[presp] &&
-                    <FormControlLabel className={classes.formControlLbl} value={presp} control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>{nameObj[presp]}</Typography>} />
+                    <FormControlLabel
+                      key={`nameNlinkdaccts+${presp}`}
+                      className={classes.formControlLbl}
+                      value={presp}
+                      control={
+                        <Radio disableRipple
+                          className={classes.radioButton}
+                          size='small' />
+                      }
+                      label={
+                        <Typography
+                          className={classes.radioText}>
+                          {nameObj[presp]}
+                        </Typography>}
+                    />
                   ))}
                 </RadioGroup>
               </FormControl>
