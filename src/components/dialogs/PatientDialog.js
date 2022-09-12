@@ -1,4 +1,6 @@
 import React from 'react';
+import Cropper from "react-cropper";
+import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { Lambda } from 'aws-sdk';
 import { createPutFact, updateSession } from '../../graphql/mutations';
@@ -58,10 +60,14 @@ const useStyles = makeStyles(theme => ({
     },
   },
   photoButton: {
-    alignSelf: 'center',
-    size: 'sm',
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     variant: 'outlined',
-    verticalAlign: 'middle',
+    textTransform: 'none',
+    size: 'small',
+    alignSelf: 'center',
+    verticalAlign: 'middle'
   },
   defaultButton: {
     alignSelf: 'end',
@@ -142,6 +148,9 @@ export default ({ patient, picture, open, onClose }) => {
   const [resettingPwd, setResettingPwd] = React.useState(false);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
 
+  const [editPhoto, setEditPhoto] = React.useState('');
+  const [cropper, setCropper] = React.useState();
+
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
@@ -185,7 +194,7 @@ export default ({ patient, picture, open, onClose }) => {
         }
       );
       let asyncGetSession = (
-        async () => {     
+        async () => {
           await getSessionQL();
         }
       );
@@ -325,6 +334,14 @@ export default ({ patient, picture, open, onClose }) => {
       pwdReset: resettingPwd,
       newPassword: inputPWD
     };
+    if (typeof cropper !== "undefined") {
+      // const croppedFile = dataUrlToFile(cropper.getCroppedCanvas().toDataURL('image/jpeg'), (patient.person_id + '_cropped.jpg'));
+      cropper
+        .getCroppedCanvas()
+        .toBlob((async (pBlob) => {
+          await handleSavePhoto(new File([pBlob], (patient.person_id + '_cropped.jpg'), { type: 'image/jpeg' }), '');
+        }), 'image/jpeg');
+    }
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
     let newFactData = {
@@ -345,9 +362,9 @@ export default ({ patient, picture, open, onClose }) => {
       .graphql(graphqlOperation(
         updateSession, {
         input: {
-            session_id: patient.person_id,
-            responsible_for: responsibleArray,
-            patient_id: proxy
+          session_id: patient.person_id,
+          responsible_for: responsibleArray,
+          patient_id: proxy
         }
       }
       ))
@@ -405,6 +422,26 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+  async function handleSavePhoto(pTarget, pTmp) {
+    let extension = pTarget.type.split('/')[1];
+    if (extension === 'jpeg') {extension = 'jpg'}
+    const pFile = {
+      Bucket: 'theseus-medical-storage',
+      Key: 'public/patients/' + patient.person_id + pTmp + '.' + extension,
+      Body: pTarget,
+      ACL: 'public-read-write',
+      ContentType: pTarget.type
+    };
+    let s3Resp = await s3
+      .upload(pFile)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+      });
+    console.log(s3Resp);
+    return ('public/patients/' + patient.person_id + pTmp + '.' + extension);
+  }
+
   const handleChangeSearch = event => {
     setSearchTerm(event.target.value);
     setChanges(true);
@@ -432,7 +469,7 @@ export default ({ patient, picture, open, onClose }) => {
   const handleChangeLinkedAccounts = updatedResponsibleArray => {
     setResponsibleArray(updatedResponsibleArray);
     patientSession.responsible_for = updatedResponsibleArray;
-    setSessionVersion(sessionVersion + 1)
+    setSessionVersion(sessionVersion + 1);
     setChanges(true);
   };
 
@@ -593,40 +630,84 @@ export default ({ patient, picture, open, onClose }) => {
                 src={!patient.person_id.startsWith('*NEW~') ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
               />
               <br />
-              {!patient.person_id.startsWith('*NEW~') ?
-                <Button
-                  className={classes.photoButton}
-                  variant='outlined'
-                  color='primary'
-                  hidden={patient.person_id.startsWith('*NEW~')}
-                  size='small'
-                  startIcon={<CloudUploadIcon />}
-                  onClick={handlePhotoUpload}
-                >
-                  <Typography>Update photo?</Typography>
-                </Button>
-                : null
+              <Box display='flex'
+                className={classes.photoButton}
+                flexDirection='row'
+                justifyContent='center'
+                alignItems='center'>
+                {((editPhoto === '') && (!patient.person_id.startsWith('*NEW~'))) &&
+                  <React.Fragment>
+                  <Button
+                    className={classes.photoButton}
+                    variant='outlined'
+                    color='primary'
+                    hidden={patient.person_id.startsWith('*NEW~')}
+                    size='small'
+                    startIcon={<CloudUploadIcon />}
+                    onClick={async () => {
+                      handlePhotoUpload();
+                    }}
+                  >
+                    <Typography>Update new photo</Typography>
+                  </Button>
+                  <Button
+                    className={classes.photoButton}
+                    variant='outlined'
+                    color='primary'
+                    hidden={patient.person_id.startsWith('*NEW~')}
+                    size='small'
+                    onClick={async () => {
+                      setEditPhoto(`public/patients/${patient.person_id}.jpg`);
+                      setChanges(true);
+                    }}
+                  >
+                    <Typography>Edit this photo</Typography>
+                    </Button>
+                  </React.Fragment>
+                }
+                {(editPhoto !== '') &&
+                  <Button
+                    className={classes.photoButton}
+                    variant='outlined'
+                    color='primary'
+                    size='small'
+                    onClick={() => {
+                      cropper.rotate(90);
+                    }}
+                  >
+                    <Typography>Rotate</Typography>
+                  </Button>
+                }
+              </Box>
+              {(editPhoto !== '') &&
+                <Cropper
+                zoomTo={0.5}
+                style={{ width: "100%", height: "400px" }}
+                  aspectRatio={1 / 1}
+                  src={`https://theseus-medical-storage.s3.amazonaws.com/${editPhoto}`}
+                  viewMode={0}
+                  minCropBoxHeight={150}
+                  minCropBoxWidth={150}
+                  background={false}
+                  responsive={true}
+                  dragMode={'move'}
+                  movable={true}
+                  autoCropArea={1}
+                  checkOrientation={false}
+                  onInitialized={(instance) => {
+                    setCropper(instance);
+                  }}
+                />
               }
               <input
                 type="file"
                 style={{ display: 'none' }}
                 ref={hiddenFileInput}
                 onChange={async (target) => {
-                  const pFile = {
-                    Bucket: 'theseus-medical-storage',
-                    Key: 'public/patients/' + patient.person_id + '.jpg',
-                    Body: target.target.files[0],
-                    ACL: 'public-read-write',
-                    ContentType: target.target.files[0].ContentType
-                  };
-                  enqueueSnackbar(`Your photo is being updated!`, { variant: 'success', persist: false });
-                  s3.upload(pFile, function (err, data) {
-                    if (err) {
-                      enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                    }
-                  });
-                }
-                }
+                  let tempName = await handleSavePhoto(target.target.files[0], 'tmp');
+                  setEditPhoto(tempName);
+                  setChanges(true);
+                }}
               />
             </Box>
           </Paper>
