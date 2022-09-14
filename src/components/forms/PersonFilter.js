@@ -192,7 +192,7 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
             (
               goodEntry(listEntry, x) &&
                 <ListItem
-                  key={'person-list_' + listEntry}
+                  key={'person-list_' + x }
                   onClick={() => {
                     onSelect(listEntry);
                   }}
