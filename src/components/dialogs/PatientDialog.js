@@ -256,13 +256,20 @@ export default ({ patient, picture, open, onClose }) => {
           });
         }
         let targetSession = await getSessionData(patient.person_id);
+        let respArray = [];
+        if (!targetSession.hasOwnProperty('responsible_for') || !targetSession.responsible_for) { }
+        else if (Array.isArray(targetSession.responsible_for)) { respArray.push(...targetSession.responsible_for); }
+        else if (targetSession.responsible_for.startsWith('[')) { respArray = targetSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+        else { respArray.push(targetSession.responsible_for); }
+
         if (!groupMemberList || groupMemberList.length === 0) {
           await getGroupMemberList();
         }
         let workLocalData = {
           ready: true,
-          firstName: localPersonRec.name.first,
-          lastName: localPersonRec.name.last,
+          patient_id: localPersonRec.patient_id,
+          firstName: (localPersonRec.name?.first || ''),
+          lastName: (localPersonRec.name?.last || ''),
           email: (localPersonRec.messaging?.email || ''),
           cell: (localPersonRec.messaging?.sms ? formatPhone(localPersonRec.messaging?.sms) : ''),
           searchTerm: (localPersonRec.search_data || ''),
@@ -270,7 +277,9 @@ export default ({ patient, picture, open, onClose }) => {
           location: (localPersonRec.location || ''),
           inputPWD: (targetSession.last_login || 'password'),
           prefMethod: localPersonRec.preferred_method || 'AVA',
-          directoryOption: (localPersonRec ? (localPersonRec.directory_option || 'normal') : 'normal'),
+          respArray: (respArray || []),
+          directoryOption: (localPersonRec.directory_option || 'normal'),
+          directoryPartner: (localPersonRec.directory_partner || 'na'),
           patientGroups: (localPersonRec.clients[foundAt].groups.map(e => { return (`${localPersonRec.client_id}~${e}`); }))
         };
         if (isNaN(localPersonRec.messaging?.surrogate)) { workLocalData.surrogate = localPersonRec.messaging?.surrogate; }
@@ -431,6 +440,7 @@ export default ({ patient, picture, open, onClose }) => {
       search_data: localData.searchTerm,
       prefMethod: localData.prefMethod || 'AVA',
       directory_option: localData.directoryOption || 'normal',
+      directory_partner: localData.directoryPartner || null,
       time_based_rules: patient.time_based_rules,
       groups: patientGroups,
       location: localData.location ? localData.location.replace(/,/g, '') : null,
@@ -492,6 +502,12 @@ export default ({ patient, picture, open, onClose }) => {
 
   const handleResetPassword2 = event => {
     setPwdConfirmed(true);
+  };
+
+  const handleChangePartner = event => {
+    localData.directoryPartner = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
   };
 
   const handleChangeFirstName = event => {
@@ -597,9 +613,11 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const handleChangeLinkedAccounts = updatedResponsibleArray => {
+    localData.respArray = updatedResponsibleArray;
     setResponsibleArray(updatedResponsibleArray);
     patientSession.responsible_for = updatedResponsibleArray;
     setSessionVersion(sessionVersion + 1);
+    setRefreshTrigger(!refreshTrigger);
     setChanges(true);
   };
 
@@ -714,11 +732,43 @@ export default ({ patient, picture, open, onClose }) => {
                           <FormControlLabel className={classes.formControlLbl} value="normal" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Include my info</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="exclude" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Exclude me</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="alone" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Do not print my info with anyone else's</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="merge" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Print my info with someone else's</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="merge" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Merge with another account for printing</Typography>} />
                         </RadioGroup>
                       </FormControl>
                     }
-
+                    {(localData.directoryOption === 'merge') &&
+                      <React.Fragment>
+                        <Typography className={classes.radioTextWithTopMargin}>{(localData.respArray && (localData.respArray.length === 0)) ? 'To merge for printing, first link one or more Accounts in the "Linked Accounts" section below' : 'Merge with which linked Account?'}</Typography>
+                        <FormControl className={classes.formControl} component="fieldset">
+                          <RadioGroup row
+                            defaultValue={localData.directoryPartner || ((localData.respArray.length === 1) ? localData.respArray[0] : localData.patient_id)}
+                            aria-label="Mergeaccount"
+                            name="directory_partner"
+                            value={localData.directoryPartner}
+                            onChange={handleChangePartner}
+                          >
+                            {localData.respArray &&
+                              localData.respArray.map((presp) => (
+                                <FormControlLabel
+                                  key={`nameNlinkdaccts+${presp}`}
+                                  className={classes.formControlLbl}
+                                  value={presp}
+                                  control={
+                                    <Radio disableRipple
+                                      className={classes.radioButton}
+                                      size='small' />
+                                  }
+                                  label={
+                                    <Typography
+                                      className={classes.radioText}>
+                                      {presp}
+                                    </Typography>}
+                                />
+                              ))}
+                          </RadioGroup>
+                        </FormControl>
+                      </React.Fragment>
+                    }
 
                     <Box mt={3}>
                       <TextField id='searchTerm' value={localData.searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
@@ -771,8 +821,8 @@ export default ({ patient, picture, open, onClose }) => {
                 component="img"
                 minWidth={150}
                 maxWidth={150}
-                alt='No photo available'
-                src={!patient.person_id.startsWith('*NEW~') ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
+                alt='No photo'
+                src={localData.temp_photo ? `https://theseus-medical-storage.s3.amazonaws.com/${localData.temp_photo}` : `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg`}
               />
               <br />
               <Box display='flex'
@@ -803,7 +853,7 @@ export default ({ patient, picture, open, onClose }) => {
                         hidden={patient.person_id.startsWith('*NEW~')}
                         size='small'
                         onClick={async () => {
-                          setEditPhoto(`public/patients/${patient.person_id}.jpg`);
+                          setEditPhoto(localData.temp_photo || `public/patients/${patient.person_id}.jpg`);
                           setChanges(true);
                         }}
                       >
@@ -813,17 +863,31 @@ export default ({ patient, picture, open, onClose }) => {
                   </React.Fragment>
                 }
                 {(editPhoto !== '') &&
-                  <Button
-                    className={classes.photoButton}
-                    variant='outlined'
-                    color='primary'
-                    size='small'
-                    onClick={() => {
-                      cropper.rotate(90);
-                    }}
-                  >
-                    <Typography>Rotate</Typography>
-                  </Button>
+                  <React.Fragment>
+                    <Button
+                      className={classes.photoButton}
+                      variant='outlined'
+                      color='primary'
+                      size='small'
+                      onClick={() => {
+                        cropper.rotate(90);
+                      }}
+                    >
+                      <Typography>Rotate</Typography>
+                    </Button>
+                    <Button
+                      className={classes.photoButton}
+                      variant='outlined'
+                      color='primary'
+                      size='small'
+                      onClick={() => {
+                        setEditPhoto('');
+                        setRefreshTrigger(!refreshTrigger);
+                      }}
+                    >
+                      <Typography>Close</Typography>
+                    </Button>
+                  </React.Fragment>
                 }
               </Box>
               {(editPhoto !== '') &&
@@ -851,8 +915,8 @@ export default ({ patient, picture, open, onClose }) => {
                 style={{ display: 'none' }}
                 ref={hiddenFileInput}
                 onChange={async (target) => {
-                  let tempName = await handleSavePhoto(target.target.files[0], 'tmp');
-                  setEditPhoto(tempName);
+                  localData.temp_photo = await handleSavePhoto(target.target.files[0], 'tmp');
+                  setEditPhoto(localData.temp_photo);
                   setChanges(true);
                 }}
               />
