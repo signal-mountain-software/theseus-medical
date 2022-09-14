@@ -50,8 +50,8 @@ const useStyles = makeStyles(theme => ({
 export default ({ groupMemberList, session, updateSession, updateProxy, version }) => {
   const classes = useStyles();
 
-  const [person_filter, setPersonFilter] = React.useState('');
-  const [person_filter_lower, setPersonFilterLower] = React.useState('');
+  const [person_filter, setPersonFilter] = React.useState(' ');
+  const [person_filter_lower, setPersonFilterLower] = React.useState(' ');
   const [enoughFilterDigits, setenoughFilterDigits] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState();
 
