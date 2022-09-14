@@ -347,6 +347,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:group_roster';
     params.Payload = JSON.stringify({
       "body": {
+        "client_id": pClient,
         "person_id": pPatient,
         "values": pGroupName + ':group=' + pClient + '~' + pGroup,
         "showCognito": "true"
