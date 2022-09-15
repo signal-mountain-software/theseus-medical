@@ -67,9 +67,10 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
   };
 
   const handleChangePersonFilter = event => {
+    filterCount = 0;
     if (event.target.value.length === 0) {
-      setPersonFilter(null);
-      setPersonFilterLower(null);
+      setPersonFilter(' ');
+      setPersonFilterLower(' ');
     }
     else {
       setPersonFilter(event.target.value);
@@ -79,7 +80,6 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
   };
 
   function filteredPerson(pID, pName = { last: '*$*_null', first: '*$*_null' }) {
-    filterCount++;
     let inTheList = (
       (respArray.includes(pID) ||
         ((enoughFilterDigits) &&
@@ -89,8 +89,9 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
       && (session && (pID !== session.session_id))
     );
     if (inTheList || (session && session.patient_id === pID)) {
-      nameObj[pID] = `${pName.first}${pName.last.substring(0, 1)}${!inTheList ? ' (from a Group)' : ''}`;
+      nameObj[pID] = `${pName.first.charAt(0).toUpperCase()}${pName.last.charAt(0).toUpperCase()}${pName.last.substring(1)}`;
     }
+    if (inTheList) { filterCount++; }
     return inTheList;
   }
 
@@ -140,8 +141,17 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
               </ListItem>
             )
             )}
+            {(filterCount === 0) && (respArray.length === 0) &&
+              <ListItem
+                key={'key-nodata'}
+                role={undefined}
+                dense
+              >
+                <ListItemText id={'id-nodata'} primary={'Use the Search line to find people to link to'} />
+              </ListItem>
+            }
           </List>
-          {Object.keys(nameObj).length > 0 &&
+          {respArray.length > 0 &&
             <React.Fragment>
               <Typography className={classes.radioText}>Active proxy is...</Typography>
               <FormControl className={classes.formControl} component="fieldset">

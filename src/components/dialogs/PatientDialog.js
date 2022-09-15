@@ -140,7 +140,7 @@ export default ({ patient, picture, open, onClose }) => {
   // const [lastName, setLastName] = React.useState();
   // const [email, setEmail] = React.useState();
   // const [cell, setCell] = React.useState();
-  const [groupMemberList, setGroupMemberList] = React.useState([]);
+  // const [groupMemberList, setGroupMemberList] = React.useState([]);
   // const [surrogate, setSurrogate] = React.useState();
   // const [searchTerm, setSearchTerm] = React.useState();
   // const [voice, setVoice] = React.useState();
@@ -262,9 +262,18 @@ export default ({ patient, picture, open, onClose }) => {
         else if (targetSession.responsible_for.startsWith('[')) { respArray = targetSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
         else { respArray.push(targetSession.responsible_for); }
 
-        if (!groupMemberList || groupMemberList.length === 0) {
-          await getGroupMemberList();
+        let workingGroupMemberList = [];
+        let nameObj = {};
+        if (!localData.hasOwnProperty('groupMemberList') || localData.groupMemberList.length === 0) {
+          workingGroupMemberList = await getGroupMemberList();
+          workingGroupMemberList.forEach(m => {
+            nameObj[m.person_id] = `${m.name?.first.charAt(0).toUpperCase()}${m.name?.last.charAt(0).toUpperCase()}${m.name?.last.substring(1)}`;
+          });
         }
+
+        let finalRespArray = [];
+        respArray.forEach(r => { if (nameObj.hasOwnProperty(r)) { finalRespArray.push(r); }  });
+
         let workLocalData = {
           ready: true,
           patient_id: localPersonRec.patient_id,
@@ -277,7 +286,9 @@ export default ({ patient, picture, open, onClose }) => {
           location: (localPersonRec.location || ''),
           inputPWD: (targetSession.last_login || 'password'),
           prefMethod: localPersonRec.preferred_method || 'AVA',
-          respArray: (respArray || []),
+          respArray: (finalRespArray || []),
+          nameObj: (nameObj || {}),
+          groupMemberList: (workingGroupMemberList || []),
           directoryOption: (localPersonRec.directory_option || 'normal'),
           directoryPartner: (localPersonRec.directory_partner || 'na'),
           patientGroups: (localPersonRec.clients[foundAt].groups.map(e => { return (`${localPersonRec.client_id}~${e}`); }))
@@ -371,7 +382,7 @@ export default ({ patient, picture, open, onClose }) => {
 
   const getGroupMemberList = async () => {
     let invokeFailed = false;
-    setGroupMemberList([]);
+    // setGroupMemberList([]);
     params.Payload = JSON.stringify({
       action: "get_group_members",
       clientId: patient.client_id,
@@ -386,10 +397,10 @@ export default ({ patient, picture, open, onClose }) => {
         console.log(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`);
       });
     if (!invokeFailed) {
-      let groupMemberList = JSON.parse(fResp.Payload);
-      if (groupMemberList.status === 200) {
-        setGroupMemberList(groupMemberList.body);
-        return groupMemberList.body;
+      let gML = JSON.parse(fResp.Payload);
+      if (gML.status === 200) {
+        // setGroupMemberList(gML.body);
+        return gML.body;
       }
     };
     return [];
@@ -761,7 +772,7 @@ export default ({ patient, picture, open, onClose }) => {
                                   label={
                                     <Typography
                                       className={classes.radioText}>
-                                      {presp}
+                                      {localData.nameObj[presp]}
                                     </Typography>}
                                 />
                               ))}
@@ -926,7 +937,7 @@ export default ({ patient, picture, open, onClose }) => {
         <ClientsSection person={patient} updateGroups={handleChangeGroups} />
         <RelationshipSection person={patient} />
         <LinkedAccountsSection
-          groupMemberList={groupMemberList}
+          groupMemberList={localData.groupMemberList}
           session={patientSession}
           updateSession={handleChangeLinkedAccounts}
           updateProxy={handleChangeProxy}
