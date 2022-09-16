@@ -11,8 +11,6 @@ import List from '@material-ui/core/List';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import CloseIcon from '@material-ui/icons/HighlightOff';
-import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
-import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
 
@@ -627,7 +625,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
   // ******************
 
-  let myIndex = workingMemberList.findIndex(row => row.person_id === pPatient);
+  // let myIndex = workingMemberList.findIndex(row => row.person_id === pPatient);
 
   return (
     <Dialog
