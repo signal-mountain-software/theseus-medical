@@ -73,8 +73,8 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
       setPersonFilterLower(' ');
     }
     else {
-      setPersonFilter(event.target.value);
-      setPersonFilterLower(event.target.value.toLowerCase());
+      setPersonFilter(event.target.value.trim());
+      setPersonFilterLower(event.target.value.trim().toLowerCase());
       setenoughFilterDigits(event.target.value.length > 1);
     }
   };

@@ -624,7 +624,9 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const handleChangeLinkedAccounts = updatedResponsibleArray => {
-    localData.respArray = updatedResponsibleArray;
+    let finalRespArray = [];
+    updatedResponsibleArray.forEach(r => { if (localData.nameObj.hasOwnProperty(r)) { finalRespArray.push(r); } });
+    localData.respArray = finalRespArray;
     setResponsibleArray(updatedResponsibleArray);
     patientSession.responsible_for = updatedResponsibleArray;
     setSessionVersion(sessionVersion + 1);
