@@ -11,6 +11,9 @@ import Box from '@material-ui/core/Box';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
 
+import Card from '@material-ui/core/Card';
+import CardMedia from '@material-ui/core/CardMedia';
+
 import useSession from '../hooks/useSession';
 import { getPerson, getRoles, getSession, getCustomizations } from '../graphql/queries';
 import PersonFilter from '../components/forms/PersonFilter';
@@ -28,6 +31,10 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     textTransform: 'none',
     size: 'small',
+  },
+  logoSmall: {
+    maxWidth: '100px',
+    marginBottom: '15px'
   },
 }));
 
@@ -82,7 +89,7 @@ export default Component => props => {
       if (groupMemberList.status === 200) {
         setCallPending(false);
         return (groupMemberList.body.map(p => {
-          return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
+          return `${p.name.last.trim()}, ${p.name.first.trim()}:${p.person_id}:${p.search_data}`;
         }));
       }
     };
@@ -498,47 +505,56 @@ export default Component => props => {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    !user || user.username !== process.env.REACT_APP_AVA_PU ?
-      <Component {...props} />
-      :
-      (!peopleList || peopleList.length === 0
-        ?
-        <Box display='flex' marginBottom={5} marginTop={5} flexDirection='column' justifyContent='center' alignItems='center'>
-          <Typography sx={{
-            marginTop: 4,
-            marginBottom: 2,
-            marginLeft: 2,
-            marginRight: 2,
-            paddingTop: 3,
-          }} variant='h5' >
-            {'Building a List to Choose From'}
-          </Typography>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <CircularProgress />
-          </div>
-        </Box>
+    user &&
+    (
+      state.patient ?
+        <Component {...props
+        } />
         :
-        <PersonFilter
-          prompt={'Find and tap your name'}
-          peopleList={peopleList}
-          onCancel={async () => {
-            let jumpTo = window.location.href;
-            window.location.replace(jumpTo);
-          }}
-          onSelect={async (selectedPerson) => {
-            user.username = selectedPerson.split(':')[1];
-            dispatch({ type: SET_USER, payload: user });
-            await onValidUser(user, true);      //sixth
-          }}
-          onSignOut={async () => {
-            removeCookie("AVAuser");
-            Auth.signOut().then(() => {
-              let jumpTo = window.location.origin;
+        (!peopleList || peopleList.length === 0
+          ?
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <Box mt={3} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+                <Card
+                  className={classes.logoSmall}
+                  raised={false}
+                  variant='elevation' elevation={0}
+                >
+                  <CardMedia
+                    component="img"
+                    image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                    alt='AVA'
+                  />
+                </Card>
+              <Typography align='center'>
+                {`Preparing AVA version 22.9.18${window.location.href.split('//')[1].slice(0, 1)}`}
+              </Typography>
+              <CircularProgress />
+            </Box>
+          </div>
+          :
+          <PersonFilter
+            prompt={'Find and tap your name'}
+            peopleList={peopleList}
+            onCancel={async () => {
+              let jumpTo = window.location.href;
               window.location.replace(jumpTo);
-            });
-          }}
-        >
-        </PersonFilter>
-      )
+            }}
+            onSelect={async (selectedPerson) => {
+              user.username = selectedPerson.split(':')[1];
+              dispatch({ type: SET_USER, payload: user });
+              await onValidUser(user, true);      //sixth
+            }}
+            onSignOut={async () => {
+              removeCookie("AVAuser");
+              Auth.signOut().then(() => {
+                let jumpTo = window.location.origin;
+                window.location.replace(jumpTo);
+              });
+            }}
+          >
+          </PersonFilter>
+        )
+    )
   );
 };
