@@ -113,7 +113,8 @@ export default ({ open, roles, onClose }) => {
                 }}
                 onSelect={(selectedPerson) => {
                   handleConfirmation(selectedPerson);
-                }}
+                  }}
+                  showID={true}
                 />
                 :
                 <PatientListItem
