@@ -226,7 +226,7 @@ export default Component => props => {
     let getRolesResult;
     let usingDefaultSession = false;
 
-    if (user.username !== 'paccess') {
+    if (user.username !== process.env.REACT_APP_AVA_ID) {
       // get the session for the current user 
       // SessionsV2 delivers information about the current user environment.  Specifically...
       // session_id (primary key) is the authenticated user_id
@@ -498,7 +498,7 @@ export default Component => props => {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    !user || user.username !== 'paccess' ?
+    !user || user.username !== process.env.REACT_APP_AVA_PU ?
       <Component {...props} />
       :
       (!peopleList || peopleList.length === 0
