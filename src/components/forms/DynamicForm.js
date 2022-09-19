@@ -17,6 +17,7 @@ import ObservationForm from '../forms/ObservationForm';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
+import LoadWorkOrderSpreadsheet from '../forms/LoadWorkOrderSpreadsheet';
 import ShowGroup from '../dialogs/ShowGroup';
 
 import TextField from '@material-ui/core/TextField';
@@ -1224,6 +1225,14 @@ export default ({
         <ShowMenu
           pClient={session.client_id}
           showMenu={true}
+          onClose={onSave}
+        />
+      );
+    case 'load_workorder_sheet':
+      return (
+        <LoadWorkOrderSpreadsheet
+          pClient={session.client_id}
+          showSheet={true}
           onClose={onSave}
         />
       );
