@@ -324,6 +324,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
         "client_id": pClient,
         "requestor": pPatient,
         "report_title": pGroupName,
+        "paperSize": [396, 612],
         "showImages": true,
         "group_id": pClient + '~' + pGroup
       }
