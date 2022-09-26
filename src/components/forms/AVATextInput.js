@@ -1,30 +1,43 @@
 import React from 'react';
 
-import Input from '@material-ui/core/Input';
-
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
+import DialogContent from '@material-ui/core/DialogContent';
+import DialogContentText from '@material-ui/core/DialogContentText';
 
-import Paper from '@material-ui/core/Paper';
+import LoadIcon from '@material-ui/icons/GetApp';
+import CloseIcon from '@material-ui/icons/HighlightOff';
+
+import TextField from '@material-ui/core/TextField';
 import Box from '@material-ui/core/Box';
-
 import Button from '@material-ui/core/Button';
-import Slide from '@material-ui/core/Slide';
-import makeStyles from '@material-ui/core/styles/makeStyles';
-import { Typography } from '@material-ui/core';
 
+import makeStyles from '@material-ui/core/styles/makeStyles';
 const useStyles = makeStyles(theme => ({
-  freeInput: {
-    marginLeft: 20,
-    marginTop: 20,
-    marginRight: 20,
-    marginBottom: 20,
-    paddingLeft: 5,
-    paddingRight: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: theme.typography.fontSize,
-    minHeight: theme.typography.fontSize * 2.8,
+  containerBox: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0
+  },
+  rowButtonRed: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+  },
+  rowButtonGreen: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+  },
+  dialogBox: {
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    minWidth: '100%',
   },
   title: {
     marginTop: theme.spacing(3),
@@ -32,7 +45,7 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(2),
     marginBottom: 0,
     fontSize: '1.3rem',
-    fotWeight: 'bold'
+    fontWeight: 'bold'
   },
   buttonArea: {
     justifyContent: 'center',
@@ -55,70 +68,116 @@ const useStyles = makeStyles(theme => ({
     size: 'small',
     backgroundColor: theme.palette.reject[theme.palette.type],
   },
+  idText: {
+    fontSize: theme.typography.fontSize * 0.8,
+    minWidth: '100%',
+    marginTop: 10,
+    marginBottom: 10,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 0,
+  },
 }));
 
-const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
-
-export default ({ promptText, buttonText, onCancel, onSave }) => {
+export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCancel = true }) => {
 
   const classes = useStyles();
 
-  const [textInput, setTextInput] = React.useState();
+  const [textInput, setTextInput] = React.useState([]);
+  const [forceRedisplay, setForceRedisplay] = React.useState(true);
 
-  const handleChangeTextInput = event => {
-    setTextInput(event.target.value);
+  const handleChangeTextInput = (event, ndx) => {
+    textInput[ndx] = event.target.value;
+    setTextInput(textInput);
+    setForceRedisplay(!forceRedisplay)
   };
+
+  const handleSave = () => {
+    if (Array.isArray(promptText)) { onSave(textInput); }
+    else { onSave(textInput[0]); }
+  };
+
+  const onCheckEnter = (event) => {
+    if ((event.key === 'Enter') && !Array.isArray(promptText)) { handleSave(); }
+  };
+
+  let promptArray = [];
+  if (Array.isArray(promptText)) { promptArray = promptText; }
+  else {
+    promptArray = [promptText];
+    if (!titleText) { titleText = promptText; }
+  }
 
   // **************************
 
   return (
-    <Dialog
-      open={true}
-      p={2}
-      height={250}
-      variant={'elevation'} elevation={2}
-      TransitionComponent={Transition}
-    >
-      <Typography
-        className={classes.title}
-        id='scroll-dialog-title'
-      >
-        {promptText}
-      </Typography>
-      <Paper component={Box} elevation={0} width='90%' overflow='auto' square>
-        <Box pl={5} pr={5} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
-          <Input
-            id={promptText}
-            value={textInput}
-            multiline
-            fullWidth
-            onChange={handleChangeTextInput}
-            className={classes.freeInput}
-            variant={'standard'}
-            autoComplete='off'
-          />
-        </Box>
-      </Paper>
-      <DialogActions className={classes.buttonArea}>
-        <Button
-          className={classes.rowButtonReject}
-          size='small'
-          variant='contained'
-          onClick={() => {
-            onCancel();
-          }}>
-          {'Back'}
-        </Button>
-        <Button
-          className={classes.rowButtonConfirm}
-          size='small'
-          variant='contained'
-          onClick={() => {
-            onSave(textInput);
-          }}>
-          {buttonText}
-        </Button>
-      </DialogActions>
+    <Dialog open={forceRedisplay || true} fullWidth className={classes.containerBox}>
+      <Box display='flex'
+        grow={1}
+        mb={0}
+        flexDirection='column'
+        justifyContent='center'
+        alignItems='flex-start'
+        >
+        {titleText &&
+          <DialogContentText className={classes.title} id='scroll-dialog-title'>
+            {titleText}
+          </DialogContentText>
+        }
+        <DialogContent>
+          <Box
+            display='flex'
+            grow={1}
+            mb={0}
+            width={350}
+            flexDirection='column'
+            justifyContent='center'
+            alignItems='flex-start'
+          >
+            {promptArray.map((prompt, ndx) => (
+              <TextField
+                classes={{ root: classes.idText }}
+                id={`prompt-${ndx}`}
+                key={`prompt-${ndx}`}
+                fullWidth
+                label={(prompt === titleText) ? '' : prompt}
+                value={textInput[ndx] || ''}
+                onChange={(event) => {
+                  handleChangeTextInput(event, ndx);
+                }}
+                onKeyPress={(event) => {
+                  onCheckEnter(event);
+                }}
+                autoComplete='off'
+              />
+            ))}
+          </Box>
+        </DialogContent>
+      </Box>
+        <DialogActions style={{ justifyContent: 'center' }}>
+          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+            {allowCancel &&
+              <Button
+                className={classes.rowButtonRed}
+                size='small'
+                onClick={() => {
+                  onCancel();
+                }}
+                startIcon={<CloseIcon size="small" />}
+              >
+                {'Back'}
+              </Button>
+            }
+            <Button
+              className={classes.rowButtonGreen}
+              size='small'
+              onClick={handleSave}
+              startIcon={<LoadIcon size="small" />}
+            >
+              {buttonText}
+            </Button>
+          </Box>
+        </DialogActions>
     </Dialog>
   );
 };
