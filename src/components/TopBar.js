@@ -46,7 +46,7 @@ const ITEM_HEIGHT = 48;
 
 export default () => {
   const [showIOSDialog, setShowIOSDialog] = React.useState(false);
-  const [hideSwitchAccountButton, setHideSwitchAccountButton] = React.useState(true);
+  let hideSwitchAccountButton = true;
   const { enqueueSnackbar } = useSnackbar();
   const { dispatch } = useSession();
   const [open, setOpen] = React.useState(false);
@@ -58,7 +58,10 @@ export default () => {
   const [platform, showIOS] = useIosCheck();
   const { state } = useSession();
   const { patient, roles, session } = state;
-  if (session) { session.platform = platform; }
+  if (session) {
+    session.platform = platform;
+    hideSwitchAccountButton = (!session.hasOwnProperty('responsible_for'));
+  }
   state.platform = platform;
 
   const [prompt, setPrompt] = useRecoilState(promptState);
@@ -116,7 +119,7 @@ export default () => {
   };
 
   const onSignOut = () => {
-    accessLog(session.user_id, `*na*`, `Manual sign-out`);
+    accessLog(session?.user_id, ``, `Manual sign-out`);
     removeCookie("AVAuser");
     setAnchorEl(null);
     Auth.signOut().then(() => {
@@ -201,12 +204,6 @@ export default () => {
     }
   };
 
-  React.useEffect(() => {
-    if (roles) {
-      setHideSwitchAccountButton(!roles.includes('responsible_for'));
-    }
-  }, [roles]);
-
   return (
     <Box flexGrow={1}>
       <AppBar color='inherit'>
@@ -268,7 +265,7 @@ export default () => {
                 <ListItemIcon>
                   <HomeIcon />
                 </ListItemIcon>
-                <ListItemText primary={`Use ${session.user_display_name} (${session.user_id})`} />
+                <ListItemText primary={`Switch to My Profile (${session.user_id})`} />
               </MenuItem>
             }
             <MenuItem onClick={onSignOut}>
