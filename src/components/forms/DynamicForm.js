@@ -310,7 +310,12 @@ export default ({
 
   var groupsManaged = [];
   if (session.groups_managed) {
-    groupsManaged = session.groups_managed.replace(/\[|\]/g, '').split(/\s?,\s?/);
+    if (Array.isArray(session.groups_managed)) {
+      groupsManaged = session.groups_managed;
+    }
+    else {
+      groupsManaged = session.groups_managed.replace(/\[|\]/g, '').split(/\s?,\s?/);
+    }
   }
 
   const classes = useStyles();
