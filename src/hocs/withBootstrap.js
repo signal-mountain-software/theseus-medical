@@ -457,13 +457,25 @@ export default Component => props => {
   async function getSession(pSessionID) {
     let sessionRec = await dbClient
       .get({
-        Key: { session_id: pSessionID },
+        Key: { session_id: pSessionID.toLowerCase() },
         TableName: "SessionsV2"
       })
       .promise()
       .catch(error => {
         console.log({ 'Bad get on Session - caught error is': error });
       });
+    if (!recordExists(sessionRec)) {
+      sessionRec = await dbClient
+        .get({
+          Key: { session_id: pSessionID },
+          TableName: "SessionsV2"
+        })
+        .promise()
+        .catch(error => {
+          console.log({ 'Bad get on Session - caught error is': error });
+        });
+      return [false, null];
+    }
     if (!recordExists(sessionRec)) {
       return [false, null];
     }
