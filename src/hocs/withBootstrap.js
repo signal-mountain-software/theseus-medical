@@ -45,7 +45,7 @@ export default Component => props => {
   // const AVASessionData = sessionStorage.getItem('AVASessionData');
   console.log(!!patient, !!session, !!profile);
 
-  const [cookies, setCookie, ] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
+  const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
 
   const [cognitoConfirmed, setCognitoConfirmed] = React.useState();
   const [confirmedPass, setConfirmedPass] = React.useState();
@@ -185,7 +185,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.9.18${window.location.href.split('//')[1].slice(0, 1)}`}
+              {`AVA version 22.9.28${window.location.href.split('//')[1].slice(0, 1)}`}
             </Typography>
             <CircularProgress />
           </Box>
@@ -541,7 +541,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage) {
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `v22.9.18`,
+        'version': `v22.9.28`,
         'environment': window.location.href.split('//')[1].charAt(0),
         'time': new Date().toString(),
         'signin_status': pMessage,
