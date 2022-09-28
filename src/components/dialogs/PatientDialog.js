@@ -507,9 +507,14 @@ export default ({ patient, picture, open, onClose }) => {
       attributeValues[':pid'] = proxy;
       updateExpression += 'patient_id = :pid, ';
     }
-    if (localData.last_login) {
+    if (localData.last_login && !resettingPwd) {
       attributeValues[':ll'] = (localData.storePassword ? localData.last_login : '<not retained>');
       updateExpression += 'last_login = :ll, ';
+    }
+    if (resettingPwd) {
+      attributeValues[':ll'] = (localData.storePassword ? localData.inputPWD : '<not retained>');
+      attributeValues[':pcd'] = new Date().toLocaleString();
+      updateExpression += 'last_login = :ll, password_change_date = :pcd';
     }
     if (localData.requirePassword) {
       attributeValues[':rp'] = localData.requirePassword;
