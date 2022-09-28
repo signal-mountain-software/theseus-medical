@@ -79,6 +79,12 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
     }
   };
 
+  function showName(pRec) {
+    let returnName = pRec.name.last ? (pRec.name.first + ' ' + pRec.name.last) : pRec.display_name;
+    if (pRec.location) { returnName += ` (${pRec.location.split('~')[0].trim()})`; }
+    return returnName;
+  }
+
   function filteredPerson(pID, pName = { last: '*$*_null', first: '*$*_null' }) {
     let inTheList = (
       (respArray.includes(pID) ||
@@ -137,7 +143,7 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
                     inputProps={{ 'aria-labelledby': this_item.person_id }}
                   />
                 </ListItemIcon>
-                <ListItemText id={'id-respName' + ndx} primary={this_item.name.last ? (this_item.name.first + ' ' + this_item.name.last) : this_item.display_name} />
+                  <ListItemText id={'id-respName' + ndx} primary={showName(this_item)} />
               </ListItem>
             )
             )}
