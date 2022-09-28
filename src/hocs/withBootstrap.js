@@ -695,6 +695,8 @@ export default Component => props => {
     if ((cognitoConfirmed || recentlyConfirmed) && currentPatient && currentSession && currentProfile) {
       closeSnackbar();
       enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
+      let urlData = getParamsFromURL();
+      currentSession.url_parameters = urlData;
       dispatch({ type: SET_SESSION, payload: currentSession });
       dispatch({ type: SET_PROFILE, payload: currentProfile });
       dispatch({ type: SET_USER, payload: currentProfile });
