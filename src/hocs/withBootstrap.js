@@ -40,15 +40,13 @@ export default Component => props => {
   // Constants and React state variables
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
-  const { state, dispatch } = useSession();
-  const { patient, session, profile } = state;
+  const { dispatch } = useSession();
+  // const { patient, session, profile } = state;
   // const AVASessionData = sessionStorage.getItem('AVASessionData');
-  console.log(!!patient, !!session, !!profile);
 
   const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
 
   const [cognitoConfirmed, setCognitoConfirmed] = React.useState();
-  const [confirmedPass, setConfirmedPass] = React.useState();
   const [AVAReady, setAVAReady] = React.useState(false);
   let localAVAReady = false;
   const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
@@ -203,18 +201,27 @@ export default Component => props => {
               enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
               let [goodSession, foundSession] = await getSession(enteredUserID);
               if (goodSession) {
-                accessLog(enteredUserID, '', '', 'Good UserID entered.');
-                let allGood = await prepareAVAEnv(
-                  false,
-                  null,
-                  foundSession.user_id,
-                  foundSession,
-                  foundSession.client_id,
-                  null,
-                  null);
-                if (!allGood) {
-                  setAVAFollowUpData({ 'NeedUser': true });
-                  enqueueSnackbar(`AVA couldn't use that UserID.  Please try again.`, { variant: 'info', persist: true });
+                if (foundSession.requirePassword) {
+                  let [, foundUser] = await getPerson(foundSession.user_id);
+                  foundUser.sessionRec = foundSession;
+                  accessLog(enteredUserID, '', '', 'Good UserID entered.  Password is required for this account.');
+                  enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
+                  setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': enteredUserID, 'possibleUserRecs': [foundUser] });
+                }
+                else {
+                  accessLog(enteredUserID, '', '', 'Good UserID entered.');
+                  let allGood = await prepareAVAEnv(
+                    false,
+                    null,
+                    foundSession.user_id,
+                    foundSession,
+                    foundSession.client_id,
+                    null,
+                    null);
+                  if (!allGood) {
+                    setAVAFollowUpData({ 'NeedUser': true });
+                    enqueueSnackbar(`AVA couldn't use that UserID.  Please try again.`, { variant: 'info', persist: true });
+                  }
                 }
               }
               else {
@@ -224,18 +231,25 @@ export default Component => props => {
                 let [goodUser, possibleUserRecs] = await validateUserAccount(requestObj);
                 if (goodUser) {
                   if (possibleUserRecs.length === 1) {
-                    accessLog(possibleUserRecs[0].person_id, '', '', `Good UserID found from entered name: ${enteredUserID}.`);
-                    let allGood = await prepareAVAEnv(
-                      false,
-                      null,
-                      possibleUserRecs[0].person_id,
-                      possibleUserRecs[0].sessionRec,
-                      possibleUserRecs[0].client_id,
-                      (possibleUserRecs[0].sessionRec.patient_id === possibleUserRecs[0].person_id) ? possibleUserRecs[0] : null,
-                      possibleUserRecs[0]);
-                    if (!allGood) {
-                      setAVAFollowUpData({ 'NeedUser': true });
-                      enqueueSnackbar(`AVA couldn't use the UserID it found.  Please try again.`, { variant: 'info', persist: true });
+                    if (possibleUserRecs[0].sessionRec.requirePassword) {
+                      accessLog(enteredUserID, '', '', 'User found from name.  Password is required for this account.');
+                      enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
+                      setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': possibleUserRecs[0].person_id, 'possibleUserRecs': possibleUserRecs });
+                    }
+                    else {
+                      accessLog(possibleUserRecs[0].person_id, '', '', `Good UserID found from entered name: ${enteredUserID}.`);
+                      let allGood = await prepareAVAEnv(
+                        false,
+                        null,
+                        possibleUserRecs[0].person_id,
+                        possibleUserRecs[0].sessionRec,
+                        possibleUserRecs[0].client_id,
+                        (possibleUserRecs[0].sessionRec.patient_id === possibleUserRecs[0].person_id) ? possibleUserRecs[0] : null,
+                        possibleUserRecs[0]);
+                      if (!allGood) {
+                        setAVAFollowUpData({ 'NeedUser': true });
+                        enqueueSnackbar(`AVA couldn't use the UserID it found.  Please try again.`, { variant: 'info', persist: true });
+                      }
                     }
                   }
                   else {
@@ -266,8 +280,10 @@ export default Component => props => {
               closeSnackbar();
               enqueueSnackbar(`AVA is verifying your information`, { variant: 'info', persist: true });
               let foundUserAt = -1;
+              let confirmedPass;
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
-                let [goodPwd, ,] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
+                let goodPwd = false;
+                [goodPwd, ,confirmedPass] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
                 if (goodPwd) {
                   foundUserAt = p;
                   break;
@@ -288,7 +304,7 @@ export default Component => props => {
                   enqueueSnackbar(`AVA couldn't use the UserID that the location matched.  Please try again.`, { variant: 'info', persist: true });
                 }
               }
-              else {
+              else {      
                 enqueueSnackbar(`Still looking...`, { variant: 'info', persist: true });
                 let requestObj = { 'nameTest': AVAFollowUpData.enteredUserID, 'numbersTest': enteredPass };
                 let cookieValues = getCookie();
@@ -296,18 +312,24 @@ export default Component => props => {
                 let [goodUser, possibleUserRecs] = await validateUserAccount(requestObj);
                 closeSnackbar();
                 if (goodUser && (possibleUserRecs.length === 1)) {
-                  accessLog(possibleUserRecs[0].person_id, '', '', `Good UserID found from name/location: ${AVAFollowUpData.enteredUserID}/${enteredPass}`);
-                  let allGood = await prepareAVAEnv(
-                    false,
-                    null,
-                    possibleUserRecs[0].person_id,
-                    possibleUserRecs[0].sessionRec,
-                    possibleUserRecs[0].client_id,
-                    (possibleUserRecs[0].sessionRec.patient_id === possibleUserRecs[0].person_id) ? possibleUserRecs[0] : null,
-                    possibleUserRecs[0]);
-                  if (!allGood) {
-                    setAVAFollowUpData({ 'NeedUser': true });
-                    enqueueSnackbar(`AVA matched that up but couldn't use the info to log you in.  Please try again.`, { variant: 'info', persist: true });
+                  if (possibleUserRecs[0].sessionRec.requirePassword) {
+                    enqueueSnackbar(`Using that information, AVA located account "${possibleUserRecs[0].person_id}".  However, that account requires a password and "${enteredPass}" isn't the correct password.  Please try again.`, { variant: 'info', persist: true });
+                  }
+                  else {
+                    accessLog(possibleUserRecs[0].person_id, '', '', `Good UserID found from name/location: ${AVAFollowUpData.enteredUserID}/${enteredPass}`);
+                    let allGood = await prepareAVAEnv(
+                      false,
+                      null,
+                      possibleUserRecs[0].person_id,
+                      possibleUserRecs[0].sessionRec,
+                      possibleUserRecs[0].client_id,
+                      (possibleUserRecs[0].sessionRec.patient_id === possibleUserRecs[0].person_id) ? possibleUserRecs[0] : null,
+                      possibleUserRecs[0]
+                    );
+                    if (!allGood) {
+                      setAVAFollowUpData({ 'NeedUser': true });
+                      enqueueSnackbar(`AVA matched that up but couldn't use the info to log you in.  Please try again.`, { variant: 'info', persist: true });
+                    }
                   }
                 }
                 else if (goodUser && (possibleUserRecs.length > 1)) {
@@ -347,11 +369,9 @@ export default Component => props => {
   };
 
   async function cognitoLogin(pUser, pPass, pWho = null) {
-    setConfirmedPass(null);
     try {
       await Auth.signIn({ username: pUser, password: pPass.trim(), validationData: { avaAccount: pWho || pUser } });
       setCognitoConfirmed(true);
-      setConfirmedPass(pPass);
       if (pUser !== process.env.REACT_APP_AVA_PU) {
         accessLog(pUser, pPass, pPass, 'Successful Log-in');
       }
@@ -378,7 +398,6 @@ export default Component => props => {
       try {
         await Auth.signIn({ username: pUser, password: newP, validationData: { avaAccount: pUser } });
         setCognitoConfirmed(true);
-        setConfirmedPass(newP);
         accessLog(pUser, pPass, newP, 'Successful Log-in with case corrected password');
         return [true, pUser, newP];
       }
