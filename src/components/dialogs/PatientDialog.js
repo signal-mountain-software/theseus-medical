@@ -3,7 +3,7 @@ import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { Lambda } from 'aws-sdk';
-import { createPutFact, updateSession } from '../../graphql/mutations';
+import { createPutFact } from '../../graphql/mutations';
 import { getSession, getPerson } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
 
@@ -11,13 +11,14 @@ import { useSnackbar } from 'notistack';
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
+import Switch from '@material-ui/core/Switch';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
 import IconButton from '@material-ui/core/IconButton';
 import Paper from '@material-ui/core/Paper';
 import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
-import Tooltip from '@material-ui/core/Tooltip';
+// import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -38,11 +39,23 @@ import MessageRouting from '../sections/MessageRouting';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
+const AWS = require('aws-sdk');
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 const useStyles = makeStyles(theme => ({
   title: {
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     flexGrow: 1
+  },
+  boxWithRoom: {
+    marginTop: 10,
+    alignContent: 'center',
   },
   formControl: {
     margin: 0,
@@ -82,17 +95,14 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
   resetButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
+    // backgroundColor: theme.palette.confirm[theme.palette.type],
     marginRight: 10,
   },
   infoButton: {
     variant: 'outlined',
-    backgroundColor: theme.palette.info[theme.palette.type],
+    // backgroundColor: theme.palette.info[theme.palette.type],
     marginRight: 10,
     paddingRight: 10,
-    marginLeft: 10,
-    paddingLeft: 10,
   },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -100,8 +110,21 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
+  radioTextBold: {
+    fontSize: theme.typography.fontSize * 0.8,
+    fontWeight: 'bold',
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
   radioTextWithTopMargin: {
     fontSize: theme.typography.fontSize * 0.8,
+    marginTop: theme.spacing(1),
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
+  lineTextWithTopMargin: {
     marginTop: theme.spacing(1),
     marginLeft: 0,
     paddingLeft: 0,
@@ -272,7 +295,7 @@ export default ({ patient, picture, open, onClose }) => {
         }
 
         let finalRespArray = [];
-        respArray.forEach(r => { if (nameObj.hasOwnProperty(r)) { finalRespArray.push(r); }  });
+        respArray.forEach(r => { if (nameObj.hasOwnProperty(r)) { finalRespArray.push(r); } });
 
         let workLocalData = {
           ready: true,
@@ -285,9 +308,12 @@ export default ({ patient, picture, open, onClose }) => {
           voice: (localPersonRec.messaging?.voice ? formatPhone(localPersonRec.messaging?.voice) : ''),
           location: (localPersonRec.location || ''),
           inputPWD: (targetSession.last_login || 'password'),
+          last_login: (targetSession.last_login || null),
           prefMethod: localPersonRec.preferred_method || 'AVA',
           respArray: (finalRespArray || []),
           nameObj: (nameObj || {}),
+          requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
+          storePassword: (targetSession.hasOwnProperty('storePassword') ? targetSession.storePassword : true),
           groupMemberList: (workingGroupMemberList || []),
           directoryOption: (localPersonRec.directory_option || 'normal'),
           directoryPartner: (localPersonRec.directory_partner || 'na'),
@@ -302,29 +328,16 @@ export default ({ patient, picture, open, onClose }) => {
   }, [patient]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const getPersonRec = async (pPerson) => {
-    let invokeFailed = false;
-
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    params.Payload = JSON.stringify({
-      action: "get_person_details",
-      clientId: patient.client_id,
-      request: {
-        "person_id": pPerson,
-      }
-    });
-    let lambdaResponse = await lambda
-      .invoke(params)
+    let peopleRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "People"
+      })
       .promise()
-      .catch(err => {
-        invokeFailed = true;
+      .catch(error => {
+        console.log({ 'Bad get on People - caught error is': error });
       });
-    if (!invokeFailed) {
-      let returnedPerson = JSON.parse(lambdaResponse.Payload);
-      if (returnedPerson.status === 200 && returnedPerson.body.hasOwnProperty('person_id')) {
-        // setPersonRec(returnedPerson.body);
-        return returnedPerson.body;
-      }
-    };
+    if (recordExists(peopleRec)) { return peopleRec.Item; }
     let templatePerson = {
       "person_id": pPerson,
       "location": "",
@@ -354,29 +367,20 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const getSessionData = async (pWho) => {
-    let invokeFailed = false;
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    params.Payload = JSON.stringify({
-      action: "get_session_details",
-      clientId: patient.client_id,
-      request: {
-        "person_id": pWho,
-      }
-    });
-    let lambdaResponse = await lambda
-      .invoke(params)
+    let sessionRec = await dbClient
+      .get({
+        Key: { session_id: pWho },
+        TableName: "SessionsV2"
+      })
       .promise()
-      .catch(err => {
-        invokeFailed = true;
+      .catch(error => {
+        console.log({ 'Bad get on Session - caught error is': error });
       });
-    if (!invokeFailed) {
-      let returnedSession = JSON.parse(lambdaResponse.Payload);
-      if (returnedSession.status === 200) {
-        setPatientSession(returnedSession.body);
-        setPatientPChange(returnedSession.body.password_change_date);
-        return returnedSession.body;
-      }
-    };
+    if (recordExists(sessionRec)) {
+      setPatientSession(sessionRec.Item);
+      setPatientPChange(sessionRec.Item.password_change_date);
+      return sessionRec.Item;
+    }
     return { "failed": true };
   };
 
@@ -450,6 +454,8 @@ export default ({ patient, picture, open, onClose }) => {
       surrogate: localData.surrogate,
       search_data: localData.searchTerm,
       prefMethod: localData.prefMethod || 'AVA',
+      requirePassword: localData.requirePassword,
+      storePassword: localData.storePassword,
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || null,
       time_based_rules: patient.time_based_rules,
@@ -482,19 +488,49 @@ export default ({ patient, picture, open, onClose }) => {
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
       console.log(error);
     });
-    await API
-      .graphql(graphqlOperation(
-        updateSession, {
-        input: {
-          session_id: patient.person_id,
-          responsible_for: responsibleArray,
-          patient_id: proxy
-        }
-      }
-      ))
-      .catch(error => {
-        console.log(`Can't update session in logusage: ${error.errors[0].message}`);
-      });
+
+    let attributeValues = {
+      ':s': JSON.stringify({
+        'version': `v22.9.28`,
+        'environment': window.location.href.split('//')[1].charAt(0),
+        'time': new Date().toString(),
+        'action': 'Updated Person record',
+        'source': 'patient_dialog'
+      })
+    };
+    let updateExpression = 'set #s = :s, ';
+    if (responsibleArray) {
+      attributeValues[':r'] = responsibleArray;
+      updateExpression += 'responsible_for = :r, ';
+    }
+    if (proxy) {
+      attributeValues[':pid'] = proxy;
+      updateExpression += 'patient_id = :pid, ';
+    }
+    if (localData.last_login) {
+      attributeValues[':ll'] = (localData.storePassword ? localData.last_login : '<not retained>');
+      updateExpression += 'last_login = :ll, ';
+    }
+    if (localData.requirePassword) {
+      attributeValues[':rp'] = localData.requirePassword;
+      updateExpression += 'requirePassword = :rp, ';
+    };
+    if (localData.storePassword) {
+      attributeValues[':sp'] = localData.storePassword;
+      updateExpression += 'storePassword = :sp, ';
+    }
+    updateExpression = updateExpression.substring(0, updateExpression.length - 2);
+    await dbClient
+      .update({
+        Key: { session_id: patient.person_id },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: attributeValues,
+        ExpressionAttributeNames: { "#s": "status" },
+        TableName: "SessionsV2",
+      })
+      .promise()
+      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+
     enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
     patient.name.first = localData.firstName;
     patient.name.last = localData.lastName;
@@ -648,6 +684,12 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+  function recordExists(recordId) {
+    if (!recordId) { return false; }
+    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
+    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
+  }
+
   return (
     (localData.ready && (open || refreshTrigger)) ?
       <Dialog open={open} onClose={handleAbort} TransitionComponent={Transition} fullScreen>
@@ -659,7 +701,7 @@ export default ({ patient, picture, open, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {changes || pwdConfirmed ?
+            {(changes || pwdConfirmed) &&
               <Button
                 onClick={handleUpdate}
                 disabled={!changes && !pwdConfirmed}
@@ -668,8 +710,7 @@ export default ({ patient, picture, open, onClose }) => {
                 className={classes.topButton}
               >
                 {isMobile ? 'Save' : 'Save Changes'}
-              </Button>
-              : null}
+              </Button>}
           </Toolbar>
         </AppBar>
         <Toolbar />
@@ -734,9 +775,6 @@ export default ({ patient, picture, open, onClose }) => {
                     <Typography className={classes.idText1}>
                       {`My userID is ${patient?.person_id}`}
                     </Typography>
-                    {patientPChange ?
-                      <Typography className={classes.idText2}>{`My password was set on ${patientPChange.split('GMT')[0]} GMT`}</Typography>
-                      : null}
 
                     <Typography className={classes.radioTextWithTopMargin}>With regard to the printed Directory...</Typography>
                     {localData.directoryOption &&
@@ -945,49 +983,105 @@ export default ({ patient, picture, open, onClose }) => {
           updateProxy={handleChangeProxy}
           version={sessionVersion}
         />
-        <Toolbar>
-          <Tooltip title={<Typography variant='caption'>{patient.person_id}</Typography>} placement='bottom-end'>
-            <Box>
-              <Button
-                onClick={handleResetPassword1}
-                disabled={resettingPwd && !pwdConfirmed}
-                variant='contained'
-                className={classes.infoButton}
-              >
-                Reset Acct
-              </Button>
+        <Box m={2}>
+          <Paper component={Box} variant={'outlined'}>
+            <Box mt={1} py={1} px={3} borderBottom={2}>
+              <Box flexGrow={1}>
+                <Typography variant='h6'>Log-in Management</Typography>
+              </Box>
             </Box>
-          </Tooltip>
-          {" "}
-          {resettingPwd ?
-            <React.Fragment>
-              <Button
-                onClick={handleResetPassword2}
-                disabled={!resettingPwd || pwdConfirmed}
-                hidden={!resettingPwd}
-                variant='contained'
-                className={classes.resetButton}
-              >
-                {pwdConfirmed ? 'Confirmed!' : 'Confirm?'}
-              </Button>
-              {" "}
-              <div>
-                <TextField
-                  id='password'
-                  value={localData.inputPWD}
-                  autoComplete='off'
-                  type='text'
-                  onChange={handleChangePassword}
-                  helperText={'password'}
-                />
-              </div>
-            </React.Fragment>
-            : null}
-        </Toolbar>
-        <Box flexGrow={1} ml={5}
-          display="flex"
-          flexDirection='column'
-        >
+          </Paper>
+          <Paper
+            component={Box}
+            p={3}
+            variant='outlined'
+            display='flex'
+            flexDirection='row'
+            justifyContent='center'
+            alignItems='center'>
+            <Box flexGrow={2} display='flex' flexDirection='column'>
+              <form className={classes.root} noValidate autoComplete='off'>
+                <div>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.lineTextWithTopMargin}>Require a password to log in?</Typography>
+                    <Box flexGrow={2} display='flex' alignItems='center'
+                      justifyContent='flex-start' marginTop={-1} marginBottom={2} flexDirection='row'>
+                      <Typography className={localData.requirePassword ? classes.radioText : classes.radioTextBold}>Simplfied Log-in</Typography>
+                      <Switch
+                        checked={localData.requirePassword}
+                        onChange={() => {
+                          localData.requirePassword = !localData.requirePassword;
+                          setRefreshTrigger(!refreshTrigger);
+                          setChanges(true);
+                        }} name="PWDrequired"
+                        color="primary"
+                      />
+                      <Typography className={localData.requirePassword ? classes.radioTextBold : classes.radioText}>Password Required</Typography>
+                    </Box>
+                    <Typography className={classes.lineTextWithTopMargin}>Allow my password to be stored</Typography>
+                    <Box flexGrow={2} display='flex' alignItems='center'
+                      justifyContent='flex-start' marginTop={-1} marginBottom={2} flexDirection='row'>
+                      <Typography className={localData.storePassword ? classes.radioText : classes.radioTextBold}>No</Typography>
+                      <Switch
+                        checked={localData.storePassword}
+                        onChange={() => {
+                          localData.storePassword = !localData.storePassword;
+                          setRefreshTrigger(!refreshTrigger);
+                          setChanges(true);
+                        }}
+                        name="PWDstored"
+                        color="primary"
+                      />
+                      <Typography className={localData.storePassword ? classes.radioTextBold : classes.radioText}>Yes</Typography>
+                    </Box>
+                    {localData.last_login && localData.storePassword &&
+                      <Typography className={classes.lineTextWithTopMargin}>{`Last known password: ${localData.last_login}`}</Typography>
+                    }
+                    {patientPChange &&
+                      <Typography className={classes.lineTextWithTopMargin}>{`Password changed: ${patientPChange.split('GMT')[0]} GMT`}</Typography>
+                    }
+                  </Box>
+                </div>
+              </form>
+              <Box flexGrow={2} display='flex' alignItems='center'
+                justifyContent='flex-start' marginTop={2} marginBottom={2} flexDirection='row'>
+                <Button
+                  onClick={handleResetPassword1}
+                  disabled={resettingPwd && !pwdConfirmed}
+                  variant='outlined'
+                  className={classes.infoButton}
+                >
+                  Reset?
+                </Button>
+                {resettingPwd &&
+                  <React.Fragment>
+                    <Button
+                      onClick={handleResetPassword2}
+                      disabled={!resettingPwd || pwdConfirmed}
+                      hidden={!resettingPwd}
+                      variant={pwdConfirmed ? 'contained' : 'outlined'}
+                      className={classes.resetButton}
+                    >
+                      {pwdConfirmed ? 'Confirmed!' : 'Confirm?'}
+                    </Button>
+                    <TextField
+                      id='password'
+                      value={localData.inputPWD}
+                      autoComplete='off'
+                      type='text'
+                      onChange={handleChangePassword}
+                      helperText={'password'}
+                    />
+                  </React.Fragment>
+                }
+              </Box>
+            </Box>
+          </Paper>
         </Box>
       </Dialog>
       :
