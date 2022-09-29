@@ -574,7 +574,7 @@ export default ({ patient, session }) => {
     }
     selectedActivityName = '';
     let sURL;
-    if (typeof (session?.url_parameters) !== 'object') {
+    if ((typeof (session?.url_parameters) !== 'object') && (session?.url_parameters.includes('activity'))) {
       sURL = JSON.parse(session?.url_parameters);
     }
     else { sURL = session?.url_parameters; }
