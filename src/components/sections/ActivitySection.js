@@ -573,9 +573,14 @@ export default ({ patient, session }) => {
       }
     }
     selectedActivityName = '';
-    if (session?.url_parameters.hasOwnProperty('activity') && factWasWritten) {
+    let sURL;
+    if (typeof (session?.url_parameters) !== 'object') {
+      sURL = JSON.parse(session?.url_parameters);
+    }
+    else { sURL = session?.url_parameters; }
+    if (sURL && sURL.hasOwnProperty('activity') && factWasWritten) {
       let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-      jumpTo += `?user=${session.url_parameters.user}`;
+      jumpTo += `?user=${sURL.user}`;
       window.location.replace(jumpTo);
     }
     /*
@@ -665,12 +670,12 @@ export default ({ patient, session }) => {
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
     setLoading(true);
-    if (session?.url_parameters) {
+    if (session.url_parameters && ((typeof (session.url_parameters) === 'string') && (session.url_parameters !== 'null')) || Object.keys(session?.url_parameters).length > 0) {
       let urlActivity = null;
       if (typeof (session.url_parameters) === 'object') {
         urlActivity = session.url_parameters.activity;
       }
-      else {
+      else if (session.url_parameters.includes('activity')) {
         let sessionURLObject = JSON.parse(session.url_parameters);
         urlActivity = sessionURLObject.activity;
       }

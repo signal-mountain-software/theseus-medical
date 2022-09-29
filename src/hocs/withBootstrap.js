@@ -76,16 +76,18 @@ export default Component => props => {
       async () => {
         // Does the URL contain a UserID?
         let urlData = getParamsFromURL();
-        if (urlData.client || urlData.client_id) {
-          currentClient = urlData.client || urlData.client_id;
-        }
-        if (urlData.user || urlData.user_id) {
-          currentUser = urlData.user || urlData.user_id;
-          accessLog(currentUser, 'from URL', 'na',
-            'Using URL supplied UserID -' + (currentClient ? `with Client = ${currentClient}` : 'No client')
-          );
-          let allGood = await prepareAVAEnv(false, null, currentUser, currentSession, currentClient, currentPatient, currentProfile, urlData);
-          if (!allGood) { setAVAFollowUpData({ 'NeedUser': true }); }
+        if (urlData) {
+          if (urlData.client || urlData.client_id) {
+            currentClient = urlData.client || urlData.client_id;
+          }
+          if (urlData.user || urlData.user_id) {
+            currentUser = urlData.user || urlData.user_id;
+            accessLog(currentUser, 'from URL', 'na',
+              'Using URL supplied UserID -' + (currentClient ? `with Client = ${currentClient}` : 'No client')
+            );
+            let allGood = await prepareAVAEnv(false, null, currentUser, currentSession, currentClient, currentPatient, currentProfile, urlData);
+            if (!allGood) { setAVAFollowUpData({ 'NeedUser': true }); }
+          }
         }
         // Are we already authenticated with a "good" user?
         if (!currentUser) {
@@ -446,9 +448,13 @@ export default Component => props => {
   function getParamsFromURL() {
     let returnObject = {};
     allParams.forEach((value, key) => {
+      console.log(key, value);
       returnObject[key] = value;
     });
-    return returnObject;
+    if (Object.keys(returnObject).length > 0) {
+      return returnObject;
+    }
+    else { return null }
   }
 
 
@@ -587,7 +593,12 @@ export default Component => props => {
       updateExpression += 'platform = :dev, ';
     }
     if (pURL) {
-      attributeValues[':u'] = pURL;
+      if (typeof (pURL) === 'object') {
+        attributeValues[':u'] = JSON.stringify(pURL);
+      }
+      else {
+        attributeValues[':u'] = pURL;
+      }
       updateExpression += 'url_parameters = :u, ';
     }
     if (pProfile.person_id) {
@@ -696,7 +707,12 @@ export default Component => props => {
       closeSnackbar();
       enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
       let urlData = getParamsFromURL();
-      currentSession.url_parameters = urlData;
+      if (typeof (urlData) === 'object') {
+        currentSession.url_parameters = JSON.stringify(urlData);
+      }
+      else {
+        currentSession.url_parameters = urlData;
+      }
       dispatch({ type: SET_SESSION, payload: currentSession });
       dispatch({ type: SET_PROFILE, payload: currentProfile });
       dispatch({ type: SET_USER, payload: currentProfile });
