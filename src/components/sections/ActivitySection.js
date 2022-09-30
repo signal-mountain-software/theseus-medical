@@ -573,37 +573,12 @@ export default ({ patient, session }) => {
       }
     }
     selectedActivityName = '';
-    let sURL;
-    if ((typeof (session?.url_parameters) !== 'object') && (session?.url_parameters.includes('activity'))) {
-      sURL = JSON.parse(session?.url_parameters);
-    }
-    else { sURL = session?.url_parameters; }
-    if (sURL && sURL.hasOwnProperty('activity') && factWasWritten) {
+    if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters) && factWasWritten) {
       let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
-      jumpTo += `?user=${sURL.user}`;
+      jumpTo += `?user=${session.url_parameters.user}`;
       window.location.replace(jumpTo);
     }
-    /*
-        if (session?.kiosk_mode && factWasWritten && (session?.user_id === session?.patient_id)) {
-          let newPatient = {
-            patient_id: session.user_id,
-            patient_display_name: session.user_display_name
-          };
-          await API.graphql(
-            graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
-          ).catch(error => { console.log(error); });
-          let jumpTo = window.location.href.replace('refresh', 'theseus');
-          window.location.replace(jumpTo);
-        }
     
-        if (session?.url_parameters && factWasWritten) {
-          await API.graphql(
-            graphqlOperation(updateSession, { input: { session_id: session.user_id, url_parameters: '' } })
-          ).catch(error => { console.log(error); });
-          let jumpTo = window.location.href.replace('activity', 'completedactivity');
-          window.location.replace(jumpTo);
-        }
-    */
     async function putMedia(params) {   // Uploading files to the bucket
       let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
       let fileExtension = newFact.value.mediaData.Key.split('.').pop();
@@ -670,20 +645,10 @@ export default ({ patient, session }) => {
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
     setLoading(true);
-    if (session.url_parameters && ((typeof (session.url_parameters) === 'string') && (session.url_parameters !== 'null')) || Object.keys(session?.url_parameters).length > 0) {
-      let urlActivity = null;
-      if (typeof (session.url_parameters) === 'object') {
-        urlActivity = session.url_parameters.activity;
-      }
-      else if (session.url_parameters.includes('activity')) {
-        let sessionURLObject = JSON.parse(session.url_parameters);
-        urlActivity = sessionURLObject.activity;
-      }
-      if (urlActivity) {
-        onChooseActivity(urlActivity);
-        return () => {
-        };
-      }
+    if (session.url_parameters && ('activity' in session.url_parameters)) {
+      onChooseActivity(session.url_parameters.activity);
+      return () => {
+      };
     }
     if (session?.kiosk_mode
       && (session.user_id === session.patient_id)
@@ -1135,7 +1100,7 @@ export default ({ patient, session }) => {
           onClose={async (oopsieMessage = null) => {
             oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
             setShowNewFactDialog(false);
-            if (session?.url_parameters.hasOwnProperty('activity')) {
+            if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
               let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
               jumpTo += `?user=${session.url_parameters.user}`;
               window.location.replace(jumpTo);

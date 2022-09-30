@@ -707,11 +707,11 @@ export default Component => props => {
       closeSnackbar();
       enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
       let urlData = getParamsFromURL();
-      if (typeof (urlData) === 'object') {
-        currentSession.url_parameters = JSON.stringify(urlData);
-      }
-      else {
+      if (urlData) {
         currentSession.url_parameters = urlData;
+      }
+      else { 
+        currentSession.url_parameters = null;
       }
       dispatch({ type: SET_SESSION, payload: currentSession });
       dispatch({ type: SET_PROFILE, payload: currentProfile });

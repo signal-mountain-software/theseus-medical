@@ -872,7 +872,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
             onClose={async (oopsieMessage = null) => {
               oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
               setShowNewFactDialog(false);
-              if (session?.url_parameters.hasOwnProperty('activity')) {
+              if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                 let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
                 jumpTo += `?user=${session.url_parameters.user}`;
                 window.location.replace(jumpTo);
