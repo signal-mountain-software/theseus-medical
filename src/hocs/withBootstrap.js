@@ -565,13 +565,13 @@ export default Component => props => {
 
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage) {
     let attributeValues = {
-      ':s': JSON.stringify({
+      ':s': {
         'version': `v22.9.28`,
         'environment': window.location.href.split('//')[1].charAt(0),
         'time': new Date().toString(),
         'signin_status': pMessage,
         'source': 'bootstrap'
-      })
+      }
     };
     let updateExpression = 'set #s = :s, ';
     if (pLogin) {

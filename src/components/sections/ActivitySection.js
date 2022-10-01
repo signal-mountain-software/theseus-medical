@@ -290,6 +290,27 @@ export default ({ patient, session }) => {
     }
   };
 
+  function statusLine() {
+    let returnValue = `*** AVA `;
+    if (session) { 
+      if (typeof(session.status) === 'object') {
+        returnValue += session.status.version;
+        if (session.status.environment !== 'd') {
+          returnValue += '/TEST';
+        }
+      }
+      else {
+        returnValue += process.env.REACT_APP_AVA_VERSION;
+      }
+      returnValue += `/${session.patient_id}`;
+      if (session.patient_id !== session.user_id) {
+        returnValue += `(${session.user_id})`;
+      }
+    }
+    returnValue += ' ***';
+    return returnValue;
+  }
+
   const onChooseActivity = async activity => {
     if (toggledSection) {
       toggledSection = false;
@@ -573,7 +594,7 @@ export default ({ patient, session }) => {
       }
     }
     selectedActivityName = '';
-    if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters) && factWasWritten) {
+    if (session?.url_parameters && (session.url_parameters.hasOwnProperty('activity')) && (session.url_parameters.hasOwnProperty('user')) && factWasWritten) {
       let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
       jumpTo += `?user=${session.url_parameters.user}`;
       window.location.replace(jumpTo);
@@ -644,26 +665,28 @@ export default ({ patient, session }) => {
 
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
-    setLoading(true);
-    if (session.url_parameters && ('activity' in session.url_parameters)) {
-      onChooseActivity(session.url_parameters.activity);
+    if (session) {
+      setLoading(true);
+      if (session.url_parameters && (session.url_parameters.hasOwnProperty('activity'))) {
+        onChooseActivity(session.url_parameters.activity);
+        return () => {
+        };
+      }
+      if (session?.kiosk_mode
+        && (session.user_id === session.patient_id)
+        && session.kiosk_activity
+      ) {
+        onChooseActivity(session.kiosk_activity);
+        return () => {
+        };
+      }
+      if (session?.current_event) {
+        setSectionOpen(JSON.parse(session.current_event));
+      };
+      setLoading(false);
       return () => {
       };
     }
-    if (session?.kiosk_mode
-      && (session.user_id === session.patient_id)
-      && session.kiosk_activity
-    ) {
-      onChooseActivity(session.kiosk_activity);
-      return () => {
-      };
-    }
-    if (session?.current_event) {
-      setSectionOpen(JSON.parse(session.current_event));
-    };
-    setLoading(false);
-    return () => {
-    };
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // on patient, event, or type change... retrieve the activities for the main part of the screen
@@ -1058,7 +1081,7 @@ export default ({ patient, session }) => {
                 ))}
               <GridListTile cols={1} >
                 <Typography variant='caption' noWrap={true}>
-                  {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
+                  {statusLine()}
                 </Typography>
               </GridListTile>
             </GridList>
