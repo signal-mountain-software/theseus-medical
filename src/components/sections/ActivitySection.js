@@ -295,8 +295,12 @@ export default ({ patient, session }) => {
     if (session) { 
       if (typeof(session.status) === 'object') {
         returnValue += session.status.version;
-        if (session.status.environment !== 'd') {
-          returnValue += '/TEST';
+        switch (session.status.environment) {
+          case 'd': { break; }
+          case 's': { returnValue += '/MASTER'; break; }
+          case 'l': { returnValue += '/LOCAL'; break; }
+          case 't': { returnValue += '/TEST'; break; }
+          default: { returnValue += `/${session.status.environment.toUpperCase()}`; break; }
         }
       }
       else {
