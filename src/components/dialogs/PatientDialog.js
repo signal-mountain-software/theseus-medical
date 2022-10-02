@@ -1,7 +1,9 @@
 import React from 'react';
+import Cropper from "react-cropper";
+import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { Lambda } from 'aws-sdk';
-import { createPutFact, updateSession } from '../../graphql/mutations';
+import { createPutFact } from '../../graphql/mutations';
 import { getSession, getPerson } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
 
@@ -9,13 +11,14 @@ import { useSnackbar } from 'notistack';
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
+import Switch from '@material-ui/core/Switch';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
 import IconButton from '@material-ui/core/IconButton';
 import Paper from '@material-ui/core/Paper';
 import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
-import Tooltip from '@material-ui/core/Tooltip';
+// import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -27,6 +30,8 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
+import CircularProgress from '@material-ui/core/CircularProgress';
+
 import ClientsSection from '../sections/ClientsSection';
 import RelationshipSection from '../sections/RelationshipSection';
 import LinkedAccountsSection from '../sections/LinkedAccountsSection';
@@ -34,11 +39,23 @@ import MessageRouting from '../sections/MessageRouting';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
+const AWS = require('aws-sdk');
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 const useStyles = makeStyles(theme => ({
   title: {
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     flexGrow: 1
+  },
+  boxWithRoom: {
+    marginTop: 10,
+    alignContent: 'center',
   },
   formControl: {
     margin: 0,
@@ -58,10 +75,14 @@ const useStyles = makeStyles(theme => ({
     },
   },
   photoButton: {
-    alignSelf: 'center',
-    size: 'sm',
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     variant: 'outlined',
-    verticalAlign: 'middle',
+    textTransform: 'none',
+    size: 'small',
+    alignSelf: 'center',
+    verticalAlign: 'middle'
   },
   defaultButton: {
     alignSelf: 'end',
@@ -74,20 +95,37 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
   resetButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
+    // backgroundColor: theme.palette.confirm[theme.palette.type],
     marginRight: 10,
   },
   infoButton: {
     variant: 'outlined',
-    backgroundColor: theme.palette.info[theme.palette.type],
+    // backgroundColor: theme.palette.info[theme.palette.type],
     marginRight: 10,
     paddingRight: 10,
-    marginLeft: 10,
-    paddingLeft: 10,
   },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
+  radioTextBold: {
+    fontSize: theme.typography.fontSize * 0.8,
+    fontWeight: 'bold',
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
+  radioTextWithTopMargin: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginTop: theme.spacing(1),
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 10,
+  },
+  lineTextWithTopMargin: {
+    marginTop: theme.spacing(1),
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 10,
@@ -120,20 +158,26 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ patient, picture, open, onClose }) => {
   const classes = useStyles();
 
-  const [firstName, setFirstName] = React.useState();
-  const [lastName, setLastName] = React.useState();
-  const [email, setEmail] = React.useState();
-  const [cell, setCell] = React.useState();
-  const [groupMemberList, setGroupMemberList] = React.useState([]);
-  const [surrogate, setSurrogate] = React.useState();
-  const [searchTerm, setSearchTerm] = React.useState();
-  const [voice, setVoice] = React.useState();
-  const [location, setLocation] = React.useState();
-  const [inputPWD, setInputPWD] = React.useState();
-  const [prefMethod, setMethod] = React.useState();
+  const [localData, setLocalData] = React.useState({});
+  // const [firstName, setFirstName] = React.useState();
+  // const [lastName, setLastName] = React.useState();
+  // const [email, setEmail] = React.useState();
+  // const [cell, setCell] = React.useState();
+  // const [groupMemberList, setGroupMemberList] = React.useState([]);
+  // const [surrogate, setSurrogate] = React.useState();
+  // const [searchTerm, setSearchTerm] = React.useState();
+  // const [voice, setVoice] = React.useState();
+  // const [location, setLocation] = React.useState();
+  // const [inputPWD, setInputPWD] = React.useState();
+  // const [prefMethod, setMethod] = React.useState();
+  // const [directoryOption, setDirectoryOption] = React.useState();
   const [patientGroups, setPatientGroups] = React.useState();
   const [responsibleArray, setResponsibleArray] = React.useState();
   const [proxy, setProxy] = React.useState();
+  // const [personRec, setPersonRec] = React.useState();
+
+  const [refreshTrigger, setRefreshTrigger] = React.useState(false);
+
   const [patientPChange, setPatientPChange] = React.useState();
   const [patientSession, setPatientSession] = React.useState();
   const [sessionVersion, setSessionVersion] = React.useState(0);
@@ -141,6 +185,9 @@ export default ({ patient, picture, open, onClose }) => {
   const [changes, setChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(false);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
+
+  const [editPhoto, setEditPhoto] = React.useState('');
+  const [cropper, setCropper] = React.useState();
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
@@ -178,81 +225,168 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   React.useEffect(() => {
-    if (patient) {
-      let asyncGetGroupMemberList = (
-        async () => {
-          await getGroupMemberList();
-        }
-      );
-      let asyncGetSession = (
-        async () => {     
-          await getSessionQL();
-        }
-      );
-      setFirstName(patient.name.first);
-      setLastName(patient.name.last);
-      setCell(patient.messaging?.sms ? formatPhone(patient.messaging?.sms) : '');
-      setVoice(patient.messaging?.voice ? formatPhone(patient.messaging?.voice) : '');
-      setEmail(patient.messaging?.email || '');
-      setLocation(patient.location || '');
-      setSearchTerm(patient.search_data || '');
-      setInputPWD('password');
-      setMethod(patient.preferred_method);
-      if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
-      else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
-      let foundAt;
-      let groupFound;
-      if (Array.isArray(patient.clients)) {
-        // patient.clients is an array...   each element is a single object with 
-        //     key = client_id and 
-        //     value = array of groups this patient is a member of in that client
-        // First - find the array element that contains the object key (id) = current client (patient.client_id)
-        groupFound = patient.clients.some((e, i) => { foundAt = i; return (e.id === patient.client_id); });
-        if (groupFound) {
-          // We found the right array element... load the React patientGroups value with
-          //    an array of client, group entries as in 'SMSoft~AVT_residents'...   
-          setPatientGroups(patient.clients[foundAt].groups.map(e => { return (`${patient.client_id}~${e}`); }));
-          // Next, are there any entries in this array that represent a group that
-          // belongs to another group?
-        }
-      }
-      if (patient.relationships) {
-        patient.relationships.forEach(async (relationship, index) => {
-          let result = await API.graphql(
-            graphqlOperation(getPerson, {
-              person_id: relationship.person_id,
-            })
-          ).catch(error => {
-            console.log(error);
+    async function initialize() {
+      if (patient) {
+        let localPersonRec = await getPersonRec(patient.person_id);
+        // setFirstName(patient.name.first);
+        // setLastName(patient.name.last);
+        // setCell(patient.messaging?.sms ? formatPhone(patient.messaging?.sms) : '');
+        // setVoice(patient.messaging?.voice ? formatPhone(patient.messaging?.voice) : '');
+        // setEmail(patient.messaging?.email || '');
+        // setLocation(patient.location || '');
+        // setSearchTerm(patient.search_data || '');
+        // setInputPWD('password');
+        // setMethod(patient.preferred_method);
+        // setDirectoryOption(localPersonRec ? (localPersonRec.directory_option || 'normal') : 'normal');
+        // if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
+        // else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
+        let foundAt;
+        let groupFound;
+        if (Array.isArray(localPersonRec.clients)) {
+          // patient.clients is an array...   each element is a single object with 
+          //     key = client_id and 
+          //     value = array of groups this patient is a member of in that client
+          // First - find the array element that contains the object key (id) = current client (patient.client_id)
+          groupFound = localPersonRec.clients.some((e, i) => {
+            foundAt = i;
+            return (e.id === localPersonRec.client_id);
           });
-          if (result?.data) {
-            patient.relationships[index].name = result.data.getPerson.name.first + ' ' + result.data.getPerson.name.last;
+          if (groupFound) {
+            // We found the right array element... load the React patientGroups value with
+            //    an array of client, group entries as in 'SMSoft~AVT_residents'...   
+            setPatientGroups(localPersonRec.clients[foundAt].groups.map(e => {
+              return (`${localPersonRec.client_id}~${e}`);
+            }));
+            // Next, are there any entries in this array that represent a group that
+            // belongs to another group?
           }
-          else {
-            patient.relationships[index].name = null;
-          }
-        });
-      }
-      asyncGetSession();
-      if (!groupMemberList || groupMemberList.length === 0) {
-        asyncGetGroupMemberList();
+        }
+        if (localPersonRec.relationships) {
+          localPersonRec.relationships.forEach(async (relationship, index) => {
+            let result = await API.graphql(
+              graphqlOperation(getPerson, {
+                person_id: relationship.person_id,
+              })
+            ).catch(error => {
+              console.log(error);
+            });
+            if (result?.data) {
+              localPersonRec.relationships[index].name = result.data.getPerson.name.first + ' ' + result.data.getPerson.name.last;
+            }
+            else {
+              localPersonRec.relationships[index].name = null;
+            }
+          });
+        }
+        let targetSession = await getSessionData(patient.person_id);
+        let respArray = [];
+        if (!targetSession.hasOwnProperty('responsible_for') || !targetSession.responsible_for) { }
+        else if (Array.isArray(targetSession.responsible_for)) { respArray.push(...targetSession.responsible_for); }
+        else if (targetSession.responsible_for.startsWith('[')) { respArray = targetSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+        else { respArray.push(targetSession.responsible_for); }
+
+        let workingGroupMemberList = [];
+        let nameObj = {};
+        if (!localData.hasOwnProperty('groupMemberList') || localData.groupMemberList.length === 0) {
+          workingGroupMemberList = await getGroupMemberList();
+          workingGroupMemberList.forEach(m => {
+            nameObj[m.person_id] = `${m.name?.first.charAt(0).toUpperCase()}${m.name?.last.charAt(0).toUpperCase()}${m.name?.last.substring(1)}`;
+          });
+        }
+
+        let finalRespArray = [];
+        respArray.forEach(r => { if (nameObj.hasOwnProperty(r)) { finalRespArray.push(r); } });
+
+        let workLocalData = {
+          ready: true,
+          patient_id: localPersonRec.patient_id,
+          firstName: (localPersonRec.name?.first || ''),
+          lastName: (localPersonRec.name?.last || ''),
+          email: (localPersonRec.messaging?.email || ''),
+          cell: (localPersonRec.messaging?.sms ? formatPhone(localPersonRec.messaging?.sms) : ''),
+          searchTerm: (localPersonRec.search_data || ''),
+          voice: (localPersonRec.messaging?.voice ? formatPhone(localPersonRec.messaging?.voice) : ''),
+          location: (localPersonRec.location || ''),
+          inputPWD: (targetSession.last_login || 'password'),
+          last_login: (targetSession.last_login || null),
+          prefMethod: localPersonRec.preferred_method || 'AVA',
+          respArray: (finalRespArray || []),
+          nameObj: (nameObj || {}),
+          requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
+          storePassword: (targetSession.hasOwnProperty('storePassword') ? targetSession.storePassword : true),
+          groupMemberList: (workingGroupMemberList || []),
+          directoryOption: (localPersonRec.directory_option || 'normal'),
+          directoryPartner: (localPersonRec.directory_partner || 'na'),
+          patientGroups: (localPersonRec.clients[foundAt].groups.map(e => { return (`${localPersonRec.client_id}~${e}`); }))
+        };
+        if (isNaN(localPersonRec.messaging?.surrogate)) { workLocalData.surrogate = localPersonRec.messaging?.surrogate; }
+        else { workLocalData.surrogate = (formatPhone('' + localPersonRec.messaging?.surrogate)); }
+        setLocalData(workLocalData);
       }
     }
+    initialize();
   }, [patient]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const getSessionQL = async () => {
-    let pSessionResult = await API
-      .graphql(graphqlOperation(getSession, { session_id: patient.person_id }))
-      .catch(() => { });
-    if (pSessionResult) {
-      setPatientSession(pSessionResult.data.getSession);
-      setPatientPChange(pSessionResult.data.getSession.password_change_date);
+  const getPersonRec = async (pPerson) => {
+    let peopleRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "People"
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on People - caught error is': error });
+      });
+    if (recordExists(peopleRec)) { return peopleRec.Item; }
+    let templatePerson = {
+      "person_id": pPerson,
+      "location": "",
+      "client_id": state.session.client_id,
+      "search_data": "",
+      "clients": [
+        {
+          "groups": [],
+          "id": state.session.client_id
+        }
+      ],
+      "name": {
+        "last": "",
+        "first": ""
+      },
+      "directory_option": "normal",
+      "display_name": "",
+      "groups": [],
+      "preferred_method": "AVA",
+      "relationships": null,
+      "roles": ["patient"],
+      "messaging": {},
+      "time_offset": -5,
+    };
+    // setPersonRec(templatePerson);
+    return templatePerson;
+  };
+
+  const getSessionData = async (pWho) => {
+    let sessionRec = await dbClient
+      .get({
+        Key: { session_id: pWho },
+        TableName: "SessionsV2"
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on Session - caught error is': error });
+      });
+    if (recordExists(sessionRec)) {
+      setPatientSession(sessionRec.Item);
+      setPatientPChange(sessionRec.Item.password_change_date);
+      return sessionRec.Item;
     }
+    return { "failed": true };
   };
 
   const getGroupMemberList = async () => {
     let invokeFailed = false;
-    setGroupMemberList([]);
+    // setGroupMemberList([]);
     params.Payload = JSON.stringify({
       action: "get_group_members",
       clientId: patient.client_id,
@@ -267,10 +401,10 @@ export default ({ patient, picture, open, onClose }) => {
         console.log(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`);
       });
     if (!invokeFailed) {
-      let groupMemberList = JSON.parse(fResp.Payload);
-      if (groupMemberList.status === 200) {
-        setGroupMemberList(groupMemberList.body);
-        return groupMemberList;
+      let gML = JSON.parse(fResp.Payload);
+      if (gML.status === 200) {
+        // setGroupMemberList(gML.body);
+        return gML.body;
       }
     };
     return [];
@@ -285,7 +419,8 @@ export default ({ patient, picture, open, onClose }) => {
   const handleAbort = () => {
     setResettingPwd(false);
     setPwdConfirmed(false);
-    setInputPWD('password');
+    // setInputPWD('password');
+    localData.inputPWD = (patientSession.last_login || 'password');
     setChanges(false);
     onClose();
   };
@@ -293,7 +428,7 @@ export default ({ patient, picture, open, onClose }) => {
   const handleUpdate = async () => {
     if (patient.person_id.startsWith('*NEW~')) {
       let tryAgain;
-      let namePart = firstName.trim().substr(0, 1).toLowerCase() + lastName.toLowerCase().replace(/\W/g, '');
+      let namePart = localData.firstName.trim().substr(0, 1).toLowerCase() + localData.lastName.toLowerCase().replace(/\W/g, '');
       let numberPart = 1;
       patient.person_id = namePart;
       do {
@@ -311,20 +446,32 @@ export default ({ patient, picture, open, onClose }) => {
     }
     let updatePerson = {
       person_id: patient.person_id,
-      first: firstName.substr(0, 1).toUpperCase() + firstName.substr(1),
-      last: lastName.substr(0, 1).toUpperCase() + lastName.substr(1),
-      email: email,
-      sms: cell ? '+1' + cell.replace(/\D/g, '') : null,
-      voice: voice ? '+1' + voice.replace(/\D/g, '') : null,
-      surrogate: surrogate,
-      search_data: searchTerm,
-      prefMethod: prefMethod || 'AVA',
+      first: localData.firstName.substr(0, 1).toUpperCase() + localData.firstName.substr(1),
+      last: localData.lastName.substr(0, 1).toUpperCase() + localData.lastName.substr(1),
+      email: localData.email,
+      sms: localData.cell ? '+1' + localData.cell.replace(/\D/g, '') : null,
+      voice: localData.voice ? '+1' + localData.voice.replace(/\D/g, '') : null,
+      surrogate: localData.surrogate,
+      search_data: localData.searchTerm,
+      prefMethod: localData.prefMethod || 'AVA',
+      requirePassword: localData.requirePassword,
+      storePassword: localData.storePassword,
+      directory_option: localData.directoryOption || 'normal',
+      directory_partner: localData.directoryPartner || null,
       time_based_rules: patient.time_based_rules,
       groups: patientGroups,
-      location: location ? location.replace(/,/g, '') : null,
+      location: localData.location ? localData.location.replace(/,/g, '') : null,
       pwdReset: resettingPwd,
-      newPassword: inputPWD
+      newPassword: localData.inputPWD
     };
+    if (typeof cropper !== "undefined") {
+      // const croppedFile = dataUrlToFile(cropper.getCroppedCanvas().toDataURL('image/jpeg'), (patient.person_id + '_cropped.jpg'));
+      cropper
+        .getCroppedCanvas()
+        .toBlob((async (pBlob) => {
+          await handleSavePhoto(new File([pBlob], (patient.person_id + '_cropped.jpg'), { type: 'image/jpeg' }), '');
+        }), 'image/jpeg');
+    }
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
     let newFactData = {
@@ -341,22 +488,57 @@ export default ({ patient, picture, open, onClose }) => {
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
       console.log(error);
     });
-    await API
-      .graphql(graphqlOperation(
-        updateSession, {
-        input: {
-            session_id: patient.person_id,
-            responsible_for: responsibleArray,
-            patient_id: proxy
-        }
-      }
-      ))
-      .catch(error => {
-        console.log(`Can't update session in logusage: ${error.errors[0].message}`);
-      });
+
+    let attributeValues = {
+      ':s': JSON.stringify({
+        'version': `v22.9.28`,
+        'environment': window.location.href.split('//')[1].charAt(0),
+        'time': new Date().toString(),
+        'action': 'Updated Person record',
+        'source': 'patient_dialog'
+      })
+    };
+    let updateExpression = 'set #s = :s, ';
+    if (responsibleArray) {
+      attributeValues[':r'] = responsibleArray;
+      updateExpression += 'responsible_for = :r, ';
+    }
+    if (proxy) {
+      attributeValues[':pid'] = proxy;
+      updateExpression += 'patient_id = :pid, ';
+    }
+    if (localData.last_login && !resettingPwd) {
+      attributeValues[':ll'] = (localData.storePassword ? localData.last_login : '<not retained>');
+      updateExpression += 'last_login = :ll, ';
+    }
+    if (resettingPwd) {
+      attributeValues[':ll'] = (localData.storePassword ? localData.inputPWD : '<not retained>');
+      attributeValues[':pcd'] = new Date().toLocaleString();
+      updateExpression += 'last_login = :ll, password_change_date = :pcd';
+    }
+    if (localData.requirePassword) {
+      attributeValues[':rp'] = localData.requirePassword;
+      updateExpression += 'requirePassword = :rp, ';
+    };
+    if (localData.storePassword) {
+      attributeValues[':sp'] = localData.storePassword;
+      updateExpression += 'storePassword = :sp, ';
+    }
+    updateExpression = updateExpression.substring(0, updateExpression.length - 2);
+    await dbClient
+      .update({
+        Key: { session_id: patient.person_id },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: attributeValues,
+        ExpressionAttributeNames: { "#s": "status" },
+        TableName: "SessionsV2",
+      })
+      .promise()
+      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+
     enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
-    patient.name.first = firstName;
-    patient.name.last = lastName;
+    patient.name.first = localData.firstName;
+    patient.name.last = localData.lastName;
     setChanges(false);
     setResettingPwd(false);
     setPwdConfirmed(false);
@@ -366,62 +548,115 @@ export default ({ patient, picture, open, onClose }) => {
   const handleResetPassword1 = event => {
     setResettingPwd(true);
     setPwdConfirmed(false);
-    setInputPWD('password');
+    // setInputPWD('password');
+    localData.inputPWD = (patientSession.last_login || 'password');
   };
 
   const handleResetPassword2 = event => {
     setPwdConfirmed(true);
   };
 
+  const handleChangePartner = event => {
+    localData.directoryPartner = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
   const handleChangeFirstName = event => {
-    setFirstName(event.target.value);
+    localData.firstName = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setFirstName(event.target.value);
     setChanges(true);
   };
 
   const handleChangeLastName = event => {
-    setLastName(event.target.value);
+    localData.lastName = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setLastName(event.target.value);
     setChanges(true);
   };
 
   const handleChangeEmail = event => {
-    setEmail(event.target.value);
+    localData.email = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setEmail(event.target.value);
     setChanges(true);
   };
 
   const handleChangeCell = event => {
-    setCell(formatPhone('' + event.target.value.replace(/\D/g, '')));
+    localData.cell = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setCell(formatPhone('' + event.target.value.replace(/\D/g, '')));
     setChanges(true);
   };
 
   const handleChangeVoice = event => {
-    setVoice(formatPhone('' + event.target.value.replace(/\D/g, '')));
+    localData.voice = formatPhone('' + event.target.value.replace(/\D/g, ''));
+    setRefreshTrigger(!refreshTrigger);
+    // setVoice(formatPhone('' + event.target.value.replace(/\D/g, '')));
     setChanges(true);
   };
 
   const handleChangeSurrogate = event => {
     let checkNum = event.target.value.replace(/[\d\s\-()]/g, '');
-    if (checkNum) { setSurrogate(event.target.value); }
-    else { setSurrogate(formatPhone('' + event.target.value.replace(/\D/g, ''))); }
+    if (checkNum) { localData.surrogate = event.target.value; }
+    else { localData.surrogate = (formatPhone('' + event.target.value.replace(/\D/g, ''))); }
+    setRefreshTrigger(!refreshTrigger);
     setChanges(true);
   };
 
+  async function handleSavePhoto(pTarget, pTmp) {
+    let extension = pTarget.type.split('/')[1];
+    if (extension === 'jpeg') { extension = 'jpg'; }
+    const pFile = {
+      Bucket: 'theseus-medical-storage',
+      Key: 'public/patients/' + patient.person_id + pTmp + '.' + extension,
+      Body: pTarget,
+      ACL: 'public-read-write',
+      ContentType: pTarget.type
+    };
+    let s3Resp = await s3
+      .upload(pFile)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+      });
+    console.log(s3Resp);
+    return ('public/patients/' + patient.person_id + pTmp + '.' + extension);
+  }
+
   const handleChangeSearch = event => {
-    setSearchTerm(event.target.value);
+    localData.searchTerm = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setSearchTerm(event.target.value);
     setChanges(true);
   };
 
   const handleChangeMethod = event => {
-    setMethod(event.target.value);
+    localData.prefMethod = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setMethod(event.target.value);
+    setChanges(true);
+  };
+
+  const handleChangeDirectoryOption = event => {
+    localData.directoryOption = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setDirectoryOption(event.target.value);
     setChanges(true);
   };
 
   const handleChangeLocation = event => {
-    setLocation(event.target.value);
+    localData.location = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setLocation(event.target.value);
     setChanges(true);
   };
 
   const handleChangePassword = event => {
-    setInputPWD(event.target.value);
+    localData.inputPWD = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    // setInputPWD(event.target.value);
   };
 
   const handleChangeGroups = updatedGroupArray => {
@@ -430,9 +665,13 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const handleChangeLinkedAccounts = updatedResponsibleArray => {
+    let finalRespArray = [];
+    updatedResponsibleArray.forEach(r => { if (localData.nameObj.hasOwnProperty(r)) { finalRespArray.push(r); } });
+    localData.respArray = finalRespArray;
     setResponsibleArray(updatedResponsibleArray);
     patientSession.responsible_for = updatedResponsibleArray;
-    setSessionVersion(sessionVersion + 1)
+    setSessionVersion(sessionVersion + 1);
+    setRefreshTrigger(!refreshTrigger);
     setChanges(true);
   };
 
@@ -450,9 +689,408 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+  function recordExists(recordId) {
+    if (!recordId) { return false; }
+    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
+    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
+  }
+
   return (
-    open ?
+    (localData.ready && (open || refreshTrigger)) ?
       <Dialog open={open} onClose={handleAbort} TransitionComponent={Transition} fullScreen>
+        <AppBar>
+          <Toolbar>
+            <IconButton color='inherit' edge='start' onClick={handleAbort}>
+              <CloseIcon />
+            </IconButton>
+            <Typography variant='h6' className={classes.title}>
+              {patient?.name?.first} {patient?.name?.last}
+            </Typography>
+            {(changes || pwdConfirmed) &&
+              <Button
+                onClick={handleUpdate}
+                disabled={!changes && !pwdConfirmed}
+                hidden={!changes && !pwdConfirmed}
+                variant='contained'
+                className={classes.topButton}
+              >
+                {isMobile ? 'Save' : 'Save Changes'}
+              </Button>}
+          </Toolbar>
+        </AppBar>
+        <Toolbar />
+        <Box m={2}>
+          <Paper component={Box} variant={'outlined'}>
+            <Box mt={1} py={1} px={3} borderBottom={2}>
+              <Box flexGrow={1}>
+                <Typography variant='h6'>Profile</Typography>
+              </Box>
+            </Box>
+          </Paper>
+          <Paper
+            component={Box}
+            p={3}
+            variant='outlined'
+            display='flex'
+            flexDirection='row'
+            justifyContent='center'
+            alignItems='center'>
+            <Box flexGrow={2} display='flex' flexDirection='column'>
+              <form className={classes.root} noValidate autoComplete='off'>
+                <div>
+                  <TextField id='FirstName' value={localData.firstName} onChange={handleChangeFirstName} helperText='First' />
+                  {'    '}
+                  <TextField id='LastName' onChange={handleChangeLastName} value={localData.lastName} helperText='Last' />
+                </div>
+                <div>
+                  <TextField id='address' value={localData.location} fullWidth onChange={handleChangeLocation} helperText='Location' />
+                </div>
+                <div>
+                  <TextField id='eMail' value={localData.email} fullWidth onChange={handleChangeEmail} helperText='e-Mail' />
+                </div>
+                <div>
+                  <TextField id='cell' value={localData.cell} onChange={handleChangeCell} helperText='cell phone' />
+                  {'    '}
+                  <TextField id='home' value={localData.voice} onChange={handleChangeVoice} helperText='home phone' />
+                </div>
+                <div>
+                  <TextField id='surrogate' value={localData.surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
+                </div>
+                <div>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
+                    {localData.prefMethod &&
+                      <FormControl className={classes.formControl} component="fieldset">
+                        <RadioGroup row defaultValue={localData.prefMethod} aria-label="PrefMethod" name="method" value={localData.prefMethod} onChange={handleChangeMethod}>
+                          <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!localData.cell} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!localData.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!localData.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>phone</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!localData.surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>time-based</Typography>} />
+                        </RadioGroup>
+                      </FormControl>
+                    }
+
+                    <Typography className={classes.idText1}>
+                      {`My userID is ${patient?.person_id}`}
+                    </Typography>
+
+                    <Typography className={classes.radioTextWithTopMargin}>With regard to the printed Directory...</Typography>
+                    {localData.directoryOption &&
+                      <FormControl className={classes.formControl} component="fieldset">
+                        <RadioGroup row={false} defaultValue={localData.directoryOption} aria-label="DirOptions" name="dirOption" value={localData.directoryOption} onChange={handleChangeDirectoryOption}>
+                          <FormControlLabel className={classes.formControlLbl} value="normal" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Include my info</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="exclude" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Exclude me</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="alone" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Do not print my info with anyone else's</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="merge" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Merge with another account for printing</Typography>} />
+                        </RadioGroup>
+                      </FormControl>
+                    }
+                    {(localData.directoryOption === 'merge') &&
+                      <React.Fragment>
+                        <Typography className={classes.radioTextWithTopMargin}>{(localData.respArray && (localData.respArray.length === 0)) ? 'To merge for printing, first link one or more Accounts in the "Linked Accounts" section below' : 'Merge with which linked Account?'}</Typography>
+                        <FormControl className={classes.formControl} component="fieldset">
+                          <RadioGroup row
+                            defaultValue={localData.directoryPartner || ((localData.respArray.length === 1) ? localData.respArray[0] : localData.patient_id)}
+                            aria-label="Mergeaccount"
+                            name="directory_partner"
+                            value={localData.directoryPartner}
+                            onChange={handleChangePartner}
+                          >
+                            {localData.respArray &&
+                              localData.respArray.map((presp) => (
+                                <FormControlLabel
+                                  key={`nameNlinkdaccts+${presp}`}
+                                  className={classes.formControlLbl}
+                                  value={presp}
+                                  control={
+                                    <Radio disableRipple
+                                      className={classes.radioButton}
+                                      size='small' />
+                                  }
+                                  label={
+                                    <Typography
+                                      className={classes.radioText}>
+                                      {localData.nameObj[presp]}
+                                    </Typography>}
+                                />
+                              ))}
+                          </RadioGroup>
+                        </FormControl>
+                      </React.Fragment>
+                    }
+
+                    <Box mt={3}>
+                      <TextField id='searchTerm' value={localData.searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
+                    </Box>
+
+                  </Box>
+                </div>
+                <Box flexGrow={1} mr={3}
+                  display="flex"
+                  flexDirection='row'
+                  alignItems="center"
+                  justifyContent="flex-end"
+                >
+                </Box>
+              </form>
+            </Box>
+          </Paper>
+        </Box>
+        {localData.prefMethod === 'time_based' ?
+          <MessageRouting
+            person={patient}
+            updateSetChange={() => { setChanges(true); }}
+            onChangeMethod={onChangeMethod}
+            numberRows={patient.time_based_rules?.length || 1}
+          />
+          : null}
+        <Box m={2}>
+          <Paper component={Box} variant={'outlined'}>
+            <Box mt={1} py={1} px={3} borderBottom={2}>
+              <Box flexGrow={1}>
+                <Typography variant='h6'>Photo</Typography>
+              </Box>
+            </Box>
+          </Paper>
+          <Paper
+            component={Box}
+            p={3}
+            variant='outlined'
+            display='flex'
+            flexDirection='row'
+            justifyContent='center'
+            alignItems='center'>
+            <Box flexGrow={1} mr={3}
+              display="flex"
+              flexDirection='column'
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Box
+                component="img"
+                minWidth={150}
+                maxWidth={150}
+                alt='No photo'
+                src={localData.temp_photo ? `https://theseus-medical-storage.s3.amazonaws.com/${localData.temp_photo}` : `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg`}
+              />
+              <br />
+              <Box display='flex'
+                className={classes.photoButton}
+                flexDirection='row'
+                justifyContent='center'
+                alignItems='center'>
+                {(editPhoto === '') &&
+                  <React.Fragment>
+                    <Button
+                      className={classes.photoButton}
+                      variant='outlined'
+                      color='primary'
+                      hidden={patient.person_id.startsWith('*NEW~')}
+                      size='small'
+                      startIcon={<CloudUploadIcon />}
+                      onClick={async () => {
+                        handlePhotoUpload();
+                      }}
+                    >
+                      <Typography>Upload new photo</Typography>
+                    </Button>
+                    {!patient.person_id.startsWith('*NEW~') &&
+                      <Button
+                        className={classes.photoButton}
+                        variant='outlined'
+                        color='primary'
+                        hidden={patient.person_id.startsWith('*NEW~')}
+                        size='small'
+                        onClick={async () => {
+                          setEditPhoto(localData.temp_photo || `public/patients/${patient.person_id}.jpg`);
+                          setChanges(true);
+                        }}
+                      >
+                        <Typography>Edit this photo</Typography>
+                      </Button>
+                    }
+                  </React.Fragment>
+                }
+                {(editPhoto !== '') &&
+                  <React.Fragment>
+                    <Button
+                      className={classes.photoButton}
+                      variant='outlined'
+                      color='primary'
+                      size='small'
+                      onClick={() => {
+                        cropper.rotate(90);
+                      }}
+                    >
+                      <Typography>Rotate</Typography>
+                    </Button>
+                    <Button
+                      className={classes.photoButton}
+                      variant='outlined'
+                      color='primary'
+                      size='small'
+                      onClick={() => {
+                        setEditPhoto('');
+                        setRefreshTrigger(!refreshTrigger);
+                      }}
+                    >
+                      <Typography>Close</Typography>
+                    </Button>
+                  </React.Fragment>
+                }
+              </Box>
+              {(editPhoto !== '') &&
+                <Cropper
+                  zoomTo={0.5}
+                  style={{ width: "100%", height: "400px" }}
+                  aspectRatio={1 / 1}
+                  src={`https://theseus-medical-storage.s3.amazonaws.com/${editPhoto}`}
+                  viewMode={0}
+                  minCropBoxHeight={150}
+                  minCropBoxWidth={150}
+                  background={false}
+                  responsive={true}
+                  dragMode={'move'}
+                  movable={true}
+                  autoCropArea={1}
+                  checkOrientation={false}
+                  onInitialized={(instance) => {
+                    setCropper(instance);
+                  }}
+                />
+              }
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                ref={hiddenFileInput}
+                onChange={async (target) => {
+                  localData.temp_photo = await handleSavePhoto(target.target.files[0], 'tmp');
+                  setEditPhoto(localData.temp_photo);
+                  setChanges(true);
+                }}
+              />
+            </Box>
+          </Paper>
+        </Box >
+        <ClientsSection person={patient} updateGroups={handleChangeGroups} />
+        <RelationshipSection person={patient} />
+        <LinkedAccountsSection
+          groupMemberList={localData.groupMemberList}
+          session={patientSession}
+          updateSession={handleChangeLinkedAccounts}
+          updateProxy={handleChangeProxy}
+          version={sessionVersion}
+        />
+        <Box m={2}>
+          <Paper component={Box} variant={'outlined'}>
+            <Box mt={1} py={1} px={3} borderBottom={2}>
+              <Box flexGrow={1}>
+                <Typography variant='h6'>Log-in Management</Typography>
+              </Box>
+            </Box>
+          </Paper>
+          <Paper
+            component={Box}
+            p={3}
+            variant='outlined'
+            display='flex'
+            flexDirection='row'
+            justifyContent='center'
+            alignItems='center'>
+            <Box flexGrow={2} display='flex' flexDirection='column'>
+              <form className={classes.root} noValidate autoComplete='off'>
+                <div>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.lineTextWithTopMargin}>Require a password to log in?</Typography>
+                    <Box flexGrow={2} display='flex' alignItems='center'
+                      justifyContent='flex-start' marginTop={-1} marginBottom={2} flexDirection='row'>
+                      <Typography className={localData.requirePassword ? classes.radioText : classes.radioTextBold}>Simplfied Log-in</Typography>
+                      <Switch
+                        checked={localData.requirePassword}
+                        onChange={() => {
+                          localData.requirePassword = !localData.requirePassword;
+                          setRefreshTrigger(!refreshTrigger);
+                          setChanges(true);
+                        }} name="PWDrequired"
+                        color="primary"
+                      />
+                      <Typography className={localData.requirePassword ? classes.radioTextBold : classes.radioText}>Password Required</Typography>
+                    </Box>
+                    <Typography className={classes.lineTextWithTopMargin}>Allow my password to be stored</Typography>
+                    <Box flexGrow={2} display='flex' alignItems='center'
+                      justifyContent='flex-start' marginTop={-1} marginBottom={2} flexDirection='row'>
+                      <Typography className={localData.storePassword ? classes.radioText : classes.radioTextBold}>No</Typography>
+                      <Switch
+                        checked={localData.storePassword}
+                        onChange={() => {
+                          localData.storePassword = !localData.storePassword;
+                          setRefreshTrigger(!refreshTrigger);
+                          setChanges(true);
+                        }}
+                        name="PWDstored"
+                        color="primary"
+                      />
+                      <Typography className={localData.storePassword ? classes.radioTextBold : classes.radioText}>Yes</Typography>
+                    </Box>
+                    {localData.last_login && localData.storePassword &&
+                      <Typography className={classes.lineTextWithTopMargin}>{`Last known password: ${localData.last_login}`}</Typography>
+                    }
+                    {patientPChange &&
+                      <Typography className={classes.lineTextWithTopMargin}>{`Password changed: ${patientPChange.split('GMT')[0]} GMT`}</Typography>
+                    }
+                  </Box>
+                </div>
+              </form>
+              <Box flexGrow={2} display='flex' alignItems='center'
+                justifyContent='flex-start' marginTop={2} marginBottom={2} flexDirection='row'>
+                <Button
+                  onClick={handleResetPassword1}
+                  disabled={resettingPwd && !pwdConfirmed}
+                  variant='outlined'
+                  className={classes.infoButton}
+                >
+                  Reset?
+                </Button>
+                {resettingPwd &&
+                  <React.Fragment>
+                    <Button
+                      onClick={handleResetPassword2}
+                      disabled={!resettingPwd || pwdConfirmed}
+                      hidden={!resettingPwd}
+                      variant={pwdConfirmed ? 'contained' : 'outlined'}
+                      className={classes.resetButton}
+                    >
+                      {pwdConfirmed ? 'Confirmed!' : 'Confirm?'}
+                    </Button>
+                    <TextField
+                      id='password'
+                      value={localData.inputPWD}
+                      autoComplete='off'
+                      type='text'
+                      onChange={handleChangePassword}
+                      helperText={'password'}
+                    />
+                  </React.Fragment>
+                }
+              </Box>
+            </Box>
+          </Paper>
+        </Box>
+      </Dialog>
+      :
+      <Dialog open={open} TransitionComponent={Transition} fullScreen>
         <AppBar>
           <Toolbar>
             <IconButton color='inherit' edge='start' onClick={handleAbort}>
@@ -492,197 +1130,17 @@ export default ({ patient, picture, open, onClose }) => {
             justifyContent='center'
             alignItems='center'>
             <Box flexGrow={2} display='flex' flexDirection='column'>
-              <form className={classes.root} noValidate autoComplete='off'>
-                <div>
-                  <TextField id='FirstName' value={firstName} onChange={handleChangeFirstName} helperText='First' />
-                  {'    '}
-                  <TextField id='LastName' onChange={handleChangeLastName} value={lastName} helperText='Last' />
-                </div>
-                <div>
-                  <TextField id='address' value={location} fullWidth onChange={handleChangeLocation} helperText='Location' />
-                </div>
-                <div>
-                  <TextField id='eMail' value={email} fullWidth onChange={handleChangeEmail} helperText='e-Mail' />
-                </div>
-                <div>
-                  <TextField id='cell' value={cell} onChange={handleChangeCell} helperText='cell phone' />
-                  {'    '}
-                  <TextField id='home' value={voice} onChange={handleChangeVoice} helperText='home phone' />
-                </div>
-                <div>
-                  <TextField id='surrogate' value={surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
-                </div>
-                <div>
-                  <Box
-                    display="flex"
-                    pt={2}
-                    flexDirection='column'
-                    justifyContent="center"
-                  >
-                    <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
-                    <FormControl className={classes.formControl} component="fieldset">
-                      <RadioGroup row defaultValue={prefMethod} aria-label="PrefMethod" name="method" value={prefMethod} onChange={handleChangeMethod}>
-                        <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
-                        <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!cell} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
-                        <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
-                        <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>phone</Typography>} />
-                        <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
-                        <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>time-based</Typography>} />
-                      </RadioGroup>
-                    </FormControl>
-
-                    <Typography className={classes.idText1}>
-                      {`My userID is ${patient?.person_id}`}
-                    </Typography>
-                    {patientPChange ?
-                      <Typography className={classes.idText2}>{`My password was set on ${patientPChange.split('GMT')[0]} GMT`}</Typography>
-                      : null}
-
-                    <Box mt={3}>
-                      <TextField id='searchTerm' value={searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
-                    </Box>
-
-                  </Box>
-                </div>
-                <Box flexGrow={1} mr={3}
-                  display="flex"
-                  flexDirection='row'
-                  alignItems="center"
-                  justifyContent="flex-end"
-                >
-                </Box>
-              </form>
-            </Box>
-          </Paper>
-        </Box>
-        {prefMethod === 'time_based' ?
-          <MessageRouting
-            person={patient}
-            updateSetChange={() => { setChanges(true); }}
-            onChangeMethod={onChangeMethod}
-            numberRows={patient.time_based_rules?.length || 1}
-          />
-          : null}
-        <Box m={2}>
-          <Paper component={Box} variant={'outlined'}>
-            <Box mt={1} py={1} px={3} borderBottom={2}>
-              <Box flexGrow={1}>
-                <Typography variant='h6'>Photo</Typography>
+              <Box
+                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                key={'loadingBox'}
+                ml={2} mr={2}
+              >
+                <Typography variant='h5' className={classes.lastName} >{`Loading`}</Typography>
+                <CircularProgress />
               </Box>
             </Box>
           </Paper>
-          <Paper
-            component={Box}
-            p={3}
-            variant='outlined'
-            display='flex'
-            flexDirection='row'
-            justifyContent='center'
-            alignItems='center'>
-            <Box flexGrow={1} mr={3}
-              display="flex"
-              flexDirection='column'
-              alignItems="center"
-              justifyContent="center"
-            >
-              <Box
-                component="img"
-                minWidth={150}
-                maxWidth={150}
-                alt='No photo available'
-                src={!patient.person_id.startsWith('*NEW~') ? `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg` : 'https://ava-icons.s3.amazonaws.com/icons8-family-50.png'}
-              />
-              <br />
-              {!patient.person_id.startsWith('*NEW~') ?
-                <Button
-                  className={classes.photoButton}
-                  variant='outlined'
-                  color='primary'
-                  hidden={patient.person_id.startsWith('*NEW~')}
-                  size='small'
-                  startIcon={<CloudUploadIcon />}
-                  onClick={handlePhotoUpload}
-                >
-                  <Typography>Update photo?</Typography>
-                </Button>
-                : null
-              }
-              <input
-                type="file"
-                style={{ display: 'none' }}
-                ref={hiddenFileInput}
-                onChange={async (target) => {
-                  const pFile = {
-                    Bucket: 'theseus-medical-storage',
-                    Key: 'public/patients/' + patient.person_id + '.jpg',
-                    Body: target.target.files[0],
-                    ACL: 'public-read-write',
-                    ContentType: target.target.files[0].ContentType
-                  };
-                  enqueueSnackbar(`Your photo is being updated!`, { variant: 'success', persist: false });
-                  s3.upload(pFile, function (err, data) {
-                    if (err) {
-                      enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                    }
-                  });
-                }
-                }
-              />
-            </Box>
-          </Paper>
-        </Box >
-        <ClientsSection person={patient} updateGroups={handleChangeGroups} />
-        <RelationshipSection person={patient} />
-        <LinkedAccountsSection
-          groupMemberList={groupMemberList}
-          session={patientSession}
-          updateSession={handleChangeLinkedAccounts}
-          updateProxy={handleChangeProxy}
-          version={sessionVersion}
-        />
-        <Toolbar>
-          <Tooltip title={<Typography variant='caption'>{patient.person_id}</Typography>} placement='bottom-end'>
-            <Button
-              onClick={handleResetPassword1}
-              disabled={resettingPwd && !pwdConfirmed}
-              variant='contained'
-              className={classes.infoButton}
-            >
-              Reset Acct
-            </Button>
-          </Tooltip>
-          {" "}
-          {resettingPwd ?
-            <React.Fragment>
-              <Button
-                onClick={handleResetPassword2}
-                disabled={!resettingPwd || pwdConfirmed}
-                hidden={!resettingPwd}
-                variant='contained'
-                className={classes.resetButton}
-              >
-                {pwdConfirmed ? 'Confirmed!' : 'Confirm?'}
-              </Button>
-              {" "}
-              <div>
-                <TextField
-                  id='password'
-                  value={inputPWD}
-                  autoComplete='off'
-                  type='text'
-                  onChange={handleChangePassword}
-                  helperText={'password'}
-                />
-              </div>
-            </React.Fragment>
-            : null}
-        </Toolbar>
-        <Box flexGrow={1} ml={5}
-          display="flex"
-          flexDirection='column'
-        >
         </Box>
       </Dialog>
-      : null
   );
 };

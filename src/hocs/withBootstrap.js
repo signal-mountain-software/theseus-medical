@@ -1,50 +1,58 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { API, Auth, graphqlOperation } from 'aws-amplify';
+import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
-
-import { Lambda } from 'aws-sdk';
-
-import { useCookies } from 'react-cookie';
 
 import Box from '@material-ui/core/Box';
 import CircularProgress from '@material-ui/core/CircularProgress';
+import Card from '@material-ui/core/Card';
+import CardMedia from '@material-ui/core/CardMedia';
 import Typography from '@material-ui/core/Typography';
+import Dialog from '@material-ui/core/Dialog';
 
+import { Lambda } from 'aws-sdk';
+import { useCookies } from 'react-cookie';
 import useSession from '../hooks/useSession';
-import { getPerson, getRoles, getSession, getCustomizations } from '../graphql/queries';
-import PersonFilter from '../components/forms/PersonFilter';
-
-import Button from '@material-ui/core/Button';
-
-import { SET_PATIENT, SET_PATIENTS, SET_PROFILE, SET_ROLES, SET_SESSION, SET_USER } from '../contexts/Session/actions';
-
+import useIosCheck from '../hooks/useIosCheck';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+
+import { SET_PATIENT, SET_PROFILE, SET_SESSION, SET_USER } from '../contexts/Session/actions';
+import AVATextInput from '../components/forms/AVATextInput';
+
 const useStyles = makeStyles(theme => ({
-  buttonFormat: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginTop: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
+  logoSmall: {
+    maxWidth: '100px',
+    marginBottom: '15px'
   },
 }));
+
+const AWS = require('aws-sdk');
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
 
 
 export default Component => props => {
 
+  // Constants and React state variables
+  const { closeSnackbar, enqueueSnackbar } = useSnackbar();
+
+  const { dispatch } = useSession();
+  // const { patient, session, profile } = state;
+  // const AVASessionData = sessionStorage.getItem('AVASessionData');
+
+  const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
+
+  const [cognitoConfirmed, setCognitoConfirmed] = React.useState();
+  const [AVAReady, setAVAReady] = React.useState(false);
+  let localAVAReady = false;
+  const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
+
   const classes = useStyles();
-
-  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
-  const { state, dispatch } = useSession();
-  const { user } = state;
-
-  const [, , removeCookie] = useCookies(['AVAuser']);
-
-  const [peopleList, setPeopleList] = React.useState();
-  const [callPending, setCallPending] = React.useState(false);
-  if (state.people) { setPeopleList(state.people); }
+  const [platform] = useIosCheck();
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -52,493 +60,692 @@ export default Component => props => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-  };
-
-  const getPeopleList = async (pClient, pGroup) => {
-    let invokeFailed = false;
-    let lambdaPayload = {
-      action: "get_group_members",
-      clientId: pClient,
-      request: {
-        "group_id": pGroup,
-      }
-    };
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    params.Payload = JSON.stringify(lambdaPayload);
-    setCallPending(true);
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        console.log('Call failed.  Error is', JSON.stringify(err));
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let groupMemberList = JSON.parse(fResp.Payload);
-      if (groupMemberList.status === 200) {
-        setCallPending(false);
-        return (groupMemberList.body.map(p => {
-          return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
-        }));
-      }
-    };
-    setCallPending(false);
-    return [];
-  };
-
-  const getGroupsManaged = async (pClient, pPerson) => {
-    let invokeFailed = false;
-    params.Payload = JSON.stringify({
-      action: "get_groups_managed",
-      clientId: pClient,
-      request: {
-        "person_id": pPerson,
-      }
-    });
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let groupsManagedReturn = JSON.parse(fResp.Payload);
-      if (groupsManagedReturn.status === 200) {
-        return groupsManagedReturn.body;
-      }
-    };
-    return [];
-  };
-
+  const allParams = useParams();
   function useParams() {
     const { search } = useLocation();
     return React.useMemo(() => new URLSearchParams(search), [search]);
   };
 
-  const allParams = useParams();
-
-
-  const action = key => {
-    return (
-      <React-Fragment>
-        <Button
-          className={classes.buttonFormat}
-          size='small'
-          variant='contained'
-          onClick={async () => {
-            params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-            let lambdaPayload = {
-              "body": {
-                "client": user.attributes['custom:client'],
-                "author": user.username,
-                "values": `AVA Support:ava_support ~ MessageText = ${user.username} entered kiosk mode and is asking for help`
-              }
-            };
-            params.Payload = JSON.stringify(lambdaPayload);
-            let eMsg = false;
-            lambda
-              .invoke(params)
-              .promise()
-              .catch(err => {
-                eMsg = true;
-                enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-                  variant: 'error'
-                });
-              });
-            if (!eMsg) {
-              enqueueSnackbar(`AVA support has been contacted.  You may continue to use AVA with limited functionality if you wish.`, {
-                variant: 'success'
-              });
-            }
-          }
-          }
-        >
-          {`Have someone contact me, please`}
-        </Button>
-        <Button
-          className={classes.buttonFormat}
-          size='small'
-          variant='contained'
-          onClick={() => {
-            closeSnackbar(key);
-            enqueueSnackbar(`Send a message to AVA support if you need any assistance. Thanks for using AVA!`, {
-              variant: 'success'
-            });
-          }}>
-          {`I'm OK`}
-        </Button>
-      </React-Fragment >
-    );
-  };
-
-
-  function getParams() {
-    let returnObject = {};
-    allParams.forEach((value, key) => {
-      returnObject[key] = value;
-    });
-    return returnObject;
-  }
+  let accessLogRecords = [];
 
   React.useEffect(() => {
-    (async () => {
-      let user = await Auth.currentAuthenticatedUser();
-      console.log(user.signInUserSession.accessToken.payload.client_id);
-      let urlQuery = getParams();
-      if (urlQuery?.user) {        //first
-        user = {
-          username: urlQuery.user,
-          attributes: {
-            email: 'no-email@none.com',
-            phone_number: '+12225559999',
-            'custom:client': urlQuery.client,
-            'custom:kiosk': (urlQuery.kiosk === 'true') || false
+    let currentUser, currentSession, currentClient;
+    let currentPatient, currentProfile;
+    let cognitoUser;
+    let checkUser = (
+      async () => {
+        // Does the URL contain a UserID?
+        let urlData = getParamsFromURL();
+        if (urlData) {
+          if (urlData.client || urlData.client_id) {
+            currentClient = urlData.client || urlData.client_id;
           }
-        };
-        try {
-          await Auth
-            .signIn(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP);
+          if (urlData.user || urlData.user_id) {
+            currentUser = urlData.user || urlData.user_id;
+            accessLog(currentUser, 'from URL', 'na',
+              'Using URL supplied UserID -' + (currentClient ? `with Client = ${currentClient}` : 'No client')
+            );
+            let allGood = await prepareAVAEnv(false, null, currentUser, currentSession, currentClient, currentPatient, currentProfile, urlData);
+            if (!allGood) { setAVAFollowUpData({ 'NeedUser': true }); }
+          }
         }
-        catch (e) {
-          console.log(e);
+        // Are we already authenticated with a "good" user?
+        if (!currentUser) {
+          cognitoUser = await Auth
+            .currentAuthenticatedUser()
+            .catch(e => {
+              console.log(e);
+            });
+          if (cognitoUser && (cognitoUser.username !== process.env.REACT_APP_AVA_PU)) {
+            // Someone is logged in (other than the default generic account)
+            let [goodSession, foundSession] = await getSession(cognitoUser.username);
+            if (goodSession) {
+              setCognitoConfirmed(true);
+              currentUser = foundSession.user_id;
+              currentClient = foundSession.client_id;
+              currentSession = foundSession;
+              accessLog(cognitoUser.username, '', currentSession.last_login, 'Existing AVA session used.');
+              let allGood = await prepareAVAEnv(true, currentSession.last_login, currentUser, currentSession, currentClient, currentPatient, currentProfile);
+              if (!allGood) {
+                setAVAFollowUpData({ 'NeedUser': true });
+                enqueueSnackbar(`AVA tried couldn't continue your previous session.  Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
+              }
+            }
+            else {
+              accessLog(cognitoUser, 'Cached', '', 'Cached user info incomplete.  Log-in required.');
+            }
+          }
+        }
+        // Does a Cookie exist and contain a UserID?
+        if (!currentUser) {
+          let cookieValues = getCookie();
+          if (cookieValues.client) {
+            currentClient = cookieValues.client;
+          }
+          if (cookieValues.user_id) {
+            currentUser = cookieValues.user_id;
+            let [, currentSession] = await getSession(currentUser);
+            currentClient = currentSession.client_id;
+            accessLog(currentUser, 'from Cookie', '',
+              'Using Cookie supplied UserID ' + (currentClient ? `with Client = ${currentClient}` : 'with no client')
+            );
+            let goodLogIn = false;
+            let lActual;
+            [goodLogIn, , lActual] = await logMeIn(cookieValues.user_id, cookieValues.last_login, !!cognitoUser);
+            if (goodLogIn) {
+              let allGood = await prepareAVAEnv(goodLogIn, lActual, currentUser, currentSession, currentClient, currentPatient, currentProfile);
+              if (!allGood) {
+                setAVAFollowUpData({ 'NeedUser': true });
+                enqueueSnackbar(`AVA couldn't use the stored data.  Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
+              }
+            }
+          }
+        }
+        else if (!currentClient) {
+          let cookieValues = getCookie();
+          if (cookieValues.client) {
+            currentClient = cookieValues.client;
+          }
+        }
+        if (!currentUser) {
+          setAVAFollowUpData({ 'NeedUser': true });
+          enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
         }
       }
-      dispatch({ type: SET_USER, payload: user });       //sixth
-    })().catch(error => {
-      console.log(JSON.stringify(error));
-    });
+    );
+    checkUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onValidUser = async (user, pKiosk = false) => {
-    let mounted = true;
-    let getSessionResult;
-    var getProfileResult;
-    let getPatientResult;
-    var getPeopleByGroupResult;
-    let getRolesResult;
-    let usingDefaultSession = false;
+  function promptForUser() {
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('NeedUser'));
+  }
 
-    if (user.username !== 'paccess') {
-      // get the session for the current user 
-      // SessionsV2 delivers information about the current user environment.  Specifically...
-      // session_id (primary key) is the authenticated user_id
-      // user_id is the account that we will emulate for this session.  This should always be = session_id UNLESS we are trying to debug a user's account
-      // patient_id is the account for which we are creating facts
-      // Fred signs on as fred and we get Sessionv2 row with fred as primary key.  We assume this session is for user_id = fred.
-      // That user_id will persist throughout the session and be used to determine which users you are allowed to work on behalf of (responsible_for)
-      // The current user that you are working on behalf of (often and typically yourself), is stored in patient_id
-      let userInfo = await Auth
-        .currentUserInfo()
-        .catch(e => {
-          console.log('Not logged in - or - network error');
-        });
-      let default_client_id = userInfo?.attributes?.['custom:client'] || 'SMSoft';
+  function promptForPassword() {
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID'));
+  }
 
-      getSessionResult = await API
-        .graphql(graphqlOperation(getSession, { session_id: user.username }))
-        .catch(error => {
-          if (error.message === 'Network Error' || error.errors[0].message === 'Network Error') {
-            enqueueSnackbar(`You aren't connected to the Internet!`, {
-              variant: 'error', persist: true,
-            });
-          }
-          else {
-            enqueueSnackbar(`Welcome to AVA, ${user.username}! Please tap the Welcome button (the oval toward the top left of your screen).  That's where you'll be able to complete your account setup.
-                Once that's complete, we'll get your account finalized right away.  No worries, though!  You can use many AVA features in the meantime while we personalize things for you.`, {
-              variant: 'info', persist: true,
-            });
-          };
-        });
-
-      var session;
-
-      if (!getSessionResult) {
-        usingDefaultSession = true;
-        getSessionResult = await API
-          .graphql(graphqlOperation(getSession, { session_id: `${default_client_id}~default` }))
-          .catch(error => {
-            enqueueSnackbar(`You may not be connected to the internet.  AVA requires a network connection.`, { variant: 'error', persist: true, });
-            getSessionResult = null;
-          });
-        if (getSessionResult?.data) {
-          session = getSessionResult.data.getSession;
-          session.user_display_name = 'Welcome ' + user.username;
-        }
-      }
-      else {
-        session = getSessionResult.data.getSession;
-        if (session?.user_id !== user.username) {
-          enqueueSnackbar(`You are emulating ${session?.user_id}`, {
-            variant: 'info',
-          });
-          let emulatingSession = await API
-            .graphql(graphqlOperation(getSession, { session_id: getSessionResult.data.getSession.user_id }))
-            .catch(error => {
-              enqueueSnackbar(`Request to emulate ${getSessionResult.data.getSession.user_id} failed.  Using ${user.user_id} for this session.`, {
-                variant: 'info', persist: true,
-              });
-              emulatingSession = null;
-            });
-          if (emulatingSession) { session = emulatingSession.data.getSession; }
-        }
-        session.session_id = `22.8.31${window.location.href.split('//')[1].slice(0, 1)}`;
-        let urlQuery = getParams();
-        if (urlQuery?.user) {
-          session.url_parameters = urlQuery;
-        }
-      }
-
-      // get person's Account information
-      getProfileResult = await API
-        .graphql(graphqlOperation(getPerson, { person_id: (session.user_id) }))
-        .catch(error => {
-          enqueueSnackbar(`You are user ID ${(usingDefaultSession ? user.username : session.user_id)}, but we couldn't get your info.  The problem is: ${error.errors[0].message}`, {
-            variant: 'error', persist: true,
-          });
-          console.log('using default user...');
-        });
-
-      if (!getProfileResult) {
-        getProfileResult = await API
-          .graphql(graphqlOperation(getPerson, { person_id: `${default_client_id}~default` }))
-          .catch(error => {
-            console.log('using default session...');
-          });
-        usingDefaultSession = true;
-      }
-
-      if (usingDefaultSession) {
-        getProfileResult.data.getPerson.messaging.email = user.attributes.email || null;
-        getProfileResult.data.getPerson.messaging.sms = user.attributes.phone_number || null;
-        getProfileResult.data.getPerson.messaging.voice = null;
-        getProfileResult.data.getPerson.location = null;
-        getProfileResult.data.getPerson.name.first = user.username;
-        getProfileResult.data.getPerson.name.last = 'Welcome';
-        getProfileResult.data.getPerson.clients = [{ "id": default_client_id, "groups": [`${default_client_id}_all`] }];
-      }
-
-      let profile = getProfileResult.data.getPerson;
-      profile.groups = getProfileResult.data.getPerson.clients[0].groups;
-      // var user_id = profile.person_id;
-
-      // get the roles for the current user
-      var roles;
-      //    if (session.responsible_for === 'ALL') { roles = ['admin'] }
-      //    else {
-      const client_group_id = session.client_id + '~' + session.assigned_to;
-
-      let getClientResult = await API
-        .graphql(graphqlOperation(getCustomizations, { client_id: session.client_id, custom_key: 'logo' }))
-        .catch(
-          error => {
-            console.log('logo not found for client ' + session.client_id);
-          }
-        );
-      session.client_icon = getClientResult?.data?.getCustomizations?.icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg';
-
-      let getSearchCustomizationResult = await API
-        .graphql(graphqlOperation(getCustomizations, { client_id: session.client_id, custom_key: 'search_terms' }))
-        .catch(
-          error => {
-            console.log('no search Customizations found for ' + session.client_id);
-          }
-        );
-      let customization_value = getSearchCustomizationResult?.data?.getCustomizations?.customization_value;
-      session.search_terms = customization_value ? JSON.parse(customization_value) : {};
-
-      // get the Client's information
-      getRolesResult = await API
-        .graphql(graphqlOperation(getRoles, { person_id: session.user_id, client_group_id }))
-        .catch(
-          error => {
-            console.log('security record not found for user ' + session.user_id + ' (' + client_group_id + ')');
-          }
-        );
-      roles = getRolesResult?.data?.getRoles || ['patient'];
-
-
-      // get the current patient information for a user; if the user does not have a current patient, use the user's id
-      // const patient_id = usingDefaultSession ? user.username : session.patient_id;
-      var patient = {};
-      if (profile.person_id === (session.patient_id || session.user_id)) {
-        Object.assign(patient, profile);
-      }
-      else {
-        getPatientResult = await API
-          .graphql(graphqlOperation(getPerson, { person_id: (session.patient_id || session.user_id) }))
-          .catch(error => {
-            if (error.message === 'Network Error' || error.errors[0].message === 'Network Error') {
-              enqueueSnackbar(`You aren't connected to the Internet!`, {
-                variant: 'error', persist: true,
-              });
-            }
-          });
-        if (!getPatientResult || !getPatientResult.data) {
-          enqueueSnackbar(`You are trying to work with user ${session.patient_id || session.user_id}.  But that account doesn't exist.  Reverting to your own account.`, {
-            variant: 'info', persist: false,
-          });
-          Object.assign(patient, profile);
-        }
-        else {
-          patient = getPatientResult.data.getPerson;
-          if (usingDefaultSession) {
-            patient.messaging.email = user.attributes.email || null;
-            patient.messaging.sms = user.attributes.phone_number || null;
-            patient.messaging.voice = null;
-            patient.location = null;
-            patient.name.first = user.username;
-            patient.name.last = 'Welcome';
-          }
-        }
-      }
-      patient.groups = patient.clients[0].groups;
-      if (usingDefaultSession) { patient.person_id = user.username; }
-
-      // get a group of patients a user is responsible for
-      let patients = [];
-      let unSortedList = [];
-
-      if (session.responsible_for && (patients.length === 0)) {
-        roles.push('responsible_for');  // remove this line when ready to fully depreciate OG switch account process
-        let respArray = [];
-        if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
-        else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-        else { respArray.push(session.responsible_for); }
-        if (respArray.length > 0) {
-          if (respArray.some(g => { return g.toLowerCase() === '*all'; })) {   // case insensitive array search
-            patients = await getPeopleList(session.client_id, '*all');
-          }
-          else {
-            let groupsFound = getGroupsManaged(session.client_id, session.patient_id);
-            for (let gName in groupsFound) {
-              let foundGroup = groupsFound[gName].group_id;
-              if (!respArray.includes(foundGroup)) {
-                respArray.push(foundGroup);
-              }
-            }
-            for (let r = 0; r < respArray.length; r++) {
-              let pList;
-              if (respArray[r].includes('~')) {
-                let [qClient, qGroup] = respArray[r].split('~');
-                pList = await getPeopleList(qClient, qGroup);
+  if (!AVAReady && !localAVAReady) {
+    return (
+      <Dialog
+        open={!AVAReady && !localAVAReady}
+        p={2}
+        fullScreen
+      >
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <Box mt={3} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+            <Card
+              className={classes.logoSmall}
+              raised={false}
+              variant='elevation' elevation={0}
+            >
+              <CardMedia
+                component="img"
+                image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                alt='AVA'
+              />
+            </Card>
+            <Typography align='center'>
+              {`AVA version 22.9.28${window.location.href.split('//')[1].slice(0, 1)}`}
+            </Typography>
+            <CircularProgress />
+          </Box>
+        </div>
+        {promptForUser() &&
+          <AVATextInput
+            titleText="AVA Sign-in"
+            promptText="Enter your User ID or Name"
+            buttonText='Sign In'
+            onCancel={() => {
+              enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
+            }}
+            onSave={async (enteredUserID) => {
+              closeSnackbar();
+              enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
+              let [goodSession, foundSession] = await getSession(enteredUserID);
+              if (goodSession) {
+                if (foundSession.requirePassword) {
+                  let [, foundUser] = await getPerson(foundSession.user_id);
+                  foundUser.sessionRec = foundSession;
+                  accessLog(enteredUserID, '', '', 'Good UserID entered.  Password is required for this account.');
+                  enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
+                  setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': enteredUserID, 'possibleUserRecs': [foundUser] });
+                }
+                else {
+                  accessLog(enteredUserID, '', '', 'Good UserID entered.');
+                  let allGood = await prepareAVAEnv(
+                    false,
+                    null,
+                    foundSession.user_id,
+                    foundSession,
+                    foundSession.client_id,
+                    null,
+                    null);
+                  if (!allGood) {
+                    setAVAFollowUpData({ 'NeedUser': true });
+                    enqueueSnackbar(`AVA couldn't use that UserID.  Please try again.`, { variant: 'info', persist: true });
+                  }
+                }
               }
               else {
-                pList = await getPeopleList(session.client_id, respArray[r]);
+                let requestObj = { 'nameTest': enteredUserID };
+                let cookieValues = getCookie();
+                if (cookieValues.client) { requestObj.client = cookieValues.client; }
+                let [goodUser, possibleUserRecs] = await validateUserAccount(requestObj);
+                if (goodUser) {
+                  if (possibleUserRecs.length === 1) {
+                    if (possibleUserRecs[0].sessionRec.requirePassword) {
+                      accessLog(enteredUserID, '', '', 'User found from name.  Password is required for this account.');
+                      enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
+                      setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': possibleUserRecs[0].person_id, 'possibleUserRecs': possibleUserRecs });
+                    }
+                    else {
+                      accessLog(possibleUserRecs[0].person_id, '', '', `Good UserID found from entered name: ${enteredUserID}.`);
+                      let allGood = await prepareAVAEnv(
+                        false,
+                        null,
+                        possibleUserRecs[0].person_id,
+                        possibleUserRecs[0].sessionRec,
+                        possibleUserRecs[0].client_id,
+                        (possibleUserRecs[0].sessionRec.patient_id === possibleUserRecs[0].person_id) ? possibleUserRecs[0] : null,
+                        possibleUserRecs[0]);
+                      if (!allGood) {
+                        setAVAFollowUpData({ 'NeedUser': true });
+                        enqueueSnackbar(`AVA couldn't use the UserID it found.  Please try again.`, { variant: 'info', persist: true });
+                      }
+                    }
+                  }
+                  else {
+                    enqueueSnackbar(`AVA found ${possibleUserRecs.length} matches for "${enteredUserID}".  Please enter a password or apartment number to help figure out which one you are.`, { variant: 'error', persist: true });
+                    setAVAFollowUpData({ 'enteredUserID': enteredUserID, 'possibleUserRecs': possibleUserRecs });
+                  }
+                }
+                else {
+                  accessLog('unknown', '', '', `No UserID found from entered name: ${enteredUserID}.`);
+                  enqueueSnackbar(`"${enteredUserID}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
+                }
               }
-              unSortedList.push(...pList);
-            }
-            if (respArray.length > 1) {
-              // sort resulting array and remove duplicates
-              let pSet = unSortedList.sort((a, b) => {
-                return (a.person_id > b.person_id ? 1 : -1);
-              });
-              patients = pSet.filter((e, x, a) => {
-                return (x === 0 || e.person_id !== a[x - 1].person_id);
-              });
-            }
-            else { patients = unSortedList; }
-          }
-          patients.sort();
+            }}
+            allowCancel={false}
+          />
         }
+        {promptForPassword() &&
+          <AVATextInput
+            titleText="AVA Sign-in"
+            promptText={`Enter your Password or Apartment Number.`}
+            buttonText='Continue'
+            onCancel={() => {
+              closeSnackbar();
+              enqueueSnackbar(`Please enter your User ID or Name`, { variant: 'info', persist: true });
+              setAVAFollowUpData({ 'NeedUser': true });
+            }}
+            onSave={async (enteredPass) => {
+              closeSnackbar();
+              enqueueSnackbar(`AVA is verifying your information`, { variant: 'info', persist: true });
+              let foundUserAt = -1;
+              let confirmedPass;
+              for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
+                let goodPwd = false;
+                [goodPwd, ,confirmedPass] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
+                if (goodPwd) {
+                  foundUserAt = p;
+                  break;
+                }
+              }
+              if (foundUserAt > -1) {
+                setCognitoConfirmed(true);
+                let allGood = await prepareAVAEnv(
+                  true,
+                  confirmedPass,
+                  AVAFollowUpData.possibleUserRecs[foundUserAt].person_id,
+                  AVAFollowUpData.possibleUserRecs[foundUserAt].sessionRec,
+                  AVAFollowUpData.possibleUserRecs[foundUserAt].client_id,
+                  (AVAFollowUpData.possibleUserRecs[foundUserAt].sessionRec.patient_id === AVAFollowUpData.possibleUserRecs[foundUserAt].person_id) ? AVAFollowUpData.possibleUserRecs[foundUserAt] : null,
+                  AVAFollowUpData.possibleUserRecs[foundUserAt]);
+                if (!allGood) {
+                  setAVAFollowUpData({ 'NeedUser': true });
+                  enqueueSnackbar(`AVA couldn't use the UserID that the location matched.  Please try again.`, { variant: 'info', persist: true });
+                }
+              }
+              else {      
+                enqueueSnackbar(`Still looking...`, { variant: 'info', persist: true });
+                let requestObj = { 'nameTest': AVAFollowUpData.enteredUserID, 'numbersTest': enteredPass };
+                let cookieValues = getCookie();
+                if (cookieValues.client) { requestObj.client = cookieValues.client; }
+                let [goodUser, possibleUserRecs] = await validateUserAccount(requestObj);
+                closeSnackbar();
+                if (goodUser && (possibleUserRecs.length === 1)) {
+                  if (possibleUserRecs[0].sessionRec.requirePassword) {
+                    enqueueSnackbar(`Using that information, AVA located account "${possibleUserRecs[0].person_id}".  However, that account requires a password and "${enteredPass}" isn't the correct password.  Please try again.`, { variant: 'info', persist: true });
+                  }
+                  else {
+                    accessLog(possibleUserRecs[0].person_id, '', '', `Good UserID found from name/location: ${AVAFollowUpData.enteredUserID}/${enteredPass}`);
+                    let allGood = await prepareAVAEnv(
+                      false,
+                      null,
+                      possibleUserRecs[0].person_id,
+                      possibleUserRecs[0].sessionRec,
+                      possibleUserRecs[0].client_id,
+                      (possibleUserRecs[0].sessionRec.patient_id === possibleUserRecs[0].person_id) ? possibleUserRecs[0] : null,
+                      possibleUserRecs[0]
+                    );
+                    if (!allGood) {
+                      setAVAFollowUpData({ 'NeedUser': true });
+                      enqueueSnackbar(`AVA matched that up but couldn't use the info to log you in.  Please try again.`, { variant: 'info', persist: true });
+                    }
+                  }
+                }
+                else if (goodUser && (possibleUserRecs.length > 1)) {
+                  accessLog(AVAFollowUpData.enteredUserID, '', '', `Multiple matches for attempted user/password OR name/location. (${AVAFollowUpData.enteredUserID}/${enteredPass})`);
+                  enqueueSnackbar(`"${enteredPass}" still matches ${possibleUserRecs.length} accounts.  Please try again`, { variant: 'error', persist: true });
+                }
+                else {
+                  accessLog(AVAFollowUpData.enteredUserID, '', '', `No account found for attempted user/password OR name/location. (${AVAFollowUpData.enteredUserID}/${enteredPass})`);
+                  enqueueSnackbar(`"${AVAFollowUpData.enteredUserID}" and "${enteredPass}" didn't match any account in AVA.  Please try again`, { variant: 'error', persist: true });
+                }
+              }
+            }}
+          />
+        }
+      </Dialog >
+    );
+  }
+  else {
+    return (<Component {...props} />);
+  }
 
-        if (patients.length > 0) {
-          patients.unshift(`${profile.name.last}, ${profile.name.first}:${profile.person_id}:${profile.search_data}`);
-          roles.push('responsible_for');
-        };
-      }
-
-      if (pKiosk || user.attributes['custom:kiosk']) {
-        session.kiosk_mode = true;
-        enqueueSnackbar(`Welcome to AVA! Without using a valid password, there are some AVA functions that are unavailable.`, {
-          variant: 'error',
-          persist: true,
-          action
-        });
-      }
-
-      if (mounted) {
-        dispatch({ type: SET_SESSION, payload: session });
-        dispatch({ type: SET_ROLES, payload: roles });
-        dispatch({ type: SET_PROFILE, payload: profile });
-        dispatch({ type: SET_PATIENT, payload: patient });
-        dispatch({ type: SET_PATIENTS, payload: patients });
-      } else {
-        API.cancel(getSessionResult, 'App unmounted, cancel getSession');
-        API.cancel(getRolesResult, 'App unmounted, cancel getRoles');
-        API.cancel(getProfileResult, 'App unmounted, cancel getPerson');
-        API.cancel(getPatientResult, 'App unmounted, cancel getPerson');
-        API.cancel(getPeopleByGroupResult, 'App unmounted, getPeopleByGroup');
-      }
+  async function logMeIn(pUser, pPass, pAlready = false) {
+    if (pPass) {
+      let [logInSuccess, logInUser, logInActual] = await cognitoLogin(pUser, pPass, pUser);
+      if (logInSuccess) { return [logInSuccess, logInUser, logInActual]; }
+    }
+    if (!pAlready) {
+      let [logInSuccess, ,] = await cognitoLogin(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP, pUser);
+      if (logInSuccess) { accessLog(pUser, '', '', 'Generic Login used.'); }
+      return [logInSuccess, 'GenericUser', 'GenericPWD'];
     }
     else {
-      let urlQuery = getParams();
-      if ((!peopleList || peopleList.length === 0) && !callPending) {
-        let people = await getPeopleList(urlQuery.client || 'SMSoft', urlQuery.group || 'AVT_residents');
-        setPeopleList(people);
+      accessLog(pUser, '', '', 'Retained Generic Login.');
+      return [true, 'GenericUser', 'GenericPWD'];
+    }
+
+  };
+
+  async function cognitoLogin(pUser, pPass, pWho = null) {
+    try {
+      await Auth.signIn({ username: pUser, password: pPass.trim(), validationData: { avaAccount: pWho || pUser } });
+      setCognitoConfirmed(true);
+      if (pUser !== process.env.REACT_APP_AVA_PU) {
+        accessLog(pUser, pPass, pPass, 'Successful Log-in');
       }
+      return [true, pUser, pPass];
+    }
+    catch (e) {
+      if ((e.code !== 'NotAuthorizedException')
+        || (e.message.includes('expired'))
+        || (e.message.includes('exceeded'))) {
+        setCognitoConfirmed(false);
+        accessLog(pUser, pPass, '',
+          `Failed Log-in. Reason:${e.code} Message:${e.message}`
+        );
+        return [false, null, null];
+      }
+      let c0 = pPass.trim().charAt(0);
+      let newP;
+      if (c0 === c0.toUpperCase()) {   // first character was a capital letter
+        newP = c0.toLowerCase() + pPass.trim().substring(1);
+      }
+      else {   // first character was a lower case letter
+        newP = c0.toUpperCase() + pPass.trim().substring(1);
+      }
+      try {
+        await Auth.signIn({ username: pUser, password: newP, validationData: { avaAccount: pUser } });
+        setCognitoConfirmed(true);
+        accessLog(pUser, pPass, newP, 'Successful Log-in with case corrected password');
+        return [true, pUser, newP];
+      }
+      catch (e2) {
+        setCognitoConfirmed(false);
+        accessLog(pUser, `${newP} (case corrected)`, '',
+          `Failed Log-in. Reason:${e2.code} Message:${e2.message}`
+        );
+        return [false, null, null];
+      }
+    }
+  }
+
+  function bakeCookie(pUser, pPwd, pClient, pSession, pPatient, pProfile) {
+    setCookie('AVAuser', JSON.stringify({
+      user_id: pUser,
+      client: pClient,
+      last_login: pPwd || ''
+    }), { path: '/' });
+    if (pClient) {
+      setCookie('AVAclient', JSON.stringify({
+        client: pClient,
+      }), { path: '/' });
+    };
+  }
+
+  function putValidationCookie(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL) {
+    setCookie('AVAvalidated', 'true', { path: '/' });
+  }
+
+  function getCookie() {
+    let returnObj = { "empty": "no data" };
+    if (cookies.AVAuser && cookies.AVAuser !== 'undefined') {
+      if (typeof (cookies.AVAuser) === 'string') { returnObj = JSON.parse(cookies.AVAuser); }
+      else { returnObj = cookies.AVAuser; }
+    }
+    if (!returnObj.hasOwnProperty('client')) {
+      if (cookies.AVAclient && cookies.AVAclient !== 'undefined') {
+        if (typeof (cookies.AVAclient) === 'string') { returnObj.client = cookies.AVAclient; }
+        else { returnObj.client = cookies.AVAclient.client_id || cookies.AVAclient.client_id; }
+      }
+    }
+    return returnObj;
+  }
+
+  function getParamsFromURL() {
+    let returnObject = {};
+    allParams.forEach((value, key) => {
+      console.log(key, value);
+      returnObject[key] = value;
+    });
+    if (Object.keys(returnObject).length > 0) {
+      return returnObject;
+    }
+    else { return null }
+  }
+
+
+  async function sendMessage(pClient, pSender, pMessage, pRecipient) {
+    let payload = {
+      "body": {
+        "client": pClient,
+        "author": pSender,
+        "values": pRecipient + ' ~ MessageText = ' + pMessage
+      }
+    };
+    await lambda
+      .invoke({
+        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine',
+        InvocationType: 'RequestResponse',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+      })
+      .promise()
+      .catch(err => {
+        console.log('Call failed.  Error is', JSON.stringify(err));
+      });
+  };
+
+  async function getSession(pSessionID) {
+    let sessionRec = await dbClient
+      .get({
+        Key: { session_id: pSessionID.toLowerCase() },
+        TableName: "SessionsV2"
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on Session - caught error is': error });
+      });
+    if (!recordExists(sessionRec)) {
+      sessionRec = await dbClient
+        .get({
+          Key: { session_id: pSessionID },
+          TableName: "SessionsV2"
+        })
+        .promise()
+        .catch(error => {
+          console.log({ 'Bad get on Session - caught error is': error });
+        });
+      return [false, null];
+    }
+    if (!recordExists(sessionRec)) {
+      return [false, null];
+    }
+    let logoRec = await dbClient
+      .get({
+        Key: {
+          client_id: sessionRec.Item.client_id,
+          custom_key: 'logo'
+        },
+        TableName: "Customizations",
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on Customizations - caught error is': error });
+      });
+    if (recordExists(logoRec)) {
+      sessionRec.Item.client_icon = logoRec.Item.icon;
+    }
+    return [true, sessionRec.Item];
+  }
+
+  async function getPerson(pPersonID) {
+    let peopleRec = await dbClient
+      .get({
+        Key: { person_id: pPersonID },
+        TableName: "People"
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on People - caught error is': error });
+      });
+    if (recordExists(peopleRec)) { return [true, peopleRec.Item]; }
+    else { return [false, null]; }
+  }
+
+  async function accessLog(pUser, pAttempted, pActual, pResult) {
+    let nowTime = new Date();
+    let accessLogRec = {
+      timestamp: nowTime.getTime(),
+      timestring: nowTime.toLocaleString(),
+      user_key: `${pUser}${pActual ? ('/' + pActual) : ''}`,
+      attempted_user: pUser,
+      attempted_password: pAttempted,
+      result: pResult
+    };
+    accessLogRecords.push(accessLogRec);
+  };
+
+  async function putAccessLog() {
+    let putObj = accessLogRecords.map(r => {
+      return { PutRequest: { Item: r } };
+    });
+    await dbClient
+      .batchWrite({
+        RequestItems: { 'AccessLog': putObj }
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad put to AccessLog - caught error is': error });
+      });
+  }
+
+  async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage) {
+    let attributeValues = {
+      ':s': {
+        'version': `v22.9.28`,
+        'environment': window.location.href.split('//')[1].charAt(0),
+        'time': new Date().toString(),
+        'signin_status': pMessage,
+        'source': 'bootstrap'
+      }
+    };
+    let updateExpression = 'set #s = :s, ';
+    if (pLogin) {
+      attributeValues[':p'] = pLogin;
+      updateExpression += 'last_login = :p, ';
+    }
+    if (pSession.patient_id) {
+      attributeValues[':pid'] = pSession.patient_id;
+      updateExpression += 'patient_id = :pid, ';
+    }
+    if (pProfile.hasOwnProperty('name') || pPatient.patient_id) {
+      let showName = (pProfile.hasOwnProperty('name') ? `${pPatient.name.first} ${pPatient.name.last}` : `Unnamed account (${pPatient.patient_id})`);
+      attributeValues[':pn'] = showName;
+      attributeValues[':un'] = showName;
+      updateExpression += 'patient_display_name = :pn, user_display_name = :un, ';
+    }
+    if (platform) {
+      attributeValues[':dev'] = platform;
+      updateExpression += 'platform = :dev, ';
+    }
+    if (pURL) {
+      if (typeof (pURL) === 'object') {
+        attributeValues[':u'] = JSON.stringify(pURL);
+      }
+      else {
+        attributeValues[':u'] = pURL;
+      }
+      updateExpression += 'url_parameters = :u, ';
+    }
+    if (pProfile.person_id) {
+      attributeValues[':uid'] = pProfile.person_id;
+      updateExpression += 'user_id = :uid, ';
+    }
+    updateExpression = updateExpression.substring(0, updateExpression.length - 2);
+    await dbClient
+      .update({
+        Key: { session_id: pSessionID },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: attributeValues,
+        ExpressionAttributeNames: { "#s": "status" },
+        TableName: "SessionsV2",
+      })
+      .promise()
+      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+  }
+
+  async function validateUserAccount(payload) {
+    const fResp = await lambda
+      .invoke({
+        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validateUserAccount',
+        InvocationType: 'RequestResponse',
+        LogType: 'Tail',
+        Payload: JSON.stringify(payload)
+      })
+      .promise()
+      .catch(err => {
+        console.log('Call failed.  Error is', JSON.stringify(err));
+        return [false, 'AVA could not validate your Account'];
+      });
+    let fRespObj = JSON.parse(fResp.Payload);
+    if (fRespObj.status === 400) {
+      return [false, fRespObj.body];
+    }
+    else {
+      return [true, fRespObj.body];
     }
   };
 
-  React.useEffect(() => {
-    // let mounted;
-    if (user) {
-      onValidUser(user);
-    }
-    return () => {
-      // let mounted = false;
+  async function prepareAVAEnv(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL = null) {
+    // if no session, get the session
+    if (!currentSession) {
+      let goodSession = false;
+      [goodSession, currentSession] = await getSession(currentUser);
+      if (!goodSession) {
+        accessLog(currentUser, '', '', `No SessionV2 record for ${currentUser}.  This is not a valid account.`);
+        setAVAReady(false);
+        setAVAFollowUpData();
+        return false;
+      }
     };
-  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Get the User's profile (info about the logged in person)
+    if (!currentProfile) {
+      if (currentPatient && (currentPatient.person_id === currentUser)) {
+        currentProfile = currentPatient;
+      }
+      else {
+        let [goodUser, foundUser] = await getPerson(currentUser);
+        if (goodUser) { currentProfile = foundUser; }
+        else {
+          enqueueSnackbar(`No AVA Profile information for ${currentUser}.  This is a valid Account but cannot be used.  AVA Support has been notified.`, { variant: 'error', persist: true });
+          sendMessage('AVA', 'bootstrap', `Account ${currentUser} cannot map to any valid Person to use as its currentProfile`, 'ava_support');
+          return false;
+        }
+      }
+    }
+    // assure you are logged in to Cognito
+    if (!cognitoConfirmed && !recentlyConfirmed) {
+      if (currentSession.last_login) {
+        accessLog(currentUser, currentSession.last_login, '', 'Using password saved in Session record');
+        recentlyConfirmed = await logMeIn(currentUser, currentSession.last_login);
+      }
+      else {
+        accessLog(currentUser, currentSession.last_login, '', 'Found User.  No password stored.  Attempting generic login.');
+        recentlyConfirmed = await logMeIn(currentUser, null);
+      }
+      setCognitoConfirmed(recentlyConfirmed);
+      if (!recentlyConfirmed) {
+        accessLog(currentUser, '', '', 'All login attempts failed.');
+        return false;
+      }
+    }
+    // Get Patient record (this is the person you are actively using)
+    if (!currentPatient) {
+      if (currentSession.patient_id) {
+        let [goodUser, foundUser] = await getPerson(currentSession.patient_id);
+        if (goodUser) { currentPatient = foundUser; }
+      }
+      if (!currentPatient && (!currentSession.patient_id || (currentSession.patient_id !== currentUser))) {
+        let [goodUser, foundUser] = await getPerson(currentUser);
+        if (goodUser) {
+          currentPatient = foundUser;
+          currentProfile = foundUser;
+        }
+      }
+      if (!currentPatient) {
+        enqueueSnackbar(`Incomplete User Account information for ${currentUser}.  This is a valid Account but cannot be used.  AVA Support has been notified.`, { variant: 'error', persist: true });
+        sendMessage('AVA', 'bootstrap', `SessionV2 record for ${currentUser} cannot map to any valid Person to use as its currentPatient`, 'ava_support');
+        return false;
+      }
+    }
+    // 
+    if ((cognitoConfirmed || recentlyConfirmed) && currentPatient && currentSession && currentProfile) {
+      closeSnackbar();
+      enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
+      let urlData = getParamsFromURL();
+      if (urlData) {
+        currentSession.url_parameters = urlData;
+      }
+      else { 
+        currentSession.url_parameters = null;
+      }
+      dispatch({ type: SET_SESSION, payload: currentSession });
+      dispatch({ type: SET_PROFILE, payload: currentProfile });
+      dispatch({ type: SET_USER, payload: currentProfile });
+      dispatch({ type: SET_PATIENT, payload: currentPatient });
 
-  return (
-    !user || user.username !== 'paccess' ?
-      <Component {...props} />
-      :
-      (!peopleList || peopleList.length === 0
-        ?
-        <Box display='flex' marginBottom={5} marginTop={5} flexDirection='column' justifyContent='center' alignItems='center'>
-          <Typography sx={{
-            marginTop: 4,
-            marginBottom: 2,
-            marginLeft: 2,
-            marginRight: 2,
-            paddingTop: 3,
-          }} variant='h5' >
-            {'Building a List to Choose From'}
-          </Typography>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <CircularProgress />
-          </div>
-        </Box>
-        :
-        <PersonFilter
-          prompt={'Find and tap your name'}
-          peopleList={peopleList}
-          onCancel={async () => {
-            let jumpTo = window.location.href;
-            window.location.replace(jumpTo);
-          }}
-          onSelect={async (selectedPerson) => {
-            user.username = selectedPerson.split(':')[1];
-            dispatch({ type: SET_USER, payload: user });
-            await onValidUser(user, true);      //sixth
-          }}
-          onSignOut={async () => {
-            removeCookie("AVAuser");
-            Auth.signOut().then(() => {
-              let jumpTo = window.location.origin;
-              window.location.replace(jumpTo);
-            });
-          }}
-        >
-        </PersonFilter>
-      )
-  );
+      sessionStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient }));
+      bakeCookie(currentSession.session_id, confirmedLogin, currentSession.client_id, currentSession, currentPatient, currentProfile);
+      updateSession(currentSession.session_id, currentSession, currentPatient, currentProfile, currentSession.last_login, pURL, 'AVA Launch');
+      putValidationCookie(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL);
+      await putAccessLog();
+      setAVAReady(true);
+      localAVAReady = true;
+      setAVAFollowUpData({ 'Completed': true });
+      return true;
+    }
+    else {
+      if (!cognitoConfirmed && !recentlyConfirmed) {
+        enqueueSnackbar(`A security system error occurred.  AVA Support has been notified.`, { variant: 'error', persist: true });
+        sendMessage('AVA', 'bootstrap', `No valid COGNITO login for ${currentUser} and generic login failed (${process.env.REACT_APP_AVA_PU}/${process.env.REACT_APP_AVA_PP}).`, 'ava_support');
+      }
+      else {
+        enqueueSnackbar(`Something went wrong.  AVA can't use this information to log you in.  AVA Support has been notified.`, { variant: 'error', persist: true });
+        sendMessage('AVA', 'bootstrap', `AVA data missing or invalid for ${currentUser}`, 'ava_support');
+      }
+      setAVAReady(false);
+      setAVAFollowUpData();
+      return false;
+    }
+  }
+
+  function recordExists(recordId) {
+    if (!recordId) { return false; }
+    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
+    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
+  }
 };

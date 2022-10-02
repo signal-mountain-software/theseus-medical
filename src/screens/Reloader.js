@@ -12,16 +12,9 @@ export default () => {
 
     let jumpTo = window.location.href.replace('refresh', 'theseus');
     if (session?.url_parameters) {
-        let url_variables = {};
-        if (typeof (session.url_parameters) === 'string') {
-            url_variables = JSON.parse(session.url_parameters);
-        }
-        else {
-            url_variables = session.url_parameters;
-        }
         let link = '?';
-        for (let key in url_variables) {
-            jumpTo += `${link}${key}=${url_variables[key]}`;
+        for (let key in session.url_parameters) {
+            jumpTo += `${link}${key}=${session.url_parameters[key]}`;
             link = '&';
         }
     }
@@ -30,7 +23,7 @@ export default () => {
     return (
         <Box mt={3}>
             <Typography align='center'>
-                {`Loading AVA version 22.8.31${window.location.href.split('//')[1].slice(0, 1)}`}
+                {`Loading AVA version 22.9.28${window.location.href.split('//')[1].slice(0, 1)}`}
             </Typography>
         </Box>
     );

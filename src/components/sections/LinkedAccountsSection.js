@@ -50,8 +50,8 @@ const useStyles = makeStyles(theme => ({
 export default ({ groupMemberList, session, updateSession, updateProxy, version }) => {
   const classes = useStyles();
 
-  const [person_filter, setPersonFilter] = React.useState('');
-  const [person_filter_lower, setPersonFilterLower] = React.useState('');
+  const [person_filter, setPersonFilter] = React.useState(' ');
+  const [person_filter_lower, setPersonFilterLower] = React.useState(' ');
   const [enoughFilterDigits, setenoughFilterDigits] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState();
 
@@ -67,19 +67,25 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
   };
 
   const handleChangePersonFilter = event => {
+    filterCount = 0;
     if (event.target.value.length === 0) {
-      setPersonFilter(null);
-      setPersonFilterLower(null);
+      setPersonFilter(' ');
+      setPersonFilterLower(' ');
     }
     else {
-      setPersonFilter(event.target.value);
-      setPersonFilterLower(event.target.value.toLowerCase());
+      setPersonFilter(event.target.value.trim());
+      setPersonFilterLower(event.target.value.trim().toLowerCase());
       setenoughFilterDigits(event.target.value.length > 1);
     }
   };
 
+  function showName(pRec) {
+    let returnName = pRec.name.last ? (pRec.name.first + ' ' + pRec.name.last) : pRec.display_name;
+    if (pRec.location) { returnName += ` (${pRec.location.split('~')[0].trim()})`; }
+    return returnName;
+  }
+
   function filteredPerson(pID, pName = { last: '*$*_null', first: '*$*_null' }) {
-    filterCount++;
     let inTheList = (
       (respArray.includes(pID) ||
         ((enoughFilterDigits) &&
@@ -89,8 +95,9 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
       && (session && (pID !== session.session_id))
     );
     if (inTheList || (session && session.patient_id === pID)) {
-      nameObj[pID] = `${pName.first}${pName.last.substring(0, 1)}${!inTheList ? ' (from a Group)' : ''}`;
+      nameObj[pID] = `${pName.first.charAt(0).toUpperCase()}${pName.last.charAt(0).toUpperCase()}${pName.last.substring(1)}`;
     }
+    if (inTheList) { filterCount++; }
     return inTheList;
   }
 
@@ -136,12 +143,21 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
                     inputProps={{ 'aria-labelledby': this_item.person_id }}
                   />
                 </ListItemIcon>
-                <ListItemText id={'id-respName' + ndx} primary={this_item.name.last ? (this_item.name.first + ' ' + this_item.name.last) : this_item.display_name} />
+                  <ListItemText id={'id-respName' + ndx} primary={showName(this_item)} />
               </ListItem>
             )
             )}
+            {(filterCount === 0) && (respArray.length === 0) &&
+              <ListItem
+                key={'key-nodata'}
+                role={undefined}
+                dense
+              >
+                <ListItemText id={'id-nodata'} primary={'Use the Search line to find people to link to'} />
+              </ListItem>
+            }
           </List>
-          {Object.keys(nameObj).length > 0 &&
+          {respArray.length > 0 &&
             <React.Fragment>
               <Typography className={classes.radioText}>Active proxy is...</Typography>
               <FormControl className={classes.formControl} component="fieldset">
@@ -154,7 +170,21 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
                 >
                   {respArray.map((presp) => (
                     nameObj[presp] &&
-                    <FormControlLabel className={classes.formControlLbl} value={presp} control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>{nameObj[presp]}</Typography>} />
+                    <FormControlLabel
+                      key={`nameNlinkdaccts+${presp}`}
+                      className={classes.formControlLbl}
+                      value={presp}
+                      control={
+                        <Radio disableRipple
+                          className={classes.radioButton}
+                          size='small' />
+                      }
+                      label={
+                        <Typography
+                          className={classes.radioText}>
+                          {nameObj[presp]}
+                        </Typography>}
+                    />
                   ))}
                 </RadioGroup>
               </FormControl>

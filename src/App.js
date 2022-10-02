@@ -16,7 +16,7 @@ import ThankYouScreen from './screens/ThankYouScreen';
 
 import Reloader from './screens/Reloader';
 import RootNavigation from './navigation/RootNavigation';
-import withAuth from './hocs/withAuth';
+// import withAuth from './hocs/withAuth';
 import withBootstrap from './hocs/withBootstrap';
 import withDarkMode from './hocs/withDarkMode';
 import withRouter from './hocs/withRouter';
@@ -34,7 +34,7 @@ const menu = [
   { label: 'Thanks', path: '/thankyou', icon: <ExitToAppIcon />, screen: <ThankYouScreen /> },
 ];
 
-const HOME = '/refresh';
+const HOME = '/theseus';
 var hasError = false;
 
 class ErrorBoundary extends React.Component {
@@ -81,7 +81,7 @@ const handleWriteError = async (parmMessage) => {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = 22.8.31~${errorTime}`,
+    status: `Version = 22.9.28~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
@@ -114,7 +114,7 @@ export default hocFactory(
     withTheme,
     withSnackbar,
     withSession,
-    withAuth,
+    // withAuth,
     withBootstrap,
     // withA2HS,
   ]);

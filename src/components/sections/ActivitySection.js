@@ -175,7 +175,7 @@ export default ({ patient, session }) => {
         user_id: pUser,
         activity_code: pCodeOut,
         activity_name: pName,
-        AVA_version: `22.8.31${window.location.href.split('//')[1].slice(0, 1)}`
+        AVA_version: `22.9.28${window.location.href.split('//')[1].slice(0, 1)}`
       }
     };
     let params = {
@@ -278,7 +278,7 @@ export default ({ patient, session }) => {
         patient_id: patient.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: parmMessage,
-        status: `Version = 22.8.31~${errorTime}`,
+        status: `Version = 22.9.28~${errorTime}`,
         session: {
           user_id: patient.person_id,
           session_id: session.client_id,
@@ -289,6 +289,27 @@ export default ({ patient, session }) => {
         .catch(e => { alert(`Menu build error, possible cause: ${parmMessage} / ${JSON.stringify(e)}. Use refresh button.`); });
     }
   };
+
+  function statusLine() {
+    let returnValue = `*** AVA `;
+    if (session) { 
+      if (typeof(session.status) === 'object') {
+        returnValue += session.status.version;
+        if (session.status.environment !== 'd') {
+          returnValue += '/TEST';
+        }
+      }
+      else {
+        returnValue += process.env.REACT_APP_AVA_VERSION;
+      }
+      returnValue += `/${session.patient_id}`;
+      if (session.patient_id !== session.user_id) {
+        returnValue += `(${session.user_id})`;
+      }
+    }
+    returnValue += ' ***';
+    return returnValue;
+  }
 
   const onChooseActivity = async activity => {
     if (toggledSection) {
@@ -573,32 +594,12 @@ export default ({ patient, session }) => {
       }
     }
     selectedActivityName = '';
-    if (session?.url_parameters.hasOwnProperty('activity') && factWasWritten) {
+    if (session?.url_parameters && (session.url_parameters.hasOwnProperty('activity')) && (session.url_parameters.hasOwnProperty('user')) && factWasWritten) {
       let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
       jumpTo += `?user=${session.url_parameters.user}`;
       window.location.replace(jumpTo);
     }
-    /*
-        if (session?.kiosk_mode && factWasWritten && (session?.user_id === session?.patient_id)) {
-          let newPatient = {
-            patient_id: session.user_id,
-            patient_display_name: session.user_display_name
-          };
-          await API.graphql(
-            graphqlOperation(updateSession, { input: { session_id: session.user_id, ...newPatient } })
-          ).catch(error => { console.log(error); });
-          let jumpTo = window.location.href.replace('refresh', 'theseus');
-          window.location.replace(jumpTo);
-        }
     
-        if (session?.url_parameters && factWasWritten) {
-          await API.graphql(
-            graphqlOperation(updateSession, { input: { session_id: session.user_id, url_parameters: '' } })
-          ).catch(error => { console.log(error); });
-          let jumpTo = window.location.href.replace('activity', 'completedactivity');
-          window.location.replace(jumpTo);
-        }
-    */
     async function putMedia(params) {   // Uploading files to the bucket
       let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
       let fileExtension = newFact.value.mediaData.Key.split('.').pop();
@@ -664,36 +665,28 @@ export default ({ patient, session }) => {
 
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
-    setLoading(true);
-    if (session?.url_parameters) {
-      let urlActivity = null;
-      if (typeof (session.url_parameters) === 'object') {
-        urlActivity = session.url_parameters.activity;
-      }
-      else {
-        let sessionURLObject = JSON.parse(session.url_parameters);
-        urlActivity = sessionURLObject.activity;
-      }
-      if (urlActivity) {
-        onChooseActivity(urlActivity);
+    if (session) {
+      setLoading(true);
+      if (session.url_parameters && (session.url_parameters.hasOwnProperty('activity'))) {
+        onChooseActivity(session.url_parameters.activity);
         return () => {
         };
       }
-    }
-    if (session?.kiosk_mode
-      && (session.user_id === session.patient_id)
-      && session.kiosk_activity
-    ) {
-      onChooseActivity(session.kiosk_activity);
+      if (session?.kiosk_mode
+        && (session.user_id === session.patient_id)
+        && session.kiosk_activity
+      ) {
+        onChooseActivity(session.kiosk_activity);
+        return () => {
+        };
+      }
+      if (session?.current_event) {
+        setSectionOpen(JSON.parse(session.current_event));
+      };
+      setLoading(false);
       return () => {
       };
     }
-    if (session?.current_event) {
-      setSectionOpen(JSON.parse(session.current_event));
-    };
-    setLoading(false);
-    return () => {
-    };
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // on patient, event, or type change... retrieve the activities for the main part of the screen
@@ -1088,7 +1081,7 @@ export default ({ patient, session }) => {
                 ))}
               <GridListTile cols={1} >
                 <Typography variant='caption' noWrap={true}>
-                  {`*** AVA%% ***`.replace('%%', ' ' + (session?.session_id.split('~')[0] || ''))}
+                  {statusLine()}
                 </Typography>
               </GridListTile>
             </GridList>
@@ -1111,7 +1104,7 @@ export default ({ patient, session }) => {
                 </Card>
               }
               <Typography align='center'>
-                {`Loading AVA version 22.8.31${window.location.href.split('//')[1].slice(0, 1)}`}
+                {`Loading AVA version 22.9.28${window.location.href.split('//')[1].slice(0, 1)}`}
               </Typography>
               <CircularProgress />
             </Box>
@@ -1130,7 +1123,7 @@ export default ({ patient, session }) => {
           onClose={async (oopsieMessage = null) => {
             oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
             setShowNewFactDialog(false);
-            if (session?.url_parameters.hasOwnProperty('activity')) {
+            if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
               let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
               jumpTo += `?user=${session.url_parameters.user}`;
               window.location.replace(jumpTo);

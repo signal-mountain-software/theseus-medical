@@ -63,8 +63,8 @@ export default Component => props => {
 
   const [count, setCount] = React.useState(0);
   const [messageOut, setMessageOut] = React.useState('');
-  const [inputName, setInputName] = React.useState('');
-  const [inputLocationNumbers, setInputLocationNumbers] = React.useState('');
+  const [inputUserID, setInputUserID] = React.useState('');
+  const [inputCheckName, setInputCheckName] = React.useState('');
   const [inputPassword, setInputPassword] = React.useState('');
   const [inputCP, setInputCP] = React.useState('');
 
@@ -130,14 +130,14 @@ export default Component => props => {
             size='small'
             variant='contained'
             onClick={async () => {
-              let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'updatePwd', inputCP.trim());
-              if (!invokeFailed && response.status === 200) {
-                accessLog(inputName.trim(), inputCP.trim(), `Reset successful`, true);
+              let [invokeFailed, response] = await updatePW(inputUserID.trim(), inputCP.trim());
+              if (!invokeFailed) {
+                accessLog(inputUserID.trim(), inputCP.trim(), `Reset successful`, true);
                 enqueueSnackbar(`Your password has been reset to ${saveP[0]}.  Signing-in now...`, {
                   variant: 'warning'
                 });
                 try {
-                  await Auth.signIn(inputName.trim(), inputCP.trim());
+                  await Auth.signIn(inputUserID.trim(), inputCP.trim());
                 }
                 catch (e) {
                   console.log(e);
@@ -145,13 +145,11 @@ export default Component => props => {
                 }
               }
               else {
-                if (response.body) {
-                  let mOut = `The password "${inputCP.trim()}" doesn't work!  It looks like this is the problem...`;
-                  mOut += (response.body?.message
-                    ? response.body.message
-                    : `AVA is unable to set "${inputCP.trim()}" as your password`);
-                  setMessages(mOut);
-                }
+                let mOut = `The password "${inputCP.trim()}" doesn't work!  It looks like this is the problem...`;
+                mOut += (response.body?.message
+                  ? response.body.message
+                  : `AVA is unable to set "${inputCP.trim()}" as your password`);
+                setMessages(mOut);
               }
             }}>
             {`Reset my password to "${inputCP.trim()}"`}
@@ -170,7 +168,7 @@ export default Component => props => {
       );
     };
 
-    accessLog(inputName.trim(), inputCP.trim(), mText.trim(), false);
+    accessLog(inputUserID.trim(), inputCP.trim(), mText.trim(), false);
     enqueueSnackbar(mText.trim(), {
       variant: 'error',
       persist: true,
@@ -194,7 +192,6 @@ export default Component => props => {
               closeSnackbar(key);
               let jumpTo = window.location.href.split('?')[0];
               jumpTo += `?user=${saveU[saveU.length - 1]}&kiosk=true`;
-              window.location.replace(jumpTo);
               try {
                 result = await Auth
                   .signIn(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP);
@@ -202,6 +199,7 @@ export default Component => props => {
                 console.log(e);
               }
               console.log(result);
+              window.location.replace(jumpTo);
             }}>
             {`Use AVA as "${saveU[saveU.length - 1]}" with limited functionality?`}
           </Button>
@@ -220,7 +218,7 @@ export default Component => props => {
     };
 
     if (count > 2 || forceFail) {
-      accessLog(inputName.trim(), inputCP.trim(), mText.trim(), false);
+      accessLog(inputUserID.trim(), inputCP.trim(), mText.trim(), false);
       enqueueSnackbar(`${mText.trim()}.  What would you like to do now?`, {
         variant: 'error',
         persist: true,
@@ -231,7 +229,7 @@ export default Component => props => {
     else {
       setCount(count + 1);
       if (messageOut === mText) { mText += ' '; }
-      accessLog(inputName.trim(), inputCP.trim(), mText, false);
+      accessLog(inputUserID.trim(), inputCP.trim(), mText, false);
       setMessageOut(mText);
     }
     console.log(count, mText);
@@ -245,7 +243,7 @@ export default Component => props => {
         logAVAAccess(
           data.idToken.payload['cognito:username'],
           platform + (deviceObj ? ' ' + JSON.stringify(deviceObj) : ''),
-          `Version=22.8.31${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
+          `Version=22.9.28${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`,
           JSON.stringify(getParams())
         );
       };
@@ -281,8 +279,8 @@ export default Component => props => {
           setSignedIn(true);
         }
         else {
-          Auth.signOut();
-          throw new Error('Active session for an invalid user (perhaps default account?)');
+          // Auth.signOut();
+          // throw new Error('Active session for an invalid user (perhaps default account?)');
         }
       }
     }
@@ -305,8 +303,8 @@ export default Component => props => {
           }
         }
         else {
-          let vData = await validateLogin(cookieValues.user_id, null, cookieValues.client || urlQuery.client || null, null, null, 'person-only');
-          if (vData?.sessionRec && vData.sessionRec.last_login) {
+          let [valid, vData] = await validateUserAccount({ user_id: cookieValues.user_id });
+          if (valid && vData.sessionRec.last_login) {
             try {
               await Auth.signIn(cookieValues.user_id, vData.sessionRec.last_login);
               bakeCookie(cookieValues.user_id, vData.sessionRec.last_login, vData.sessionRec.client_id);
@@ -323,7 +321,7 @@ export default Component => props => {
         }
       }
       else {
-        enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (AVA version 22.8.31${window.location.href.split('//')[1].slice(0, 1)})`, {
+        enqueueSnackbar(`${err !== 'not authenticated' ? (err + '.  ') : ''}Please sign-in. (AVA version 22.9.28${window.location.href.split('//')[1].slice(0, 1)})`, {
           variant: 'info'
         });
       }
@@ -358,16 +356,44 @@ export default Component => props => {
       });
   };
 
-  const tryPwdUpdate = async (pUser, pLoc, pData) => {
+  const validateUserAccount = async (payload) => {
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validateUserAccount',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log('Call failed.  Error is', JSON.stringify(err));
+        setMessages(`There was a technical problem resetting the Password.  Contact AVA Support.`);
+        return 'AVA could not validate your Account';
+      });
+    let fRespObj = JSON.parse(fResp.Payload);
+    if (fRespObj.status === 400) { return [false, fRespObj.body]; }
+    else if (Array.isArray(fRespObj.body) && (fRespObj.body.length === 1)) {
+      return [true, fRespObj.body[0]];
+    }
+    else { return [false, 'Multiple accounts located.  Please be more specific.']; }
+  };
+
+  const updatePW = async (pUser, pData) => {
     let invokeFailed = false;
     var payload =
     {
-      person: pUser,
-      locationTest: pLoc,
-      newP: pData
+      "body": {
+        "clientId": "SMSoft",
+        "updatePerson": pUser,
+        "newValues": {
+          "pwdReset": true,
+          "newPassword": pData
+        }
+      }
     };
     let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validatePRequest',
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:updateTheseusUser',
       InvocationType: 'RequestResponse',
       LogType: 'Tail',
       Payload: JSON.stringify(payload)
@@ -381,26 +407,6 @@ export default Component => props => {
         invokeFailed = true;
       });
     return [invokeFailed, JSON.parse(fResp.Payload)];
-  };
-
-  const logChangeRequest = async (pUser, pLoc, pData) => {
-    let [invokeFailed, response] = await tryPwdUpdate(pUser, pLoc, pData);
-    if (!invokeFailed && response.status === 200) {
-      accessLog(pUser, pData, `Manual password change was successful`, true);
-      enqueueSnackbar(`Change was successful!  You may sign-in using your new password.`, {
-        variant: 'success'
-      });
-      Auth.signOut();
-      setSignedIn(false);
-    }
-    else {
-      if (response.body) {
-        setMessages(response.body);
-      }
-      else {
-        setMessages(`We could not change your password at this time!  You may sign-in using your old password.`);
-      }
-    }
   };
 
   const logAVAAccess = async (pUser, pPlatform, pMessage, pParams) => {
@@ -426,7 +432,7 @@ export default Component => props => {
   };
 
   const eHandler = async (data, pUser, pPwd) => {
-    saveU.push(inputName.trim().toLowerCase());
+    saveU.push(inputUserID.trim().toLowerCase());
     setSaveU(saveU);
     switch (data.code) {
       case 'NotAuthorizedException': {
@@ -449,16 +455,14 @@ export default Component => props => {
           newP = c0.toUpperCase() + inputCP.trim().substring(1);
         }
         try {
-          let resp = await Auth.signIn(inputName.trim(), newP);
-          accessLog(inputName.trim(), newP, `Login with case-corrected Password`, true);
-          bakeCookie(inputName.trim(), newP, resp.attributes['custom:client'] || urlQuery.client || null);
+          let resp = await Auth.signIn(inputUserID.trim(), newP);
+          accessLog(inputUserID.trim(), newP, `Login with case-corrected Password`, true);
+          bakeCookie(inputUserID.trim(), newP, resp.attributes['custom:client'] || urlQuery.client || null);
           break;
         }
         catch (e) {
-          let [invokeFailed, response] = await tryPwdUpdate(inputName.trim(), 'checkUser', 'password');
-          if (!invokeFailed && response.body === "That's not a valid AVA Username") {
-            setMessages(`"${inputName.trim()}" is not a valid AVA Username`);
-          }
+          let [valid,] = await validateUserAccount({ user_id: inputUserID.trim() });
+          if (!valid) { setMessages(`"${inputUserID.trim()}" is not a valid AVA Username`); }
           else {
             // If the last three attempts have all been the same exact user and password, then offer to reset 
             // the password to the one they keep trying
@@ -466,18 +470,18 @@ export default Component => props => {
             if (tries > 2 && (saveP[tries] === saveP[tries - 1] && saveP[tries - 1] === saveP[tries - 2]) && (saveU[tries] === saveU[tries - 1] && saveU[tries - 1] === saveU[tries - 2])) {
               pwdMessage(`"${inputCP.trim()}" isn't your current password.  Should I reset your password to "${inputCP.trim()}"?`);
             }
-            else { setMessages(`"${inputCP.trim()}" is not the correct password for Username "${inputName.trim()}"`); }
+            else { setMessages(`"${inputCP.trim()}" is not the correct password for Username "${inputUserID.trim()}"`); }
           }
           break;
         }
       }
       case 'InvalidParameterException': {
         if (inputCP.trim() === '') { setMessages(`You left the password blank!  Please try again.`); }
-        else if (inputName.trim() === '') { setMessages(`You left the User ID blank!  Please try again.`); }
+        else if (inputUserID.trim() === '') { setMessages(`You left the User ID blank!  Please try again.`); }
         else {
           enqueueSnackbar(`Checking Name and Location...`, { variant: 'info', });
-          let vData = await validateLogin(null, null, urlQuery.client, pUser.trim(), pPwd.trim(), 'Login with Name/Number');
-          if (vData?.sessionRec) {
+          let [valid, vData] = await validateUserAccount({ client: urlQuery.client, nameTest: inputUserID.trim(), numbersTest: inputCP.trim() });
+          if (valid) {
             if (vData.sessionRec.last_login) {
               try {
                 await Auth.signIn(vData.sessionRec.session_id, vData.sessionRec.last_login);
@@ -494,19 +498,19 @@ export default Component => props => {
             }
           }
           else {
-            setMessages(`That didn't work as a User ID/Password or Name/Number combination.  User IDs and passwords cannot contain spaces. ("${inputName.trim()}" "${inputCP.trim()}")`);
+            setMessages(`That didn't work as a User ID/Password or Name/Number combination.  User IDs and passwords cannot contain spaces. ("${inputUserID.trim()}" "${inputCP.trim()}")`);
           }
         }
         console.log(data.message);
         break;
       }
       case 'UserNotFoundException': {
-        setMessages(`The Username "${inputName.trim()}" does not exist`);
+        setMessages(`The Username "${inputUserID.trim()}" does not exist`);
         console.log('bad user, password entered');
         break;
       }
       case 'UserNotConfirmedException': {
-        setMessages(`The Username "${inputName.trim()}" hasn't completed setup yet.`);
+        setMessages(`The Username "${inputUserID.trim()}" hasn't completed setup yet.`);
         console.log('bad user, password entered');
         break;
       }
@@ -515,7 +519,7 @@ export default Component => props => {
         break;
       }
       default: {
-        if (!inputName) {
+        if (!inputUserID) {
           setMessages(`You left the Username blank!`);
         }
         else {
@@ -543,50 +547,6 @@ export default Component => props => {
       return {};
     }
   }
-
-  const validateLogin = async (pUser, pPwd, pClient, pName, pNumbers, pSource) => {
-    let goodCall = true;
-    let timeStamp = new Date().toString();
-    var payload;
-    if (pSource === 'person-only') {
-      payload = { person: pUser };
-    }
-    else {
-      payload =
-      {
-        client: pClient,
-        nameTest: pName,
-        numbersTest: pNumbers,
-        newP: pPwd,
-        person: pUser,
-        called_from: pSource,
-        version: `Version=22.8.31${window.location.href.split('//')[1].slice(0, 1)}~${timeStamp}`
-      };
-    }
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validatePRequest',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        console.log('Call failed.  Error is', JSON.stringify(err));
-        enqueueSnackbar(`There was a technical problem.  Contact AVA Support.`, { variant: 'error' });
-        goodCall = false;
-      });
-    if (goodCall) {
-      let fResponse = JSON.parse(fResp.Payload);
-      if (fResponse.status === 200) {
-        return fResponse.body;
-      }
-    }
-    else {
-      return {};
-    }
-  };
 
   // Hub.listen('auth', listener);
 
@@ -621,10 +581,10 @@ export default Component => props => {
                   type: "username",
                   label: "UserID / Name",
                   placeholder: 'Enter your User ID or First and Last Names',
-                  value: inputName,
+                  value: inputUserID,
                   handleInputChange:
                     (e) => {
-                      setInputName(e.target.value);
+                      setInputUserID(e.target.value);
                     },
                   inputProps: { autocomplete: "off" },
                 },
@@ -647,23 +607,23 @@ export default Component => props => {
                     enqueueSnackbar(`Signing into AVA`, {
                       variant: 'info',
                     });
-                    let resp = await Auth.signIn(inputName.trim(), inputCP.trim());
+                    let resp = await Auth.signIn(inputUserID.trim(), inputCP.trim());
                     if (resp.challengeName === 'NEW_PASSWORD_REQUIRED') {
                       setResetPW(true);
-                      accessLog(inputName, inputCP, `Temporary password used.  Must be reset.`, false);
+                      accessLog(inputUserID, inputCP, `Temporary password used.  Must be reset.`, false);
                       enqueueSnackbar(`That's a temporary password.  Press "Reset password" to set a permanent one, please.`, {
                         variant: 'info',
                       });
                     }
                     else {
-                      bakeCookie(inputName.trim(), inputCP.trim(), resp.attributes['custom:client'] || urlQuery.client || null);
-                      accessLog(inputName, inputCP, `Login successful`, true);
+                      bakeCookie(inputUserID.trim(), inputCP.trim(), resp.attributes['custom:client'] || urlQuery.client || null);
+                      accessLog(inputUserID, inputCP, `Login successful`, true);
                       setResetPW(false);
                     }
                   }
                   catch (e) {
                     console.log(e);
-                    eHandler(e, inputName, inputCP);
+                    eHandler(e, inputUserID, inputCP);
                   }
                 }
               }
@@ -674,22 +634,34 @@ export default Component => props => {
               sendButtonText="Confirm"
               handleSend={
                 async (event) => {
-                  console.log(`inputName is ${inputName}`);
-                  console.log(`inputLocationNumbers is ${inputLocationNumbers}`);
                   setCount(0);
                   event.preventDefault();
-                  await logChangeRequest(inputName, inputLocationNumbers, inputPassword);
+                  let [valid, response] = await validateUserAccount({ user_id: inputUserID.trim(), nameTest: inputCheckName });
+                  if (!valid) { setMessages(response); }
+                  else {
+                    await updatePW(inputUserID, inputPassword);
+                    accessLog(inputUserID.trim(), inputPassword.trim(), `Reset successful`, true);
+                    enqueueSnackbar(`Your password has been reset to ${inputPassword}.  Signing-in now...`, {
+                      variant: 'warning'
+                    });
+                    try {
+                      await Auth.signIn(inputUserID.trim(), inputPassword.trim());
+                    }
+                    catch (e) {
+                      console.log(e);
+                      eHandler(e);
+                    }
+                  }
                 }
               }
               formFields={[
                 {
                   type: "username",
                   label: "Username / ID",
-                  value: inputName,
+                  value: inputUserID,
                   handleInputChange:
                     (e) => {
-                      console.log(`inputName is ${e.target.value}`);
-                      setInputName(e.target.value);
+                      setInputUserID(e.target.value);
                     },
                   inputProps: { autocomplete: "off" },
                 },
@@ -697,11 +669,10 @@ export default Component => props => {
                   type: "email",
                   label: "First Name",
                   placeholder: 'Enter your First Name',
-                  value: inputLocationNumbers,
+                  value: inputCheckName,
                   handleInputChange:
                     (e) => {
-                      console.log(`location is ${e.target.value}`);
-                      setInputLocationNumbers(e.target.value);
+                      setInputCheckName(e.target.value);
                     },
                   inputProps: { required: true, type: "text", autocomplete: "off" },
                 },
