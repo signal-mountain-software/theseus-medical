@@ -39,7 +39,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pClient, showSheet, onClose }) => {
+export default ({ pClient, showSheet, session, onClose }) => {
 
   const classes = useStyles();
 
@@ -86,13 +86,20 @@ export default ({ pClient, showSheet, onClose }) => {
       LogType: 'Tail',
       Payload: ''
     };
-    params.Payload = JSON.stringify({
+    let lambdaPayload = {
       action: "work_orders",
       clientId: pClient,
       request: {
         "spreadsheet_data": pWorkbook
       }
-    });
+    }
+    if (
+      session
+      && (typeof (session.status) === 'object')
+      && (session.status.environment)
+      && (['T', 'L'].includes(session.status.environment.toUpperCase()))
+    ) { lambdaPayload.messageTo = session.user_id; }
+    params.Payload = JSON.stringify(lambdaPayload);
     await lambda
       .invoke(params)
       .promise()
