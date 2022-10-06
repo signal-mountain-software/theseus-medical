@@ -27,6 +27,20 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(2),
     marginBottom: theme.spacing(2)
   },
+  title: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '1.3rem',
+    fontWeight: 'bold'
+  },
+  subTitle: {
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '0.8rem'
+  },
   typeOfLine: {
     fontSize: theme.typography.fontSize * 0.8,
     marginBottom: 0,
@@ -34,6 +48,36 @@ const useStyles = makeStyles(theme => ({
   observationLine: {
     marginTop: 0,
     fontSize: theme.typography.fontSize * 1.8,
+  },
+  buttonArea: {
+    justifyContent: 'center',
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1)
+  },
+  dialogBox: {
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    paddingRight: 0,
+    minWidth: '100%',
+  },
+  page: {
+    maxWidth: 1000
+  },
+  rowButtonRed: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    color: theme.palette.reject[theme.palette.type],
+  },
+  rowButtonGreen: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    color: theme.palette.confirm[theme.palette.type],
   },
 }));
 
@@ -92,7 +136,7 @@ export default ({ pClient, showSheet, session, onClose }) => {
       request: {
         "spreadsheet_data": pWorkbook
       }
-    }
+    };
     if (
       session
       && (typeof (session.status) === 'object')
@@ -119,72 +163,82 @@ export default ({ pClient, showSheet, session, onClose }) => {
     >
       <React.Fragment>
         <DialogContentText className={classes.title} id='scroll-dialog-title'>
-          {'Send Notifications'}
+          {'Send Work Order Notifications'}
         </DialogContentText>
-        <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
-          {
-            <DialogContent dividers={true} className={classes.dialogBox}>
-              <Button
-                className={classes.uploadButton}
-                variant='contained'
-                size='small'
-                startIcon={<CloudUploadIcon />}
-                onClick={handleFileUpload}
-              >
-                {'Choose File'}
-              </Button>
-              <input
-                type="file"
-                style={{ display: 'none' }}
-                ref={hiddenFileInput}
-                onChange={async (target) => {
-                  let fObj = target.target.files[0];
-                  const pFile = {
-                    Bucket: 'theseus-medical-storage',
-                    Key: 'public_uploads/' + fObj.name,
-                    Body: fObj,
-                    ACL: 'public-read-write',
-                    ContentType: fObj.ContentType
-                  };
-                  enqueueSnackbar(`Uploading your file`, { variant: 'success', persist: true });
-                  let s3Resp = await s3
-                    .upload(pFile)
-                    .promise()
-                    .catch(err => {
-                      enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                    });
-                  closeSnackbar();
-                  setS3Filename(s3Resp.Location);
-                  setChangeDetected(true);
-                }}
-              />
-            </DialogContent>
-          }
-        </Paper>
-        <DialogActions className={classes.buttonArea} >
-          <Box display='flex' flexDirection='column'>
-            <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-              <Button
-                className={classes.rowButtonRed}
-                size='small'
-                onClick={onClose}
-                startIcon={<CloseIcon size="small" />}
-              >
-                Cancel
-              </Button>
-              {changeDetected &&
+        {
+          (session
+            && (typeof (session.status) === 'object')
+            && (session.status.environment)
+            && (['T', 'L'].includes(session.status.environment.toUpperCase())))
+          &&
+          <DialogContentText className={classes.subTitle} id='scroll-dialog-title'>
+            {'TEST mode - All Notifications will be sent to you'}
+          </DialogContentText>
+        }
+        <Paper component={Box} className={classes.page} overflow='auto' square>
+          <DialogContent className={classes.dialogBox}>
+            <Button
+              className={classes.uploadButton}
+              variant='contained'
+              size='small'
+              startIcon={<CloudUploadIcon />}
+              onClick={handleFileUpload}
+            >
+              {'Choose File'}
+            </Button>
+            <input
+              type="file"
+              style={{ display: 'none' }}
+              ref={hiddenFileInput}
+              onChange={async (target) => {
+                let fObj = target.target.files[0];
+                const pFile = {
+                  Bucket: 'theseus-medical-storage',
+                  Key: 'public_uploads/' + fObj.name,
+                  Body: fObj,
+                  ACL: 'public-read-write',
+                  ContentType: fObj.ContentType
+                };
+                enqueueSnackbar(`Uploading your file`, { variant: 'success', persist: true });
+                let s3Resp = await s3
+                  .upload(pFile)
+                  .promise()
+                  .catch(err => {
+                    enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+                  });
+                closeSnackbar();
+                setS3Filename(s3Resp.Location);
+                setChangeDetected(true);
+              }}
+            />
+          </DialogContent>
+          <DialogActions className={classes.buttonArea} >
+            <Box display='flex' flexDirection='column'>
+              <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                 <Button
-                  className={classes.rowButtonGreen}
+                  className={classes.rowButtonRed}
                   size='small'
-                  onClick={async () => { await handleSpreadsheet(s3Filename); }}
-                  startIcon={<SaveIcon size="small" />}
+                  variant='outlined'
+                  onClick={onClose}
+                  startIcon={<CloseIcon size="small" />}
                 >
-                  Process
+                  Cancel
                 </Button>
-              }
+                {changeDetected &&
+                  <Button
+                    className={classes.rowButtonGreen}
+                    size='small'
+                    variant='outlined'
+                    onClick={async () => { await handleSpreadsheet(s3Filename); }}
+                    startIcon={<SaveIcon size="small" />}
+                  >
+                    Process
+                  </Button>
+                }
+              </Box>
             </Box>
-          </Box>
-        </DialogActions>
+          </DialogActions>
+        </Paper>
       </React.Fragment>
     </Dialog>
   );
