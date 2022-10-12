@@ -136,7 +136,7 @@ export default ({ pClient, showUpload, handleClose }) => {
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
-  
+    
   const lambda = new Lambda({
     region: 'us-east-1',
     accessKeyId: process.env.REACT_APP_AVA_ID,
@@ -210,6 +210,10 @@ export default ({ pClient, showUpload, handleClose }) => {
     let newObservationList = [];
     obsRecs.forEach(oRec => {
       let [, oType,] = oRec.composite_key.split(/[~_]/);
+      if (oType === 'header') { 
+        let d1 = new Date(date_keys[oRec.date_key]).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        oRec.observation_code = `~~${d1}`;
+      }
       if (oType !== 'message') {
         newObservationList.push({
           date: date_keys[oRec.date_key],
@@ -336,6 +340,14 @@ export default ({ pClient, showUpload, handleClose }) => {
   const handleRandomize = event => {
     setRandomize(event.target.value);
   };
+
+  if (!event_date) {
+    setEventDate(' ');
+  }
+  
+  if (!last_date) {
+    setLastDate(' ');
+  }
 
   function makeDate(pDate) {
     if (!pDate) { return null; }

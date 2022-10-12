@@ -185,7 +185,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.9.28${window.location.href.split('//')[1].slice(0, 1)}`}
+              {`AVA version 22.10.9${window.location.href.split('//')[1].slice(0, 1)}`}
             </Typography>
             <CircularProgress />
           </Box>
@@ -285,7 +285,7 @@ export default Component => props => {
               let confirmedPass;
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let goodPwd = false;
-                [goodPwd, ,confirmedPass] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
+                [goodPwd, , confirmedPass] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
                 if (goodPwd) {
                   foundUserAt = p;
                   break;
@@ -306,7 +306,7 @@ export default Component => props => {
                   enqueueSnackbar(`AVA couldn't use the UserID that the location matched.  Please try again.`, { variant: 'info', persist: true });
                 }
               }
-              else {      
+              else {
                 enqueueSnackbar(`Still looking...`, { variant: 'info', persist: true });
                 let requestObj = { 'nameTest': AVAFollowUpData.enteredUserID, 'numbersTest': enteredPass };
                 let cookieValues = getCookie();
@@ -454,7 +454,7 @@ export default Component => props => {
     if (Object.keys(returnObject).length > 0) {
       return returnObject;
     }
-    else { return null }
+    else { return null; }
   }
 
 
@@ -566,7 +566,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage) {
     let attributeValues = {
       ':s': {
-        'version': `v22.9.28`,
+        'version': `v22.10.9`,
         'environment': window.location.href.split('//')[1].charAt(0),
         'time': new Date().toString(),
         'signin_status': pMessage,
@@ -710,7 +710,7 @@ export default Component => props => {
       if (urlData) {
         currentSession.url_parameters = urlData;
       }
-      else { 
+      else {
         currentSession.url_parameters = null;
       }
       dispatch({ type: SET_SESSION, payload: currentSession });
