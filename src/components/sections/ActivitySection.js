@@ -31,7 +31,7 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import { updateSession } from '../../graphql/mutations';
 import { createPutFact } from '../../graphql/mutations';
 
-import { getActivityData } from '../../graphql/queries';
+// import { getActivityData } from '../../graphql/queries';
 import { getReservation } from '../../graphql/queries';
 
 import NewFactDialog from '../dialogs/NewFactDialog';
@@ -131,7 +131,7 @@ export default ({ patient, session }) => {
   //const [lastPerson, setLastPerson] = React.useState(''); // stores the current selected type filter
   //const [lastLimit, setLastLimit] = React.useState(0); // stores the current limit of activity buttons displayed
 
-  const [loading, setLoading] = React.useState(true); // a flag that shows/hides loading spinner
+  const [loading_complete, setLoading_complete] = React.useState(false); // a flag that shows/hides loading spinner
   const [showNewFactDialog, setShowNewFactDialog] = React.useState(false); // a flag that shows/hides the NewFactDialog
   const [selected, setSelected] = React.useState(null); // stores the current selected fact being added
   const [homeState, setHomeState] = React.useState('home');
@@ -163,6 +163,132 @@ export default ({ patient, session }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
+  async function getActivityDetails(pActivity) {
+    let invokeFailed = false;
+    var payload = {
+      "body": {
+        clientId: pActivity.client_id || session.client_id,
+        personId: patient?.person_id || session.patient_id,
+        activityType: '$$' + pActivity.code,
+        limit: limit,
+        fact_data: false,
+        history_only: false,
+        use_short_date: isMobile,
+        kiosk_mode: false
+      }
+    };
+    let functionName = 'thesesus-activityList';
+    // the misspelling of thesesus was priginally accidental, but now ingrained and left alone
+    if (session) {
+      if (['l', 't'].includes(session.status?.environment)) {
+        functionName = 'tesActivityData';
+        payload.body.test = true;
+      }
+    }
+    let params = {
+      FunctionName: `arn:aws:lambda:us-east-1:125549937716:function:${functionName}`,
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`We had a problem getting current information: ${JSON.stringify(err)}`, {
+          variant: 'error',
+          persist: true
+        });
+        invokeFailed = true;
+      });
+    if (!invokeFailed) {
+      let returnData = JSON.parse(fResp.Payload);
+      if (returnData.status === 200) {
+        return returnData.body.activityData[0];
+      }
+      else {
+        enqueueSnackbar(`AVA returned an error handling your selection.  It is: ${returnData.body}`, {
+          variant: 'error',
+        });
+      }
+    }
+    return [];
+  }
+
+  async function getActivityList(pType, pEvent) {
+    let invokeFailed = false;
+    /*  
+        var payload = {
+          "body": {
+            clientId: session.client_id,
+            personId: patient?.person_id || session.patient_id,
+            activityType: pType,
+            limit: 169,
+            includeEvents: true,
+            fact_data: true,
+            history_only: false,
+            use_short_date: isMobile,
+            kiosk_mode: session?.kiosk_mode || false
+          }
+        };
+        if (pEvent) { payload.body.eventId = pEvent; };
+    */
+    //  let functionName = 'thesesus-activityList';
+    let functionName = 'MakeAVAMenu';
+    let testMode = ['l', 't'].includes(session?.status?.environment);
+    // the misspelling of thesesus was priginally accidental, but now ingrained and left alone
+    if (testMode) { functionName = 'TestAVAMenu'; }
+    let params = {
+      FunctionName: `arn:aws:lambda:us-east-1:125549937716:function:${functionName}`,
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      // Payload: JSON.stringify(payload)
+    };
+    params.Payload = JSON.stringify({
+      test: testMode,
+      action: 'retrieve',
+      client_id: session.client_id,
+      request: {
+        person_id: patient?.person_id || session.patient_id,
+      }
+    });
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`We had a problem getting current information: ${JSON.stringify(err)}`, {
+          variant: 'error',
+          persist: true
+        });
+        invokeFailed = true;
+      });
+    if (!invokeFailed) {
+      let returnData = JSON.parse(fResp.Payload);
+      if (returnData.status === 200) {
+        return {
+          "data": {
+            "getActivityData": returnData.body.activityData
+          }
+        };
+      }
+      else if ('StatusCode' in fResp) {
+        enqueueSnackbar(`AVA returned an error building your menu.  It is: ${returnData.errorMessage}`,
+          { variant: 'error', persist: true }
+        );
+      }
+      else {
+        enqueueSnackbar(`AVA returned an error building your menu.  It is: ${returnData.body}`,
+          { variant: 'error', persist: true }
+        );
+      }
+    }
+    return {
+      "data": {
+        "getActivityData": []
+      }
+    };
+  }
+
   const activityLog = (pUser, pCode, pName) => {
     let pCodeOut = '';
     if (typeof (pCode) === 'object') { pCodeOut = JSON.stringify(pCode); }
@@ -175,7 +301,7 @@ export default ({ patient, session }) => {
         user_id: pUser,
         activity_code: pCodeOut,
         activity_name: pName,
-        AVA_version: `22.10.9${window.location.href.split('//')[1].slice(0, 1)}`
+        AVA_version: `22.10.24${window.location.href.split('//')[1].slice(0, 1)}`
       }
     };
     let params = {
@@ -270,26 +396,26 @@ export default ({ patient, session }) => {
   const onWildClick = () => {
     closeSnackbar();
   };
-
-  function handleWriteError(parmMessage) {
-    if (!parmMessage.includes('Network Error')) {
-      let errorTime = new Date().toString();
-      let instruction = {
-        patient_id: patient.person_id,
-        activity_key: '***ERROR_CAUGHT***',
-        value: parmMessage,
-        status: `Version = 22.10.9~${errorTime}`,
-        session: {
-          user_id: patient.person_id,
-          session_id: session.client_id,
-        },
-      };
-      API
-        .graphql(graphqlOperation(createPutFact, { input: instruction }))
-        .catch(e => { alert(`Menu build error, possible cause: ${parmMessage} / ${JSON.stringify(e)}. Use refresh button.`); });
-    }
-  };
-
+  /*
+    function handleWriteError(parmMessage) {
+      if (!parmMessage.includes('Network Error')) {
+        let errorTime = new Date().toString();
+        let instruction = {
+          patient_id: patient.person_id,
+          activity_key: '***ERROR_CAUGHT***',
+          value: parmMessage,
+          status: `Version = 22.10.24~${errorTime}`,
+          session: {
+            user_id: patient.person_id,
+            session_id: session.client_id,
+          },
+        };
+        API
+          .graphql(graphqlOperation(createPutFact, { input: instruction }))
+          .catch(e => { alert(`Menu build error, possible cause: ${parmMessage} / ${JSON.stringify(e)}. Use refresh button.`); });
+      }
+    };
+  */
   function statusLine() {
     let returnValue = `*** AVA `;
     if (session) {
@@ -338,6 +464,7 @@ export default ({ patient, session }) => {
       setLimit(limit + 1);
       toggledRow = false;
     } else {
+      /*
       let result = await API.graphql(
         graphqlOperation(getActivityData, {
           input: {
@@ -359,10 +486,12 @@ export default ({ patient, session }) => {
         });
       });
       let selectedActivity = result?.data?.getActivityData?.[0];
+      */
+      let selectedActivity = await getActivityDetails(activity);
       selectedActivityName = activity.name;
       if (selectedActivity.type === 'reservation') {
         let reservationKey = selectedActivity.code.replace('.', '^').split('^')[1];
-        result = await API.graphql(
+        let result = await API.graphql(
           graphqlOperation(getReservation, {
             client_id: session.client_id,
             event_code: reservationKey,
@@ -377,6 +506,7 @@ export default ({ patient, session }) => {
           ).catch(error => {
             enqueueSnackbar(`We had a problem getting that event: ${error.errors[0].message}`, {
               variant: 'error',
+              persist: true
             });
           });
         }
@@ -389,6 +519,7 @@ export default ({ patient, session }) => {
           ).catch(error => {
             enqueueSnackbar(`We had a problem getting that event: ${error.errors[0].message}`, {
               variant: 'error',
+              persist: true
             });
           });
         }
@@ -670,7 +801,7 @@ export default ({ patient, session }) => {
   // on session change... build the event and activity lists for drop downs
   React.useEffect(() => {
     if (session) {
-      setLoading(true);
+      setLoading_complete(false);
       if (session.url_parameters && (session.url_parameters.hasOwnProperty('activity'))) {
         onChooseActivity(session.url_parameters.activity);
         return () => {
@@ -687,7 +818,7 @@ export default ({ patient, session }) => {
       if (session?.current_event) {
         setSectionOpen(JSON.parse(session.current_event));
       };
-      setLoading(false);
+      setLoading_complete(true);
       return () => {
       };
     }
@@ -695,10 +826,11 @@ export default ({ patient, session }) => {
 
   // on patient, event, or type change... retrieve the activities for the main part of the screen
   React.useEffect(() => {
-    setLoading(true);
+    setLoading_complete(false);
     let mounted = true;
     let callPromise = (async () => {
       if (patient && session) {
+        /*
         let result = await API.graphql(
           graphqlOperation(getActivityData, {
             input: {
@@ -723,10 +855,11 @@ export default ({ patient, session }) => {
           mounted = false;
           handleWriteError(`Error in getActivityData is ${error.errors[0].message}`);
         });
+        */
+
+        let result = await getActivityList(type, event);
 
         if (mounted) {
-          setLoading(false);
-
           if (Object.keys(lastWrittenFact).length > 0) {
             // getActivityData is list of options that displays on the user's screen 
             // If we just wrote a fact, attempt to drop information about that fact into getActivityData 
@@ -754,6 +887,7 @@ export default ({ patient, session }) => {
               window.scrollTo(0, 0);
             }
           }
+          setLoading_complete(true);
         } else {
           API.cancel(result, 'ActivitySection unmounted, cancel getActivityData');
         }
@@ -777,7 +911,7 @@ export default ({ patient, session }) => {
 
   // on limit or lastWrittenFact change... retrieve the activities for the main part of the screen
   React.useEffect(() => {
-    setLoading(true);
+    setLoading_complete(false);
     if (Object.keys(lastWrittenFact).length > 0) {
       let updatedActivities = activities;
       // getActivityData is list of options that displays on the user's screen 
@@ -799,7 +933,7 @@ export default ({ patient, session }) => {
       setLimit(limit + 1);
       setLastWrittenFact({});
     };
-    setLoading(false);
+    setLoading_complete(true);
     return () => {
     };
   }, [limit, lastWrittenFact]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -912,7 +1046,7 @@ export default ({ patient, session }) => {
 
       {/* Main Activity List and Selection */}
       <Box p={3}  >
-        {session &&
+        {loading_complete && session && activities && (activities.length > 0) &&
           <Grid item>
             <Card
               className={classes.logoDisplay}
@@ -1091,24 +1225,22 @@ export default ({ patient, session }) => {
             </GridList>
           </Grid>
         }
-        {(loading || !session) ?
+        {(!loading_complete || !session || !activities || (activities.length === 0)) ?
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <Box mt={3} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
-              {!session &&
-                <Card
-                  className={classes.logoSmall}
-                  raised={false}
-                  variant='elevation' elevation={0}
-                >
-                  <CardMedia
-                    component="img"
-                    image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
-                    alt='AVA'
-                  />
-                </Card>
-              }
+              <Card
+                className={classes.logoSmall}
+                raised={false}
+                variant='elevation' elevation={0}
+              >
+                <CardMedia
+                  component="img"
+                  image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                  alt='AVA'
+                />
+              </Card>
               <Typography align='center'>
-                {`Loading AVA version 22.10.9${window.location.href.split('//')[1].slice(0, 1)}`}
+                {`Loading AVA version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}
               </Typography>
               <CircularProgress />
             </Box>

@@ -14,7 +14,15 @@ import { SET_PATIENT, SET_SESSION, SET_PATIENTS } from '../../contexts/Session/a
 import useSession from '../../hooks/useSession';
 import PersonFilter from '../forms/PersonFilter';
 
-export default ({ open, roles, onClose }) => {
+const AWS = require('aws-sdk');
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
+export default ({ open, roles, onClose, forceSwitch }) => {
   // const [selected, setSelected] = React.useState(null);
   const [callPending, setCallPending] = React.useState(false);
 
@@ -127,7 +135,8 @@ export default ({ open, roles, onClose }) => {
         }
       }
     );
-    getPatients();
+    if (forceSwitch) { handleConfirmation(forceSwitch) }
+    else { getPatients(); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClose = () => {
@@ -150,6 +159,34 @@ export default ({ open, roles, onClose }) => {
           });
         });
 
+        let [pName, pID] = newPatient.split(':');
+        session.patient_id = pID;
+        let ans = pName.split(',');
+        switch (ans.length) {
+          case 3: {
+            session.patient_display_name = `${ans[2].trim()} ${ans[0].trim()}, ${ans[1].trim()}`;
+            break;
+          }
+          case 2: {
+            if (ans[1].startsWith('group=')) { session.patient_display_name = ''; }
+            else { session.patient_display_name = `${ans[1].trim()} ${ans[0].trim()}`; }
+            break;
+          }
+          default: { session.patient_display_name = ans[0].trim(); }
+        }
+        await dbClient
+          .update({
+            Key: { session_id: session.user_id },
+            UpdateExpression: 'set patient_id = :p, patient_display_name = :d',
+            ExpressionAttributeValues: {
+              ':p': session.patient_id,
+              ':d': session.patient_display_name
+            },
+            TableName: "SessionsV2",
+          })
+          .promise()
+          .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+
         const result2 = await API.graphql(
           graphqlOperation(getPerson, {
             person_id: result1.data.updateSession.patient_id || result1.data.updateSession.user_id,
@@ -160,7 +197,7 @@ export default ({ open, roles, onClose }) => {
           });
         });
 
-        dispatch({ type: SET_SESSION, payload: result1.data.updateSession });
+        dispatch({ type: SET_SESSION, payload: session });
         dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
       }
       let jumpTo = window.location.href.replace('refresh', 'theseus');

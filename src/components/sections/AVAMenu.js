@@ -6,14 +6,17 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { useCookies } from 'react-cookie';
 
+import IdleTimer from 'react-idle-timer';
+import avaAlert from '../../ava_alert.mp3';
+
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
+import PatientDialog from '../dialogs/PatientDialog';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import AVAConfirm from '../forms/AVAConfirm';
 
 import List from '@material-ui/core/List';
 import Box from '@material-ui/core/Box';
-import Button from '@material-ui/core/Button';
 import Avatar from '@material-ui/core/Avatar';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
@@ -23,15 +26,19 @@ import Dialog from '@material-ui/core/Dialog';
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
+import Card from '@material-ui/core/Card';
+import CardMedia from '@material-ui/core/CardMedia';
 
 import Collapse from '@material-ui/core/Collapse';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
+import EditIcon from '@material-ui/icons/PersonOutlineOutlined';
 import FavoriteIcon from '@material-ui/icons/FavoriteBorder';
-import HelpIcon from '@material-ui/icons/HelpOutline';
+import NotFavorite from '@material-ui/icons/DeleteForever';
 import FaceIcon from '@material-ui/icons/Face';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
+import HomeIcon from '@material-ui/icons/Home';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import CircularProgress from '@material-ui/core/CircularProgress';
@@ -62,7 +69,13 @@ const useStyles = makeStyles(theme => ({
     paddingTop: 0,
     fontSize: '1.3rem',
   },
+  logoSmall: {
+    maxWidth: '100px',
+    marginBottom: '15px'
+  },
   verticalMenuButton: {
+    alignSelf: 'center',
+    verticalAlign: 'middle',
     marginTop: theme.spacing(0.5),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
@@ -140,11 +153,10 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
   },
   sectionHeader: {
-    justifyContent: 'space-between',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
+    marginLeft: theme.spacing(3),
+    marginRight: theme.spacing(3),
   },
   messageArea: {
     alignItems: 'flex-start',
@@ -152,6 +164,9 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(2),
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
+  },
+  profileArea: {
+    alignItems: 'flex-start',
   },
   vertMenuRow: {
     marginLeft: theme.spacing(1),
@@ -188,25 +203,33 @@ const useStyles = makeStyles(theme => ({
   confirm: {
     backgroundColor: 'green',
   },
-  firstName: {
-
-  },
   lastName: {
     fontWeight: 'bold',
     marginRight: theme.spacing(1),
+  },
+  boldCenter: {
+    fontWeight: 'bold',
+    textAlign: 'center'
   }
 }));
 
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3({
-  accessKeyId: 'AKIAR2O24AQ2HGHS4SFF',
-  secretAccessKey: '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'
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ pPerson, pClient, isMobile, onReset }) => {
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
+export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
 
   const classes = useStyles();
-  const { enqueueSnackbar } = useSnackbar();
+  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const { state } = useSession();
   const { roles, session } = state;
@@ -223,12 +246,17 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
   const [confirmMessage, setConfirmMessage] = React.useState('');
   const [pendingFact, setPendingFact] = React.useState('');
 
+  const [currentMenu, setCurrentMenu] = React.useState('main');
+  const [menuArray, setMenuArray] = React.useState(['main']);
+  const [menuNames, setMenuNames] = React.useState([]);
   const [sectionOpen, setSectionOpen] = React.useState();
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
-  const [showNewFactDialog, setShowNewFactDialog] = React.useState(false);
-  const [needsConfirmation, setNeedsConfirmation] = React.useState(false);
+  const [showProfileEdit, setShowProfileEdit] = React.useState(false);
+  const [switchToSelf, setSwitchToSelf] = React.useState(false);
+  const [showNewFactDialog, setShowNewFactDialog] = React.useState(-1);
+  const [needsConfirmation, setNeedsConfirmation] = React.useState(-1);
   const [toggleClick, setToggleClick] = React.useState(false);
-  const [rowOpen, setRowOpen] = React.useState([]);
+  const [rowOpen, setRowOpen] = React.useState(-1);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
@@ -247,17 +275,21 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
+  let testMode = ['l', 't'].includes(session?.status?.environment);
   let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:MakeAVAMenu',
+    FunctionName: `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`,
     InvocationType: 'RequestResponse',
     LogType: 'Tail',
     Payload: ''
   };
 
+  var idleTimer = null;
+
   const buildMenu = async (pFlavor = 'retrieve') => {
     setLoading(true);
     let invokeFailed = false;
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:MakeAVAMenu';
+    testMode = ['l', 't'].includes(session?.status?.environment);
+    params.FunctionName = `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`;
     params.Payload = JSON.stringify({
       test: false,
       action: pFlavor,
@@ -270,34 +302,105 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
       .invoke(params)
       .promise()
       .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Menu.  Error is ${err.message}`, {
-          variant: 'error'
-        });
+        enqueueSnackbar(`AVA encountered an error while retrieving Menu.  Error is ${err.message}`,
+          { variant: 'error', persist: true }
+        );
         invokeFailed = true;
       });
     if (!invokeFailed) {
       let MakeAVAMenuResponse = JSON.parse(fResp.Payload);
       if (MakeAVAMenuResponse.status === 200) {
-        if (!sectionOpen) {
-          let tempSectionOpen = {};
-          tempSectionOpen[MakeAVAMenuResponse.body[0].section_name] = true;
-          setSectionOpen(tempSectionOpen);
+        if (!patient) {
+          let personRec = await dbClient
+            .get({
+              Key: { person_id: pPerson },
+              TableName: "People"
+            })
+            .promise()
+            .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+          if (recordExists(personRec)) {
+            patient = personRec.Item;
+          }
+        }
+        if (patient && patient.AVA_section_open) {
+          setSectionOpen(patient.AVA_section_open);
         }
         else {
-          sectionOpen[MakeAVAMenuResponse.body[0].section_name] = true;
-          setSectionOpen(sectionOpen);
+          if (session?.current_event) {
+            if (typeof (session?.current_event) === 'object') {
+              setSectionOpen(session.current_event);
+            }
+            else {
+              setSectionOpen(JSON.parse(session.current_event));
+            }
+          }
+          else {
+            setSectionOpen({});
+          }
         }
         setMainMenu(MakeAVAMenuResponse.body);
         setLoading(false);
         return MakeAVAMenuResponse.body;
       }
+      else if (MakeAVAMenuResponse.status === 201) {
+        enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
+          { variant: 'error', persist: true }
+        );
+        let helpRow = {
+          activity_class: 'message',
+          activity_code: 'message.chubbie_request',
+          activity_name: 'Send a message to AVA Support',
+          child_menu: null,
+          default_value: null,
+          menu_name: 'help',
+          parent_menu: null,
+          row_color: '#a1adb8',
+          row_type: 'message',
+          section_color: '#a1adb8',
+          section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-new-message-50.png',
+          section_name: 'Get AVA Help',
+          sort_key: 'Messages, Comments, and Feedback'
+        };
+        setSectionOpen({ 'Get AVA Help': true });
+        setMainMenu([helpRow]);
+        setLoading(false);
+        return [helpRow];
+      }
     };
     return [];
   };
 
+  const updateSession = async (pOpen) => {
+    dbClient
+      .update({
+        Key: { person_id: pPerson },
+        UpdateExpression: 'set AVA_section_open = :o',
+        ExpressionAttributeValues: {
+          ':o': pOpen
+        },
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        console.log(`AVA couldn't update your Menu settings.  Error is ${error}`);
+      });
+    dbClient
+      .update({
+        Key: { session_id: session.user_id },
+        UpdateExpression: 'set current_event = :e',
+        ExpressionAttributeValues: {
+          ':e': JSON.stringify(pOpen)
+        },
+        TableName: "SessionsV2",
+      })
+      .promise()
+      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+  };
+
   const getMessage = async (pPerson) => {
     let invokeFailed = false;
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:MakeAVAMenu';
+    testMode = ['l', 't'].includes(session?.status?.environment);
+    params.FunctionName = `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`;
     params.Payload = JSON.stringify({
       test: false,
       action: 'get_last_message',
@@ -350,8 +453,98 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
     return null;
   }
 
-  const onSaveFact = async (pFact, pFactName) => {
-    if (typeof (pFact.value) === 'string') { putFact(pFact, pFactName); }
+  const addToFavorites = async (activityRow) => {
+    let personRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "People"
+      })
+      .promise()
+      .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+    if (recordExists(personRec)) {
+      let favoriteList = [];
+      if ('favorite_activities' in personRec.Item) {
+        favoriteList = personRec.Item.favorite_activities;
+      }
+      favoriteList.push(activityRow.activity_code);
+      let favoriteBlocked = [];
+      if ('favorite_blocked' in personRec.Item) {
+        favoriteBlocked = personRec.Item.favorite_blocked;
+        let indexAt = favoriteBlocked.findIndex(r => { return (r === activityRow.activity_code); });
+        if (indexAt > -1) { favoriteBlocked.splice(indexAt, 1); }
+      }
+      await dbClient
+        .update({
+          Key: { person_id: pPerson },
+          UpdateExpression: 'set favorite_activities = :f, favorite_blocked = :b',
+          ExpressionAttributeValues: {
+            ':f': favoriteList,
+            ':b': favoriteBlocked
+          },
+          TableName: "People",
+        })
+        .promise()
+        .catch(error => {
+          enqueueSnackbar(`AVA couldn't update your Favorites.  Error is ${error}`,
+            { variant: 'error', persist: true }
+          );
+          return;
+        });
+      makeGreeting();
+      await getMessage(pPerson);
+      await buildMenu('main_menu');
+      setForceRedisplay(!forceRedisplay);
+    }
+    return;
+  };
+
+  const removeFromFavorites = async (activityRow) => {
+    let personRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "People"
+      })
+      .promise()
+      .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+    if (recordExists(personRec)) {
+      let favoriteList = [];
+      if ('favorite_activities' in personRec.Item) {
+        favoriteList = personRec.Item.favorite_activities;
+      }
+      let indexAt = favoriteList.findIndex(r => { return (r === activityRow.activity_code); });
+      if (indexAt > -1) { favoriteList.splice(indexAt, 1); }
+      let favoriteBlocked = [];
+      if ('favorite_blocked' in personRec.Item) {
+        favoriteBlocked = personRec.Item.favorite_blocked;
+      }
+      favoriteBlocked.push(activityRow.activity_code);
+      await dbClient
+        .update({
+          Key: { person_id: pPerson },
+          UpdateExpression: 'set favorite_activities = :f, favorite_blocked = :b',
+          ExpressionAttributeValues: {
+            ':f': favoriteList,
+            ':b': favoriteBlocked
+          },
+          TableName: "People",
+        })
+        .promise()
+        .catch(error => {
+          enqueueSnackbar(`AVA couldn't update your Favorites.  Error is ${error}`,
+            { variant: 'error', persist: true }
+          );
+          return;
+        });
+      makeGreeting();
+      await getMessage(pPerson);
+      await buildMenu('main_menu');
+      setForceRedisplay(!forceRedisplay);
+    }
+    return;
+  };
+
+  const onSaveFact = async (pFact, pFactName, pIndex) => {
+    if (typeof (pFact.value) === 'string') { putFact(pFact, pFactName, pIndex); }
     else {
       let factFlavor = pFact.activity_key.split('.')[0];
       if (factFlavor === 'action' || !pFact.value.hasOwnProperty('selected')) { }
@@ -391,7 +584,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
             );
           }
           setConfirmMessage(cMessage);
-          setNeedsConfirmation(true);
+          setNeedsConfirmation(pIndex);
           return;
         }
         pFact.value = (isForm ? 'form_selections' : (isMedia ? 'file_details' : 'selection')) + '.' + valueArray.join(' ~ ');
@@ -400,16 +593,16 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
             return `${k}:${pFact.value.qualifiers[k]}`;
           });
         }
-        putFact(pFact, pFactName);
+        putFact(pFact, pFactName, pIndex);
         enqueueSnackbar(`${pFactName} successfully completed!`, { variant: 'success' });
       }
     };
-    setShowNewFactDialog(false);
+    setShowNewFactDialog(-1);
     setForceRedisplay(!forceRedisplay);
   };
 
   const onNextFact = async () => {
-    setShowNewFactDialog(false);
+    setShowNewFactDialog(-1);
     setForceRedisplay(!forceRedisplay);
   };
 
@@ -454,56 +647,64 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
       });
   };
 
-  const activityLog = (pUser, pCode, pName) => {
-    var payload =
-    {
-      'test': false,
-      'action': "add_entry",
-      'request': {
-        user_id: pUser,
-        activity_code: pCode,
-        activity_name: pName,
-        AVA_version: `22.10.9${window.location.href.split('//')[1].slice(0, 1)}`
-      }
+  const activityLog = (pUser, pCode, pName, pIndex) => {
+    let postTime = new Date().getTime();
+    let activityLogRec = {
+      timestamp: postTime,
+      user_id: pUser,
+      activity_code: pCode,
+      activity_name: pName,
+      AVA_version: `22.10.24${window.location.href.split('//')[1].slice(0, 1)}`
     };
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ActivityLogMaintenance',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
-    lambda
-      .invoke(params)
+    dbClient
+      .put({
+        Item: activityLogRec,
+        TableName: "ActivityLog"
+      })
       .promise()
-      .catch(err => {
-        console.log('Activity log call failed.  Error is', JSON.stringify(err));
+      .catch(error => {
+        console.log({ 'Bad put to ActivityLog - caught error is': error });
       });
+    mainMenu[pIndex].last_used = postTime;
+    resetMainMenu(mainMenu);
   };
 
-  const putFact = async (pFact, pFactName) => {
-    var payload =
-    {
-      patient_id: pFact.patient_id,
+  const resetMainMenu = async (pMenu) => {
+    dbClient
+      .update({
+        Key: { person_id: pPerson },
+        UpdateExpression: 'set AVA_main_menu = :m',
+        ExpressionAttributeValues: {
+          ':m': pMenu
+        },
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        console.log(`AVA couldn't update your Menu settings.  Error is ${error}`);
+      });
+    setMainMenu(pMenu);
+  };
+
+  const putFact = async (pFact, pFactName, pIndex) => {
+    let postTime = new Date().getTime();
+    const newFact = {
+      person_id: pFact.patient_id,
       activity_key: pFact.activity_key,
       value: pFact.value,
-      session: pFact.session,
-      status: 'recorded'
+      status: 'recorded',
+      user_id: pPerson,
+      session_id: ((needsConfirmation > -1) ? 'Confirmed' : 'Done'),
+      method: 'AVAMenu',
+      posted_time: postTime
     };
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:theseus-putFact',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
-    lambda
-      .invoke(params)
-      .promise()
-      .then(() => {
-        activityLog(pFact.patient_id, pFact.activity_key, pFactName);
+    await dbClient
+      .put({
+        TableName: 'Facts',
+        Item: newFact
       })
-      .catch(err => {
-        console.log('Fact write failed.  Error is', JSON.stringify(err));
-      });
+      .promise()
+      .catch(error => { console.error('Error adding a fact:', error.message); });
   };
 
   const getActivityDetail = async (pActivity) => {
@@ -545,6 +746,45 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
     return [];
   };
 
+  const getActivityHistory = async (pActivity) => {
+    let invokeFailed = false;
+    var payload =
+    {
+      'test': false,
+      'body': {
+        "clientId": pClient,
+        "personId": pPerson,
+        "activityType": `$$${pActivity}`,
+        "limit": 100,
+        "fact_data": true,
+        "historyOnly": true,
+        "use_short_date": true,
+        "kiosk_mode": false
+      }
+    };
+    let params = {
+      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:thesesus-activityList',
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify(payload)
+    };
+    let fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log('Call for Activity details failed.  Error is', JSON.stringify(err));
+        invokeFailed = true;
+      });
+    if (!invokeFailed) {
+      let activityResponse = JSON.parse(fResp.Payload);
+      if (activityResponse.status === 200) {
+        setSelected(activityResponse.body.activityData[0]);
+        return activityResponse.body.activityData[0];
+      }
+    };
+    return [];
+  };
+
   function getImage(pPerson) {
     setImageURL(s3.getSignedUrl('getObject', {
       Bucket: imageBucket,
@@ -553,11 +793,14 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
     }));
   }
 
+  function recordExists(recordId) {
+    if (!recordId) { return false; }
+    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
+    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
+  }
+
   function makeName(pString) {
-    let nameParts = pString.split(',');
-    let response = '';
-    if (nameParts[1]) { response = nameParts[1].split(/,|\(|#|~/g)[0].trim(); }
-    else { response = nameParts[0].split(' ')[0].trim(); }
+    let response = pString.split(':')[0].trim().split(/[\s]+/)[0];
     setGreetingName(response);
     return response;
   }
@@ -576,6 +819,24 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
     setAnchorEl(event.currentTarget);
   };
 
+  let lastColor, lastOpen;
+  function rowIsOpen(pRow) {
+    if (sectionOpen[pRow.section_name] || (currentMenu !== 'main')) {
+      lastOpen = true;
+      lastColor = pRow.row_color;
+      return true;
+    }
+    else {
+      lastOpen = false;
+      return false;
+    }
+  }
+
+  let idleSince = null;
+  let idleStartTime = 0;
+  let idleString = '';
+  let msInAMinute = 1000 * 60;
+
   // ******************
 
   return (
@@ -585,41 +846,128 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
       fullScreen
     >
       <React.Fragment>
+        {/* Idle timer always running */}
+        <IdleTimer
+          ref={ref => { idleTimer = ref; }}
+          timeout={(session?.kiosk_mode ? 1 : 30) * msInAMinute}   // every "n" minutes
+          onAction={(event) => {
+            if (idleSince) {
+              console.log(`Active at ${new Date().toLocaleString()} on ${event.type}`);
+              idleSince = null;
+            }
+          }}
+          onIdle={async () => {
+            if (!idleSince) {
+              idleSince = idleTimer.getLastActiveTime();
+              idleString = new Date(idleSince).toLocaleString();
+              idleStartTime = new Date(idleSince).getTime();
+              console.log(`Idle since ${idleString}`);
+            }
+            else {
+              console.log(`Still idle at ${new Date().toLocaleString()}`);
+              if (session?.kiosk_mode) {
+                let checkTime = new Date().getTime() - idleStartTime;
+                if (checkTime > (4 * msInAMinute)) {
+                  closeSnackbar();
+                  await dbClient
+                    .update({
+                      Key: { session_id: session.user_id },
+                      UpdateExpression: 'set patient_id = :p, patient_display_name = :d',
+                      ExpressionAttributeValues: {
+                        ':p': session.user_id,
+                        ':d': session.user_display_name
+                      },
+                      TableName: "SessionsV2",
+                    })
+                    .promise()
+                    .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+                  let jumpTo = window.location.href.replace('refresh', 'theseus');
+                  window.location.replace(jumpTo);
+                }
+                else if (checkTime > (3 * msInAMinute)) {
+                  closeSnackbar();
+                  enqueueSnackbar(
+                    `Are you still there?  AVA will end your session in 1 minute...`,
+                    { variant: 'warning', persist: true }
+                  );
+                  try { new Audio(avaAlert).play(); }
+                  catch (err) {
+                    console.log('play sound failed due to browser');
+                  }
+                }
+                else if (checkTime > (2 * msInAMinute)) {
+                  closeSnackbar();
+                  enqueueSnackbar(
+                    `Are you still there?  AVA will end your session in 2 minutes...`,
+                    { variant: 'info', persist: true }
+                  );
+                  try { new Audio(avaAlert).play(); }
+                  catch (err) {
+                    console.log('play sound failed due to browser');
+                  }
+                }
+              }
+              else {
+                closeSnackbar();
+                makeGreeting();
+                await getMessage(session.patient_id);
+                await buildMenu('main_menu');
+                setCurrentMenu('main');
+                setMenuArray(['main']);
+                setMenuNames([]);
+                setForceRedisplay(!forceRedisplay);
+              }
+            }
+            idleTimer.reset();
+          }}
+          debounce={250}
+        />
         {/* Header with Avatar, Message, and VertMenu */}
         <Box
           display='flex' flexDirection='row'
           className={classes.messageArea}
           key={'topBox'}
         >
-          <Tooltip
-            className={classes.avatar}
-            title={
-              <Typography variant='caption'>
-                {session?.kiosk_mode ? 'View/Update not available' : `View/Update ${greetingName}'${greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
-              </Typography>
-            }
-            placement='bottom-start'>
-            <Avatar src={imageURL}>
-              <FaceIcon />
-            </Avatar>
-          </Tooltip>
           <Box
+            display='flex' flexDirection='row'
             flexGrow={1}
-            display='flex'
-            overflow='auto'
-            flexDirection='column'>
-            <Typography
-              className={classes.hello}
-              id='scroll-dialog-title'
-            >
-              {`Good ${greetingTime}, ${greetingName}!`}
-            </Typography>
-            <Typography
-              className={classes.messageScroll}
-              id='scroll-dialog-title'
-            >
-              {messageText}
-            </Typography>
+            className={classes.profileArea}
+            key={'personBox'}
+            onClick={() => {
+              setPopupMenuOpen(false);
+              setShowProfileEdit(true);
+            }}
+          >
+            <Tooltip
+              className={classes.avatar}
+              title={
+                <Typography variant='caption'>
+                  {session?.kiosk_mode ? 'View/Update not available' : `View/Update ${greetingName}'${greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
+                </Typography>
+              }
+              placement='bottom-start'>
+              <Avatar src={imageURL}>
+                <FaceIcon />
+              </Avatar>
+            </Tooltip>
+            <Box
+              flexGrow={1}
+              display='flex'
+              overflow='auto'
+              flexDirection='column'>
+              <Typography
+                className={classes.hello}
+                id='scroll-dialog-title'
+              >
+                {`Good ${greetingTime}, ${greetingName}!`}
+              </Typography>
+              <Typography
+                className={classes.messageScroll}
+                id='scroll-dialog-title'
+              >
+                {messageText}
+              </Typography>
+            </Box>
           </Box>
           <IconButton
             className={classes.verticalMenuButton}
@@ -638,6 +986,37 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
             onClose={() => { setPopupMenuOpen(false); }}
             keepMounted>
             <MenuList dense={true}>
+              {(session?.patient_id !== session?.user_id) && (
+                <MenuItem onClick={() => {
+                  setPopupMenuOpen(false);
+                  setSwitchToSelf(true);
+                }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'switch2self'}
+                  >
+                    <HomeIcon />
+                    <Typography className={classes.vertMenuRow} >{`Switch to My Profile (${session.user_id})`}</Typography>
+                  </Box>
+                </MenuItem>
+              )}
+              {!session?.kiosk_mode && (
+                <MenuItem onClick={() => {
+                  setPopupMenuOpen(false);
+                  setShowProfileEdit(true);
+                }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowSwitch'}
+                  >
+                    <EditIcon />
+                    <Typography className={classes.vertMenuRow} >
+                      {`Edit ${greetingName}'${greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+              )
+              }
               {session?.responsible_for && (
                 <MenuItem onClick={() => {
                   setPopupMenuOpen(false);
@@ -673,6 +1052,9 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
                 makeGreeting();
                 await getMessage(session.patient_id);
                 await buildMenu('main_menu');
+                setCurrentMenu('main');
+                setMenuArray(['main']);
+                setMenuNames([]);
                 setForceRedisplay(!forceRedisplay);
               }
               }>
@@ -693,10 +1075,21 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
             border={2}
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
-            ml={2} mr={2}
+            ml={2} mr={2} mt={5} mb={5} p={5}
           >
+            <Card
+              className={classes.logoSmall}
+              raised={false}
+              variant='elevation' elevation={0}
+            >
+              <CardMedia
+                component="img"
+                image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                alt='AVA'
+              />
+            </Card>
             <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-            <Typography variant='caption' >{`version 22.10.9${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
+            <Typography variant='caption' >{`version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
             <CircularProgress />
           </Box>
         }
@@ -717,139 +1110,248 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
               />
             </Box>
             <List >
-              {mainMenu.map((this_row, index) => (
-                <React.Fragment
-                  key={this_row.activity_code + 'fragment' + index}
-                >
-                  {currentSection !== this_row.section_name &&
-                    <Paper mt={1.5} component={Box} variant='outlined' key={this_row.activity_code + 'section' + index} >
-                      <Box
-                        display='flex'
-                        style={{ backgroundColor: this_row.section_color, textDecoration: 'none' }}
-                        ml={2} mr={2}
-                        justifyContent='center'
-                        flexDirection='column'
-                        minHeight={80}
-                        onClick={() => {
-                          sectionOpen[this_row.section_name] = !sectionOpen[this_row.section_name];
-                          setSectionOpen(sectionOpen);
-                          setForceRedisplay(!forceRedisplay);
-                        }}
-                      >
-                        <Box
-                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                          key={this_row.activity_code + 'r' + index}
-                          className={classes.sectionHeader}
-                        >
-                          <Avatar
-                            src={this_row.section_icon}
-                            sx={{ width: 30, height: 30 }}
-                            alt=""
-                            variant="square"
-                          />
-                          <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                            {(currentSection = this_row.section_name)}
-                          </Typography>
-                          <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                            <Box display='flex' flexDirection='column'>
-                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                <Typography variant='h5' className={classes.lastName} >{this_row.section_name}</Typography>
-                              </Box>
-                            </Box>
+              {currentMenu !== 'main' &&
+                <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
+                  <Box
+                    display='flex'
+                    style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: '#d25958', textDecoration: 'none' }}
+                    ml={2} mr={2}
+                    justifyContent='center'
+                    flexDirection='column'
+                    minHeight={80}
+                    onClick={async () => {
+                      menuArray.pop();
+                      setCurrentMenu(menuArray[menuArray.length - 1]);
+                      setMenuArray(menuArray);
+                      menuNames.pop();
+                      setMenuNames(menuNames);
+                      setForceRedisplay(!forceRedisplay);
+                    }}
+                  >
+                    <Box
+                      display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                      key={'goback row'}
+                      className={classes.sectionHeader}
+                    >
+                      <Avatar
+                        src={`https://ava-icons.s3.amazonaws.com/back.png`}
+                        sx={{ width: 30, height: 30 }}
+                        alt=""
+                        variant="square"
+                      />
+                      <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                        <Box display='flex' flexDirection='column'>
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                            <Typography variant='h5' className={classes.lastName} >{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
                           </Box>
-                          {index > 0 &&
-                            <IconButton
-                              aria-label='showActivities'
-                              size='small'
-                            >
-                              {!sectionOpen[this_row.section_name] ? 'Show' : 'Hide'}
-                            </IconButton>
-                          }
                         </Box>
                       </Box>
-                    </Paper>
-                  }
-                  {sectionOpen[this_row.section_name] &&
-                    <Paper component={Box}
-                      variant='outlined' key={this_row.activity_code + 'detail' + index} >
-                      <Box
-                        display='flex'
-                        style={{ backgroundColor: this_row.row_color, textDecoration: 'none' }}
-                        ml={2} mr={2}
-                        justifyContent='center'
-                        flexDirection='column'
-                        minHeight={80}
+                    </Box>
+                  </Box>
+                </Paper>
+              }
+              {mainMenu.map((this_row, index) => (
+                ((this_row.menu_name === currentMenu) &&
+                  <React.Fragment
+                    key={this_row.activity_code + 'fragment' + index}
+                  >
+                    {currentSection !== this_row.section_name &&
+                      <React.Fragment
+                        key={'on-section-break' + index}
                       >
-                        <Box
-                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                          key={this_row.activity_code + 'detailrow' + index}
-                          className={classes.listItem}
-                          onContextMenu={async (e) => {
-                            e.preventDefault();
-                            enqueueSnackbar(`AVA function=${this_row.activity_code} type=${this_row.row_type} user=${session.user_id}`, { variant: 'info', persist: true });
-                          }}
-                          onClick={async () => {
-                            if (!toggleClick && (this_row.row_type !== 'document')) {
-                              await getActivityDetail(this_row.activity_code);
-                              setShowNewFactDialog(true);
-                            }
-                            setToggleClick(false);
-                          }}
-                        >
-                          <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                            {this_row.row_type === 'document' ?
-                              <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
-                                <Typography variant='h5' className={classes.firstName}>{this_row.activity_name}</Typography>
-                              </a>
-                              :
-                              <Typography variant='h5' className={classes.firstName}>{this_row.activity_name}</Typography>
-                            }
-                          </Box>
-                          <IconButton
-                            aria-label='showActivities'
-                            size='small'
-                            onClick={() => {
-                              setToggleClick(true);
-                              rowOpen[index] = !rowOpen[index];
-                              setRowOpen(rowOpen);
+                        {(index > 0) && lastOpen &&
+                          <Box
+                            display='flex'
+                            style={{
+                              borderRadius: '0px 0px 30px 30px',
+                              backgroundColor: lastColor,
+                              textDecoration: 'none'
+                            }}
+                            ml={2} mr={2}
+                            justifyContent='center'
+                            flexDirection='column'
+                            height={30}
+                          />}
+                        <Paper ml={2} mr={2} mt={1.5} elevation={0} component={Box} key={this_row.activity_code + 'section' + index} >
+                          <Box
+                            display='flex'
+                            style={{ borderRadius: ((sectionOpen[this_row.section_name] || (currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'), backgroundColor: this_row.section_color, textDecoration: 'none' }}
+                            justifyContent='center'
+                            flexDirection='column'
+                            minHeight={80}
+                            onClick={async () => {
+                              sectionOpen[this_row.section_name] = !sectionOpen[this_row.section_name];
+                              setSectionOpen(sectionOpen);
+                              await updateSession(sectionOpen);
                               setForceRedisplay(!forceRedisplay);
                             }}
                           >
-                            {!rowOpen[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-                          </IconButton>
-                        </Box>
-                      </Box>
-                      <Collapse in={rowOpen[index]} timeout="auto" unmountOnExit>
+                            <Box
+                              display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                              key={this_row.activity_code + 'r' + index}
+                              className={classes.sectionHeader}
+                            >
+                              <Avatar
+                                src={this_row.section_icon}
+                                sx={{ width: 30, height: 30 }}
+                                alt=""
+                                variant="square"
+                              />
+                              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                                {(currentSection = this_row.section_name)}
+                              </Typography>
+                              <Box display='flex' ml={5} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
+                                <Box display='flex' flexDirection='column'>
+                                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                                    <Typography variant='h5' className={classes.boldCenter} >{this_row.section_name.trim()}</Typography>
+                                  </Box>
+                                </Box>
+                              </Box>
+                              <Box width={20} mr={3}>
+                                <IconButton
+                                  aria-label='showActivities'
+                                  size='small'
+                                >
+                                  {!sectionOpen[this_row.section_name] ? 'Show' : 'Hide'}
+                                </IconButton>
+                              </Box>
+                            </Box>
+                          </Box>
+                        </Paper>
+                      </React.Fragment>
+                    }
+                    {rowIsOpen(this_row) &&
+                      <Paper component={Box} elevation={0}
+                        ml={2} mr={2} mt={.1} mb={.1} key={this_row.activity_code + 'detail' + index} >
                         <Box
-                          style={{ backgroundColor: this_row.row_color, textDecoration: 'none' }}
                           display='flex'
-                          ml={2} mr={2}
-                          flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'
+                          style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                          p={2}
+                          justifyContent='center'
+                          flexDirection='column'
+                          minHeight={60}
                         >
-                          <Button
-                            onClick={() => {
-                              // Make this a favorite
+                          <Box
+                            display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                            key={this_row.activity_code + 'detailrow' + index}
+                            className={classes.listItem}
+                            onContextMenu={async (e) => {
+                              e.preventDefault();
+                              enqueueSnackbar(`AVA function=${this_row.activity_code} **** type=${this_row.row_type} **** reason=${this_row.reason} **** user=${session.user_id}`, { variant: 'info', persist: true });
                             }}
-                            className={classes.rowButtonGreen}
-                            startIcon={<FavoriteIcon fontSize="small" />}
                           >
-                            Make Favorite?
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              // Ask for Help
-                            }}
-                            className={classes.rowButtonDefault}
-                            startIcon={<HelpIcon fontSize="small" />}
-                          >
-                            Ask for Help
-                          </Button>
+                            <Box
+                              display='flex'
+                              mr={2}
+                              flexGrow={1}
+                              flexDirection='row'
+                              justifyContent='space-between'
+                              alignItems='center'
+                              onClick={async () => {
+                                activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
+                                if (!toggleClick && (this_row.row_type !== 'document')) {
+                                  if (this_row.child_menu) {
+                                    setCurrentMenu(this_row.child_menu);
+                                    menuArray.push(this_row.child_menu);
+                                    setMenuArray(menuArray);
+                                    menuNames.push((currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
+                                    setMenuNames(menuNames);
+                                    setForceRedisplay(!forceRedisplay);
+                                  }
+                                  else {
+                                    await getActivityDetail(this_row.activity_code);
+                                    setShowNewFactDialog(index);
+                                  }
+                                }
+                                setToggleClick(false);
+                              }}
+                            >
+                              {this_row.row_type === 'document' ?
+                                <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
+                                  <Typography variant='h5'>{this_row.activity_name}</Typography>
+                                </a>
+                                :
+                                <Typography variant='h5'>{this_row.activity_name}</Typography>
+                              }
+                            </Box>
+                            <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                              {(this_row.last_used > -1) &&
+                                <IconButton
+                                  aria-label='showActivities'
+                                  size='small'
+                                  onClick={async () => {
+                                    setToggleClick(true);
+                                    if (rowOpen === index) {
+                                      setRowOpen(-1);
+                                    }
+                                    else {
+                                      await getActivityHistory(this_row.activity_code);
+                                      setRowOpen(index);
+                                    }
+                                    setForceRedisplay(!forceRedisplay);
+                                  }}
+                                >
+                                  {(rowOpen !== index) ? <ExpandMoreIcon /> : <ExpandLessIcon />}
+                                </IconButton>
+                              }
+                              <IconButton
+                                aria-label='showActivities'
+                                size='small'
+                                onClick={async () => {
+                                  (this_row.section_name.includes('favorites') ?
+                                    await removeFromFavorites(this_row) :
+                                    await addToFavorites(this_row));
+                                  setForceRedisplay(!forceRedisplay);
+                                }}
+                              >
+                                {this_row.section_name.includes('favorites') ?
+                                  <NotFavorite fontSize="small" /> :
+                                  <FavoriteIcon fontSize="small" />
+                                }
+                              </IconButton>
+                            </Box>
+                          </Box>
                         </Box>
-                      </Collapse>
-                    </Paper>
-                  }
-                </React.Fragment>
+                        <Collapse in={(rowOpen === index)} timeout="auto" unmountOnExit>
+                          <Box
+                            style={{ borderRadius: '0px 0px 30px 30px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                            display='flex'
+                            flexDirection='row' paddingBottom={1} justifyContent='flex-start' alignItems='center'
+                          >
+                            {(rowOpen === index) &&
+                              <Box display={'block'} ml={5} mr={2} pb={2}>
+                                {(selected && ('fact_history' in selected) && (selected.fact_history.length > 0)) ?
+                                  selected.fact_history.map((hItem, hNdx) => (
+                                    <Typography key={selected.activity_key + 'h' + hNdx} variant='body2'>
+                                      {hNdx > 0 ? <br /> : null}
+                                      {new Date(hItem.posted_time).toLocaleString()} <br /> <strong> {hItem.value.replace('.', '^').split('^')[1]} </strong>
+                                    </Typography>
+                                  )) :
+                                  <Typography key={'nohistory'} variant='body2'>
+                                    <strong> {`Last used ${new Date(this_row.last_used).toLocaleString()}`} </strong>
+                                  </Typography>
+                                }
+                              </Box>
+                            }
+                          </Box>
+                        </Collapse>
+                      </Paper>
+                    }
+                  </React.Fragment>
+                )
               ))}
+              {sectionOpen[mainMenu[mainMenu.length - 1].section_name] && <Box
+                display='flex'
+                style={{
+                  borderRadius: '0px 0px 30px 30px',
+                  backgroundColor: mainMenu[mainMenu.length - 1].section_color,
+                  textDecoration: 'none'
+                }}
+                ml={2} mr={2}
+                justifyContent='center'
+                flexDirection='column'
+                height={30}
+              />}
             </List>
           </Paper>
         }
@@ -862,16 +1364,35 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
             }}
           />
         }
+        {switchToSelf &&
+          <SwitchPatientDialog
+            forceSwitch={`${session.user_display_name}:${session.user_id}`}
+            open={showPersonSelect}
+            roles={roles}
+            onClose={() => {
+              setShowPersonSelect(false);
+            }}
+          />
+        }
+        {showProfileEdit &&
+          <PatientDialog
+            patient={patient}
+            open={true}
+            onClose={() => {
+              setShowProfileEdit(false);
+            }}
+          />
+        }
         {/* Launch Children */}
-        {showNewFactDialog &&
+        {(showNewFactDialog > -1) &&
           <NewFactDialog
             fact={selected}
             session={session}
-            open={showNewFactDialog}
+            open={true}
             fromHome={false}
             onClose={async (oopsieMessage = null) => {
               oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
-              setShowNewFactDialog(false);
+              setShowNewFactDialog(-1);
               if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                 let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
                 jumpTo += `?user=${session.url_parameters.user}`;
@@ -880,7 +1401,7 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
             }}
             onSave={
               (pResult) => {
-                onSaveFact(pResult, selected.name);
+                onSaveFact(pResult, selected.name, showNewFactDialog);
               }
             }
             onNext={onNextFact}
@@ -888,17 +1409,17 @@ export default ({ pPerson, pClient, isMobile, onReset }) => {
           />
         }
         {/* Confirm Fact before saving */
-          needsConfirmation &&
+          (needsConfirmation > -1) &&
           <AVAConfirm
             promptText={confirmMessage}
             onCancel={() => {
-              setNeedsConfirmation(false);
+              setNeedsConfirmation(-1);
               setForceRedisplay(!forceRedisplay);
             }}
             onConfirm={() => {
               pendingFact.status = 'confirmed';
-              onSaveFact(pendingFact, selected.name);
-              setNeedsConfirmation(false);
+              onSaveFact(pendingFact, selected.name, needsConfirmation);
+              setNeedsConfirmation(-1);
             }}
           >
           </AVAConfirm>

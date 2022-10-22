@@ -152,10 +152,45 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
     else { return pLine.toLowerCase().includes(person_filter); }
   }
 
-  function makeFirstName(pName) {
-    let [, ans] = pName.split(/[:,]/);
-    if (ans.startsWith('group=')) { return ''; }
-    else { return ans; }
+  /*
+  function makeWholeName(pString) {
+    let pName = pString.split(':')[0];
+    let ans = pName.split(/[:,]/g);
+    switch (ans.length) {
+      case 3: { return `${ans[2].trim()} ${ans[0].trim()},${ans[1].trim()}`; }
+      case 2: {
+        if (ans[1].startsWith('group=')) { return ''; }
+        else { return `${ans[1].trim()} ${ans[0].trim()}`; }
+      }
+      default: { return ans[0].trim(); }
+    }
+  }
+  */
+  
+  function makeFirstName(pString) {
+    let pName = pString.split(':')[0];
+    let ans = pName.split(/[:,]/g);
+    switch (ans.length) {
+      case 3: { return ans[2].trim(); }
+      case 2: {
+        if (ans[1].startsWith('group=')) { return ''; }
+        else { return ans[1].trim(); }
+      }
+      default: { return ans[0].trim().split(/[\s]+/)[0]; }
+    }
+  }
+
+  function makeLastName(pString) {
+    let pName = pString.split(':')[0];
+    let ans = pName.split(/[:,]/g);
+    switch (ans.length) {
+      case 3: { return `${ans[0].trim()}, ${ans[1].trim()}`; }
+      case 2: {
+        if (ans[1].startsWith('group=')) { return ''; }
+        else { return ans[0].trim(); }
+      }
+      default: { return ans[0].trim().split(/[\s]+/)[1]; }
+    }
   }
 
   // **************************
@@ -197,7 +232,7 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
                   button
                 >
                   <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                    <Typography variant='h5' className={classes.lastName}>{listEntry.split(/[:,]/)[0].trim()}</Typography>
+                    <Typography variant='h5' className={classes.lastName}>{makeLastName(listEntry)}</Typography>
                     <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
                     {(x > 0) && (x < (peopleList.length - 1))
                       && ((peopleList[x - 1].split(':')[0] === listEntry.split(':')[0])

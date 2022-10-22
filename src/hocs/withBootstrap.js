@@ -171,8 +171,13 @@ export default Component => props => {
         p={2}
         fullScreen
       >
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <Box mt={3} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+        <React.Fragment>
+          <Box
+            border={2}
+            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+            key={'loadingBox'}
+            ml={2} mr={2}
+          >
             <Card
               className={classes.logoSmall}
               raised={false}
@@ -185,11 +190,11 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.10.9${window.location.href.split('//')[1].slice(0, 1)}`}
+              {`AVA version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}
             </Typography>
             <CircularProgress />
           </Box>
-        </div>
+        </React.Fragment>
         {promptForUser() &&
           <AVATextInput
             titleText="AVA Sign-in"
@@ -566,7 +571,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage) {
     let attributeValues = {
       ':s': {
-        'version': `v22.10.9`,
+        'version': `v22.10.24`,
         'environment': window.location.href.split('//')[1].charAt(0),
         'time': new Date().toString(),
         'signin_status': pMessage,
@@ -585,8 +590,7 @@ export default Component => props => {
     if (pProfile.hasOwnProperty('name') || pPatient.patient_id) {
       let showName = (pProfile.hasOwnProperty('name') ? `${pPatient.name.first} ${pPatient.name.last}` : `Unnamed account (${pPatient.patient_id})`);
       attributeValues[':pn'] = showName;
-      attributeValues[':un'] = showName;
-      updateExpression += 'patient_display_name = :pn, user_display_name = :un, ';
+      updateExpression += 'patient_display_name = :pn, ';
     }
     if (platform) {
       attributeValues[':dev'] = platform;
