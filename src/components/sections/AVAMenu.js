@@ -155,8 +155,8 @@ const useStyles = makeStyles(theme => ({
   sectionHeader: {
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
-    marginLeft: theme.spacing(3),
-    marginRight: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
   },
   messageArea: {
     alignItems: 'flex-start',
@@ -709,13 +709,18 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
 
   const getActivityDetail = async (pActivity) => {
     let invokeFailed = false;
+    let cClient = pClient;
+    let cActivity = pActivity;
+    if (pActivity.includes('//')) {
+      [cClient, cActivity] = pActivity.split('//');
+    }
     var payload =
     {
       'test': false,
       'body': {
-        "clientId": pClient,
+        "clientId": cClient,
         "personId": pPerson,
-        "activityType": `$$${pActivity}`,
+        "activityType": `$$${cActivity}`,
         "limit": 100,
         "fact_data": false,
         "historyOnly": false,
@@ -748,13 +753,18 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
 
   const getActivityHistory = async (pActivity) => {
     let invokeFailed = false;
+    let cClient = pClient;
+    let cActivity = pActivity;
+    if (pActivity.includes('//')) {
+      [cClient, cActivity] = pActivity.split('//');
+    }
     var payload =
     {
       'test': false,
       'body': {
-        "clientId": pClient,
+        "clientId": cClient,
         "personId": pPerson,
-        "activityType": `$$${pActivity}`,
+        "activityType": `$$${cActivity}`,
         "limit": 100,
         "fact_data": true,
         "historyOnly": true,
@@ -918,7 +928,6 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 setForceRedisplay(!forceRedisplay);
               }
             }
-            idleTimer.reset();
           }}
           debounce={250}
         />
@@ -1070,45 +1079,33 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           </Menu>
         </Box>
         {/* Loading spinner */}
-        {loading &&
-          <Box
-            border={2}
-            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={2} mr={2} mt={5} mb={5} p={5}
+        <Box
+          display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+          key={'loadingBox'}
+          ml={2} mr={2} mb={2}
+        >
+          <Card
+            className={classes.logoSmall}
+            raised={false}
+            variant='elevation' elevation={0}
           >
-            <Card
-              className={classes.logoSmall}
-              raised={false}
-              variant='elevation' elevation={0}
-            >
-              <CardMedia
-                component="img"
-                image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
-                alt='AVA'
-              />
-            </Card>
-            <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-            <Typography variant='caption' >{`version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
-            <CircularProgress />
-          </Box>
-        }
+            <CardMedia
+              component="img"
+              image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+              alt='AVA'
+            />
+          </Card>
+          {loading &&
+            <React.Fragment>
+              <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
+              <Typography variant='caption' >{`version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
+              <CircularProgress />
+            </React.Fragment>
+          }
+        </Box>
         {/* AVA Menu */}
         {mainMenu && mainMenu.length > 0 && !loading &&
           <Paper component={Box} variant='outlined' overflow='auto'>
-            <Box
-              border={2}
-              display='flex' flexDirection='row' justifyContent='center' alignItems='center'
-              key={'logoBox'}
-              ml={2} mr={2}
-            >
-              <Box
-                component="img"
-                maxWidth={isMobile ? 250 : 450}
-                alt=''
-                src={session?.client_icon || 'https://ava-icons.s3.amazonaws.com/AVA-logo.jpg'}
-              />
-            </Box>
             <List >
               {currentMenu !== 'main' &&
                 <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
@@ -1187,33 +1184,26 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                             }}
                           >
                             <Box
-                              display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                              display='flex' flex={1} flexDirection='row' justifyContent='space-between' alignItems='center'
                               key={this_row.activity_code + 'r' + index}
                               className={classes.sectionHeader}
                             >
-                              <Avatar
-                                src={this_row.section_icon}
-                                sx={{ width: 30, height: 30 }}
-                                alt=""
-                                variant="square"
-                              />
+                              <Box flex={1}>
+                                <Avatar
+                                  src={this_row.section_icon}
+                                  sx={{ width: 30, height: 30 }}
+                                  alt=""
+                                  variant="square"
+                                />
+                              </Box>
                               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                                 {(currentSection = this_row.section_name)}
                               </Typography>
-                              <Box display='flex' ml={5} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
-                                <Box display='flex' flexDirection='column'>
-                                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                                    <Typography variant='h5' className={classes.boldCenter} >{this_row.section_name.trim()}</Typography>
-                                  </Box>
-                                </Box>
+                              <Box display='flex' flex={4} ml={3} mr={3} flexGrow={1} justifyContent='center' alignItems='center'>
+                                <Typography variant='h5' className={classes.boldCenter} >{this_row.section_name.trim()}</Typography>
                               </Box>
-                              <Box width={20} mr={3}>
-                                <IconButton
-                                  aria-label='showActivities'
-                                  size='small'
-                                >
-                                  {!sectionOpen[this_row.section_name] ? 'Show' : 'Hide'}
-                                </IconButton>
+                              <Box flex={1} display='flex' justifyContent='flex-end' alignItems='center'>
+                                {!sectionOpen[this_row.section_name] ? 'Show' : 'Hide'}
                               </Box>
                             </Box>
                           </Box>

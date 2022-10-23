@@ -173,7 +173,6 @@ export default Component => props => {
       >
         <React.Fragment>
           <Box
-            border={2}
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
             ml={2} mr={2}

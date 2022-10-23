@@ -23,7 +23,7 @@ import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
-import BottomNav from './components/BottomNav';
+// import BottomNav from './components/BottomNav';
 // import TopBar from './components/TopBar';
 import { createPutFact } from './graphql/mutations';
 import { API, graphqlOperation } from 'aws-amplify';
@@ -98,7 +98,6 @@ const App = () => (
       <Box pb={7}>
         <RootNavigation menu={menu} homePath={HOME} />
       </Box>
-      <BottomNav menu={menu} homePath={HOME} />
     </Box>
   </ErrorBoundary>
 );
