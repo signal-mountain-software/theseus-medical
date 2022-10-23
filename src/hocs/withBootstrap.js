@@ -175,7 +175,7 @@ export default Component => props => {
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
-            ml={2} mr={2}
+            ml={2} mr={2}  mt={30}
           >
             <Card
               className={classes.logoSmall}
@@ -619,7 +619,7 @@ export default Component => props => {
       })
       .promise()
       .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-  }
+   }
 
   async function validateUserAccount(payload) {
     const fResp = await lambda

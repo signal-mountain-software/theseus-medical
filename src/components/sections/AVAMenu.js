@@ -74,9 +74,9 @@ const useStyles = makeStyles(theme => ({
     marginBottom: '15px'
   },
   verticalMenuButton: {
-    alignSelf: 'center',
-    verticalAlign: 'middle',
-    marginTop: theme.spacing(0.5),
+    alignContent: 'center',
+    justifyContent: 'center',
+    marginTop: 0,
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
     marginBottom: 0,
@@ -99,11 +99,11 @@ const useStyles = makeStyles(theme => ({
   },
   messageScroll: {
     maxHeight: 100,
-    marginTop: 0,
+    marginTop: 1,
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
     marginBottom: 0,
-    fontSize: '1.3rem',
+    fontSize: '0.8rem',
   },
   buttonArea: {
     justifyContent: 'center',
@@ -166,7 +166,7 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
   },
   profileArea: {
-    alignItems: 'flex-start',
+    alignItems: 'center'
   },
   vertMenuRow: {
     marginLeft: theme.spacing(1),
@@ -970,24 +970,20 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
               >
                 {`Good ${greetingTime}, ${greetingName}!`}
               </Typography>
-              <Typography
-                className={classes.messageScroll}
-                id='scroll-dialog-title'
-              >
-                {messageText}
-              </Typography>
             </Box>
           </Box>
-          <IconButton
-            className={classes.verticalMenuButton}
-            aria-controls='hidden-menu'
-            aria-haspopup='true'
-            onClick={(event) => {
-              handleClick(event);
-              setPopupMenuOpen(true);
-            }}>
-            <MoreVertIcon />
-          </IconButton>
+          <Box>
+            <Box
+              className={classes.verticalMenuButton}
+              aria-controls='hidden-menu'
+              aria-haspopup='true'
+              onClick={(event) => {
+                handleClick(event);
+                setPopupMenuOpen(true);
+              }}>
+              <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
+            </Box>
+          </Box>
           <Menu
             id='hidden-menu'
             anchorEl={anchorEl}
@@ -1079,30 +1075,45 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           </Menu>
         </Box>
         {/* Loading spinner */}
-        <Box
-          display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-          key={'loadingBox'}
-          ml={2} mr={2} mb={2}
-        >
-          <Card
-            className={classes.logoSmall}
-            raised={false}
-            variant='elevation' elevation={0}
+        {loading &&
+          <Box
+            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+            key={'loadingBox'}
+            ml={2} mr={2} mb={2} mt={30}
           >
-            <CardMedia
-              component="img"
-              image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
-              alt='AVA'
-            />
-          </Card>
-          {loading &&
+            <Card
+              className={classes.logoSmall}
+              raised={false}
+              variant='elevation' elevation={0}
+            >
+              <CardMedia
+                component="img"
+                image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                alt='AVA'
+              />
+            </Card>
             <React.Fragment>
               <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
               <Typography variant='caption' >{`version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
               <CircularProgress />
             </React.Fragment>
-          }
-        </Box>
+          </Box>
+        }
+        {!loading &&
+          <Box
+            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+            key={'loadingBox'}
+            ml={2} mr={2} mb={1} mt={1}
+          >
+          <Typography variant='h5'>{`Welcome to AVA`}</Typography>
+          <Typography
+            
+            id='scroll-dialog-title'
+          >
+            {messageText}
+            </Typography>
+          </Box>
+        }
         {/* AVA Menu */}
         {mainMenu && mainMenu.length > 0 && !loading &&
           <Paper component={Box} variant='outlined' overflow='auto'>
