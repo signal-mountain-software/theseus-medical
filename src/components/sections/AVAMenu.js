@@ -39,7 +39,6 @@ import FaceIcon from '@material-ui/icons/Face';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
-import MoreVertIcon from '@material-ui/icons/MoreVert';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
@@ -73,7 +72,7 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '100px',
     marginBottom: '15px'
   },
-  verticalMenuButton: {
+  popUpMenuButton: {
     alignContent: 'center',
     justifyContent: 'center',
     marginTop: 0,
@@ -82,6 +81,10 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0,
     paddingTop: 0,
     fontSize: '1.3rem',
+  },
+  popUpMenu: {
+    marginRight: theme.spacing(3),
+    paddingRight: 2,
   },
   title: {
     marginTop: 0,
@@ -168,9 +171,12 @@ const useStyles = makeStyles(theme => ({
   profileArea: {
     alignItems: 'center'
   },
-  vertMenuRow: {
+  popUpMenuRow: {
     marginLeft: theme.spacing(1),
     fontSize: theme.typography.fontSize * 1.0,
+  },
+  popUpFooter: {
+    fontSize: theme.typography.fontSize * 0.8,
   },
   logoDisplay: {
     maxWidth: '600px',
@@ -260,7 +266,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState('Initializing');
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -286,87 +292,96 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   var idleTimer = null;
 
   const buildMenu = async (pFlavor = 'retrieve') => {
-    setLoading(true);
-    let invokeFailed = false;
-    testMode = ['l', 't'].includes(session?.status?.environment);
-    params.FunctionName = `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`;
-    params.Payload = JSON.stringify({
-      test: false,
-      action: pFlavor,
-      client_id: pClient,
-      request: {
-        person_id: pPerson,
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
+    let personRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "People"
+      })
       .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Menu.  Error is ${err.message}`,
-          { variant: 'error', persist: true }
-        );
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let MakeAVAMenuResponse = JSON.parse(fResp.Payload);
-      if (MakeAVAMenuResponse.status === 200) {
-        if (!patient) {
-          let personRec = await dbClient
-            .get({
-              Key: { person_id: pPerson },
-              TableName: "People"
-            })
-            .promise()
-            .catch(error => { console.log(`caught error getting People record; error is:`, error); });
-          if (recordExists(personRec)) {
-            patient = personRec.Item;
-          }
-        }
-        if (patient && patient.AVA_section_open) {
-          setSectionOpen(patient.AVA_section_open);
+      .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+    if (!recordExists(personRec)) {
+      enqueueSnackbar(`AVA encountered an error while retrieving your Menu information.`,
+        { variant: 'error', persist: true }
+      );
+      return;
+    }
+    patient = personRec.Item;
+    // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
+    // is used to save what the screen looked like last time the user was in AVA
+    if ('AVA_section_open' in patient) {
+      setSectionOpen(patient.AVA_section_open);
+    }
+    else {
+      if (session?.current_event) {
+        if (typeof (session?.current_event) === 'object') {
+          setSectionOpen(session.current_event);
         }
         else {
-          if (session?.current_event) {
-            if (typeof (session?.current_event) === 'object') {
-              setSectionOpen(session.current_event);
-            }
-            else {
-              setSectionOpen(JSON.parse(session.current_event));
-            }
-          }
-          else {
-            setSectionOpen({});
-          }
+          setSectionOpen(JSON.parse(session.current_event));
         }
-        setMainMenu(MakeAVAMenuResponse.body);
-        setLoading(false);
-        return MakeAVAMenuResponse.body;
       }
-      else if (MakeAVAMenuResponse.status === 201) {
-        enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
-          { variant: 'error', persist: true }
-        );
-        let helpRow = {
-          activity_class: 'message',
-          activity_code: 'message.chubbie_request',
-          activity_name: 'Send a message to AVA Support',
-          child_menu: null,
-          default_value: null,
-          menu_name: 'help',
-          parent_menu: null,
-          row_color: '#a1adb8',
-          row_type: 'message',
-          section_color: '#a1adb8',
-          section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-new-message-50.png',
-          section_name: 'Get AVA Help',
-          sort_key: 'Messages, Comments, and Feedback'
-        };
-        setSectionOpen({ 'Get AVA Help': true });
-        setMainMenu([helpRow]);
-        setLoading(false);
-        return [helpRow];
+      else {
+        setSectionOpen({});
       }
-    };
+    }
+    // 'retrieve' means "get AVA options as they were at the last load"
+    // 'main_menu' means "reload from scratch, without regard to the prior stored menu options"
+    if ((pFlavor === 'retrieve') && ('AVA_main_menu' in patient) && (patient.AVA_main_menu.length > 0)) {
+      setMainMenu(patient.AVA_main_menu);
+      return patient.AVA_main_menu;
+    }
+    else {
+      let invokeFailed = false;
+      testMode = ['l', 't'].includes(session?.status?.environment);
+      params.FunctionName = `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`;
+      params.Payload = JSON.stringify({
+        test: false,
+        action: 'main_menu',
+        client_id: pClient,
+        request: {
+          person_id: pPerson,
+        }
+      });
+      const fResp = await lambda
+        .invoke(params)
+        .promise()
+        .catch(err => {
+          enqueueSnackbar(`AVA encountered an error while retrieving Menu.  Error is ${err.message}`,
+            { variant: 'error', persist: true }
+          );
+          invokeFailed = true;
+        });
+      if (!invokeFailed) {
+        let MakeAVAMenuResponse = JSON.parse(fResp.Payload);
+        if (MakeAVAMenuResponse.status === 200) {
+          setMainMenu(MakeAVAMenuResponse.body);
+          return MakeAVAMenuResponse.body;
+        }
+        else if (MakeAVAMenuResponse.status === 201) {
+          enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
+            { variant: 'error', persist: true }
+          );
+          let helpRow = {
+            activity_class: 'message',
+            activity_code: 'message.chubbie_request',
+            activity_name: 'Send a message to AVA Support',
+            child_menu: null,
+            default_value: null,
+            menu_name: 'help',
+            parent_menu: null,
+            row_color: '#a1adb8',
+            row_type: 'message',
+            section_color: '#a1adb8',
+            section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-new-message-50.png',
+            section_name: 'Get AVA Help',
+            sort_key: 'Messages, Comments, and Feedback'
+          };
+          setSectionOpen({ 'Get AVA Help': true });
+          setMainMenu([helpRow]);
+          return [helpRow];
+        }
+      };
+    }
     return [];
   };
 
@@ -490,9 +505,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           );
           return;
         });
+      setLoading('Resetting your Favorites');
+      setForceRedisplay(!forceRedisplay);
       makeGreeting();
       await getMessage(pPerson);
       await buildMenu('main_menu');
+      setLoading(false);
       setForceRedisplay(!forceRedisplay);
     }
     return;
@@ -537,7 +555,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         });
       makeGreeting();
       await getMessage(pPerson);
+      setLoading(`Removing ${activityRow.activity_name.substring(0, 15).trim()}... from Favorites`);
+      setForceRedisplay(!forceRedisplay);
       await buildMenu('main_menu');
+      setLoading(false);
       setForceRedisplay(!forceRedisplay);
     }
     return;
@@ -609,15 +630,22 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   React.useEffect(() => {
     let response = (
       async () => {
+        setLoading('Getting your Information');
+        setForceRedisplay(!forceRedisplay);
         getImage(session.patient_id);
         makeName(session.patient_display_name);
         makeGreeting();
+        setLoading('Getting recent messages');
+        setForceRedisplay(!forceRedisplay);
         await getMessage(session.patient_id);
+        setLoading('Building your AVA menu');
+        setForceRedisplay(!forceRedisplay);
         await buildMenu('retrieve');
+        setLoading(false);
+        setForceRedisplay(!forceRedisplay);
       }
     );
     if (mainMenu.length === 0) {
-      setLoading(true);
       response();
     }
   }, [pPerson]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -851,7 +879,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
 
   return (
     <Dialog
-      open={mainMenu && mainMenu.length > 0 && (true || forceRedisplay)}
+      open={(true || forceRedisplay)}
       p={2}
       fullScreen
     >
@@ -919,12 +947,15 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
               }
               else {
                 closeSnackbar();
+                setLoading('Idle Time expired - Reloading');
+                setForceRedisplay(!forceRedisplay);
                 makeGreeting();
                 await getMessage(session.patient_id);
                 await buildMenu('main_menu');
                 setCurrentMenu('main');
                 setMenuArray(['main']);
                 setMenuNames([]);
+                setLoading(false);
                 setForceRedisplay(!forceRedisplay);
               }
             }
@@ -972,17 +1003,15 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
               </Typography>
             </Box>
           </Box>
-          <Box>
-            <Box
-              className={classes.verticalMenuButton}
-              aria-controls='hidden-menu'
-              aria-haspopup='true'
-              onClick={(event) => {
-                handleClick(event);
-                setPopupMenuOpen(true);
-              }}>
-              <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
-            </Box>
+          <Box
+            className={classes.popUpMenuButton}
+            aria-controls='hidden-menu'
+            aria-haspopup='true'
+            onClick={(event) => {
+              handleClick(event);
+              setPopupMenuOpen(true);
+            }}>
+            <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
           </Box>
           <Menu
             id='hidden-menu'
@@ -990,7 +1019,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             open={popupMenuOpen}
             onClose={() => { setPopupMenuOpen(false); }}
             keepMounted>
-            <MenuList dense={true}>
+            <MenuList className={classes.popUpMenu}>
               {(session?.patient_id !== session?.user_id) && (
                 <MenuItem onClick={() => {
                   setPopupMenuOpen(false);
@@ -1001,7 +1030,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                     key={'switch2self'}
                   >
                     <HomeIcon />
-                    <Typography className={classes.vertMenuRow} >{`Switch to My Profile (${session.user_id})`}</Typography>
+                    <Typography className={classes.popUpMenuRow} >{`Switch to My Profile (${session.user_id})`}</Typography>
                   </Box>
                 </MenuItem>
               )}
@@ -1015,7 +1044,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                     key={'vRowSwitch'}
                   >
                     <EditIcon />
-                    <Typography className={classes.vertMenuRow} >
+                    <Typography className={classes.popUpMenuRow} >
                       {`Edit ${greetingName}'${greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
                     </Typography>
                   </Box>
@@ -1032,7 +1061,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                     key={'vRowSwitch'}
                   >
                     <SwapHorizIcon />
-                    <Typography className={classes.vertMenuRow} >{'Switch Account'}</Typography>
+                    <Typography className={classes.popUpMenuRow} >{'Switch Account'}</Typography>
                   </Box>
                 </MenuItem>
               )}
@@ -1049,17 +1078,24 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                   key={'vRowSignOut'}
                 >
                   <ExitToAppIcon />
-                  <Typography className={classes.vertMenuRow} >{'Sign Out'}</Typography>
+                  <Typography className={classes.popUpMenuRow} >{'Sign Out'}</Typography>
                 </Box>
               </MenuItem>
               <MenuItem onClick={async () => {
                 setPopupMenuOpen(false);
+                setLoading('Resetting greeting');
+                setForceRedisplay(!forceRedisplay);
                 makeGreeting();
+                setLoading('Checking messages');
+                setForceRedisplay(!forceRedisplay);
                 await getMessage(session.patient_id);
+                setLoading('Refreshing your AVA menu');
+                setForceRedisplay(!forceRedisplay);
                 await buildMenu('main_menu');
                 setCurrentMenu('main');
                 setMenuArray(['main']);
                 setMenuNames([]);
+                setLoading(false);
                 setForceRedisplay(!forceRedisplay);
               }
               }>
@@ -1068,7 +1104,15 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                   key={'vRowRefresh'}
                 >
                   <AutorenewIcon />
-                  <Typography className={classes.vertMenuRow} >{'Refresh'}</Typography>
+                  <Typography className={classes.popUpMenuRow} >{'Refresh'}</Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem>
+                <Box
+                  display='flex' flexDirection='row' alignItems={'center'}
+                  key={'vRowRefresh'}
+                >
+                  <Typography className={classes.popUpFooter} >{`AVA v22.10.24${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 </Box>
               </MenuItem>
             </MenuList>
@@ -1079,7 +1123,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
-            ml={2} mr={2} mb={2} mt={30}
+            ml={2} mr={2} mb={2} mt={20}
           >
             <Card
               className={classes.logoSmall}
@@ -1093,8 +1137,15 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
               />
             </Card>
             <React.Fragment>
-              <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-              <Typography variant='caption' >{`version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
+              <Box
+                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                key={'loadingBox'}
+                mb={2}
+              >
+                <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
+                <Typography variant='caption' >{`version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
+                <Typography >{loading}</Typography>
+              </Box>
               <CircularProgress />
             </React.Fragment>
           </Box>
@@ -1105,13 +1156,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             key={'loadingBox'}
             ml={2} mr={2} mb={1} mt={1}
           >
-          <Typography variant='h5'>{`Welcome to AVA`}</Typography>
-          <Typography
-            
-            id='scroll-dialog-title'
-          >
-            {messageText}
-            </Typography>
+            <Typography variant='h5'>{`Welcome to AVA`}</Typography>
+            <Typography id='scroll-dialog-title'>{messageText}</Typography>
           </Box>
         }
         {/* AVA Menu */}
@@ -1195,11 +1241,11 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                             }}
                           >
                             <Box
-                              display='flex' flex={1} flexDirection='row' justifyContent='space-between' alignItems='center'
+                              display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
                               key={this_row.activity_code + 'r' + index}
                               className={classes.sectionHeader}
                             >
-                              <Box flex={1}>
+                              <Box flex={1} justifyContent='flex-start' alignItems='center'>
                                 <Avatar
                                   src={this_row.section_icon}
                                   sx={{ width: 30, height: 30 }}
@@ -1207,10 +1253,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                                   variant="square"
                                 />
                               </Box>
-                              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                                {(currentSection = this_row.section_name)}
-                              </Typography>
-                              <Box display='flex' flex={4} ml={3} mr={3} flexGrow={1} justifyContent='center' alignItems='center'>
+                              <Box display='flex' flex={4} justifyContent='center' alignItems='center'>
+                                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                                  {(currentSection = this_row.section_name)}
+                                </Typography>
                                 <Typography variant='h5' className={classes.boldCenter} >{this_row.section_name.trim()}</Typography>
                               </Box>
                               <Box flex={1} display='flex' justifyContent='flex-end' alignItems='center'>
@@ -1315,7 +1361,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                         </Box>
                         <Collapse in={(rowOpen === index)} timeout="auto" unmountOnExit>
                           <Box
-                            style={{ borderRadius: '0px 0px 30px 30px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
                             display='flex'
                             flexDirection='row' paddingBottom={1} justifyContent='flex-start' alignItems='center'
                           >
@@ -1345,7 +1391,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 display='flex'
                 style={{
                   borderRadius: '0px 0px 30px 30px',
-                  backgroundColor: mainMenu[mainMenu.length - 1].section_color,
+                  backgroundColor: lastColor,
                   textDecoration: 'none'
                 }}
                 ml={2} mr={2}
