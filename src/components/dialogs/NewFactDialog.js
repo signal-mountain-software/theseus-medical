@@ -50,11 +50,23 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(3),
     minWidth: '100%',
   },
-  confirm: {
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-  },
   reject: {
-    backgroundColor: theme.palette.reject[theme.palette.type],
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(3),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    color: theme.palette.reject[theme.palette.type],
+  },
+  confirm: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(3),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    color: theme.palette.confirm[theme.palette.type],
   },
   descriptionText: {
     marginLeft: theme.spacing(3),
@@ -548,11 +560,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         ) : null}
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Button className={classes.reject} size='small' variant='contained' onClick={handleClose}>
+        <Button className={classes.reject} variant='outlined' size='small' onClick={handleClose}>
           {!factIOClass ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
         </Button>
         {factIOClass
-          ? (<Button variant='contained' color='primary' size='small' onClick={handleSave}>
+          ? (<Button className={classes.confirm} variant='outlined' size='small' onClick={handleSave}>
             {factMessageClass ? 'Send' : 'Save'}
           </Button>
           )
