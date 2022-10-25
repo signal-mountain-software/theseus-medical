@@ -308,8 +308,15 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     patient = personRec.Item;
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
-    if ('AVA_section_open' in patient) {
-      setSectionOpen(patient.AVA_section_open);
+    let menuRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "AVAMenu"
+      })
+      .promise()
+      .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+    if (recordExists(menuRec) && ('AVA_section_open' in menuRec.Item)) {
+      setSectionOpen(menuRec.Item.AVA_section_open);
     }
     else {
       if (session?.current_event) {
@@ -324,64 +331,63 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         setSectionOpen({});
       }
     }
-    // 'retrieve' means "get AVA options as they were at the last load"
-    // 'main_menu' means "reload from scratch, without regard to the prior stored menu options"
-    if ((pFlavor === 'retrieve') && ('AVA_main_menu' in patient) && (patient.AVA_main_menu.length > 0)) {
-      setMainMenu(patient.AVA_main_menu);
+    // 'retrieve' in pFlavor means "get AVA options as they were at the last load"
+    if (pFlavor === 'retrieve' && recordExists(menuRec) && (menuRec.Item.AVA_main_menu.length > 0)) {
+      setMainMenu(menuRec.Item.AVA_main_menu);
       return patient.AVA_main_menu;
     }
-    else {
-      let invokeFailed = false;
-      testMode = ['l', 't'].includes(session?.status?.environment);
-      params.FunctionName = `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`;
-      params.Payload = JSON.stringify({
-        test: false,
-        action: 'main_menu',
-        client_id: pClient,
-        request: {
-          person_id: pPerson,
-        }
+    // otherwise, reload from scratch, without regard to the prior stored menu options ('main_menu' in pFlavor forces this)
+    let invokeFailed = false;
+    testMode = ['l', 't'].includes(session?.status?.environment);
+    params.FunctionName = `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`;
+    params.Payload = JSON.stringify({
+      test: false,
+      action: 'main_menu',
+      client_id: pClient,
+      request: {
+        person_id: pPerson,
+      }
+    });
+    const fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`AVA encountered an error while retrieving Menu.  Error is ${err.message}`,
+          { variant: 'error', persist: true }
+        );
+        invokeFailed = true;
       });
-      const fResp = await lambda
-        .invoke(params)
-        .promise()
-        .catch(err => {
-          enqueueSnackbar(`AVA encountered an error while retrieving Menu.  Error is ${err.message}`,
-            { variant: 'error', persist: true }
-          );
-          invokeFailed = true;
-        });
-      if (!invokeFailed) {
-        let MakeAVAMenuResponse = JSON.parse(fResp.Payload);
-        if (MakeAVAMenuResponse.status === 200) {
-          setMainMenu(MakeAVAMenuResponse.body);
-          return MakeAVAMenuResponse.body;
-        }
-        else if (MakeAVAMenuResponse.status === 201) {
-          enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
-            { variant: 'error', persist: true }
-          );
-          let helpRow = {
-            activity_class: 'message',
-            activity_code: 'message.chubbie_request',
-            activity_name: 'Send a message to AVA Support',
-            child_menu: null,
-            default_value: null,
-            menu_name: 'help',
-            parent_menu: null,
-            row_color: '#a1adb8',
-            row_type: 'message',
-            section_color: '#a1adb8',
-            section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-new-message-50.png',
-            section_name: 'Get AVA Help',
-            sort_key: 'Messages, Comments, and Feedback'
-          };
-          setSectionOpen({ 'Get AVA Help': true });
-          setMainMenu([helpRow]);
-          return [helpRow];
-        }
-      };
+    if (!invokeFailed) {
+      let MakeAVAMenuResponse = JSON.parse(fResp.Payload);
+      if (MakeAVAMenuResponse.status === 200) {
+        setMainMenu(MakeAVAMenuResponse.body);
+        return MakeAVAMenuResponse.body;
+      }
+      else if (MakeAVAMenuResponse.status === 201) {
+        enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
+          { variant: 'error', persist: true }
+        );
+        let helpRow = {
+          activity_class: 'message',
+          activity_code: 'message.chubbie_request',
+          activity_name: 'Send a message to AVA Support',
+          child_menu: null,
+          default_value: null,
+          menu_name: 'help',
+          parent_menu: null,
+          row_color: '#a1adb8',
+          row_type: 'message',
+          section_color: '#a1adb8',
+          section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-new-message-50.png',
+          section_name: 'Get AVA Help',
+          sort_key: 'Messages, Comments, and Feedback'
+        };
+        setSectionOpen({ 'Get AVA Help': true });
+        setMainMenu([helpRow]);
+        return [helpRow];
+      }
     }
+    // if we got here, we couldn't figure out what to return, so send back empty
     return [];
   };
 
@@ -393,7 +399,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         ExpressionAttributeValues: {
           ':o': pOpen
         },
-        TableName: "People",
+        TableName: "AVAMenu",
       })
       .promise()
       .catch(error => {
@@ -705,7 +711,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         ExpressionAttributeValues: {
           ':m': pMenu
         },
-        TableName: "People",
+        TableName: "AVAMenu",
       })
       .promise()
       .catch(error => {
@@ -1269,7 +1275,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                     }
                     {rowIsOpen(this_row) &&
                       <Paper component={Box} elevation={0}
-                        ml={2} mr={2} mt={.1} mb={.1} key={this_row.activity_code + 'detail' + index} >
+                        ml={2} mr={2} mt={.2} mb={.2} key={this_row.activity_code + 'detail' + index} >
                         <Box
                           display='flex'
                           style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
