@@ -26,6 +26,7 @@ import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
 import RadioGroup from '@material-ui/core/RadioGroup';
 import Radio from '@material-ui/core/Radio';
+import Checkbox from '@material-ui/core/Checkbox';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
@@ -159,22 +160,9 @@ export default ({ patient, picture, open, onClose }) => {
   const classes = useStyles();
 
   const [localData, setLocalData] = React.useState({});
-  // const [firstName, setFirstName] = React.useState();
-  // const [lastName, setLastName] = React.useState();
-  // const [email, setEmail] = React.useState();
-  // const [cell, setCell] = React.useState();
-  // const [groupMemberList, setGroupMemberList] = React.useState([]);
-  // const [surrogate, setSurrogate] = React.useState();
-  // const [searchTerm, setSearchTerm] = React.useState();
-  // const [voice, setVoice] = React.useState();
-  // const [location, setLocation] = React.useState();
-  // const [inputPWD, setInputPWD] = React.useState();
-  // const [prefMethod, setMethod] = React.useState();
-  // const [directoryOption, setDirectoryOption] = React.useState();
   const [patientGroups, setPatientGroups] = React.useState();
   const [responsibleArray, setResponsibleArray] = React.useState();
   const [proxy, setProxy] = React.useState();
-  // const [personRec, setPersonRec] = React.useState();
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
 
@@ -228,18 +216,6 @@ export default ({ patient, picture, open, onClose }) => {
     async function initialize() {
       if (patient) {
         let localPersonRec = await getPersonRec(patient.person_id);
-        // setFirstName(patient.name.first);
-        // setLastName(patient.name.last);
-        // setCell(patient.messaging?.sms ? formatPhone(patient.messaging?.sms) : '');
-        // setVoice(patient.messaging?.voice ? formatPhone(patient.messaging?.voice) : '');
-        // setEmail(patient.messaging?.email || '');
-        // setLocation(patient.location || '');
-        // setSearchTerm(patient.search_data || '');
-        // setInputPWD('password');
-        // setMethod(patient.preferred_method);
-        // setDirectoryOption(localPersonRec ? (localPersonRec.directory_option || 'normal') : 'normal');
-        // if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
-        // else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
         let foundAt;
         let groupFound;
         if (Array.isArray(localPersonRec.clients)) {
@@ -304,8 +280,11 @@ export default ({ patient, picture, open, onClose }) => {
           lastName: (localPersonRec.name?.last || ''),
           email: (localPersonRec.messaging?.email || ''),
           cell: (localPersonRec.messaging?.sms ? formatPhone(localPersonRec.messaging?.sms) : ''),
-          searchTerm: (localPersonRec.search_data || ''),
           voice: (localPersonRec.messaging?.voice ? formatPhone(localPersonRec.messaging?.voice) : ''),
+          email_private: localPersonRec.messaging?.email_private,
+          sms_private: localPersonRec.messaging?.sms_private,
+          voice_private: localPersonRec.messaging?.voice_private,
+          searchTerm: (localPersonRec.search_data || ''),
           location: (localPersonRec.location || ''),
           inputPWD: (targetSession.last_login || 'password'),
           last_login: (targetSession.last_login || null),
@@ -451,6 +430,9 @@ export default ({ patient, picture, open, onClose }) => {
       email: localData.email,
       sms: localData.cell ? '+1' + localData.cell.replace(/\D/g, '') : null,
       voice: localData.voice ? '+1' + localData.voice.replace(/\D/g, '') : null,
+      email_private: (localData.email_private && 'true'),
+      sms_private: (localData.sms_private && 'true'),
+      voice_private: (localData.voice_private && 'true'),
       surrogate: localData.surrogate,
       search_data: localData.searchTerm,
       prefMethod: localData.prefMethod || 'AVA',
@@ -464,6 +446,59 @@ export default ({ patient, picture, open, onClose }) => {
       pwdReset: resettingPwd,
       newPassword: localData.inputPWD
     };
+    let newClients = {};
+    let myClient = null;
+    let clientArray = [];
+    patientGroups.forEach(g => {
+      let [clt, grp] = g.split('~');
+      if (!(clt in newClients)) { newClients[clt] = []; }
+      newClients[clt].push(grp);
+    });
+    for (const client in newClients) {
+      myClient = client;
+      clientArray.push({
+        id: client,
+        groups: newClients[client]
+      });
+    }
+    let putPerson = {
+      person_id: patient.person_id,
+      client_id: myClient,
+      "name": {
+        first: updatePerson.first,
+        last: updatePerson.last,
+      },
+      messaging: {
+        email: updatePerson.email,
+        sms: updatePerson.sms,
+        voice: updatePerson.voice,
+        email_private: !!updatePerson.email_private,
+        sms_private: !!updatePerson.sms_private,
+        voice_private: !!updatePerson.voice_private,
+        surrogate: localData.surrogate,
+      },
+      search_data: localData.searchTerm,
+      prefMethod: localData.prefMethod || 'AVA',
+      requirePassword: localData.requirePassword,
+      storePassword: localData.storePassword,
+      directory_option: localData.directoryOption || 'normal',
+      directory_partner: localData.directoryPartner || null,
+      time_based_rules: patient.time_based_rules,
+      clients: clientArray,
+      location: localData.location ? localData.location.replace(/,/g, '') : null,
+      pwdReset: resettingPwd,
+      newPassword: localData.inputPWD,
+      directoryOption: (localData.directory_option || 'normal'),
+      directoryPartner: (localData.directory_partner || 'na'),
+    };
+    await dbClient
+      .put({
+        Item: putPerson,
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => { console.log(`caught error updating People; error is:`, error); });
+
     if (typeof cropper !== "undefined") {
       // const croppedFile = dataUrlToFile(cropper.getCroppedCanvas().toDataURL('image/jpeg'), (patient.person_id + '_cropped.jpg'));
       cropper
@@ -472,6 +507,7 @@ export default ({ patient, picture, open, onClose }) => {
           await handleSavePhoto(new File([pBlob], (patient.person_id + '_cropped.jpg'), { type: 'image/jpeg' }), '');
         }), 'image/jpeg');
     }
+
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
     let newFactData = {
@@ -646,6 +682,24 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+  const handleChangeEmailPrivacy = event => {
+    localData.email_private = !localData.email_private;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
+  const handleChangeSmsPrivacy = event => {
+    localData.sms_private = !localData.sms_private;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
+  const handleChangeVoicePrivacy = event => {
+    localData.voice_private = !localData.voice_private;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
   const handleChangeLocation = event => {
     localData.location = event.target.value;
     setRefreshTrigger(!refreshTrigger);
@@ -781,7 +835,7 @@ export default ({ patient, picture, open, onClose }) => {
                       {`My userID is ${patient?.person_id}`}
                     </Typography>
 
-                    <Typography className={classes.radioTextWithTopMargin}>With regard to the printed Directory...</Typography>
+                    <Typography className={classes.radioTextWithTopMargin}>With regard to the Directory...</Typography>
                     {localData.directoryOption &&
                       <FormControl className={classes.formControl} component="fieldset">
                         <RadioGroup row={false} defaultValue={localData.directoryOption} aria-label="DirOptions" name="dirOption" value={localData.directoryOption} onChange={handleChangeDirectoryOption}>
@@ -825,6 +879,10 @@ export default ({ patient, picture, open, onClose }) => {
                         </FormControl>
                       </React.Fragment>
                     }
+                    <Typography className={classes.radioTextWithTopMargin}>Please don't share my...</Typography>
+                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeEmailPrivacy} control={<Checkbox disableRipple checked={localData.email_private} disabled={!localData.email} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail address</Typography>} />
+                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeSmsPrivacy} control={<Checkbox disableRipple checked={localData.sms_private} disabled={!localData.cell} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Cell number</Typography>} />
+                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeVoicePrivacy} control={<Checkbox disableRipple checked={localData.voice_private} disabled={!localData.voice} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Home number</Typography>} />
 
                     <Box mt={3}>
                       <TextField id='searchTerm' value={localData.searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
