@@ -14,9 +14,6 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
 
-import TextSMSIcon from '@material-ui/icons/Textsms';
-import CallIcon from '@material-ui/icons/Call';
-import EmailIcon from '@material-ui/icons/Email';
 import SwapIcon from '@material-ui/icons/SwapHoriz';
 
 import Button from '@material-ui/core/Button';
@@ -496,7 +493,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       return searchString.toLowerCase().includes(person_filter_lower);
     }
   }
-
+/*
   function makeIcon(pMessaging, pPreference, pIndex) {
     if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
       try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
@@ -511,7 +508,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       }
     }
   }
-
+*/
   function getImage(pPerson) {
     return s3.getSignedUrl('getObject', {
       Bucket: imageBucket,
@@ -522,7 +519,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
   function makeContactLines(pMessaging, pPreference, pPerson) {
     let returnArray = [];
-    let linkArray = [];
     for (const messageType in pMessaging) {
       switch (messageType) {
         case 'sms': {
