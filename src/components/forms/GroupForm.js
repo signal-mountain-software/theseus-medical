@@ -676,6 +676,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                                 {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
                                   .map((prefLine, prefIndex) => (
                                     <a href={prefLine.split('~')[0]}
+                                      key={`prefLink-${index}.${prefIndex}`}
                                       style={{ color: 'inherit', textDecoration: 'none' }}>
                                       <Typography key={`prefLine-${index}.${prefIndex}`} className={classes.preferenceLine}>{prefLine.split('~')[1]}</Typography>
                                     </a>
