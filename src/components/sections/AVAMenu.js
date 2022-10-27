@@ -41,6 +41,7 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import CircularProgress from '@material-ui/core/CircularProgress';
+import DeleteIcon from '@material-ui/icons/DeleteOutlineRounded';
 
 import Tooltip from '@material-ui/core/Tooltip';
 
@@ -418,35 +419,69 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
   };
 
-  const getMessage = async (pPerson) => {
-    let invokeFailed = false;
-    testMode = ['l', 't'].includes(session?.status?.environment);
-    params.FunctionName = `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`;
-    params.Payload = JSON.stringify({
-      test: false,
-      action: 'get_last_message',
-      client_id: pClient,
-      request: {
-        person_id: pPerson,
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
+  const deleteMessage = async (pMessage_id) => {
+    await dbClient
+      .update({
+        Key: { message_id: pMessage_id },
+        UpdateExpression: 'set delete_flag = :t',
+        ExpressionAttributeValues: {
+          ':t': true
+        },
+        TableName: "Messages",
+      })
       .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Messages.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
+      .catch(error => {
+        enqueueSnackbar(`AVA couldn't delete that message.  Error is ${error}`,
+          { variant: 'error', persist: true }
+        );
+        return;
       });
-    if (!invokeFailed) {
-      let MakeAVAMenuResponse = JSON.parse(fResp.Payload);
-      if (MakeAVAMenuResponse.status === 200) {
-        setMessageText(MakeAVAMenuResponse.body);
-        return MakeAVAMenuResponse.body;
-      }
+  };
+
+  const getMessage = async (pPerson) => {
+    let queryObj = {
+      KeyConditionExpression: 'recipient_id = :p',
+      ExpressionAttributeValues: {
+        ':p': pPerson,
+      },
+      TableName: "Messages",
+      IndexName: 'recipient_id-index',
+      ScanIndexForward: false,
+      Limit: 10
     };
-    return [];
+    let mRecs = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        console.log({ 'Error reading Messages': error });
+      });
+    if (mRecs && ('Items' in mRecs) && (mRecs.Count > 0)) {
+      let nowTime = new Date().getTime();
+      for (let mNum = 0; mNum < mRecs.Count; mNum++) {
+        let msg = mRecs.Items[mNum];
+        if (((msg.posted_time + (24 * 1000 * 60 * 60)) < nowTime)) {
+          break;  // this message is older than 24 hours.  Stop looking
+        }
+        if ((msg.hasOwnProperty('expiration_time')) && (msg.expiration_time < nowTime)) {
+          continue;   // message expired.  Check next one.
+        }
+        if (msg.hasOwnProperty('delete_flag') && !!msg.delete_flag) {
+          continue;   // message marked for deletion.  Check next one.
+        }
+        let httpAt = msg.message_content.indexOf('http');
+        if (httpAt > -1) {
+          msg.message_content = msg.message_content.substring(0, httpAt);
+        }
+        let foundMessage =
+          ((!msg.message_content.startsWith('Message from') && msg.sender_name) ? `From ${msg.sender_name}:` : '') +
+          msg.message_content +
+          '$~~$' + msg.message_id;
+        setMessageText(foundMessage);
+        return foundMessage;
+      }
+    }
+    setMessageText(null);
+    return null;
   };
 
   async function putMedia(newFact) {
@@ -1159,11 +1194,21 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         {!loading &&
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={2} mr={2} mb={1} mt={1}
+            key={'loadingBox'} maxWidth='80%'
+            ml={3} mb={1}
           >
             <Typography variant='h5'>{`Welcome to AVA`}</Typography>
-            <Typography id='scroll-dialog-title'>{messageText}</Typography>
+            {messageText &&
+              <Box
+                display='flex' flexDirection='row' justifyContent='center' alignItems='center'
+                key={'msgButtonBox'}
+              >
+                <Typography key={'message'} variant='subtitle2' className={classes.boldCenter}>
+                  {messageText.split('$~~$')[0]}
+                </Typography>
+                
+              </Box>
+            }
           </Box>
         }
         {/* AVA Menu */}
@@ -1180,6 +1225,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                     flexDirection='column'
                     minHeight={80}
                     onClick={async () => {
+                      getMessage(session.patient_id);
                       menuArray.pop();
                       setCurrentMenu(menuArray[menuArray.length - 1]);
                       setMenuArray(menuArray);
@@ -1451,10 +1497,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 jumpTo += `?user=${session.url_parameters.user}`;
                 window.location.replace(jumpTo);
               }
+              await getMessage(pPerson);
             }}
             onSave={
-              (pResult) => {
+              async (pResult) => {
                 onSaveFact(pResult, selected.name, showNewFactDialog);
+                await getMessage(pPerson);
               }
             }
             onNext={onNextFact}
@@ -1469,9 +1517,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
               setNeedsConfirmation(-1);
               setForceRedisplay(!forceRedisplay);
             }}
-            onConfirm={() => {
+            onConfirm={async () => {
               pendingFact.status = 'confirmed';
               onSaveFact(pendingFact, selected.name, needsConfirmation);
+              await getMessage(pPerson);
               setNeedsConfirmation(-1);
             }}
           >
