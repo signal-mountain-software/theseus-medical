@@ -101,7 +101,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
     let workArray = [];
     if (Array.isArray(inGroup)) { workArray = inGroup; }
-    else if (inGroup.includes('[')) { workArray = inGroup.replace(/[\[\]]/g, '').split(','); }
+    else if (inGroup.includes('[')) { workArray = inGroup.replace(/[[\]]/g, '').split(','); }
     else { workArray = [inGroup]; }
 
     let groupArray = workArray.map(g => { 
@@ -112,7 +112,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     
     let peopleRecs = {};
     // People table
-    if (groupArray.includes('*all')) {
+    if (groupArray.includes('*all') || groupArray.includes('*ALL')) {
       setGroupName('All accounts');
       setGroupID('*all');
       setGroupName('the Directory Search');
@@ -139,6 +139,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       for (let gLoop = 0; gLoop < gaL; gLoop++) {
         let pGroup = groupArray[gLoop];
         groupRec = await getGroupDetails(pSession.client_id, pGroup);
+        if (Object.keys(groupRec).length === 0) { continue; }
         let pGName = groupRec.name;
         setprogressMessage(`Getting members of the ${pGName}${pGName.includes('roup') ? '' : ' Group'}`);
         let gPeopleRecs = await dbClient
