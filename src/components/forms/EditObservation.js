@@ -52,7 +52,7 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
   const classes = useStyles();
 
   let oCode = observation.composite_key.split(/[~_]/g);
-  const [observationType, setObservationType] = React.useState(oCode.slice(1, -1).join('_').trim());
+  const [observationType, setObservationType] = React.useState(oCode.slice(1, -1).join('_').trim() || '');
   const [observationCode, setObservationCode] = React.useState(observation.observation_code);
   const [observationKey, setObservationKey] = React.useState(observation.observation_key);
   const [changeDetected, setChangeDetected] = React.useState(false);
