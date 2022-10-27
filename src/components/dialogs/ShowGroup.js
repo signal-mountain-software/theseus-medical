@@ -1,5 +1,4 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 
 import Box from '@material-ui/core/Box';
@@ -63,6 +62,16 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
+const AWS = require('aws-sdk');
+
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
+
 export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClose }) => {
   const [groupMemberList, setGroupMemberList] = React.useState([]);
   const [groupsManagedObject, setGroupsManagedObject] = React.useState([]);
@@ -71,6 +80,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   const [groupName, setGroupName] = React.useState();
   const [groupID, setGroupID] = React.useState();
   const [groupRole, setGroupRole] = React.useState();
+
+  // const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [progressMessage, setprogressMessage] = React.useState('Building Member List');
 
   const classes = useStyles();
 
@@ -83,22 +95,125 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
-
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
   const { enqueueSnackbar } = useSnackbar();
 
-  const getGroupMemberList = async (pGroup) => {
+  const getGroupMemberList = async (inGroup) => {
+
+    let groupArray = [];
+    if (Array.isArray(inGroup)) { groupArray = inGroup; }
+    else if (inGroup.includes('[')) { groupArray = inGroup.replace(/[\[\]]/g, '').split(','); }
+    else { groupArray = [inGroup]; }
+
+    setGroupMemberList([]);
+    
+    let peopleRecs = {};
+    // People table
+    if (groupArray.includes('*all')) {
+      setGroupName('All accounts');
+      setGroupID('*all');
+      setGroupName('the Directory Search');
+      setGroupRole('responsible');
+      setprogressMessage('Getting all accounts');
+      // setForceRedisplay(!forceRedisplay);
+      peopleRecs = await dbClient
+        .query({
+          KeyConditionExpression: 'client_id = :c',
+          ExpressionAttributeValues: { ':c': pSession.client_id },
+          TableName: "People",
+          IndexName: "client_id-index",
+        })
+        .promise()
+        .catch(error => {
+          console.log({ 'Bad query on People in getGroupMembers - caught error is': error });
+        });
+    }
+    else {
+      let foundPeople = {};
+      let groupRec;
+      let gaL = groupArray.length;
+      peopleRecs.Items = [];
+      for (let gLoop = 0; gLoop < gaL; gLoop++) {
+        let pGroup = groupArray[gLoop];
+        groupRec = await getGroupDetails(pSession.client_id, pGroup);
+        let pGName = groupRec.name;
+        setprogressMessage(`Getting members of the ${pGName}${pGName.includes('roup') ? '' : ' Group'}`);
+        let gPeopleRecs = await dbClient
+          .query({
+            KeyConditionExpression: 'client_id = :c',
+            FilterExpression: 'contains ( groups, :n )',
+            ExpressionAttributeValues: { ':n': pGroup, ':c': pSession.client_id },
+            TableName: "People",
+            IndexName: "client_id-index",
+          })
+          .promise()
+          .catch(error => {
+            console.log({ 'Bad scan on People in getGroupMembers - caught error is': error });
+          });
+        if (('Items' in gPeopleRecs) && (gPeopleRecs.Items.length > 0)) {
+          gPeopleRecs.Items.forEach(i => { 
+            if (!(i.person_id in foundPeople)) {
+              if (gaL > 1) { i.member_of = pGName; }
+              peopleRecs.Items.push(i);
+              foundPeople[i.person_id] = pGName;
+            }
+          })
+        }
+      }
+      if (gaL === 1) {
+        setGroupName(groupRec.name);
+        setGroupID(groupRec.group_id);
+        if (('responsible_for' in pSession) && pSession.responsible_for.includes(groupRec.group_id)) {
+          setGroupRole('responsible');
+        }
+        else if (('groups_managed' in pSession) && pSession.groups_managed.join(' ').includes(groupRec.group_id)) {
+          setGroupRole('responsible');
+        }
+        else {
+          setGroupRole(groupRec.admin_list.includes(pSession.patient_id) ? 'admin' : 'member');
+        }
+      }
+      else {
+        setGroupName('the Directory Search');
+        setGroupID(...inGroup);
+        setGroupRole('');
+      }
+    }
+
+    if (!peopleRecs || !('Items' in peopleRecs) || (peopleRecs.Items.length === 0)) {
+      enqueueSnackbar(`AVA couldn't retrieve any Accounts.`, {
+        variant: 'error'
+      });
+      onClose();
+      return [];
+    }
+
+    // Sort by name
+    // // setprogressMessage(`Sorting & filtering ${peopleRecs.Items.length} accounts`);
+    // setForceRedisplay(!forceRedisplay);
+    peopleRecs.Items.sort((a, b) => {
+      if (!a.hasOwnProperty('name')) {
+        a.name = { last: 'Missing', first: 'Name' };
+        console.log({ 'name missing for': a });
+      };
+      if (!b.hasOwnProperty('name')) {
+        b.name = { last: 'Missing', first: 'Name' };
+        console.log({ 'name missing for': b });
+      };
+      if (a.name.last === b.name.last) {
+        if (a.name.first > b.name.first) { return 1; }
+        if (a.name.first < b.name.first) { return -1; }
+      }
+      else {
+        if (a.name.last > b.name.last) { return 1; }
+        if (a.name.last < b.name.last) { return -1; }
+      }
+      return 0;
+    });
+    setGroupMemberList(peopleRecs.Items);
+    // setForceRedisplay(!forceRedisplay);
+    return peopleRecs.Items;
+
+    /*
     let invokeFailed = false;
     setGroupMemberList([]);
     params.Payload = JSON.stringify({
@@ -129,9 +244,126 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     });
     onClose();
     return [];
+    */
   };
 
+  async function getGroupDetails(pClient, pGroup) {
+    let groupRec = await dbClient
+      .get({
+        Key: {
+          client_id: pClient,
+          group_id: pGroup
+        },
+        TableName: "Groups"
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on Groups - caught error is': error });
+      });
+    if ('Item' in groupRec) { return groupRec.Item; }
+    else { return {}; }
+  }
+
   const getGroupsManagedObject = async (pPerson) => {
+    var returnObject = {};
+    let foundGroups = [];
+    // First, get Groups that this person explicitly manages (as per the SessionsV2 table)
+    if ('groups_managed' in pSession) {
+      pSession.groups_managed.forEach(group => {
+        let [gID, gName] = group.split('~');
+        returnObject[gName.trim()] = {
+          group_id: gID.trim(),
+          role: 'responsible'
+        };
+        foundGroups.push(gID.trim());
+      });
+    }
+
+    // If there are groups in the "responsible for" array, include those
+    let respArray = [];
+    if ('responsible_for' in pSession) {
+      if (Array.isArray(pSession.responsible_for)) { respArray.push(...pSession.responsible_for); }
+      else if (pSession.responsible_for.startsWith('[')) { respArray = pSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+      else { respArray.push(pSession.responsible_for); }
+    }
+    respArray.forEach(async (group) => {
+      if (!foundGroups.includes(group)) {
+        let checkGroup = await getGroupDetails(pSession.client_id, group);
+        if (checkGroup.hasOwnProperty('name')) {
+          returnObject[checkGroup.name.trim()] = {
+            group_id: group.trim(),
+            role: 'responsible'
+          };
+          foundGroups.push(group.trim());
+        }
+      }
+    });
+
+    // Next, get Groups that this person belongs (note whether he or she is in the admin_list)
+    var peopleGroup = await dbClient
+      .query({
+        KeyConditionExpression: 'person_id = :p',
+        ExpressionAttributeValues: { ':p': pPerson },
+        TableName: 'PeopleGroups',
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad query on PeopleGroups in getGroupsPersonBelongsTo - caught error is': error });
+      });
+    if (peopleGroup && ('Items' in peopleGroup)) {
+      peopleGroup.Items.forEach(groupRec => {
+        if (!foundGroups.includes(groupRec.group_id)) {
+          returnObject[groupRec.name] =
+          {
+            group_id: groupRec.group_id,
+            role: (groupRec.admin_list?.includes(pPerson) ? 'admin' : 'member')
+          };
+          foundGroups.push(groupRec.group_id);
+        }
+      });
+    }
+
+    // Finally, get open Groups that this person does not already belong to
+    let openGroups = await dbClient
+      .scan({
+        FilterExpression: 'client_id = :c and group_type = :o',
+        ExpressionAttributeValues: { ':c': pSession.client_id, ':o': 'open' },
+        TableName: 'Groups',
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad query on Groups in getGroupsPersonBelongsTo - caught error is': error });
+      });
+    if (openGroups && ('Items' in openGroups)) {
+      openGroups.Items.forEach(groupRec => {
+        if (!foundGroups.includes(groupRec.group_id)) {
+          returnObject[groupRec.name] =
+          {
+            group_id: groupRec.group_id,
+            role: 'non-member'
+          };
+          foundGroups.push(groupRec.group_id);
+        }
+      });
+    }
+
+    // Sort on name
+    // First - Create a sorted array of the Keys (names)
+    let returnArray = Object.keys(returnObject).sort((a, b) => {
+      if (a.toLowerCase() > b.toLowerCase()) { return 1; }
+      else { return -1; }
+    });
+
+    //  ...then build a new Object that delivers the keys in this sorted order
+    let finalObject = {};
+    returnArray.forEach(key => {
+      finalObject[key] = returnObject[key];
+    });
+    setGroupsManagedObject(finalObject);
+    // setForceRedisplay(!forceRedisplay);
+    return finalObject;
+
+    /*
     let invokeFailed = false;
     params.Payload = JSON.stringify({
       action: "get_groups_managed",
@@ -157,38 +389,28 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       }
     };
     return [];
+    */
   };
 
   const handleAbort = async () => {
     if (pGroup_id) { onClose(); }
     else {
       setChanges(false);
-      await getGroupsManagedObject(pSession.patient_id);
       setShowGroupSelect(true);
+      // await getGroupsManagedObject(pSession.patient_id);
     }
   };
 
   // **************************
 
   React.useEffect(() => {
-    let response = (
-      async () => {
-        await getGroupsManagedObject(pSession.patient_id);
-      }
-    );
-    if (pGroup_id) { 
+    if (pGroup_id) {
       setShowGroupSelect(false);
-      let [gID, gName, gRole] = pGroup_id.split('~');
-      setGroupName(gName);
-      setGroupID(gID);
-      setGroupRole(gRole);
-      getGroupMemberList({ 'group_id': pGroup_id.split('~')[0] });
+      getGroupMemberList(pGroup_id);
     }
-    else if (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0) {
-      if (pSession.patient_id) {
-        response();
-        setShowGroupSelect(true);
-      }
+    else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
+      setShowGroupSelect(true);
+      getGroupsManagedObject(pSession.patient_id);
     }
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -220,7 +442,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             ?
             <Box display='flex' marginBottom={5} flexDirection='column' justifyContent='center' alignItems='center'>
               <Typography className={classes.formControl} variant='h5' >
-                {'Building the Member List'}
+                {progressMessage}
               </Typography>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <CircularProgress />
@@ -249,15 +471,18 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               setShowGroupSelect(false);
               onClose();
             }}
-            onSelect={(selectedGroup) => {
+            onSelect={async (selectedGroup) => {
               setShowGroupSelect(false);
               setGroupName(selectedGroup);
               setGroupID(groupsManagedObject[selectedGroup].group_id);
               setGroupRole(groupsManagedObject[selectedGroup].role);
-              getGroupMemberList(groupsManagedObject[selectedGroup]);
+              await getGroupMemberList([groupsManagedObject[selectedGroup].group_id]);
+              // setForceRedisplay(!forceRedisplay);
             }}
-            onRefresh={async () => { 
-              await getGroupsManagedObject(pSession.patient_id)
+            onRefresh={async () => {
+              setShowGroupSelect(true);
+              // setForceRedisplay(!forceRedisplay);
+              await getGroupsManagedObject(pSession.patient_id);
             }}
           >
           </GroupFilter>
