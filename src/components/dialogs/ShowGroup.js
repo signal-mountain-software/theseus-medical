@@ -99,10 +99,14 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const getGroupMemberList = async (inGroup) => {
 
-    let groupArray = [];
-    if (Array.isArray(inGroup)) { groupArray = inGroup; }
-    else if (inGroup.includes('[')) { groupArray = inGroup.replace(/[\[\]]/g, '').split(','); }
-    else { groupArray = [inGroup]; }
+    let workArray = [];
+    if (Array.isArray(inGroup)) { workArray = inGroup; }
+    else if (inGroup.includes('[')) { workArray = inGroup.replace(/[\[\]]/g, '').split(','); }
+    else { workArray = [inGroup]; }
+
+    let groupArray = workArray.map(g => { 
+      return g.split('~')[0];
+    })
 
     setGroupMemberList([]);
     
