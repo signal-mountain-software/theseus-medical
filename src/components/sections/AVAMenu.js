@@ -22,6 +22,7 @@ import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import IconButton from '@material-ui/core/IconButton';
 import Dialog from '@material-ui/core/Dialog';
+import Button from '@material-ui/core/Button';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -42,6 +43,7 @@ import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import DeleteIcon from '@material-ui/icons/DeleteOutlineRounded';
+import ReplyIcon from '@material-ui/icons/ReplyOutlined';
 
 import Tooltip from '@material-ui/core/Tooltip';
 
@@ -95,7 +97,6 @@ const useStyles = makeStyles(theme => ({
     fontSize: '1.3rem',
   },
   hello: {
-    marginTop: theme.spacing(0.5),
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
     marginBottom: 0,
@@ -273,6 +274,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
 
   let currentSection = '';
 
+  const oneHour = 1 * 1000 * 60 * 60;
+
   const imageBucket = 'theseus-medical-storage';
   const imageURI = 'public/patients/[person_id].jpg';
 
@@ -419,6 +422,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
   };
 
+  const replyToMessage = async (pMessage_id) => {
+    return;
+  };
+
   const deleteMessage = async (pMessage_id) => {
     await dbClient
       .update({
@@ -439,10 +446,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   };
 
   const getMessage = async (pPerson) => {
+    let now = new Date().getTime();
     let queryObj = {
-      KeyConditionExpression: 'recipient_id = :p',
+      KeyConditionExpression: 'recipient_id = :p and posted_time > :t',
       ExpressionAttributeValues: {
         ':p': pPerson,
+        ':t': now - (24 * oneHour),
       },
       TableName: "Messages",
       IndexName: 'recipient_id-index',
@@ -454,17 +463,40 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       .promise()
       .catch(error => {
         console.log({ 'Error reading Messages': error });
+        mRecs = { 'Count': 0 };
       });
-    if (mRecs && ('Items' in mRecs) && (mRecs.Count > 0)) {
-      let nowTime = new Date().getTime();
+    if (mRecs.Count === 0) { mRecs.Items = []; }
+    queryObj = {
+      KeyConditionExpression: 'sender_id = :p and posted_time > :t',
+      FilterExpression: 'common_key = :msr and recipient_address <> :s',
+      ExpressionAttributeValues: {
+        ':p': pPerson,
+        ':t': now - oneHour,
+        ':msr': 'message_status_record',
+        ':s': 'self'
+      },
+      TableName: "Messages",
+      IndexName: 'sender_id-index',
+      ScanIndexForward: false,
+    };
+    let sRecs = {};
+    sRecs = await dbClient
+      .query(queryObj)
+      .promise()
+      .catch(error => {
+        console.log({ 'Error reading Messages': error });
+      });
+    if ('Items' in sRecs) {
+      mRecs.Items.push(...(sRecs.Items));
+      mRecs.Count += sRecs.Count;
+      mRecs.Items.sort((a, b) => {
+        if (a.posted_time > b.posted_time) { return -1; }
+        else { return 1; }
+      });
+    }
+    if (mRecs.Count > 0) {
       for (let mNum = 0; mNum < mRecs.Count; mNum++) {
         let msg = mRecs.Items[mNum];
-        if (((msg.posted_time + (24 * 1000 * 60 * 60)) < nowTime)) {
-          break;  // this message is older than 24 hours.  Stop looking
-        }
-        if ((msg.hasOwnProperty('expiration_time')) && (msg.expiration_time < nowTime)) {
-          continue;   // message expired.  Check next one.
-        }
         if (msg.hasOwnProperty('delete_flag') && !!msg.delete_flag) {
           continue;   // message marked for deletion.  Check next one.
         }
@@ -472,16 +504,22 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         if (httpAt > -1) {
           msg.message_content = msg.message_content.substring(0, httpAt);
         }
-        let foundMessage =
-          ((!msg.message_content.startsWith('Message from') && msg.sender_name) ? `From ${msg.sender_name}:` : '') +
-          msg.message_content +
-          '$~~$' + msg.message_id;
+        if (!msg.message_content.startsWith('Message from') && (msg.sender_id !== pPerson)) {
+          msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
+        }
+        let foundMessage = msg.message_content + '$~~$' + msg.message_id + '$~~$' + ((msg.recipient_id === pPerson) ? 'to' : 'from');
         setMessageText(foundMessage);
         return foundMessage;
       }
     }
-    setMessageText(null);
-    return null;
+    if (messageText) {
+      let [, mTime, mStatus] = messageText.split('$~~$');
+      if ((mStatus !== 'status') || (Number(mTime) < (now - oneHour))) {
+        setMessageText(null);
+        return null;
+      }
+    }
+    return messageText;
   };
 
   async function putMedia(newFact) {
@@ -759,7 +797,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     let postTime = new Date().getTime();
     const newFact = {
       person_id: pFact.patient_id,
-      activity_key: pFact.activity_key,
+      activity_key: (pFact.client_id ? ((pFact.client_id) + '//') : '') + pFact.activity_key,
       value: pFact.value,
       status: 'recorded',
       user_id: pPerson,
@@ -767,6 +805,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       method: 'AVAMenu',
       posted_time: postTime
     };
+    if (pFactName.toLowerCase().includes('send a')) {
+      setMessageText(`Your ${pFactName.replace(/send a/i, '').trim()} is being processed by AVA. $~~$${postTime}$--$status`);
+    }
+    else {
+      setMessageText(`Your ${pFactName}${pFactName.toLowerCase().includes('request') ? '' : ' request'} is being processed by AVA. $~~$${postTime}$--$status`);
+    }
     await dbClient
       .put({
         TableName: 'Facts',
@@ -813,6 +857,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     if (!invokeFailed) {
       let activityResponse = JSON.parse(fResp.Payload);
       if (activityResponse.status === 200) {
+        if (cClient !== pClient) {
+          activityResponse.body.activityData[0].client_id = cClient;
+        }
         setSelected(activityResponse.body.activityData[0]);
         return activityResponse.body.activityData[0];
       }
@@ -1042,6 +1089,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
               >
                 {`Good ${greetingTime}, ${greetingName}!`}
               </Typography>
+              <Typography
+                className={classes.hello}
+                id='scroll-dialog-title'
+              >
+                {`Welcome to AVA`}
+              </Typography>
             </Box>
           </Box>
           <Box
@@ -1191,24 +1244,51 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             </React.Fragment>
           </Box>
         }
-        {!loading &&
+        {!loading && messageText &&
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'} maxWidth='80%'
-            ml={3} mb={1}
+            key={'loadingBox'}
+            ml={3} mb={1} mr={3}
           >
-            <Typography variant='h5'>{`Welcome to AVA`}</Typography>
-            {messageText &&
-              <Box
-                display='flex' flexDirection='row' justifyContent='center' alignItems='center'
-                key={'msgButtonBox'}
+            <Box
+              display='flex' mt={1} flexDirection='row' justifyContent='center' alignItems='center'
+              key={'msgButtonBox'}
+            >
+              <Typography key={'message'} variant='subtitle2' className={classes.boldCenter}>
+                {messageText.split('$~~$')[0]}
+              </Typography>
+            </Box>
+            <Box
+              display='flex' flexDirection='row' justifyContent='center' alignItems='center'
+            >
+              <Button
+                onClick={async () => {
+                  if (messageText.split('$~~$')[2] !== 'status') {
+                    await deleteMessage(messageText.split('$~~$')[1]);
+                  }
+                  setMessageText(null);
+                  getMessage(session.patient_id);
+                  setForceRedisplay(!forceRedisplay);
+                }}
+                className={classes.rowButtonRed}
+                startIcon={<DeleteIcon size='small' />}
               >
-                <Typography key={'message'} variant='subtitle2' className={classes.boldCenter}>
-                  {messageText.split('$~~$')[0]}
-                </Typography>
-                
-              </Box>
-            }
+                {(messageText.split('$~~$')[2] !== 'to') ? 'Hide' : 'Delete'}
+              </Button>
+              {(messageText.split('$~~$')[2] === 'to') &&
+                <Button
+                  onClick={async () => {
+                    await replyToMessage(messageText.split('$~~$')[1]);
+                    getMessage(session.patient_id);
+                    setForceRedisplay(!forceRedisplay);
+                  }}
+                  className={classes.rowButtonBlue}
+                  startIcon={<ReplyIcon size='small' />}
+                >
+                  Reply
+                </Button>
+              }
+            </Box>
           </Box>
         }
         {/* AVA Menu */}
@@ -1501,8 +1581,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             }}
             onSave={
               async (pResult) => {
+                if ('client_id' in selected) { pResult.client_id = selected.client_id }
                 onSaveFact(pResult, selected.name, showNewFactDialog);
-                await getMessage(pPerson);
               }
             }
             onNext={onNextFact}
@@ -1520,7 +1600,6 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             onConfirm={async () => {
               pendingFact.status = 'confirmed';
               onSaveFact(pendingFact, selected.name, needsConfirmation);
-              await getMessage(pPerson);
               setNeedsConfirmation(-1);
             }}
           >
