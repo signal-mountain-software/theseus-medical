@@ -435,7 +435,7 @@ export default ({ patient, picture, open, onClose }) => {
       voice_private: (localData.voice_private && 'true'),
       surrogate: localData.surrogate,
       search_data: localData.searchTerm,
-      prefMethod: localData.prefMethod || 'AVA',
+      preferred_method: localData.prefMethod || 'AVA',
       requirePassword: localData.requirePassword,
       storePassword: localData.storePassword,
       directory_option: localData.directoryOption || 'normal',
@@ -482,14 +482,12 @@ export default ({ patient, picture, open, onClose }) => {
       requirePassword: localData.requirePassword,
       storePassword: localData.storePassword,
       directory_option: localData.directoryOption || 'normal',
-      directory_partner: localData.directoryPartner || null,
+      directory_partner: localData.directoryPartner || 'na',
       time_based_rules: patient.time_based_rules,
       clients: clientArray,
       location: localData.location ? localData.location.replace(/,/g, '') : null,
       pwdReset: resettingPwd,
-      newPassword: localData.inputPWD,
-      directoryOption: (localData.directory_option || 'normal'),
-      directoryPartner: (localData.directory_partner || 'na'),
+      newPassword: localData.inputPWD
     };
     await dbClient
       .put({
@@ -671,14 +669,12 @@ export default ({ patient, picture, open, onClose }) => {
   const handleChangeMethod = event => {
     localData.prefMethod = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setMethod(event.target.value);
     setChanges(true);
   };
 
   const handleChangeDirectoryOption = event => {
     localData.directoryOption = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setDirectoryOption(event.target.value);
     setChanges(true);
   };
 
