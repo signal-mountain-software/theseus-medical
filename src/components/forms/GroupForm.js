@@ -728,7 +728,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           }
           {promptForMessage &&
             <AVATextInput
-              promptText={`What should your ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : messageType)} message to ${recipient.split(':')[0]} say?`}
+              promptText={`What should your ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : (!messageType ? 'AVA' : messageType))} message to ${recipient.split(':')[0]} say?`}
               buttonText='Send'
               onCancel={() => { setPromptForMessage(false); }}
               onSave={(messageText) => {
