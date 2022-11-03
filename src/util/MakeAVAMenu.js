@@ -107,7 +107,7 @@ export default async (requestor, masterClient, screenStatus) => {
         // ({ '** HISTORY **': (activityHistory || 'no history found') });
         screenStatus('Checking History');
         if (!('favorite_blocked' in requestor)) { requestor.favorite_blocked = []; }
-        sectionSort = '**2b';
+        sectionSort = '**2a';
         sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} frequently used`;
         sectionColor = '#4bb491';
         sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-star-half-empty-50.png';
@@ -126,7 +126,7 @@ export default async (requestor, masterClient, screenStatus) => {
         // ({ '** PRIORITIES **': (requestor.priority_activities || 'no priority activities') });
         screenStatus('Checking for Priority Items');
         if (requestor.hasOwnProperty('priority_activities')) {
-            sectionSort = '**2';
+            sectionSort = '**2b';
             sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} priorities`;
             sectionColor = "#a0985f";
             sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-idea-sharing-64.png';
