@@ -115,7 +115,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     if (groupArray.includes('*all') || groupArray.includes('*ALL')) {
       setGroupName('All accounts');
       setGroupID('*all');
-      setGroupName('the Directory Search');
       setGroupRole('responsible');
       setprogressMessage('Getting all accounts');
       // setForceRedisplay(!forceRedisplay);
@@ -178,7 +177,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
         }
       }
       else {
-        setGroupName('the Directory Search');
+        setGroupName('Directory Search');
         setGroupID(...inGroup);
         setGroupRole('');
       }

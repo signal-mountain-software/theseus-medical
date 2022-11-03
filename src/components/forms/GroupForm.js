@@ -163,8 +163,8 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   const classes = useStyles();
   const { dispatch } = useSession();
 
-  const [person_filter, setPersonFilter] = React.useState('');
-  const [person_filter_lower, setPersonFilterLower] = React.useState('');
+  const [person_filter, setPersonFilter] = React.useState(' ');
+  const [person_filter_lower, setPersonFilterLower] = React.useState(' ');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -442,13 +442,13 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     else { return pPhone; }
   }
 
-  function filteredPerson(pName = { last: '*$*' }, pLoc, pMessaging = { sms: '*$*' }) {
+  function filteredPerson(pName = { last: '*$*' }, pLoc, pMessaging = { sms: '*$*' }, pPerson) {
     if (singleFilterDigit) {
-      return (pName.last.toLowerCase().startsWith(person_filter_lower) || pLoc.toLowerCase().startsWith(person_filter_lower + '-'));
+      return (pName.last.toLowerCase().startsWith(person_filter_lower.trim()) || pLoc.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
     }
     else {
-      let searchString = [...Object.values(pName), pLoc, ...Object.values(pMessaging)].join(' ');
-      return searchString.toLowerCase().includes(person_filter_lower);
+      let searchString = [...Object.values(pName), pPerson.search_data, pLoc, ...Object.values(pMessaging)].join(' ');
+      return searchString.toLowerCase().includes(person_filter_lower.trim());
     }
   }
   /*
