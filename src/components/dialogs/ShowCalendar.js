@@ -135,7 +135,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, OGpatient, peopleList, currentEvent, showCalendar, onClose }) => {
+export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, showCalendar, onClose }) => {
   const [myCalendar, setMyCalendar] = React.useState([]);
   const [filterText, setFilterText] = React.useState('');
   const [myFilter, setMyFilter] = React.useState('');
@@ -183,7 +183,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, showCalendar, on
     if (currentEvent && currentEvent.length > 0) {
       params.Payload = JSON.stringify({
         action: "get_event",
-        clientId: patient.adopted_client || patient.client_id,
+        clientId: eventClient || (patient.adopted_client || patient.client_id),
         event_id: currentEvent,
         person_id: patient.patient_id
       });
@@ -192,7 +192,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, showCalendar, on
     else {
       params.Payload = JSON.stringify({
         action: "list_events",
-        clientId: patient.adopted_client || patient.client_id,
+        clientId: eventClient || (patient.adopted_client || patient.client_id),
         list_start: ((this_year * 10000) + (this_month * 100) + this_date).toString(),
         list_end: ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
         person_id: patient.patient_id
@@ -239,7 +239,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, showCalendar, on
         graphqlOperation(getCalendar, {
           input: {
             "action": `list_events#${event_time}`,
-            "clientId": patient.adopted_client || patient.client_id,
+            "clientId": eventClient || (patient.adopted_client || patient.client_id),
             "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
             "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
             "person_id": patient.patient_id
@@ -448,7 +448,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, showCalendar, on
             pEventCode={currentEvent}
             peopleList={peopleList}
             pPatient={patient.patient_id}
-            pClient={patient.adopted_client || patient.client_id}
+            pClient={eventClient || (patient.adopted_client || patient.client_id)}
             pOccData={myCalendar[0].occData}
             pPatientRec={patient}
             onReset={() => { handleAbort(); }}

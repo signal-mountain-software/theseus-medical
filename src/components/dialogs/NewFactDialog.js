@@ -451,6 +451,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     setQualChecked({});
 
     let nF = {
+      client_id: fact.client_id || session.client_id,
       patient_id: session.patient_id || session.user_id,
       activity_key: fact.code,
       value: (fact.type === 'reservation')

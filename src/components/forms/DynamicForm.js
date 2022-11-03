@@ -1221,6 +1221,7 @@ export default ({
           OGpatient={OGsession}
           peopleList={values}
           currentEvent={defaultValue || []}
+          eventClient={newFact.client_id || session.client_id}
           showCalendar={true}
           onClose={onSave}
         />
