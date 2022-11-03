@@ -14,6 +14,7 @@ import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import PatientDialog from '../dialogs/PatientDialog';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import AVAConfirm from '../forms/AVAConfirm';
+import MakeAVAMenu from '../../util/MakeAVAMenu';
 
 import List from '@material-ui/core/List';
 import Box from '@material-ui/core/Box';
@@ -285,31 +286,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
-  let testMode = ['l', 't'].includes(session?.status?.environment);
-  let params = {
-    FunctionName: `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`,
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
   var idleTimer = null;
 
-  const buildMenu = async (pFlavor = 'retrieve') => {
-    let personRec = await dbClient
-      .get({
-        Key: { person_id: pPerson },
-        TableName: "People"
-      })
-      .promise()
-      .catch(error => { console.log(`caught error getting People record; error is:`, error); });
-    if (!recordExists(personRec)) {
-      enqueueSnackbar(`AVA encountered an error while retrieving your Menu information.`,
-        { variant: 'error', persist: true }
-      );
-      return;
-    }
-    patient = personRec.Item;
+  const buildMenu = async () => {
+
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
     let menuRec = await dbClient
@@ -335,73 +315,52 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         setSectionOpen({});
       }
     }
+/*
     // 'retrieve' in pFlavor means "get AVA options as they were at the last load"
     if (pFlavor === 'retrieve' && recordExists(menuRec) && (menuRec.Item.AVA_main_menu.length > 0)) {
-      setMainMenu(menuRec.Item.AVA_main_menu);
-      return patient.AVA_main_menu;
+      setMainSection(menuRec.Item.AVA_main_menu);
+      setMainMenu(favoritesSection.push(...menuRec.Item.AVA_main_menu));
+      return;
     }
+*/
+
     // otherwise, reload from scratch, without regard to the prior stored menu options ('main_menu' in pFlavor forces this)
-    let invokeFailed = false;
-    testMode = ['l', 't'].includes(session?.status?.environment);
-    params.FunctionName = `arn:aws:lambda:us-east-1:125549937716:function:${testMode ? 'TestAVAMenu' : 'MakeAVAMenu'}`;
-    params.Payload = JSON.stringify({
-      test: false,
-      action: 'main_menu',
-      client_id: pClient,
-      request: {
-        person_id: pPerson,
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Menu.  Error is ${err.message}`,
-          { variant: 'error', persist: true }
-        );
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let MakeAVAMenuResponse = JSON.parse(fResp.Payload);
-      if (MakeAVAMenuResponse.status === 200) {
-        setMainMenu(MakeAVAMenuResponse.body);
-        return MakeAVAMenuResponse.body;
-      }
-      else if (MakeAVAMenuResponse.status === 201) {
-        enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
-          { variant: 'error', persist: true }
-        );
-        let helpRow = {
-          activity_class: 'message',
-          activity_code: 'message.chubbie_request',
-          activity_name: 'Send a message to AVA Support',
-          child_menu: null,
-          default_value: null,
-          menu_name: 'help',
-          parent_menu: null,
-          row_color: '#a1adb8',
-          row_type: 'message',
-          section_color: '#a1adb8',
-          section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-new-message-50.png',
-          section_name: 'Get AVA Help',
-          sort_key: 'Messages, Comments, and Feedback'
-        };
-        setSectionOpen({ 'Get AVA Help': true });
-        setMainMenu([helpRow]);
-        return [helpRow];
-      }
+    let wholeMenu = await MakeAVAMenu(patient, pClient, screenStatus);
+    if (wholeMenu.length > 0) {
+      setMainMenu(wholeMenu);
     }
-    // if we got here, we couldn't figure out what to return, so send back empty
-    return [];
+    else {
+      enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
+        { variant: 'error', persist: true }
+      );
+      let helpRow = {
+        activity_code: 'message.chubbie_request',
+        activity_name: 'Send a message to AVA Support',
+        child_menu: null,
+        default_value: null,
+        menu_name: 'help',
+        parent_menu: null,
+        row_color: '#a1adb8',
+        row_type: 'message',
+        section_color: '#a1adb8',
+        section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-new-message-50.png',
+        section_name: 'Get AVA Help',
+        sort_key: 'Messages, Comments, and Feedback'
+      };
+      setSectionOpen({ 'Get AVA Help': true });
+      setMainMenu([helpRow]);
+    }
+    // end
   };
 
-  const updateSession = async (pOpen) => {
+  const updateAVA = async (pOpen, pMenu) => {
     dbClient
       .update({
         Key: { person_id: pPerson },
-        UpdateExpression: 'set AVA_section_open = :o',
+        UpdateExpression: 'set AVA_section_open = :o, AVA_main_menu = :m',
         ExpressionAttributeValues: {
-          ':o': pOpen
+          ':o': pOpen,
+          ':m': []
         },
         TableName: "AVAMenu",
       })
@@ -541,61 +500,25 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           { variant: 'error', persist: true });
       });
     if (uploadOK) {
+      closeSnackbar();
       enqueueSnackbar(`${newName} is saved!`, { variant: 'success', persist: false });
       return uploadResult.Key;
     };
     return null;
   }
 
-  const addToFavorites = async (activityRow) => {
-    let personRec = await dbClient
-      .get({
-        Key: { person_id: pPerson },
-        TableName: "People"
-      })
-      .promise()
-      .catch(error => { console.log(`caught error getting People record; error is:`, error); });
-    if (recordExists(personRec)) {
-      let favoriteList = [];
-      if ('favorite_activities' in personRec.Item) {
-        favoriteList = personRec.Item.favorite_activities;
-      }
-      favoriteList.push(activityRow.activity_code);
-      let favoriteBlocked = [];
-      if ('favorite_blocked' in personRec.Item) {
-        favoriteBlocked = personRec.Item.favorite_blocked;
-        let indexAt = favoriteBlocked.findIndex(r => { return (r === activityRow.activity_code); });
-        if (indexAt > -1) { favoriteBlocked.splice(indexAt, 1); }
-      }
-      await dbClient
-        .update({
-          Key: { person_id: pPerson },
-          UpdateExpression: 'set favorite_activities = :f, favorite_blocked = :b',
-          ExpressionAttributeValues: {
-            ':f': favoriteList,
-            ':b': favoriteBlocked
-          },
-          TableName: "People",
-        })
-        .promise()
-        .catch(error => {
-          enqueueSnackbar(`AVA couldn't update your Favorites.  Error is ${error}`,
-            { variant: 'error', persist: true }
-          );
-          return;
-        });
-      setLoading('Resetting your Favorites');
-      setForceRedisplay(!forceRedisplay);
-      makeGreeting();
-      await getMessage(pPerson);
-      await buildMenu('main_menu');
-      setLoading(false);
-      setForceRedisplay(!forceRedisplay);
-    }
-    return;
-  };
+  const screenStatus = (statusMessage) => {
+    setLoading(statusMessage);
+    setForceRedisplay(!forceRedisplay);
+  }
 
-  const removeFromFavorites = async (activityRow) => {
+  const updateFavorites = async (pType, activityRowIndex) => {
+    setLoading('Resetting your Favorites');
+    setForceRedisplay(!forceRedisplay);
+    makeGreeting();
+    await getMessage(pPerson);
+    let activityRow = mainMenu[activityRowIndex];
+    let changeMade = false;
     let personRec = await dbClient
       .get({
         Key: { person_id: pPerson },
@@ -604,39 +527,98 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       .promise()
       .catch(error => { console.log(`caught error getting People record; error is:`, error); });
     if (recordExists(personRec)) {
+      // add or remove from the favoriteList as appropriate
       let favoriteList = [];
       if ('favorite_activities' in personRec.Item) {
         favoriteList = personRec.Item.favorite_activities;
       }
-      let indexAt = favoriteList.findIndex(r => { return (r === activityRow.activity_code); });
-      if (indexAt > -1) { favoriteList.splice(indexAt, 1); }
+      if (!favoriteList.includes(activityRow.activity_code)) {
+        if (pType === 'add') {
+          favoriteList.unshift(activityRow.activity_code);
+          changeMade = true;
+        }
+      }
+      else { 
+        if (pType === 'remove') { 
+          let indexAt = favoriteList.findIndex(r => { return (r === activityRow.activity_code); });
+          if (indexAt > -1) {
+            favoriteList.splice(indexAt, 1);
+            changeMade = true;
+          }
+        }
+      } 
+      // remove from the blockedList if it is in there
       let favoriteBlocked = [];
       if ('favorite_blocked' in personRec.Item) {
         favoriteBlocked = personRec.Item.favorite_blocked;
       }
-      favoriteBlocked.push(activityRow.activity_code);
-      await dbClient
-        .update({
-          Key: { person_id: pPerson },
-          UpdateExpression: 'set favorite_activities = :f, favorite_blocked = :b',
-          ExpressionAttributeValues: {
-            ':f': favoriteList,
-            ':b': favoriteBlocked
-          },
-          TableName: "People",
-        })
-        .promise()
-        .catch(error => {
-          enqueueSnackbar(`AVA couldn't update your Favorites.  Error is ${error}`,
-            { variant: 'error', persist: true }
-          );
-          return;
-        });
-      makeGreeting();
-      await getMessage(pPerson);
-      setLoading(`Removing ${activityRow.activity_name.substring(0, 15).trim()}... from Favorites`);
-      setForceRedisplay(!forceRedisplay);
-      await buildMenu('main_menu');
+      if (!favoriteBlocked.includes(activityRow.activity_code)) {
+        if (pType === 'remove') {
+          favoriteBlocked.push(activityRow.activity_code);
+          changeMade = true;
+        }
+      }
+      else {
+        if (pType === 'add') {
+          let indexAt = favoriteBlocked.findIndex(r => { return (r === activityRow.activity_code); });
+          if (indexAt > -1) {
+            favoriteBlocked.splice(indexAt, 1);
+            changeMade = true;
+          }
+        }
+      }
+      // rewrite the People record with the new favorite and blocked lists
+      if (changeMade) {
+        await dbClient
+          .update({
+            Key: { person_id: pPerson },
+            UpdateExpression: 'set favorite_activities = :f, favorite_blocked = :b',
+            ExpressionAttributeValues: {
+              ':f': favoriteList,
+              ':b': favoriteBlocked
+            },
+            TableName: "People",
+          })
+          .promise()
+          .catch(error => {
+            enqueueSnackbar(`AVA couldn't update your Favorites.  Error is ${error}`,
+              { variant: 'error', persist: true }
+            );
+            return;
+          });
+        if (pType === 'add') {
+          mainMenu[activityRowIndex].is_favorite = true;
+          mainMenu.unshift({
+            menu_name: 'main',
+            sort_key: `**2-0000`,
+            section_name: (mainMenu[0].section_name.includes('favorites')
+              ? mainMenu[0].section_name
+              : `${personRec.name.first.trim()}'${personRec.name.first.trim().slice(-1) === 's' ? '' : 's'} favorites`
+            ),
+            section_color: '#6bb44b',
+            section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-favorite-50.png',
+            row_color: '#6bb44b',
+            activity_code: activityRow.activity_code,
+            activity_name: activityRow.activity_name,
+            activity_class: activityRow.activity_class,
+            row_type: activityRow.row_type,
+            default_value: activityRow.default_value || null,
+            parent_menu: null,
+            child_menu: activityRow.child_menu,
+            reason: 'Favorite',
+            last_used: activityRow.last_used,
+            is_favorite: true
+          });
+        }
+        else {
+          mainMenu.splice(activityRowIndex, 1);
+          let bIndex = mainMenu.findIndex(m => {
+            return (m.activity_code === activityRow.activity_code);
+          });
+          if (bIndex > -1) { mainMenu[bIndex].is_favorite = false; }
+        };
+      }
+      setMainMenu(mainMenu);
       setLoading(false);
       setForceRedisplay(!forceRedisplay);
     }
@@ -707,6 +689,17 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   };
 
   React.useEffect(() => {
+    const handleTabClose = async event => {
+      event.preventDefault();
+      await updateAVA(sectionOpen, mainMenu);
+    };
+    window.addEventListener('beforeunload', handleTabClose);
+    return () => {
+      window.removeEventListener('beforeunload', handleTabClose);
+    };
+  });
+
+  React.useEffect(() => {
     let response = (
       async () => {
         setLoading('Getting your Information');
@@ -719,7 +712,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         await getMessage(session.patient_id);
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);
-        await buildMenu('retrieve');
+        await buildMenu();
         setLoading(false);
         setForceRedisplay(!forceRedisplay);
       }
@@ -773,31 +766,14 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         console.log({ 'Bad put to ActivityLog - caught error is': error });
       });
     mainMenu[pIndex].last_used = postTime;
-    resetMainMenu(mainMenu);
-  };
-
-  const resetMainMenu = async (pMenu) => {
-    dbClient
-      .update({
-        Key: { person_id: pPerson },
-        UpdateExpression: 'set AVA_main_menu = :m',
-        ExpressionAttributeValues: {
-          ':m': pMenu
-        },
-        TableName: "AVAMenu",
-      })
-      .promise()
-      .catch(error => {
-        console.log(`AVA couldn't update your Menu settings.  Error is ${error}`);
-      });
-    setMainMenu(pMenu);
+    setMainMenu(mainMenu);
   };
 
   const putFact = async (pFact, pFactName, pIndex) => {
     let postTime = new Date().getTime();
     const newFact = {
       person_id: pFact.patient_id,
-      activity_key: (pFact.client_id ? ((pFact.client_id) + '//') : '') + pFact.activity_key,
+      activity_key: (pFact.client_id ? ((pFact.client_id) + '//') : '') + pFact.activity_key + '#' + postTime,
       value: pFact.value,
       status: 'recorded',
       user_id: pPerson,
@@ -1039,7 +1015,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 setForceRedisplay(!forceRedisplay);
                 makeGreeting();
                 await getMessage(session.patient_id);
-                await buildMenu('main_menu');
+                await buildMenu();
                 setCurrentMenu('main');
                 setMenuArray(['main']);
                 setMenuNames([]);
@@ -1185,7 +1161,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 await getMessage(session.patient_id);
                 setLoading('Refreshing your AVA menu');
                 setForceRedisplay(!forceRedisplay);
-                await buildMenu('main_menu');
+                await updateAVA(sectionOpen, mainMenu);
+                await buildMenu();
                 setCurrentMenu('main');
                 setMenuArray(['main']);
                 setMenuNames([]);
@@ -1217,7 +1194,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
-            ml={2} mr={2} mb={2} mt={20}
+            ml={2} mr={2} mb={2} mt={12}
           >
             <Card
               className={classes.logoSmall}
@@ -1368,7 +1345,6 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                             onClick={async () => {
                               sectionOpen[this_row.section_name] = !sectionOpen[this_row.section_name];
                               setSectionOpen(sectionOpen);
-                              await updateSession(sectionOpen);
                               setForceRedisplay(!forceRedisplay);
                             }}
                           >
@@ -1392,7 +1368,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                                 <Typography variant='h5' className={classes.boldCenter} >{this_row.section_name.trim()}</Typography>
                               </Box>
                               <Box flex={1} display='flex' justifyContent='flex-end' alignItems='center'>
-                                {!sectionOpen[this_row.section_name] ? 'Show' : 'Hide'}
+                                {(currentMenu !== 'main') ? null : (!sectionOpen[this_row.section_name] ? 'Show' : 'Hide')}
                               </Box>
                             </Box>
                           </Box>
@@ -1473,21 +1449,30 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                                   {(rowOpen !== index) ? <ExpandMoreIcon /> : <ExpandLessIcon />}
                                 </IconButton>
                               }
-                              <IconButton
-                                aria-label='showActivities'
-                                size='small'
-                                onClick={async () => {
-                                  (this_row.section_name.includes('favorites') ?
-                                    await removeFromFavorites(this_row) :
-                                    await addToFavorites(this_row));
-                                  setForceRedisplay(!forceRedisplay);
-                                }}
-                              >
-                                {this_row.section_name.includes('favorites') ?
-                                  <NotFavorite fontSize="small" /> :
-                                  <FavoriteIcon fontSize="small" />
-                                }
-                              </IconButton>
+                              {(this_row.is_favorite) ?
+                                ((['Favorite', 'History'].includes(this_row.reason)) &&
+                                <IconButton
+                                  aria-label='showActivities'
+                                  size='small'
+                                  onClick={async () => {
+                                    await updateFavorites('remove', index);
+                                    setForceRedisplay(!forceRedisplay);
+                                  }}
+                                >
+                                  <NotFavorite fontSize="small" />
+                                </IconButton>)
+                                :
+                                <IconButton
+                                    aria-label='showActivities'
+                                    size='small'
+                                    onClick={async () => {
+                                      await updateFavorites('add', index);
+                                      setForceRedisplay(!forceRedisplay);
+                                    }}
+                                  >
+                                    <FavoriteIcon fontSize="small" />
+                                  </IconButton>
+                              }
                             </Box>
                           </Box>
                         </Box>
@@ -1570,7 +1555,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             open={true}
             fromHome={false}
             onClose={async (oopsieMessage = null) => {
-              oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error', persist: true }));
+              oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error' }));
               setShowNewFactDialog(-1);
               if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                 let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
@@ -1581,7 +1566,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             }}
             onSave={
               async (pResult) => {
-                if ('client_id' in selected) { pResult.client_id = selected.client_id }
+                if ('client_id' in selected) { pResult.client_id = selected.client_id; }
                 onSaveFact(pResult, selected.name, showNewFactDialog);
               }
             }
