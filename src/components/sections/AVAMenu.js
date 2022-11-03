@@ -15,6 +15,7 @@ import PatientDialog from '../dialogs/PatientDialog';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import AVAConfirm from '../forms/AVAConfirm';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
+import AVATextInput from '../forms/AVATextInput';
 
 import List from '@material-ui/core/List';
 import Box from '@material-ui/core/Box';
@@ -268,6 +269,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   const [rowOpen, setRowOpen] = React.useState(-1);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
+  const [promptForMessage, setPromptForMessage] = React.useState('');
+  const [messageReplyRecipient, setMessageReplyRecipient] = React.useState('');
 
   const [loading, setLoading] = React.useState('Initializing');
 
@@ -315,14 +318,14 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         setSectionOpen({});
       }
     }
-/*
-    // 'retrieve' in pFlavor means "get AVA options as they were at the last load"
-    if (pFlavor === 'retrieve' && recordExists(menuRec) && (menuRec.Item.AVA_main_menu.length > 0)) {
-      setMainSection(menuRec.Item.AVA_main_menu);
-      setMainMenu(favoritesSection.push(...menuRec.Item.AVA_main_menu));
-      return;
-    }
-*/
+    /*
+        // 'retrieve' in pFlavor means "get AVA options as they were at the last load"
+        if (pFlavor === 'retrieve' && recordExists(menuRec) && (menuRec.Item.AVA_main_menu.length > 0)) {
+          setMainSection(menuRec.Item.AVA_main_menu);
+          setMainMenu(favoritesSection.push(...menuRec.Item.AVA_main_menu));
+          return;
+        }
+    */
 
     // otherwise, reload from scratch, without regard to the prior stored menu options ('main_menu' in pFlavor forces this)
     let wholeMenu = await MakeAVAMenu(patient, pClient, screenStatus);
@@ -379,10 +382,6 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       })
       .promise()
       .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-  };
-
-  const replyToMessage = async (pMessage_id) => {
-    return;
   };
 
   const deleteMessage = async (pMessage_id) => {
@@ -467,6 +466,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
         }
         let foundMessage = msg.message_content + '$~~$' + msg.message_id + '$~~$' + ((msg.recipient_id === pPerson) ? 'to' : 'from');
+        if (msg.recipient_id === pPerson) {
+          setMessageReplyRecipient(`${msg.sender_name}:${msg.sender_id}`);
+        }
         setMessageText(foundMessage);
         return foundMessage;
       }
@@ -481,18 +483,11 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     return messageText;
   };
 
-  async function putMedia(newFact) {
-    let newName = newFact.value?.freeText?.Title || newFact.value.mediaData.Key;
-    if (newFact.value?.mediaData?.ContentType?.includes('video') || newFact.value?.mediaData?.Body?.type?.includes('video')) {
-      let fileExtension = newFact.value.mediaData.Key.split('.').pop();
-      let destinationName = newName.trim().replace(/[\s/]/g, '_').split('.')[0];
-      newFact.value.mediaData.Key = destinationName + '.' + fileExtension;
-    }
-    let mediaData = newFact.value.mediaData;
-    enqueueSnackbar(`AVA is saving ${newName}...`, { variant: 'info', persist: true });
+  async function putS3Object(pMediaData, pType) {
+    enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: true });
     let uploadOK = true;
-    let uploadResult = await s3
-      .putObject(mediaData)
+    await s3
+      .putObject(pMediaData)
       .promise()
       .catch(err => {
         uploadOK = false;
@@ -501,8 +496,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       });
     if (uploadOK) {
       closeSnackbar();
-      enqueueSnackbar(`${newName} is saved!`, { variant: 'success', persist: false });
-      return uploadResult.Key;
+      enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'info', persist: false });
+      return pMediaData.Key;
     };
     return null;
   }
@@ -510,7 +505,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   const screenStatus = (statusMessage) => {
     setLoading(statusMessage);
     setForceRedisplay(!forceRedisplay);
-  }
+  };
 
   const updateFavorites = async (pType, activityRowIndex) => {
     setLoading('Resetting your Favorites');
@@ -538,15 +533,15 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           changeMade = true;
         }
       }
-      else { 
-        if (pType === 'remove') { 
+      else {
+        if (pType === 'remove') {
           let indexAt = favoriteList.findIndex(r => { return (r === activityRow.activity_code); });
           if (indexAt > -1) {
             favoriteList.splice(indexAt, 1);
             changeMade = true;
           }
         }
-      } 
+      }
       // remove from the blockedList if it is in there
       let favoriteBlocked = [];
       if ('favorite_blocked' in personRec.Item) {
@@ -629,8 +624,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     if (typeof (pFact.value) === 'string') { putFact(pFact, pFactName, pIndex); }
     else {
       let factFlavor = pFact.activity_key.split('.')[0];
-      if (factFlavor === 'action' || !pFact.value.hasOwnProperty('selected')) { }
-      else {
+      if (factFlavor !== 'action'
+        && pFact.value.hasOwnProperty('selected')
+        && Object.keys(pFact.selected).length > 0
+      ) {
         setPendingFact(pFact);
         let foundText = [];
         let valueArray = pFact.value.selected.map(selection => {
@@ -648,35 +645,58 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             valueArray.push(`${key} = ${pFact.value.freeText[key]}`);
           }
         }
-        let isMedia = (pFact.value.hasOwnProperty('mediaData'));
-        let isForm = (factFlavor === 'form' || factFlavor === 'message');
-        if (isMedia) {
-          let fileName = await putMedia(pFact);
-          valueArray.unshift(`s3file=${fileName}`, 'Video', `userTag=${pFact.value.tag}`);
-        }
-        else if (isForm && pFact.status !== 'confirmed') {
-          let cMessage = [
-            'Review & Confirm please',
-            pFactName];
-          if (valueArray.length > 0) {
-            cMessage.push(
-              '~~~~',
-              'Your selections are:',
-              ...valueArray
-            );
+        
+        let factValueType = 'selection';
+        
+        // special cases include forms, messages, and media
+        if (factFlavor === 'form' || factFlavor === 'message') {
+          if (pFact.status !== 'confirmed') {
+            let cMessage = [
+              'Review & Confirm please',
+              pFactName];
+            if (valueArray.length > 0) {
+              cMessage.push(
+                '~~~~',
+                'Your selections are:',
+              );
+              valueArray.forEach(v => {
+                cMessage.push(v.split(/:/)[0]);
+              });
+            }
+            setConfirmMessage(cMessage);
+            setNeedsConfirmation(pIndex);
+            return;
           }
-          setConfirmMessage(cMessage);
-          setNeedsConfirmation(pIndex);
-          return;
+          else {
+            factValueType = 'form_selections';
+          }
         }
-        pFact.value = (isForm ? 'form_selections' : (isMedia ? 'file_details' : 'selection')) + '.' + valueArray.join(' ~ ');
+        if (pFact.value.mediaData) {
+          let newName = pFact.value?.freeText?.Title || pFact.value.mediaData.Key;
+          let fileExtension = pFact.value.mediaData.Key.split('.').pop();
+          pFact.value.mediaData.Key = newName.trim().replace(/[\s/.]/g, '_') + '.' + fileExtension;
+          let fileType = ((pFact.value.mediaData.ContentType?.includes('video') || pFact.value.mediaData.Body?.type?.includes('video')) ? 'Video' : 'File');
+          let fileName = await putS3Object(pFact.value.mediaData, fileType);
+          valueArray.unshift(`s3file=${fileName}`, fileType, `userTag=${pFact.value.tag}`);
+          factValueType = 'file_details';
+        }
+
+        // set the value that will be written into the Fact table
+        pFact.value = factValueType + '.' + valueArray.join(' ~ ');
+
+        // add qualifiers if applicable
         if (pFact.value.hasOwnProperty('qualifiers') && Object.keys(pFact.value.qualifiers).length > 0) {
           pFact.qualifier = Object.keys(pFact.value.qualifiers).map(k => {
             return `${k}:${pFact.value.qualifiers[k]}`;
           });
         }
+
+        // write the Fact Table entry
         putFact(pFact, pFactName, pIndex);
-        enqueueSnackbar(`${pFactName} successfully completed!`, { variant: 'success' });
+
+        if (factValueType === 'file_details') {
+          enqueueSnackbar(`The file upload is done!  AVA needs a minute or two to make it available on menus.`, { variant: 'success' });
+        }
       }
     };
     setShowNewFactDialog(-1);
@@ -721,6 +741,33 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       response();
     }
   }, [pPerson]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  const handleSendMessage = async (pPatient, pMessage, pRecipient = null) => {
+    // program expects pRecipient in the form <display name>:<id>
+    lambda
+      .invoke({
+        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine',
+        InvocationType: 'RequestResponse',
+        LogType: 'Tail',
+        Payload: JSON.stringify({
+          "body": {
+            "client": pClient,
+            "author": pPatient,
+            "values": pRecipient + ' ~ MessageText = ' + pMessage
+          }
+        })
+      })
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
+          variant: 'error'
+        });
+      });
+    enqueueSnackbar(`Sent "${pMessage}" to ${pRecipient.split(':')[0]}`, {
+      variant: 'success'
+    });
+  };
 
   const accessLog = async (pUser, pPwd, pMessage) => {
     var payload =
@@ -782,10 +829,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       posted_time: postTime
     };
     if (pFactName.toLowerCase().includes('send a')) {
-      setMessageText(`Your ${pFactName.replace(/send a/i, '').trim()} is being processed by AVA. $~~$${postTime}$--$status`);
+      setMessageText(`AVA is sending your ${pFactName.replace(/send a/i, '').trim()}.$~~$${postTime}$--$status`);
     }
     else {
-      setMessageText(`Your ${pFactName}${pFactName.toLowerCase().includes('request') ? '' : ' request'} is being processed by AVA. $~~$${postTime}$--$status`);
+      setMessageText(`Your ${pFactName.split(/[-/]/)[0]} is being processed by AVA. $~~$${postTime}$--$status`);
     }
     await dbClient
       .put({
@@ -1255,8 +1302,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
               {(messageText.split('$~~$')[2] === 'to') &&
                 <Button
                   onClick={async () => {
-                    await replyToMessage(messageText.split('$~~$')[1]);
-                    getMessage(session.patient_id);
+                    setPromptForMessage(true);
                     setForceRedisplay(!forceRedisplay);
                   }}
                   className={classes.rowButtonBlue}
@@ -1451,27 +1497,27 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                               }
                               {(this_row.is_favorite) ?
                                 ((['Favorite', 'History'].includes(this_row.reason)) &&
+                                  <IconButton
+                                    aria-label='showActivities'
+                                    size='small'
+                                    onClick={async () => {
+                                      await updateFavorites('remove', index);
+                                      setForceRedisplay(!forceRedisplay);
+                                    }}
+                                  >
+                                    <NotFavorite fontSize="small" />
+                                  </IconButton>)
+                                :
                                 <IconButton
                                   aria-label='showActivities'
                                   size='small'
                                   onClick={async () => {
-                                    await updateFavorites('remove', index);
+                                    await updateFavorites('add', index);
                                     setForceRedisplay(!forceRedisplay);
                                   }}
                                 >
-                                  <NotFavorite fontSize="small" />
-                                </IconButton>)
-                                :
-                                <IconButton
-                                    aria-label='showActivities'
-                                    size='small'
-                                    onClick={async () => {
-                                      await updateFavorites('add', index);
-                                      setForceRedisplay(!forceRedisplay);
-                                    }}
-                                  >
-                                    <FavoriteIcon fontSize="small" />
-                                  </IconButton>
+                                  <FavoriteIcon fontSize="small" />
+                                </IconButton>
                               }
                             </Box>
                           </Box>
@@ -1589,6 +1635,17 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             }}
           >
           </AVAConfirm>
+        }
+        {promptForMessage &&
+          <AVATextInput
+          promptText={`What should your reply to ${messageReplyRecipient.split(':')[0]} say?`}
+            buttonText='Send'
+            onCancel={() => { setPromptForMessage(false); }}
+            onSave={(messageText) => {
+              setPromptForMessage(false);
+              handleSendMessage(pPerson, messageText, messageReplyRecipient);
+            }}
+          />
         }
       </React.Fragment >
     </Dialog >
