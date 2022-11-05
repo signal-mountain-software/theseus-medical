@@ -9,33 +9,11 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
     secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default async (requestor, masterClient, screenStatus) => {
-
-    /* request is an object with...
-        { 
-            test: <true/false/null/missing>
-            action: <"main_menu", "sub_menu", "retrieve", 'get_last_message'>, 
-            clientId : <required>,
-            request: {
-                person_id,
-                menuName
-            }
-        };
-    */
-
-    /* response is an object with...
-     { 
-        status : <nnn>,
-        message: <text>,
-        body: {                                 
-            ...
-        }
-     }
-    */
+export default async (requestor, masterClient, screenStatus, subMenuData = null) => {
 
     let groupList;
 
-    let subMenus = [];
+    // let subMenus = [];
     let numberOfRows = 1000;
 
     let activityHistory = {};
@@ -44,10 +22,37 @@ export default async (requestor, masterClient, screenStatus) => {
 
     let pPerson = requestor.person_id;
     if (!masterClient) { masterClient = requestor.client_id; };
-    return await buildMainMenu(pPerson);
+    if (subMenuData) { return await handleSubMenu(subMenuData) }
+    else { return await buildMainMenu(pPerson); }
 
 
     // Functions
+
+    async function handleSubMenu(pSubMenu) {
+        let returnArray = [];
+        let [sectionColor, sectionIcon] = await getCustomizations(pSubMenu.menu_name)
+        let subActivities = await getSubMenu(pSubMenu.event_id, pSubMenu.client_id);
+        let aL = subActivities.length;
+        if (aL > 0) {
+            for (let a = 0; a < aL; a++) {
+                let pos = 100 + a;
+                let this_row =
+                    await addRow(
+                        `${pSubMenu.client_id}//${subActivities[a]}`,   // activity_code
+                        pSubMenu.event_id,                  // this menu_id                      
+                        pSubMenu.parent,                    // parent menu_id
+                        pSubMenu.parent_name,               // parent menu name
+                        `SUB-${pSubMenu.event_id}-${pos}`,  // sort position
+                        pSubMenu.menu_name,                 // this menu name
+                        sectionColor,                       // this menu color
+                        sectionIcon,                        // this menu icon
+                        `Sub-menu ${pSubMenu.event_id}`     // why is this row in the menu
+                    );
+                if (this_row) { returnArray.push(this_row); }
+            }
+        }
+        return returnArray;
+    }
 
     async function getSubMenu(pEvent, pClient) {
         let queryObj = {
@@ -93,9 +98,7 @@ export default async (requestor, masterClient, screenStatus) => {
             for (let a = 0; a < aL; a++) {
                 let this_activity = requestor.favorite_activities[a];
                 let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Favorite');
-                if (this_row?.activity_name) {
-                    returnArray.push(this_row);
-                }
+                if (this_row) { returnArray.push(this_row); }
             }
         }
         else {
@@ -117,9 +120,7 @@ export default async (requestor, masterClient, screenStatus) => {
                 !(requestor.favorite_activities.includes(hActivity)) &&
                 !(requestor.favorite_blocked.includes(hActivity))) {
                 let this_row = await addRow(hActivity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'History');
-                if (this_row?.activity_name) {
-                    returnArray.push(this_row);
-                }
+                if (this_row) { returnArray.push(this_row); }
             }
         }
 
@@ -134,9 +135,7 @@ export default async (requestor, masterClient, screenStatus) => {
             for (let a = 0; a < aL; a++) {
                 let this_activity = requestor.priority_activities[a];
                 let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Priorities');
-                if (this_row?.activity_name) {
-                    returnArray.push(this_row);
-                }
+                if (this_row) { returnArray.push(this_row); }
             }
         }
 
@@ -174,7 +173,7 @@ export default async (requestor, masterClient, screenStatus) => {
                 }
                 else {
                     let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, `Group ${this_group.group_id}`);
-                    if (this_row?.activity_name) {
+                    if (this_row) { 
                         returnArray.push(this_row);
                         duplicateCheck.push(this_activity);
                     }
@@ -182,13 +181,12 @@ export default async (requestor, masterClient, screenStatus) => {
             }
         }
 
-        // Build sub-menus
         /*
+        // Build sub-menus
             event_id: activityRec.activity_code,
             parent: pMenu,
             parent_name: pParentName,
             menu_name: activityRec.activity_name
-        */
         // ('** SUB-MENUS **');
         let menuDone = [];
         for (let s = 0; s < subMenus.length; s++) {
@@ -208,13 +206,12 @@ export default async (requestor, masterClient, screenStatus) => {
                 for (let a = 0; a < aL; a++) {
                     let pos = 100 + a;
                     let this_row = await addRow(`${subMenus[s].client_id}//${subActivities[a]}`, subMenus[s].event_id, subMenus[s].parent, sectionName, `${sectionSort}-${pos}`, sectionName, sectionColor, sectionIcon, `Sub-menu ${subMenus[s].event_id}`);
-                    if (this_row?.activity_name) {
-                        returnArray.push(this_row);
-                    }
+                    if (this_row) { returnArray.push(this_row); }
                 }
                 menuDone.push(subMenus[s].event_id);
             }
         }
+                */
 
         // Sort by sort_key
         returnArray.sort((a, b) => {
@@ -307,7 +304,7 @@ export default async (requestor, masterClient, screenStatus) => {
         let activityRec = await getActivity(pActivity);
         if (Object.keys(activityRec).length === 0) {
             // (`rejecting ${pActivity} - not found in Activities table`);
-            return [];
+            return false;
         };
         // (`added ${pActivity} to ${pSectionName} `);
         let last_used = ((activityRec.activity_code in activityHistory) ?
@@ -319,18 +316,6 @@ export default async (requestor, masterClient, screenStatus) => {
         let [aType, aCode] = activityRec.activity_code.split('.');
         if (aType.includes('//')) {
             [aClient, aType] = aType.split('//');
-        }
-        if (aType === 'event') {
-           if (!subMenus.find(s => { return (s.event_id === aCode); })) {
-                subMenus.push({
-                    client_id: aClient,
-                    event_id: aCode,
-                    parent: pMenu,
-                    parent_name: pParentName,
-                    menu_name: activityRec.name
-                });
-           }
-            // ({ 'Added to subMenus': { 'at pos': (subMenus.length - 1), smObj } });
         }
         return {
             menu_name: pMenu,
@@ -347,7 +332,17 @@ export default async (requestor, masterClient, screenStatus) => {
             child_menu: ((aType === 'event') ? aCode : null),
             reason: pReason,
             last_used: last_used,
-            is_favorite: (pReason === 'History') || requestor.favorite_activities.includes(activityRec.activity_code)
+            is_favorite: (pReason === 'History') || requestor.favorite_activities.includes(activityRec.activity_code),
+            subMenu_data: ((aType !== 'event')
+                ? null
+                : {
+                    client_id: aClient,
+                    event_id: aCode,
+                    parent: pMenu,
+                    parent_name: pSectionName,
+                    menu_name: activityRec.name
+                }
+            )
         };
     }
 

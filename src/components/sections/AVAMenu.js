@@ -5,10 +5,7 @@ import { useSnackbar } from 'notistack';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { useCookies } from 'react-cookie';
-
 import IdleTimer from 'react-idle-timer';
-import avaAlert from '../../ava_alert.mp3';
-
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import PatientDialog from '../dialogs/PatientDialog';
@@ -275,10 +272,22 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   const [loading, setLoading] = React.useState('Initializing');
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [activityLogRecords, setActivityLogRecords] = React.useState([]);
+
+  const [lastMessageCheck, setLastMessageCheck] = React.useState(new Date().getTime());
+  const [lastRefresh, setLastRefresh] = React.useState(new Date().getTime());
+  const [lastActive, setLastActive] = React.useState(new Date().getTime());
 
   let currentSection = '';
 
-  const oneHour = 1 * 1000 * 60 * 60;
+  const oneMinute = 1000 * 60;
+  const oneHour = 60 * oneMinute;
+  const msBeforeSleeping = 5 * oneMinute;
+
+  let nowTime = new Date().getTime();
+  let localLastMessageCheck = nowTime;
+  let localLastRefresh = nowTime;
+  let localLastActive = nowTime;
 
   const imageBucket = 'theseus-medical-storage';
   const imageURI = 'public/patients/[person_id].jpg';
@@ -289,10 +298,13 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
-  var idleTimer = null;
-
   const buildMenu = async () => {
-
+    let nowTime = new Date().getTime();
+    setLastRefresh(nowTime);
+    localLastRefresh = nowTime;
+    setLastActive(nowTime);
+    localLastActive = nowTime;
+    console.log(`Refreshed at ${new Date().toLocaleString()}.`);
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
     let menuRec = await dbClient
@@ -302,8 +314,14 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       })
       .promise()
       .catch(error => { console.log(`caught error getting People record; error is:`, error); });
-    if (recordExists(menuRec) && ('AVA_section_open' in menuRec.Item)) {
-      setSectionOpen(menuRec.Item.AVA_section_open);
+    if (recordExists(menuRec)) {
+      if ('AVA_section_open' in menuRec.Item) {
+        setSectionOpen(menuRec.Item.AVA_section_open);
+      }
+      if (('AVA_main_menu' in menuRec.Item) && (menuRec.Item.AVA_main_menu.length > 0)) {
+        setMainMenu(menuRec.Item.AVA_main_menu);
+        return menuRec.Item.AVA_main_menu;
+      }
     }
     else {
       if (session?.current_event) {
@@ -318,19 +336,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         setSectionOpen({});
       }
     }
-    /*
-        // 'retrieve' in pFlavor means "get AVA options as they were at the last load"
-        if (pFlavor === 'retrieve' && recordExists(menuRec) && (menuRec.Item.AVA_main_menu.length > 0)) {
-          setMainSection(menuRec.Item.AVA_main_menu);
-          setMainMenu(favoritesSection.push(...menuRec.Item.AVA_main_menu));
-          return;
-        }
-    */
+    // If the menu is stored, use it.
 
-    // otherwise, reload from scratch, without regard to the prior stored menu options ('main_menu' in pFlavor forces this)
     let wholeMenu = await MakeAVAMenu(patient, pClient, screenStatus);
     if (wholeMenu.length > 0) {
       setMainMenu(wholeMenu);
+      return wholeMenu;
     }
     else {
       enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
@@ -354,34 +365,38 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       setMainMenu([helpRow]);
     }
     // end
+    return mainMenu;
   };
 
   const updateAVA = async (pOpen, pMenu) => {
-    dbClient
-      .update({
-        Key: { person_id: pPerson },
-        UpdateExpression: 'set AVA_section_open = :o, AVA_main_menu = :m',
-        ExpressionAttributeValues: {
-          ':o': pOpen,
-          ':m': []
-        },
-        TableName: "AVAMenu",
-      })
-      .promise()
-      .catch(error => {
-        console.log(`AVA couldn't update your Menu settings.  Error is ${error}`);
-      });
-    dbClient
-      .update({
-        Key: { session_id: session.user_id },
-        UpdateExpression: 'set current_event = :e',
-        ExpressionAttributeValues: {
-          ':e': JSON.stringify(pOpen)
-        },
-        TableName: "SessionsV2",
-      })
-      .promise()
-      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+    if (pOpen) {
+      dbClient
+        .update({
+          Key: { person_id: pPerson },
+          UpdateExpression: 'set AVA_section_open = :o, AVA_main_menu = :m',
+          ExpressionAttributeValues: {
+            ':o': pOpen,
+            ':m': []
+          },
+          TableName: "AVAMenu",
+        })
+        .promise()
+        .catch(error => {
+          console.log(`AVA couldn't update your Menu settings.  Error is ${error}`);
+        });
+      dbClient
+        .update({
+          Key: { session_id: session.user_id },
+          UpdateExpression: 'set current_event = :e',
+          ExpressionAttributeValues: {
+            ':e': JSON.stringify(pOpen)
+          },
+          TableName: "SessionsV2",
+        })
+        .promise()
+        .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+    }
+    putActivityLog();
   };
 
   const deleteMessage = async (pMessage_id) => {
@@ -405,6 +420,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
 
   const getMessage = async (pPerson) => {
     let now = new Date().getTime();
+    setLastMessageCheck(now);
+    localLastMessageCheck = now;
+    console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
     let queryObj = {
       KeyConditionExpression: 'recipient_id = :p and posted_time > :t',
       ExpressionAttributeValues: {
@@ -421,15 +439,15 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       .promise()
       .catch(error => {
         console.log({ 'Error reading Messages': error });
-        mRecs = { 'Count': 0 };
+
       });
-    if (mRecs.Count === 0) { mRecs.Items = []; }
+    if (!mRecs || !mRecs.Count || (mRecs.Count === 0)) { mRecs = { Items: [] }; }
     queryObj = {
       KeyConditionExpression: 'sender_id = :p and posted_time > :t',
       FilterExpression: 'common_key = :msr and recipient_address <> :s',
       ExpressionAttributeValues: {
         ':p': pPerson,
-        ':t': now - oneHour,
+        ':t': now - (10 * oneMinute),
         ':msr': 'message_status_record',
         ':s': 'self'
       },
@@ -444,7 +462,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       .catch(error => {
         console.log({ 'Error reading Messages': error });
       });
-    if ('Items' in sRecs) {
+    if (sRecs && ('Items' in sRecs)) {
       mRecs.Items.push(...(sRecs.Items));
       mRecs.Count += sRecs.Count;
       mRecs.Items.sort((a, b) => {
@@ -465,21 +483,23 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         if (!msg.message_content.startsWith('Message from') && (msg.sender_id !== pPerson)) {
           msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
         }
-        let foundMessage = msg.message_content + '$~~$' + msg.message_id + '$~~$' + ((msg.recipient_id === pPerson) ? 'to' : 'from');
+        let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$${((msg.recipient_id === pPerson) ? 'to' : 'from')}$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`
         if (msg.recipient_id === pPerson) {
-          setMessageReplyRecipient(`${msg.sender_name}:${msg.sender_id}`);
+          setMessageReplyRecipient(`${msg.sender_name}:${msg.response_target || msg.sender_id}`);
         }
         setMessageText(foundMessage);
         return foundMessage;
       }
     }
     if (messageText) {
-      let [, mTime, mStatus] = messageText.split('$~~$');
-      if ((mStatus !== 'status') || (Number(mTime) < (now - oneHour))) {
+      // mTime,mContent,mID,mType,mSenderName:respondTo
+      let [mTime, , , mStatus] = messageText.split('$~~$');
+      if ((mStatus === 'status') || (Number(mTime) < (now - oneHour))) {
         setMessageText(null);
         return null;
       }
     }
+    setForceRedisplay(!forceRedisplay);
     return messageText;
   };
 
@@ -626,7 +646,6 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       let factFlavor = pFact.activity_key.split('.')[0];
       if (factFlavor !== 'action'
         && pFact.value.hasOwnProperty('selected')
-        && Object.keys(pFact.selected).length > 0
       ) {
         setPendingFact(pFact);
         let foundText = [];
@@ -645,9 +664,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             valueArray.push(`${key} = ${pFact.value.freeText[key]}`);
           }
         }
-        
+
         let factValueType = 'selection';
-        
+
         // special cases include forms, messages, and media
         if (factFlavor === 'form' || factFlavor === 'message') {
           if (pFact.status !== 'confirmed') {
@@ -660,7 +679,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 'Your selections are:',
               );
               valueArray.forEach(v => {
-                cMessage.push(v.split(/:/)[0]);
+                if (v.charAt(0) !== '~') { cMessage.push(v.split(/:/)[0]); }
               });
             }
             setConfirmMessage(cMessage);
@@ -803,18 +822,29 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       activity_name: pName,
       AVA_version: `22.10.24${window.location.href.split('//')[1].slice(0, 1)}`
     };
-    dbClient
-      .put({
-        Item: activityLogRec,
-        TableName: "ActivityLog"
-      })
-      .promise()
-      .catch(error => {
-        console.log({ 'Bad put to ActivityLog - caught error is': error });
-      });
+    let workLog = activityLogRecords;
+    workLog.push(activityLogRec);
+    setActivityLogRecords(workLog);
     mainMenu[pIndex].last_used = postTime;
     setMainMenu(mainMenu);
   };
+
+  async function putActivityLog() {
+    if (activityLogRecords.length > 0) {
+      let putObj = activityLogRecords.map(r => {
+        return { PutRequest: { Item: r } };
+      });
+      await dbClient
+        .batchWrite({
+          RequestItems: { 'ActivityLog': putObj }
+        })
+        .promise()
+        .catch(error => {
+          console.log(`Bad put to ActivityLog - caught error is: ${error}`);
+        });
+      setActivityLogRecords([]);
+    }
+  }
 
   const putFact = async (pFact, pFactName, pIndex) => {
     let postTime = new Date().getTime();
@@ -829,10 +859,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       posted_time: postTime
     };
     if (pFactName.toLowerCase().includes('send a')) {
-      setMessageText(`AVA is sending your ${pFactName.replace(/send a/i, '').trim()}.$~~$${postTime}$--$status`);
+      setMessageText(`${postTime}$~~$AVA is sending your ${pFactName.replace(/send a/i, '').trim()}.$~~$status`);
     }
     else {
-      setMessageText(`Your ${pFactName.split(/[-/]/)[0]} is being processed by AVA. $~~$${postTime}$--$status`);
+      setMessageText(`${postTime}$~~$Your ${pFactName.split(/[-/]/)[0]} is being processed by AVA.$~~$status`);
     }
     await dbClient
       .put({
@@ -981,11 +1011,6 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     }
   }
 
-  let idleSince = null;
-  let idleStartTime = 0;
-  let idleString = '';
-  let msInAMinute = 1000 * 60;
-
   // ******************
 
   return (
@@ -997,82 +1022,38 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       <React.Fragment>
         {/* Idle timer always running */}
         <IdleTimer
-          ref={ref => { idleTimer = ref; }}
-          timeout={(session?.kiosk_mode ? 1 : 30) * msInAMinute}   // every "n" minutes
-          onAction={(event) => {
-            if (idleSince) {
-              console.log(`Active at ${new Date().toLocaleString()} on ${event.type}`);
-              idleSince = null;
+          timeout={msBeforeSleeping}   // every "n" minutes
+          onAction={async (event) => {
+            let timeNow = new Date().getTime();
+            if (Math.round(timeNow - Math.max(lastRefresh, localLastRefresh)) >= (msBeforeSleeping)) {
+              setLoading(`AVA was asleep and is reloading`);
+              closeSnackbar();
+              enqueueSnackbar(`AVA is refreshing your menu after sleep...`, { variant: 'info', autoHideDuration: 5000 });
+              updateAVA(sectionOpen, mainMenu);
+              makeGreeting();
+              await getMessage(session.patient_id);
+              await buildMenu();
+              setCurrentMenu('main');
+              setMenuArray(['main']);
+              setMenuNames([]);
+              setLoading(false);
+              setForceRedisplay(!forceRedisplay);
             }
+            else if (Math.round(((new Date().getTime()) - Math.max(lastMessageCheck, localLastMessageCheck)) / oneMinute) > 0) {
+              console.log(`GetMessage fired at ${new Date().toLocaleString()}.  Last message check at ${new Date(lastMessageCheck).toLocaleString()}`);
+              await getMessage(session.patient_id);
+            }
+            setLastActive(timeNow);
+            localLastActive = timeNow;
+            console.log(`Last active set to ${new Date(timeNow).toLocaleString()}`);
           }}
           onIdle={async () => {
-            if (!idleSince) {
-              idleSince = idleTimer.getLastActiveTime();
-              idleString = new Date(idleSince).toLocaleString();
-              idleStartTime = new Date(idleSince).getTime();
-              console.log(`Idle since ${idleString}`);
-            }
-            else {
-              console.log(`Still idle at ${new Date().toLocaleString()}`);
-              if (session?.kiosk_mode) {
-                let checkTime = new Date().getTime() - idleStartTime;
-                if (checkTime > (4 * msInAMinute)) {
-                  closeSnackbar();
-                  await dbClient
-                    .update({
-                      Key: { session_id: session.user_id },
-                      UpdateExpression: 'set patient_id = :p, patient_display_name = :d',
-                      ExpressionAttributeValues: {
-                        ':p': session.user_id,
-                        ':d': session.user_display_name
-                      },
-                      TableName: "SessionsV2",
-                    })
-                    .promise()
-                    .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-                  let jumpTo = window.location.href.replace('refresh', 'theseus');
-                  window.location.replace(jumpTo);
-                }
-                else if (checkTime > (3 * msInAMinute)) {
-                  closeSnackbar();
-                  enqueueSnackbar(
-                    `Are you still there?  AVA will end your session in 1 minute...`,
-                    { variant: 'warning', persist: true }
-                  );
-                  try { new Audio(avaAlert).play(); }
-                  catch (err) {
-                    console.log('play sound failed due to browser');
-                  }
-                }
-                else if (checkTime > (2 * msInAMinute)) {
-                  closeSnackbar();
-                  enqueueSnackbar(
-                    `Are you still there?  AVA will end your session in 2 minutes...`,
-                    { variant: 'info', persist: true }
-                  );
-                  try { new Audio(avaAlert).play(); }
-                  catch (err) {
-                    console.log('play sound failed due to browser');
-                  }
-                }
-              }
-              else {
-                closeSnackbar();
-                setLoading('Idle Time expired - Reloading');
-                setForceRedisplay(!forceRedisplay);
-                makeGreeting();
-                await getMessage(session.patient_id);
-                await buildMenu();
-                setCurrentMenu('main');
-                setMenuArray(['main']);
-                setMenuNames([]);
-                setLoading(false);
-                setForceRedisplay(!forceRedisplay);
-              }
-            }
+            console.log(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
+            enqueueSnackbar(`AVA is asleep.  ${isMobile ? 'Touch the screen' : 'Move your mouse'} or tap something to wake her up!`, { variant: 'info', persist: true });
           }}
           debounce={250}
         />
+
         {/* Header with Avatar, Message, and VertMenu */}
         <Box
           display='flex' flexDirection='row'
@@ -1279,7 +1260,13 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
               key={'msgButtonBox'}
             >
               <Typography key={'message'} variant='subtitle2' className={classes.boldCenter}>
-                {messageText.split('$~~$')[0]}
+                {`${new Date(Number(messageText.split('$~~$')[0])).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                  hour12: true
+                }) } - ${messageText.split('$~~$')[1]}`}
               </Typography>
             </Box>
             <Box
@@ -1287,19 +1274,20 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             >
               <Button
                 onClick={async () => {
-                  if (messageText.split('$~~$')[2] !== 'status') {
-                    await deleteMessage(messageText.split('$~~$')[1]);
+                // mTime,mContent,mID,mType,mSenderName:respondTo
+                  if (messageText.split('$~~$')[3] !== 'status') {
+                    await deleteMessage(messageText.split('$~~$')[2]);
                   }
                   setMessageText(null);
-                  getMessage(session.patient_id);
+                  await getMessage(session.patient_id);
                   setForceRedisplay(!forceRedisplay);
                 }}
                 className={classes.rowButtonRed}
                 startIcon={<DeleteIcon size='small' />}
               >
-                {(messageText.split('$~~$')[2] !== 'to') ? 'Hide' : 'Delete'}
+                {(messageText.split('$~~$')[3] !== 'to') ? 'Hide' : 'Delete'}
               </Button>
-              {(messageText.split('$~~$')[2] === 'to') &&
+              {(messageText.split('$~~$')[3] === 'to') &&
                 <Button
                   onClick={async () => {
                     setPromptForMessage(true);
@@ -1328,7 +1316,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                     flexDirection='column'
                     minHeight={80}
                     onClick={async () => {
-                      getMessage(session.patient_id);
+                      await getMessage(session.patient_id);
                       menuArray.pop();
                       setCurrentMenu(menuArray[menuArray.length - 1]);
                       setMenuArray(menuArray);
@@ -1451,6 +1439,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                               onClick={async () => {
                                 activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
                                 if (!toggleClick && (this_row.row_type !== 'document')) {
+                                  if (this_row.subMenu_data) {
+                                    let subMenu = await MakeAVAMenu(patient, pClient, screenStatus, this_row.subMenu_data);
+                                    delete mainMenu[index].subMenu_data;
+                                    mainMenu.push(...subMenu);
+                                    setMainMenu(mainMenu);
+                                  }
                                   if (this_row.child_menu) {
                                     setCurrentMenu(this_row.child_menu);
                                     menuArray.push(this_row.child_menu);
@@ -1465,6 +1459,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                                   }
                                 }
                                 setToggleClick(false);
+                                await getMessage(session.patient_id);
                               }}
                             >
                               {this_row.row_type === 'document' ?
@@ -1638,7 +1633,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         }
         {promptForMessage &&
           <AVATextInput
-          promptText={`What should your reply to ${messageReplyRecipient.split(':')[0]} say?`}
+            promptText={`What should your reply to ${messageReplyRecipient.split(':')[0]} say?`}
             buttonText='Send'
             onCancel={() => { setPromptForMessage(false); }}
             onSave={(messageText) => {
