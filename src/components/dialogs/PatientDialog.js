@@ -281,14 +281,18 @@ export default ({ patient, picture, open, onClose }) => {
           email: (localPersonRec.messaging?.email || ''),
           cell: (localPersonRec.messaging?.sms ? formatPhone(localPersonRec.messaging?.sms) : ''),
           voice: (localPersonRec.messaging?.voice ? formatPhone(localPersonRec.messaging?.voice) : ''),
+          office: (localPersonRec.messaging?.office ? formatPhone(localPersonRec.messaging?.office) : ''),
           email_private: localPersonRec.messaging?.email_private,
           sms_private: localPersonRec.messaging?.sms_private,
           voice_private: localPersonRec.messaging?.voice_private,
+          office_private: localPersonRec.messaging?.office_private,
           searchTerm: (localPersonRec.search_data || ''),
           location: (localPersonRec.location || ''),
           inputPWD: (targetSession.last_login || 'password'),
+          favorite_activities: localPersonRec.favorite_activities,
+          favorite_blocked: localPersonRec.favorite_blocked,
           last_login: (targetSession.last_login || null),
-          prefMethod: localPersonRec.preferred_method || 'AVA',
+          preferred_method: localPersonRec.preferred_method || 'AVA',
           respArray: (finalRespArray || []),
           nameObj: (nameObj || {}),
           requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
@@ -430,13 +434,17 @@ export default ({ patient, picture, open, onClose }) => {
       email: localData.email,
       sms: localData.cell ? '+1' + localData.cell.replace(/\D/g, '') : null,
       voice: localData.voice ? '+1' + localData.voice.replace(/\D/g, '') : null,
+      office: localData.office ? '+1' + localData.office.replace(/\D/g, '') : null,
       email_private: (localData.email_private && 'true'),
       sms_private: (localData.sms_private && 'true'),
       voice_private: (localData.voice_private && 'true'),
+      office_private: (localData.office_private && 'true'),
       surrogate: localData.surrogate,
       search_data: localData.searchTerm,
-      preferred_method: localData.prefMethod || 'AVA',
+      preferred_method: localData.preferred_method || 'AVA',
       requirePassword: localData.requirePassword,
+      favorite_activities: localData.favorite_activities,
+      favorite_blocked: localData.favorite_blocked,
       storePassword: localData.storePassword,
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || null,
@@ -472,13 +480,17 @@ export default ({ patient, picture, open, onClose }) => {
         email: updatePerson.email,
         sms: updatePerson.sms,
         voice: updatePerson.voice,
+        office: updatePerson.office,
         email_private: !!updatePerson.email_private,
         sms_private: !!updatePerson.sms_private,
         voice_private: !!updatePerson.voice_private,
+        office_private: !!updatePerson.office_private,
         surrogate: localData.surrogate,
       },
       search_data: localData.searchTerm,
-      prefMethod: localData.prefMethod || 'AVA',
+      preferred_method: localData.preferred_method || 'AVA',
+      favorite_activities: localData.favorite_activities,
+      favorite_blocked: localData.favorite_blocked,
       requirePassword: localData.requirePassword,
       storePassword: localData.storePassword,
       directory_option: localData.directoryOption || 'normal',
@@ -631,6 +643,13 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+
+  const handleChangeOffice = event => {
+    localData.office = formatPhone('' + event.target.value.replace(/\D/g, ''));
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
   const handleChangeSurrogate = event => {
     let checkNum = event.target.value.replace(/[\d\s\-()]/g, '');
     if (checkNum) { localData.surrogate = event.target.value; }
@@ -667,7 +686,7 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const handleChangeMethod = event => {
-    localData.prefMethod = event.target.value;
+    localData.preferred_method = event.target.value;
     setRefreshTrigger(!refreshTrigger);
     setChanges(true);
   };
@@ -692,6 +711,12 @@ export default ({ patient, picture, open, onClose }) => {
 
   const handleChangeVoicePrivacy = event => {
     localData.voice_private = !localData.voice_private;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
+  const handleChangeOfficePrivacy = event => {
+    localData.office_private = !localData.office_private;
     setRefreshTrigger(!refreshTrigger);
     setChanges(true);
   };
@@ -801,7 +826,9 @@ export default ({ patient, picture, open, onClose }) => {
                 <div>
                   <TextField id='cell' value={localData.cell} onChange={handleChangeCell} helperText='cell phone' />
                   {'    '}
-                  <TextField id='home' value={localData.voice} onChange={handleChangeVoice} helperText='home phone' />
+                  <TextField id='home' value={localData.voice} onChange={handleChangeVoice} helperText='home phone' />{'    '}
+                  {'    '}
+                  <TextField id='work' value={localData.office} onChange={handleChangeOffice} helperText='work phone' />
                 </div>
                 <div>
                   <TextField id='surrogate' value={localData.surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
@@ -814,13 +841,14 @@ export default ({ patient, picture, open, onClose }) => {
                     justifyContent="center"
                   >
                     <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
-                    {localData.prefMethod &&
+                    {localData.preferred_method &&
                       <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup row defaultValue={localData.prefMethod} aria-label="PrefMethod" name="method" value={localData.prefMethod} onChange={handleChangeMethod}>
+                        <RadioGroup row defaultValue={localData.preferred_method} aria-label="PreferredMethod" name="method" value={localData.preferred_method} onChange={handleChangeMethod}>
                           <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!localData.cell} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!localData.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!localData.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>phone</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!localData.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>home phone</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="office" control={<Radio disabled={!localData.office} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>work phone</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!localData.surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>time-based</Typography>} />
                         </RadioGroup>
@@ -879,6 +907,7 @@ export default ({ patient, picture, open, onClose }) => {
                     <FormControlLabel className={classes.formControlLbl} onChange={handleChangeEmailPrivacy} control={<Checkbox disableRipple checked={localData.email_private} disabled={!localData.email} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail address</Typography>} />
                     <FormControlLabel className={classes.formControlLbl} onChange={handleChangeSmsPrivacy} control={<Checkbox disableRipple checked={localData.sms_private} disabled={!localData.cell} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Cell number</Typography>} />
                     <FormControlLabel className={classes.formControlLbl} onChange={handleChangeVoicePrivacy} control={<Checkbox disableRipple checked={localData.voice_private} disabled={!localData.voice} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Home number</Typography>} />
+                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeOfficePrivacy} control={<Checkbox disableRipple checked={localData.office_private} disabled={!localData.office} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Work number</Typography>} />
 
                     <Box mt={3}>
                       <TextField id='searchTerm' value={localData.searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
@@ -897,7 +926,7 @@ export default ({ patient, picture, open, onClose }) => {
             </Box>
           </Paper>
         </Box>
-        {localData.prefMethod === 'time_based' ?
+        {localData.preferred_method === 'time_based' ?
           <MessageRouting
             person={patient}
             updateSetChange={() => { setChanges(true); }}

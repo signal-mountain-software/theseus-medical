@@ -318,10 +318,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       if ('AVA_section_open' in menuRec.Item) {
         setSectionOpen(menuRec.Item.AVA_section_open);
       }
+/*      
       if (('AVA_main_menu' in menuRec.Item) && (menuRec.Item.AVA_main_menu.length > 0)) {
         setMainMenu(menuRec.Item.AVA_main_menu);
         return menuRec.Item.AVA_main_menu;
       }
+*/
     }
     else {
       if (session?.current_event) {
@@ -376,7 +378,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           UpdateExpression: 'set AVA_section_open = :o, AVA_main_menu = :m',
           ExpressionAttributeValues: {
             ':o': pOpen,
-            ':m': []
+            ':m': pMenu
           },
           TableName: "AVAMenu",
         })

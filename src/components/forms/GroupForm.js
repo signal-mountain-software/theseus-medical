@@ -451,22 +451,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       return searchString.toLowerCase().includes(person_filter_lower.trim());
     }
   }
-  /*
-    function makeIcon(pMessaging, pPreference, pIndex) {
-      if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
-        try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
-        catch (e) { pPreference = 'AVA'; }
-      }
-      switch (pPreference) {
-        case 'sms': { return (isMobile ? <TextSMSIcon className={classes.makeIconStyle} key={`sms-icon.${pIndex}`} /> : null); }
-        case 'voice': { return (isMobile ? <CallIcon className={classes.makeIconStyle} key={`call-icon.${pIndex}`} /> : null); }
-        case 'email': { return <EmailIcon className={classes.makeIconStyle} key={`email-icon.${pIndex}`} />; }
-        default: {
-          return null;
-        }
-      }
-    }
-  */
+  
   function getImage(pPerson) {
     return s3.getSignedUrl('getObject', {
       Bucket: imageBucket,
@@ -488,6 +473,12 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
         case 'voice': {
           if (pMessaging.voice && (!pMessaging.voice_private || (pGroup.toLowerCase() === '*all'))) {
             returnArray.push(`tel:${pMessaging.voice}~home ${formatPhone(pMessaging.voice)}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.voice_private ? ' *UNPUBLISHED*' : ''}`);
+          }
+          break;
+        }
+        case 'office': {
+          if (pMessaging.office && (!pMessaging.office_private || (pGroup.toLowerCase() === '*all'))) {
+            returnArray.push(`tel:${pMessaging.office}~work ${formatPhone(pMessaging.office)}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.office_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
@@ -700,6 +691,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                 if (updatedPerson) {
                   workingMemberList[editIndex].preferred_method = updatedPerson.prefMethod;
                   workingMemberList[editIndex].home = updatedPerson.voice;
+                  workingMemberList[editIndex].work = updatedPerson.office;
                   workingMemberList[editIndex].cell = updatedPerson.sms;
                   workingMemberList[editIndex].email = updatedPerson.email;
                   workingMemberList[editIndex].name = {
