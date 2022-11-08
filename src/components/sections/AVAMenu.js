@@ -427,9 +427,11 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
     let queryObj = {
       KeyConditionExpression: 'recipient_id = :p and posted_time > :t',
+      FilterExpression: 'sender_name <> :n',
       ExpressionAttributeValues: {
         ':p': pPerson,
         ':t': now - (24 * oneHour),
+        ':n': 'AVA notifications'
       },
       TableName: "Messages",
       IndexName: 'recipient_id-index',
@@ -480,7 +482,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         }
         let httpAt = msg.message_content.indexOf('http');
         if (httpAt > -1) {
-          msg.message_content = msg.message_content.substring(0, httpAt);
+          let lastSentenceAt = msg.message_content.lastIndexOf('.', httpAt);
+          msg.message_content = msg.message_content.substring(0, lastSentenceAt + 1);
         }
         if (!msg.message_content.startsWith('Message from') && (msg.sender_id !== pPerson)) {
           msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
