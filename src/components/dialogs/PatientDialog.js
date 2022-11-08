@@ -537,7 +537,7 @@ export default ({ patient, picture, open, onClose }) => {
 
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `v22.10.24`,
+        'version': `v22.11.8`,
         'environment': window.location.href.split('//')[1].charAt(0),
         'time': new Date().toString(),
         'action': 'Updated Person record',

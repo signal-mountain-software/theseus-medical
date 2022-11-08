@@ -175,7 +175,7 @@ export default Component => props => {
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
-            ml={2} mr={2}  mt={30}
+            ml={2} mr={2} mt={30}
           >
             <Card
               className={classes.logoSmall}
@@ -189,7 +189,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}
+              {`AVA version 22.11.8${window.location.href.split('//')[1].slice(0, 1)}`}
             </Typography>
             <CircularProgress />
           </Box>
@@ -570,7 +570,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage) {
     let attributeValues = {
       ':s': {
-        'version': `v22.10.24`,
+        'version': `v22.11.8`,
         'environment': window.location.href.split('//')[1].charAt(0),
         'time': new Date().toString(),
         'signin_status': pMessage,
@@ -619,7 +619,7 @@ export default Component => props => {
       })
       .promise()
       .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-   }
+  }
 
   async function validateUserAccount(payload) {
     const fResp = await lambda

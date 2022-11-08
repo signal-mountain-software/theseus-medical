@@ -318,12 +318,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       if ('AVA_section_open' in menuRec.Item) {
         setSectionOpen(menuRec.Item.AVA_section_open);
       }
-/*      
-      if (('AVA_main_menu' in menuRec.Item) && (menuRec.Item.AVA_main_menu.length > 0)) {
-        setMainMenu(menuRec.Item.AVA_main_menu);
-        return menuRec.Item.AVA_main_menu;
-      }
-*/
+      /*      
+            if (('AVA_main_menu' in menuRec.Item) && (menuRec.Item.AVA_main_menu.length > 0)) {
+              setMainMenu(menuRec.Item.AVA_main_menu);
+              return menuRec.Item.AVA_main_menu;
+            }
+      */
     }
     else {
       if (session?.current_event) {
@@ -488,7 +488,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         if (!msg.message_content.startsWith('Message from') && (msg.sender_id !== pPerson)) {
           msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
         }
-        let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$${((msg.recipient_id === pPerson) ? 'to' : 'from')}$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`
+        let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$${((msg.recipient_id === pPerson) ? 'to' : 'from')}$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
         if (msg.recipient_id === pPerson) {
           setMessageReplyRecipient(`${msg.sender_name}:${msg.response_target || msg.sender_id}`);
         }
@@ -825,7 +825,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       user_id: pUser,
       activity_code: pCode,
       activity_name: pName,
-      AVA_version: `22.10.24${window.location.href.split('//')[1].slice(0, 1)}`
+      AVA_version: `22.11.8${window.location.href.split('//')[1].slice(0, 1)}`
     };
     let workLog = activityLogRecords;
     workLog.push(activityLogRec);
@@ -1216,7 +1216,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                   display='flex' flexDirection='row' alignItems={'center'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA v22.10.24${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA v22.11.8${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 </Box>
               </MenuItem>
             </MenuList>
@@ -1247,7 +1247,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 22.10.24${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
+                <Typography variant='caption' >{`version 22.11.8${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
                 <Typography >{loading}</Typography>
               </Box>
               <CircularProgress />
@@ -1271,7 +1271,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                   hour: 'numeric',
                   minute: '2-digit',
                   hour12: true
-                }) } - ${messageText.split('$~~$')[1]}`}
+                })} - ${messageText.split('$~~$')[1]}`}
               </Typography>
             </Box>
             <Box
@@ -1279,7 +1279,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             >
               <Button
                 onClick={async () => {
-                // mTime,mContent,mID,mType,mSenderName:respondTo
+                  // mTime,mContent,mID,mType,mSenderName:respondTo
                   if (messageText.split('$~~$')[3] !== 'status') {
                     await deleteMessage(messageText.split('$~~$')[2]);
                   }
