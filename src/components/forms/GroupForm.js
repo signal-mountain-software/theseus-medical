@@ -689,7 +689,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
               open={true}
               onClose={(updatedPerson) => {
                 if (updatedPerson) {
-                  workingMemberList[editIndex].preferred_method = updatedPerson.prefMethod;
+                  workingMemberList[editIndex].preferred_method = updatedPerson.preferred_method;
                   workingMemberList[editIndex].home = updatedPerson.voice;
                   workingMemberList[editIndex].work = updatedPerson.office;
                   workingMemberList[editIndex].cell = updatedPerson.sms;
