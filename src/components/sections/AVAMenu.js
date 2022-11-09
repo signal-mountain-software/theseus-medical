@@ -298,7 +298,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
-  const buildMenu = async () => {
+  const buildMenu = async (beQuiet = null) => {
     let nowTime = new Date().getTime();
     setLastRefresh(nowTime);
     localLastRefresh = nowTime;
@@ -338,9 +338,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         setSectionOpen({});
       }
     }
-    // If the menu is stored, use it.
 
-    let wholeMenu = await MakeAVAMenu(patient, pClient, screenStatus);
+    let wholeMenu = await MakeAVAMenu(patient, pClient, (beQuiet ? screenQuiet : screenStatus));
     if (wholeMenu.length > 0) {
       setMainMenu(wholeMenu);
       return wholeMenu;
@@ -526,6 +525,10 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
     };
     return null;
   }
+
+  const screenQuiet = (statusMessage) => {
+    return;
+  };
 
   const screenStatus = (statusMessage) => {
     setLoading(statusMessage);
@@ -1031,17 +1034,17 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           onAction={async (event) => {
             let timeNow = new Date().getTime();
             if (Math.round(timeNow - Math.max(lastRefresh, localLastRefresh)) >= (msBeforeSleeping)) {
-              setLoading(`AVA was asleep and is reloading`);
+//              setLoading(`AVA was asleep and is reloading`);
               closeSnackbar();
               enqueueSnackbar(`AVA is refreshing your menu after sleep...`, { variant: 'info', autoHideDuration: 5000 });
-              updateAVA(sectionOpen, mainMenu);
+              await updateAVA(sectionOpen, mainMenu);
               makeGreeting();
               await getMessage(session.patient_id);
-              await buildMenu();
+              await buildMenu(true);
               setCurrentMenu('main');
               setMenuArray(['main']);
               setMenuNames([]);
-              setLoading(false);
+//              setLoading(false);
               setForceRedisplay(!forceRedisplay);
             }
             else if (Math.round(((new Date().getTime()) - Math.max(lastMessageCheck, localLastMessageCheck)) / oneMinute) > 0) {
@@ -1054,6 +1057,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           }}
           onIdle={async () => {
             console.log(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
+            await updateAVA(sectionOpen, mainMenu);
             enqueueSnackbar(`AVA is asleep.  ${isMobile ? 'Touch the screen' : 'Move your mouse'} or tap something to wake her up!`, { variant: 'info', persist: true });
           }}
           debounce={250}
@@ -1445,7 +1449,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                                 activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
                                 if (!toggleClick && (this_row.row_type !== 'document')) {
                                   if (this_row.subMenu_data) {
-                                    let subMenu = await MakeAVAMenu(patient, pClient, screenStatus, this_row.subMenu_data);
+                                    let subMenu = await MakeAVAMenu(patient, pClient, screenQuiet, this_row.subMenu_data);
                                     delete mainMenu[index].subMenu_data;
                                     mainMenu.push(...subMenu);
                                     setMainMenu(mainMenu);
