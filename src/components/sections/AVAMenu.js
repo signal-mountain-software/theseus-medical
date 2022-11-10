@@ -725,17 +725,6 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
   };
 
   React.useEffect(() => {
-    const handleTabClose = async event => {
-      event.preventDefault();
-      await updateAVA(sectionOpen, mainMenu);
-    };
-    window.addEventListener('beforeunload', handleTabClose);
-    return () => {
-      window.removeEventListener('beforeunload', handleTabClose);
-    };
-  });
-
-  React.useEffect(() => {
     let response = (
       async () => {
         setLoading('Getting your Information');
@@ -757,7 +746,6 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       response();
     }
   }, [pPerson]); // eslint-disable-line react-hooks/exhaustive-deps
-
 
   const handleSendMessage = async (pPatient, pMessage, pRecipient = null) => {
     // program expects pRecipient in the form <display name>:<id>
@@ -1251,12 +1239,24 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
             <React.Fragment>
               <Box
                 display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                flexWrap='wrap' textOverflow='ellipsis' width='100%'
                 key={'loadingBox'}
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 22.11.8${window.location.href.split('//')[1].slice(0, 1)}`}</Typography>
-                <Typography >{loading}</Typography>
+                <Typography variant='caption' >{`version 22.11.8${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                {loading.startsWith('Common activities') ?
+                  <Box
+                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                    key={'loadingWordBox'}
+                  >
+                    <Typography>{'Common activities for'}</Typography>
+                    <Typography>{loading.split(' for ')[1]}</Typography>
+                  </Box>
+                  :
+                  <Typography>{loading}</Typography>
+                }
               </Box>
               <CircularProgress />
             </React.Fragment>
@@ -1389,6 +1389,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                             onClick={async () => {
                               sectionOpen[this_row.section_name] = !sectionOpen[this_row.section_name];
                               setSectionOpen(sectionOpen);
+                              await updateAVA(sectionOpen, mainMenu);
                               setForceRedisplay(!forceRedisplay);
                             }}
                           >
