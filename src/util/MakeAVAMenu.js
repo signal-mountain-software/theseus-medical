@@ -15,14 +15,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
 
     // let subMenus = [];
     let numberOfRows = 1000;
-
+    let sectionDetails = {};
     let activityHistory = {};
 
     // Main line
 
     let pPerson = requestor.person_id;
     if (!masterClient) { masterClient = requestor.client_id; };
-    if (subMenuData) { return await handleSubMenu(subMenuData) }
+    if (subMenuData) { return await handleSubMenu(subMenuData); }
     else { return await buildMainMenu(pPerson); }
 
 
@@ -30,7 +30,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
 
     async function handleSubMenu(pSubMenu) {
         let returnArray = [];
-        let [sectionColor, sectionIcon] = await getCustomizations(pSubMenu.menu_name)
+        let [sectionColor, sectionIcon] = await getCustomizations(pSubMenu.menu_name);
         let subActivities = await getSubMenu(pSubMenu.event_id, pSubMenu.client_id);
         let aL = subActivities.length;
         if (aL > 0) {
@@ -170,10 +170,17 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
                         sectionName = sectionKeys[1];
                     }
                     [sectionColor, sectionIcon] = await getCustomizations(sectionName);
+                    if (!(sectionName in sectionDetails)) {
+                        sectionDetails[sectionName] = {
+                            color: sectionColor,
+                            icon: sectionIcon,
+                            sort_key: sectionSort
+                        };
+                    }
                 }
                 else {
                     let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, `Group ${this_group.group_id}`);
-                    if (this_row) { 
+                    if (this_row) {
                         returnArray.push(this_row);
                         duplicateCheck.push(this_activity);
                     }
@@ -181,50 +188,33 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
             }
         }
 
-        /*
-        // Build sub-menus
-            event_id: activityRec.activity_code,
-            parent: pMenu,
-            parent_name: pParentName,
-            menu_name: activityRec.activity_name
-        // ('** SUB-MENUS **');
-        let menuDone = [];
-        for (let s = 0; s < subMenus.length; s++) {
-            // ({ 'Loop': s, 'Checking': subMenus[s] });
-            if (menuDone.includes(subMenus[s].event_id)) {
-                // (`${subMenus[s].event_id} is already built`);
-                continue;
-            }
-            screenStatus(`Getting ${subMenus[s].menu_name} for ${subMenus[s].parent} menu`)
-            sectionSort = `SUB-${s}`;
-            sectionName = subMenus[s].menu_name;
-            sectionColor = stringToColor(sectionName);
-            sectionIcon = AVAIcon;
-            let subActivities = await getSubMenu(subMenus[s].event_id, subMenus[s].client_id);
-            let aL = subActivities.length;
-            if (aL > 0) {
-                for (let a = 0; a < aL; a++) {
-                    let pos = 100 + a;
-                    let this_row = await addRow(`${subMenus[s].client_id}//${subActivities[a]}`, subMenus[s].event_id, subMenus[s].parent, sectionName, `${sectionSort}-${pos}`, sectionName, sectionColor, sectionIcon, `Sub-menu ${subMenus[s].event_id}`);
-                    if (this_row) { returnArray.push(this_row); }
+        // Add sort key where needed
+        for (let ndx = 0; ndx < returnArray.length; ndx++) {
+            let row = returnArray[ndx];
+            if (row.sort_key.startsWith('#need-')) {
+                let sData = {};
+                if (row.section_name in sectionDetails) {
+                    sData = sectionDetails[row.section_name];
                 }
-                menuDone.push(subMenus[s].event_id);
-            }
-        }
-                */
+                else {
+                    let [customStuff] = await getCustomizations(row.section_name);
+                    sData = {
+                        sort_key: `Z1~${row.section_name}`,
+                        color: customStuff[0], 
+                        icon: customStuff[1] 
+                    }
+                }
+                returnArray[ndx].sort_key = `${sData.sort_key}${row.sort_key.substring(5)}`;
+                returnArray[ndx].section_color = sData.color;
+                returnArray[ndx].row_color = sData.color;
+                returnArray[ndx].section_icon = sData.icon;
+            };
+        };
 
         // Sort by sort_key
         returnArray.sort((a, b) => {
             if (a.sort_key > b.sort_key) { return 1; }
             else { return -1; }
-        });
-
-        // Display results in the console log
-        let currentSection = '';
-        returnArray.forEach(row => {
-            if (row.section_name !== currentSection) {
-                currentSection = row.section_name;
-            };
         });
 
         // save for easy retieval next time
@@ -317,13 +307,21 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
         if (aType.includes('//')) {
             [aClient, aType] = aType.split('//');
         }
+        let favorite = (pReason === 'History') || requestor.favorite_activities.includes(activityRec.activity_code);
+        let pSort;
+        if (activityRec.section_name && !favorite) {
+            pSort = `#need-9${numberOfRows}`;
+        }
+        else {
+            pSort = `${pSectionSort}-${numberOfRows}`;
+        }
         return {
             menu_name: pMenu,
-            sort_key: `${pSectionSort}-${numberOfRows}`,
-            section_name: pSectionName,
+            sort_key: pSort,
+            section_name: (!favorite && activityRec.section_name) || pSectionName,
             section_color: pSectionColor,
             section_icon: pSectionIcon,
-            row_color: activityRec.color || pSectionColor,
+            row_color: pSectionColor,
             activity_code: activityRec.activity_code,
             activity_name: reconcile(activityRec.name),
             row_type: activityRec.type,
@@ -332,7 +330,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
             child_menu: ((aType === 'event') ? aCode : null),
             reason: pReason,
             last_used: last_used,
-            is_favorite: (pReason === 'History') || requestor.favorite_activities.includes(activityRec.activity_code),
+            is_favorite: favorite,
             subMenu_data: ((aType !== 'event')
                 ? null
                 : {
@@ -511,10 +509,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     }
 
     function cl() {
-            for (let v = 0; v < arguments.length; v++) {
-                let value = arguments[v];
-                if (typeof (value) === 'object') { console.log(JSON.stringify(value)); }
-                else { console.log(value); }
+        for (let v = 0; v < arguments.length; v++) {
+            let value = arguments[v];
+            if (typeof (value) === 'object') { console.log(JSON.stringify(value)); }
+            else { console.log(value); }
         }
     };
 

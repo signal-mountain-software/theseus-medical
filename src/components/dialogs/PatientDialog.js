@@ -288,6 +288,8 @@ export default ({ patient, picture, open, onClose }) => {
           office_private: localPersonRec.messaging?.office_private,
           searchTerm: (localPersonRec.search_data || ''),
           location: (localPersonRec.location || ''),
+          sessionClient: (targetSession.client_id || '#need'),
+          sessionPatient: (targetSession.patient_id || '#need'),
           inputPWD: (targetSession.last_login || 'password'),
           favorite_activities: localPersonRec.favorite_activities,
           favorite_blocked: localPersonRec.favorite_blocked,
@@ -402,8 +404,7 @@ export default ({ patient, picture, open, onClose }) => {
   const handleAbort = () => {
     setResettingPwd(false);
     setPwdConfirmed(false);
-    // setInputPWD('password');
-    localData.inputPWD = (patientSession.last_login || 'password');
+    localData.inputPWD = (patientSession ? (patientSession.last_login || 'password') : 'password');
     setChanges(false);
     onClose();
   };
@@ -569,6 +570,14 @@ export default ({ patient, picture, open, onClose }) => {
     if (localData.storePassword) {
       attributeValues[':sp'] = localData.storePassword;
       updateExpression += 'storePassword = :sp, ';
+    }
+    if (localData.sessionClient === '#need') {
+      attributeValues[':c'] = myClient;
+      updateExpression += 'client_id = :c, ';
+    }
+    if ((localData.sessionPatient === '#need') && !proxy) {
+      attributeValues[':p'] = patient.person_id;
+      updateExpression += 'patient_id = :p, person_id = :p, user_id = :p, ';
     }
     updateExpression = updateExpression.substring(0, updateExpression.length - 2);
     await dbClient
