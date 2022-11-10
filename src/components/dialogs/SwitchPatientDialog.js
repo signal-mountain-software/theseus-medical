@@ -1,6 +1,5 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { API, graphqlOperation } from 'aws-amplify';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import List from '@material-ui/core/List';
@@ -8,8 +7,6 @@ import Paper from '@material-ui/core/Paper';
 
 import { Lambda } from 'aws-sdk';
 
-import { updateSession } from '../../graphql/mutations';
-import { getPerson } from '../../graphql/queries';
 import { SET_PATIENT, SET_SESSION, SET_PATIENTS } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 import PersonFilter from '../forms/PersonFilter';
@@ -151,14 +148,6 @@ export default ({ open, roles, onClose, forceSwitch }) => {
     (async () => {
 
       if (session) {
-        const result1 = await API.graphql(
-          graphqlOperation(updateSession, { input: { session_id: session.user_id, patient_id: newPatient.split(':')[1] } })
-        ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.errors[0].message}`, {
-            variant: 'error',
-          });
-        });
-
         let [pName, pID] = newPatient.split(':');
         session.patient_id = pID;
         let ans = pName.split(',');
@@ -186,25 +175,29 @@ export default ({ open, roles, onClose, forceSwitch }) => {
           })
           .promise()
           .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-
-        const result2 = await API.graphql(
-          graphqlOperation(getPerson, {
-            person_id: result1.data.updateSession.patient_id || result1.data.updateSession.user_id,
+        let personRec = await dbClient
+          .get({
+            Key: { person_id: (session.patient_id || session.user_id) },
+            TableName: "People"
           })
-        ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.errors[0].message}`, {
-            variant: 'error',
-          });
-        });
-
+          .promise()
+          .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+        if (recordExists(personRec)) { 
+          dispatch({ type: SET_PATIENT, payload: personRec.Item });
+        }
         dispatch({ type: SET_SESSION, payload: session });
-        dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
       }
       let jumpTo = window.location.href.replace('refresh', 'theseus');
       window.location.replace(jumpTo);
       //    onClose();
     })();
   };
+
+  function recordExists(recordId) {
+    if (!recordId) { return false; }
+    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
+    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
+  }
 
   React.useEffect(() => {
     if (session) {

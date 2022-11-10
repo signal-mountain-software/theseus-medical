@@ -273,10 +273,6 @@ export default ({
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [formState, setFormState] = React.useState(1);
-  //const [firstTime, setFirstTime] = React.useState(true);
-
-  // const [qualifierTable, setQualifierTable] = React.useState({});
-  //const [associationsTable, setAssociationsTable] = React.useState({});
   const [qualifiers, setQualifiers] = React.useState([]);
   const [selectedFact, setSelectedFact] = React.useState('');
 
