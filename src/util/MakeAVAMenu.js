@@ -197,11 +197,11 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
                     sData = sectionDetails[row.section_name];
                 }
                 else {
-                    let [customStuff] = await getCustomizations(row.section_name);
+                    let [customColor, customIcon] = await getCustomizations(row.section_name);
                     sData = {
                         sort_key: `Z1~${row.section_name}`,
-                        color: customStuff[0], 
-                        icon: customStuff[1] 
+                        color: customColor, 
+                        icon: customIcon 
                     }
                 }
                 returnArray[ndx].sort_key = `${sData.sort_key}${row.sort_key.substring(5)}`;
