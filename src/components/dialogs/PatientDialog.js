@@ -538,8 +538,8 @@ export default ({ patient, picture, open, onClose }) => {
 
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `v22.11.8`,
-        'environment': window.location.href.split('//')[1].charAt(0),
+        'version': `v22.11.11`,
+        'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'action': 'Updated Person record',
         'source': 'patient_dialog'

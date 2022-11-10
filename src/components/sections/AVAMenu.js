@@ -805,7 +805,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       user_id: pUser,
       activity_code: pCode,
       activity_name: pName,
-      AVA_version: `22.11.8${window.location.href.split('//')[1].slice(0, 1)}`
+      AVA_version: `22.11.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
     };
     let workLog = activityLogRecords;
     workLog.push(activityLogRec);
@@ -1211,7 +1211,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                   display='flex' flexDirection='row' alignItems={'center'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA v22.11.8${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA v22.11.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 </Box>
               </MenuItem>
             </MenuList>
@@ -1244,7 +1244,7 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 22.11.8${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography variant='caption' >{`version 22.11.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
