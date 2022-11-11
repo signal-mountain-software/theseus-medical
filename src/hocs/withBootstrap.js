@@ -16,6 +16,8 @@ import useSession from '../hooks/useSession';
 import useIosCheck from '../hooks/useIosCheck';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import useMediaQuery from '@material-ui/core/useMediaQuery';
+
 import { SET_PATIENT, SET_PROFILE, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 import AVATextInput from '../components/forms/AVATextInput';
 
@@ -53,6 +55,8 @@ export default Component => props => {
 
   const classes = useStyles();
   const [platform] = useIosCheck();
+
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -197,7 +201,7 @@ export default Component => props => {
         {promptForUser() &&
           <AVATextInput
             titleText="AVA Sign-in"
-            promptText="Enter your User ID or Name"
+          promptText={isMobile ? "User ID / Name" : "Enter your User ID or Name"}
             buttonText='Sign In'
             onCancel={() => {
               enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
