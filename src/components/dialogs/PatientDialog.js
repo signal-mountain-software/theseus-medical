@@ -563,14 +563,12 @@ export default ({ patient, picture, open, onClose }) => {
       attributeValues[':pcd'] = new Date().toLocaleString();
       updateExpression += 'last_login = :ll, password_change_date = :pcd';
     }
-    if (localData.requirePassword) {
-      attributeValues[':rp'] = localData.requirePassword;
-      updateExpression += 'requirePassword = :rp, ';
-    };
-    if (localData.storePassword) {
-      attributeValues[':sp'] = localData.storePassword;
-      updateExpression += 'storePassword = :sp, ';
-    }
+    attributeValues[':rp'] = localData.requirePassword;
+    updateExpression += 'requirePassword = :rp, ';
+
+    attributeValues[':sp'] = localData.storePassword;
+    updateExpression += 'storePassword = :sp, ';
+
     if (localData.sessionClient === '#need') {
       attributeValues[':c'] = myClient;
       updateExpression += 'client_id = :c, ';
