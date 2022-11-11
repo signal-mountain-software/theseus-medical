@@ -35,7 +35,9 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   accessKeyId: process.env.REACT_APP_AVA_ID,
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
-
+const CognitoClient = new AWS.CognitoIdentityServiceProvider({
+  region: "us-east-1"
+})
 
 export default Component => props => {
 
@@ -78,7 +80,41 @@ export default Component => props => {
     let cognitoUser;
     let checkUser = (
       async () => {
-        // Does the URL contain a UserID?
+        let cognitoSession = await Auth
+          .currentSession()
+          .catch(e => {
+            console.log(e);
+          });
+        let cognitoCredentials = await Auth
+          .currentCredentials()
+          .catch(e => {
+            console.log(e);
+          });
+        let expirationTime = cognitoCredentials.expiration.getTime();
+        let now = new Date().getTime();
+        if (expirationTime < now) {
+          enqueueSnackbar(`Your session expired on ${cognitoCredentials.expiration.toLocaleDateString()} at ${cognitoCredentials.expiration.toLocaleTimeString()}.`, { 'persist': true })
+        }
+        let cognitoUser = await Auth
+          .currentUserInfo()
+          .catch(e => {
+            console.log(e);
+          });
+        let cognitoPoolUser = await Auth
+          .currentUserPoolUser()
+          .catch(e => {
+            console.log(e);
+          });
+        const refresh_token = await cognitoSession.getRefreshToken();
+        let goodRefresh = CognitoClient.adminInitiateAuth(
+          {
+            'AuthFlow': 'REFRESH_TOKEN_AUTH',
+            'ClientId': cognitoPoolUser.pool.clientId,
+            'UserPoolId': cognitoPoolUser.pool.userPoolId,
+            'AuthParameters': refresh_token
+          });
+        console.log({ cognitoSession, cognitoCredentials, cognitoUser, cognitoPoolUser, goodRefresh });
+          // Does the URL contain a UserID?
         let urlData = getParamsFromURL();
         if (urlData) {
           if (urlData.client || urlData.client_id) {
@@ -653,7 +689,7 @@ export default Component => props => {
         return [true, fRespObj.body];
       }
     }
-    catch { return [false, 'unknown error']; }
+    catch { return [false, 'unknown']; }
   };
 
   async function prepareAVAEnv(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL = null) {
@@ -720,7 +756,6 @@ export default Component => props => {
     }
     // 
     if ((cognitoConfirmed || recentlyConfirmed) && currentPatient && currentSession && currentProfile) {
-      closeSnackbar();
       enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
       let urlData = getParamsFromURL();
       if (urlData) {

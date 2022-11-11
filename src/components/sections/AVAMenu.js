@@ -276,6 +276,8 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
   const [loading, setLoading] = React.useState('Initializing');
 
+  const [cognitoCredentials, setCognitoCredentials] = React.useState();
+  
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [activityLogRecords, setActivityLogRecords] = React.useState([]);
 
@@ -311,6 +313,13 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     localLastRefresh = nowTime;
     setLastActive(nowTime);
     localLastActive = nowTime;
+    const localCredentials = await Auth
+      .currentCredentials()
+      .catch(e => {
+        console.log(e);
+      });
+    if (localCredentials) { setCognitoCredentials(localCredentials); }
+    else { setCognitoCredentials({ 'expiration': (nowTime + oneHour) }); } 
     console.log(`Refreshed at ${new Date().toLocaleString()}.`);
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
@@ -492,7 +501,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           minute: '2-digit',
           hour12: true
         })
-          } - ${msg.message_content}$~~$${msg.message_id}$~~$${((msg.recipient_id === pPerson) ? 'to' : 'from')}$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
+          } - ${msg.message_content}$~~$${msg.message_id}$~~$to$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
         setMessageReplyRecipient(`${msg.sender_name}:${msg.response_target || msg.sender_id}`);
         setMessageText(foundMessage);
         return foundMessage;
@@ -501,7 +510,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     else {
       // handle a sent message
       let msg = mRecs.Items[0];
-      let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$${((msg.recipient_id === pPerson) ? 'to' : 'from')}$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
+      let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$from$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
       setMessageText(foundMessage);
       return foundMessage;
     }
@@ -1006,7 +1015,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     return response;
   }
 
-  const handleClick = event => {
+  const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
 
@@ -1233,10 +1242,18 @@ export default ({ pPerson, patient, pClient, onReset }) => {
               </MenuItem>
               <MenuItem>
                 <Box
-                  display='flex' flexDirection='row' alignItems={'center'}
+                  display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA v22.11.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA vers 22.11.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`Sess exp ${cognitoCredentials ? cognitoCredentials.expiration.toLocaleDateString('en-US', {
+                    month: 'numeric',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  }) : 'na'}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`User ${session.patient_id}`}</Typography>
                 </Box>
               </MenuItem>
             </MenuList>
@@ -1309,9 +1326,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
               <Button
                 onClick={async () => {
                   // mTime,mContent,mID,mType,mSenderName:respondTo
-                  if (messageText.split('$~~$')[3] !== 'status') {
-                    await deleteMessage(messageText.split('$~~$')[2]);
-                  }
+                  await deleteMessage(messageText.split('$~~$')[2]);
                   setMessageText(null);
                   await getMessage(session.patient_id);
                   setForceRedisplay(!forceRedisplay);
