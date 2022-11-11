@@ -216,39 +216,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     setGroupMemberList(peopleRecs.Items);
     // setForceRedisplay(!forceRedisplay);
     return peopleRecs.Items;
-
-    /*
-    let invokeFailed = false;
-    setGroupMemberList([]);
-    params.Payload = JSON.stringify({
-      action: "get_group_members",
-      clientId: pSession.client_id,
-      request: {
-        "group_id": pGroup.group_id,
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let groupMemberList = JSON.parse(fResp.Payload);
-      if (groupMemberList.status === 200) {
-        setGroupMemberList(groupMemberList.body);
-        return groupMemberList;
-      }
-    };
-    enqueueSnackbar(`AVA encountered an error while retrieving Group list.`, {
-      variant: 'error'
-    });
-    onClose();
-    return [];
-    */
   };
 
   async function getPerson(pPerson) {
