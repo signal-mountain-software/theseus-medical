@@ -373,27 +373,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
 
     async function getGroupsPersonBelongsTo(pPerson) {
         // ({ 'in getGroupsPersonBelongsTo': { pPerson } });
-        /*
-        var peopleGroup = await dbClient
-            .query({
-                KeyConditionExpression: 'person_id = :p',
-                ExpressionAttributeValues: { ':p': pPerson },
-                TableName: 'PeopleGroups',
-            })
-            .promise()
-            .catch(error => {
-                clt({ 'Bad query on PeopleGroups in getGroupsPersonBelongsTo - caught error is': error });
-            });
-        if (recordExists(peopleGroup)) {
-            let pgL = peopleGroup.Items.length;
-            for (let p = 0; p < pgL; p++) {
-                let groupRec = await getGroup(peopleGroup.Items[p].client_group_id);
-                if (groupRec.group_id) { returnArray.push(groupRec); }
-            }
-            // ({ 'return from getGroupsPersonBelongsTo': returnArray });
-            return returnArray;
-        }
-        */
         let batchGetRequest = {
             RequestItems: {
             'Groups': {

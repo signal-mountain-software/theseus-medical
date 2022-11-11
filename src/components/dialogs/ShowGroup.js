@@ -251,6 +251,22 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     */
   };
 
+  async function getPerson(pPerson) {
+    let peopleRec = await dbClient
+      .get({
+        Key: {
+          person_id: pPerson
+        },
+        TableName: "People"
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on People - caught error is': error });
+      });
+    if (peopleRec && ('Item' in peopleRec)) { return peopleRec.Item; }
+    else { return {}; }
+  }
+
   async function getGroupDetails(pClient, pGroup) {
     let groupRec = await dbClient
       .get({
@@ -303,29 +319,20 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       }
     });
 
-    // Next, get all Groups that this person belongs to
-    var peopleGroup = await dbClient
-      .query({
-        KeyConditionExpression: 'person_id = :p',
-        ExpressionAttributeValues: { ':p': pPerson },
-        TableName: 'PeopleGroups',
-      })
-      .promise()
-      .catch(error => {
-        console.log({ 'Bad query on PeopleGroups in getGroupsPersonBelongsTo - caught error is': error });
-      });
-    if (peopleGroup && ('Items' in peopleGroup)) {
-      peopleGroup.Items.forEach(groupRec => {
-        if (!foundGroups.includes(groupRec.group_id)) {
-          returnObject[groupRec.name] =
-          {
-            group_id: groupRec.group_id,
-            role: (groupRec.admin_list?.includes(pPerson) ? 'admin' : 'member')
+    // Next, get any other Groups that this person belongs to
+    var personRec = await getPerson(pSession.patient_id); 
+    personRec.groups.forEach(async (group) => {
+      if (!foundGroups.includes(group)) {
+        let checkGroup = await getGroupDetails(pSession.client_id, group);
+        if (checkGroup.hasOwnProperty('name')) {
+          returnObject[checkGroup.name.trim()] = {
+            group_id: group.trim(),
+            role: 'member'
           };
-          foundGroups.push(groupRec.group_id);
+          foundGroups.push(group.trim());
         }
-      });
-    }
+      }
+    });
 
     // Finally, get open Groups that this person does not already belong to
     let openGroups = await dbClient
