@@ -3,6 +3,7 @@ import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { useCookies } from 'react-cookie';
 import IdleTimer from 'react-idle-timer';
@@ -236,7 +237,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
+export default ({ pPerson, patient, pClient, onReset }) => {
 
   const classes = useStyles();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
@@ -295,6 +296,8 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
 
   const imageBucket = 'theseus-medical-storage';
   const imageURI = 'public/patients/[person_id].jpg';
+  
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -317,7 +320,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         TableName: "AVAMenu"
       })
       .promise()
-      .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true } );
+        }
+        console.log(`caught error getting People record; error is:`, error);
+      });
     if (recordExists(menuRec) && ('AVA_section_open' in menuRec.Item)) {
       setSectionOpen(menuRec.Item.AVA_section_open);
     }
@@ -439,6 +447,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       })
       .promise()
       .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
         console.log({ 'Error reading Messages': error });
       });
     if (!recordExists(mRecs)) {
@@ -458,6 +469,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         })
         .promise()
         .catch(error => {
+          if (error.code === 'NetworkingError') {
+            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          }
           console.log({ 'Error reading Messages': error });
         });
       if (recordExists(mRecs)) {
@@ -537,7 +551,12 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
         TableName: "People"
       })
       .promise()
-      .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
+        console.log(`caught error getting People record; error is:`, error);
+      });
     if (recordExists(personRec)) {
       // add or remove from the favoriteList as appropriate
       let favoriteList = [];
@@ -891,6 +910,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       .invoke(params)
       .promise()
       .catch(err => {
+        if (err.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
         console.log('Call for Activity details failed.  Error is', JSON.stringify(err));
         invokeFailed = true;
       });
@@ -938,6 +960,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
       .invoke(params)
       .promise()
       .catch(err => {
+        if (err.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
         console.log('Call for Activity details failed.  Error is', JSON.stringify(err));
         invokeFailed = true;
       });
@@ -1012,9 +1037,9 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
           timeout={msBeforeSleeping}   // every "n" minutes
           onAction={async (event) => {
             if (!showAddAccount && (showNewFactDialog === -1) && !showProfileEdit && !showPersonSelect) {
+              closeSnackbar();
               let timeNow = new Date().getTime();
               if (Math.round(timeNow - Math.max(lastRefresh, localLastRefresh)) >= (msBeforeSleeping)) {
-                closeSnackbar();
                 await updateAVA(sectionOpen, mainMenu);
                 makeGreeting();
                 await getMessage(session.patient_id || patient.person_id);
@@ -1077,13 +1102,13 @@ export default ({ pPerson, patient, pClient, isMobile, onReset }) => {
                 className={classes.hello}
                 id='scroll-dialog-title'
               >
-                {`Good ${greetingTime}, ${greetingName}!`}
+                {`${isMobile ? 'Hi' : ('Good '+ greetingTime)}, ${greetingName}!`}
               </Typography>
               <Typography
                 className={classes.hello}
                 id='scroll-dialog-title'
               >
-                {`Welcome to AVA`}
+                {`${(!isMobile ? 'Welcome to ' : '')}AVA`}
               </Typography>
             </Box>
           </Box>

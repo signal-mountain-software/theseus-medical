@@ -495,6 +495,9 @@ export default Component => props => {
       })
       .promise()
       .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        };
         console.log({ 'Bad get on Session - caught error is': error });
       });
     if (!recordExists(sessionRec)) {
@@ -635,16 +638,22 @@ export default Component => props => {
       })
       .promise()
       .catch(err => {
+        if (err.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
         console.log('Call failed.  Error is', JSON.stringify(err));
         return [false, 'AVA could not validate your Account'];
       });
-    let fRespObj = JSON.parse(fResp.Payload);
-    if (fRespObj.status === 400) {
-      return [false, fRespObj.body];
+    try {
+      let fRespObj = JSON.parse(fResp.Payload);
+      if (fRespObj.status === 400) {
+        return [false, fRespObj.body];
+      }
+      else {
+        return [true, fRespObj.body];
+      }
     }
-    else {
-      return [true, fRespObj.body];
-    }
+    catch { return [false, 'unknown error']; }
   };
 
   async function prepareAVAEnv(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL = null) {
