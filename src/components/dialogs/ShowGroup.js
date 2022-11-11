@@ -303,7 +303,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       }
     });
 
-    // Next, get Groups that this person belongs (note whether he or she is in the admin_list)
+    // Next, get all Groups that this person belongs to
     var peopleGroup = await dbClient
       .query({
         KeyConditionExpression: 'person_id = :p',

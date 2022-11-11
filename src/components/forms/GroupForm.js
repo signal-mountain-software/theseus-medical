@@ -442,7 +442,15 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     else { return pPhone; }
   }
 
-  function filteredPerson(pName = { last: '*$*' }, pLoc, pMessaging = { sms: '*$*' }, pPerson) {
+  function okToShow(pItem) {
+    if (person_filter && !filteredPerson(pItem.name, pItem.location, pItem.messaging, pItem)) { return false; }
+    if (pGroup.toLowerCase() === '*all') { return true; } 
+    if (['responsible', 'admin'].includes(pRole)) { return true; }
+    if (pItem.directory_option !== 'exclude') { return true; };
+    return false;
+}
+
+  function filteredPerson(pName = { last: '*$*' }, pLoc = '*na*', pMessaging = { sms: '*$*' }, pPerson) {
     if (singleFilterDigit) {
       return (pName.last.toLowerCase().startsWith(person_filter_lower.trim()) || pLoc.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
     }
@@ -537,9 +545,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                 {rowsWritten = 0}
               </Typography>
               {workingMemberList.map((this_item, index) => (
-                ((rowsWritten <= rowLimit) &&
-                  (!person_filter || filteredPerson(this_item.name, this_item.location || '*na*', this_item.messaging, this_item)) &&
-                  ((pGroup.toLowerCase() === '*all') || (!('directory_option' in this_item) || (this_item.directory_option !== 'exclude'))) &&
+                ((rowsWritten <= rowLimit) && okToShow(this_item) &&
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsWritten++}

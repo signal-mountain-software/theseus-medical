@@ -372,8 +372,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     }
 
     async function getGroupsPersonBelongsTo(pPerson) {
-        var returnArray = [];
         // ({ 'in getGroupsPersonBelongsTo': { pPerson } });
+        /*
         var peopleGroup = await dbClient
             .query({
                 KeyConditionExpression: 'person_id = :p',
@@ -393,25 +393,32 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
             // ({ 'return from getGroupsPersonBelongsTo': returnArray });
             return returnArray;
         }
-        return [];
-    }
-
-    async function getGroup(pClientGroup) {
-        let [pClient, pGroup] = pClientGroup.split('~');
-        let groupRec = await dbClient
-            .get({
-                Key: {
-                    client_id: pClient,
-                    group_id: pGroup
-                },
-                TableName: "Groups"
-            })
+        */
+        let batchGetRequest = {
+            RequestItems: {
+            'Groups': {
+                Keys: []
+            }
+            }
+        }
+        requestor.groups.forEach(g => { 
+            batchGetRequest.RequestItems.Groups.Keys.push(
+                {
+                client_id: masterClient,
+                group_id: g
+                }
+            )
+        })
+        let groupRecs = await dbClient
+            .batchGet(batchGetRequest)
             .promise()
             .catch(error => {
                 clt({ 'Bad get on Groups - caught error is': error });
             });
-        if (recordExists(groupRec)) { return groupRec.Item; };
-        return {};
+        if (groupRecs && ('Responses' in groupRecs)) {
+            return groupRecs.Responses.Groups;
+        }
+        else { return []; }
     }
 
     function reconcile(pString) {

@@ -1037,9 +1037,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           timeout={msBeforeSleeping}   // every "n" minutes
           onAction={async (event) => {
             if (!showAddAccount && (showNewFactDialog === -1) && !showProfileEdit && !showPersonSelect) {
-              closeSnackbar();
               let timeNow = new Date().getTime();
               if (Math.round(timeNow - Math.max(lastRefresh, localLastRefresh)) >= (msBeforeSleeping)) {
+                closeSnackbar();
                 await updateAVA(sectionOpen, mainMenu);
                 makeGreeting();
                 await getMessage(session.patient_id || patient.person_id);
