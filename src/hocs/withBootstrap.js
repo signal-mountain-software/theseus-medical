@@ -16,6 +16,8 @@ import useSession from '../hooks/useSession';
 import useIosCheck from '../hooks/useIosCheck';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import useMediaQuery from '@material-ui/core/useMediaQuery';
+
 import { SET_PATIENT, SET_PROFILE, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 import AVATextInput from '../components/forms/AVATextInput';
 
@@ -33,7 +35,9 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   accessKeyId: process.env.REACT_APP_AVA_ID,
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
-
+const CognitoClient = new AWS.CognitoIdentityServiceProvider({
+  region: "us-east-1"
+})
 
 export default Component => props => {
 
@@ -53,6 +57,8 @@ export default Component => props => {
 
   const classes = useStyles();
   const [platform] = useIosCheck();
+
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -74,7 +80,41 @@ export default Component => props => {
     let cognitoUser;
     let checkUser = (
       async () => {
-        // Does the URL contain a UserID?
+        let cognitoSession = await Auth
+          .currentSession()
+          .catch(e => {
+            console.log(e);
+          });
+        let cognitoCredentials = await Auth
+          .currentCredentials()
+          .catch(e => {
+            console.log(e);
+          });
+        let expirationTime = cognitoCredentials.expiration.getTime();
+        let now = new Date().getTime();
+        if (expirationTime < now) {
+          enqueueSnackbar(`Your session expired on ${cognitoCredentials.expiration.toLocaleDateString()} at ${cognitoCredentials.expiration.toLocaleTimeString()}.`, { 'persist': true })
+        }
+        let cognitoUser = await Auth
+          .currentUserInfo()
+          .catch(e => {
+            console.log(e);
+          });
+        let cognitoPoolUser = await Auth
+          .currentUserPoolUser()
+          .catch(e => {
+            console.log(e);
+          });
+        const refresh_token = await cognitoSession.getRefreshToken();
+        let goodRefresh = CognitoClient.adminInitiateAuth(
+          {
+            'AuthFlow': 'REFRESH_TOKEN_AUTH',
+            'ClientId': cognitoPoolUser.pool.clientId,
+            'UserPoolId': cognitoPoolUser.pool.userPoolId,
+            'AuthParameters': refresh_token
+          });
+        console.log({ cognitoSession, cognitoCredentials, cognitoUser, cognitoPoolUser, goodRefresh });
+          // Does the URL contain a UserID?
         let urlData = getParamsFromURL();
         if (urlData) {
           if (urlData.client || urlData.client_id) {
@@ -171,8 +211,12 @@ export default Component => props => {
         p={2}
         fullScreen
       >
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <Box mt={3} display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+        <React.Fragment>
+          <Box
+            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+            key={'loadingBox'}
+            ml={2} mr={2} mt={30}
+          >
             <Card
               className={classes.logoSmall}
               raised={false}
@@ -185,15 +229,15 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.10.9${window.location.href.split('//')[1].slice(0, 1)}`}
+              {`AVA version 22.11.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
             </Typography>
             <CircularProgress />
           </Box>
-        </div>
+        </React.Fragment>
         {promptForUser() &&
           <AVATextInput
             titleText="AVA Sign-in"
-            promptText="Enter your User ID or Name"
+          promptText={isMobile ? "User ID / Name" : "Enter your User ID or Name"}
             buttonText='Sign In'
             onCancel={() => {
               enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
@@ -487,6 +531,9 @@ export default Component => props => {
       })
       .promise()
       .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        };
         console.log({ 'Bad get on Session - caught error is': error });
       });
     if (!recordExists(sessionRec)) {
@@ -566,8 +613,8 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage) {
     let attributeValues = {
       ':s': {
-        'version': `v22.10.9`,
-        'environment': window.location.href.split('//')[1].charAt(0),
+        'version': `v22.11.11`,
+        'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'signin_status': pMessage,
         'source': 'bootstrap'
@@ -585,8 +632,7 @@ export default Component => props => {
     if (pProfile.hasOwnProperty('name') || pPatient.patient_id) {
       let showName = (pProfile.hasOwnProperty('name') ? `${pPatient.name.first} ${pPatient.name.last}` : `Unnamed account (${pPatient.patient_id})`);
       attributeValues[':pn'] = showName;
-      attributeValues[':un'] = showName;
-      updateExpression += 'patient_display_name = :pn, user_display_name = :un, ';
+      updateExpression += 'patient_display_name = :pn, ';
     }
     if (platform) {
       attributeValues[':dev'] = platform;
@@ -628,16 +674,22 @@ export default Component => props => {
       })
       .promise()
       .catch(err => {
+        if (err.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
         console.log('Call failed.  Error is', JSON.stringify(err));
         return [false, 'AVA could not validate your Account'];
       });
-    let fRespObj = JSON.parse(fResp.Payload);
-    if (fRespObj.status === 400) {
-      return [false, fRespObj.body];
+    try {
+      let fRespObj = JSON.parse(fResp.Payload);
+      if (fRespObj.status === 400) {
+        return [false, fRespObj.body];
+      }
+      else {
+        return [true, fRespObj.body];
+      }
     }
-    else {
-      return [true, fRespObj.body];
-    }
+    catch { return [false, 'unknown']; }
   };
 
   async function prepareAVAEnv(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL = null) {
@@ -704,7 +756,6 @@ export default Component => props => {
     }
     // 
     if ((cognitoConfirmed || recentlyConfirmed) && currentPatient && currentSession && currentProfile) {
-      closeSnackbar();
       enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
       let urlData = getParamsFromURL();
       if (urlData) {

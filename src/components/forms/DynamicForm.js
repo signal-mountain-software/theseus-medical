@@ -32,8 +32,6 @@ import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
 
-import AVAMenu from '../sections/AVAMenu';
-
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 
@@ -273,10 +271,6 @@ export default ({
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [formState, setFormState] = React.useState(1);
-  //const [firstTime, setFirstTime] = React.useState(true);
-
-  // const [qualifierTable, setQualifierTable] = React.useState({});
-  //const [associationsTable, setAssociationsTable] = React.useState({});
   const [qualifiers, setQualifiers] = React.useState([]);
   const [selectedFact, setSelectedFact] = React.useState('');
 
@@ -751,6 +745,13 @@ export default ({
         if (match) { phoneNumber = ['(', match[2], ') ', match[3], '-', match[4]].join(''); }
         qualifierTable[value].qualifiers.push('~~home: ' + phoneNumber + (result.data.getPerson.preferred_method === 'voice' ? '  - preferred' : ''));
       };
+      if (result?.data?.getPerson?.messaging?.office) {
+        let cleaned = ('' + result.data.getPerson.messaging.office).replace(/\D/g, '');
+        let match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
+        let phoneNumber = result.data.getPerson.messaging.office;
+        if (match) { phoneNumber = ['(', match[2], ') ', match[3], '-', match[4]].join(''); }
+        qualifierTable[value].qualifiers.push('~~work: ' + phoneNumber + (result.data.getPerson.preferred_method === 'office' ? '  - preferred' : ''));
+      };
 
       let response = await Storage.get('patients/' + person_id + '.jpg').catch(error => {
         console.log(`Whoops! Something went wrong getting picture from s3: ${error.message}`);
@@ -936,17 +937,7 @@ export default ({
   }, [checked, filterPromptValue, searchTextFromParent, values, session.search_terms]);
 
   switch (type) {
-    case 'special_test':
-      return (
-        <AVAMenu
-          pPerson={session.patient_id}
-          pClient={session.client_id}
-          isMobile={isMobile}
-          session={session}
-          onReset={onError}
-        />
-      );
-    case 'characteristic_num':
+     case 'characteristic_num':
       return (
         <NumberForm
           open={open}
@@ -1221,6 +1212,7 @@ export default ({
           OGpatient={OGsession}
           peopleList={values}
           currentEvent={defaultValue || []}
+          eventClient={newFact.client_id || session.client_id}
           showCalendar={true}
           onClose={onSave}
         />

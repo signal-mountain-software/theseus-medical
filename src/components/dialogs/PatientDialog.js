@@ -26,6 +26,7 @@ import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
 import RadioGroup from '@material-ui/core/RadioGroup';
 import Radio from '@material-ui/core/Radio';
+import Checkbox from '@material-ui/core/Checkbox';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
@@ -159,22 +160,9 @@ export default ({ patient, picture, open, onClose }) => {
   const classes = useStyles();
 
   const [localData, setLocalData] = React.useState({});
-  // const [firstName, setFirstName] = React.useState();
-  // const [lastName, setLastName] = React.useState();
-  // const [email, setEmail] = React.useState();
-  // const [cell, setCell] = React.useState();
-  // const [groupMemberList, setGroupMemberList] = React.useState([]);
-  // const [surrogate, setSurrogate] = React.useState();
-  // const [searchTerm, setSearchTerm] = React.useState();
-  // const [voice, setVoice] = React.useState();
-  // const [location, setLocation] = React.useState();
-  // const [inputPWD, setInputPWD] = React.useState();
-  // const [prefMethod, setMethod] = React.useState();
-  // const [directoryOption, setDirectoryOption] = React.useState();
   const [patientGroups, setPatientGroups] = React.useState();
   const [responsibleArray, setResponsibleArray] = React.useState();
   const [proxy, setProxy] = React.useState();
-  // const [personRec, setPersonRec] = React.useState();
 
   const [refreshTrigger, setRefreshTrigger] = React.useState(false);
 
@@ -228,18 +216,6 @@ export default ({ patient, picture, open, onClose }) => {
     async function initialize() {
       if (patient) {
         let localPersonRec = await getPersonRec(patient.person_id);
-        // setFirstName(patient.name.first);
-        // setLastName(patient.name.last);
-        // setCell(patient.messaging?.sms ? formatPhone(patient.messaging?.sms) : '');
-        // setVoice(patient.messaging?.voice ? formatPhone(patient.messaging?.voice) : '');
-        // setEmail(patient.messaging?.email || '');
-        // setLocation(patient.location || '');
-        // setSearchTerm(patient.search_data || '');
-        // setInputPWD('password');
-        // setMethod(patient.preferred_method);
-        // setDirectoryOption(localPersonRec ? (localPersonRec.directory_option || 'normal') : 'normal');
-        // if (isNaN(patient.messaging?.surrogate)) { setSurrogate(patient.messaging?.surrogate); }
-        // else { setSurrogate(formatPhone('' + patient.messaging?.surrogate)); }
         let foundAt;
         let groupFound;
         if (Array.isArray(localPersonRec.clients)) {
@@ -304,12 +280,21 @@ export default ({ patient, picture, open, onClose }) => {
           lastName: (localPersonRec.name?.last || ''),
           email: (localPersonRec.messaging?.email || ''),
           cell: (localPersonRec.messaging?.sms ? formatPhone(localPersonRec.messaging?.sms) : ''),
-          searchTerm: (localPersonRec.search_data || ''),
           voice: (localPersonRec.messaging?.voice ? formatPhone(localPersonRec.messaging?.voice) : ''),
+          office: (localPersonRec.messaging?.office ? formatPhone(localPersonRec.messaging?.office) : ''),
+          email_private: localPersonRec.messaging?.email_private,
+          sms_private: localPersonRec.messaging?.sms_private,
+          voice_private: localPersonRec.messaging?.voice_private,
+          office_private: localPersonRec.messaging?.office_private,
+          searchTerm: (localPersonRec.search_data || ''),
           location: (localPersonRec.location || ''),
+          sessionClient: (targetSession.client_id || '#need'),
+          sessionPatient: (targetSession.patient_id || '#need'),
           inputPWD: (targetSession.last_login || 'password'),
+          favorite_activities: localPersonRec.favorite_activities,
+          favorite_blocked: localPersonRec.favorite_blocked,
           last_login: (targetSession.last_login || null),
-          prefMethod: localPersonRec.preferred_method || 'AVA',
+          preferred_method: localPersonRec.preferred_method || 'AVA',
           respArray: (finalRespArray || []),
           nameObj: (nameObj || {}),
           requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
@@ -419,8 +404,7 @@ export default ({ patient, picture, open, onClose }) => {
   const handleAbort = () => {
     setResettingPwd(false);
     setPwdConfirmed(false);
-    // setInputPWD('password');
-    localData.inputPWD = (patientSession.last_login || 'password');
+    localData.inputPWD = (patientSession ? (patientSession.last_login || 'password') : 'password');
     setChanges(false);
     onClose();
   };
@@ -451,10 +435,17 @@ export default ({ patient, picture, open, onClose }) => {
       email: localData.email,
       sms: localData.cell ? '+1' + localData.cell.replace(/\D/g, '') : null,
       voice: localData.voice ? '+1' + localData.voice.replace(/\D/g, '') : null,
+      office: localData.office ? '+1' + localData.office.replace(/\D/g, '') : null,
+      email_private: (localData.email_private && 'true'),
+      sms_private: (localData.sms_private && 'true'),
+      voice_private: (localData.voice_private && 'true'),
+      office_private: (localData.office_private && 'true'),
       surrogate: localData.surrogate,
       search_data: localData.searchTerm,
-      prefMethod: localData.prefMethod || 'AVA',
+      preferred_method: localData.preferred_method || 'AVA',
       requirePassword: localData.requirePassword,
+      favorite_activities: localData.favorite_activities,
+      favorite_blocked: localData.favorite_blocked,
       storePassword: localData.storePassword,
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || null,
@@ -464,6 +455,61 @@ export default ({ patient, picture, open, onClose }) => {
       pwdReset: resettingPwd,
       newPassword: localData.inputPWD
     };
+    let newClients = {};
+    let myClient = null;
+    let clientArray = [];
+    patientGroups.forEach(g => {
+      let [clt, grp] = g.split('~');
+      if (!(clt in newClients)) { newClients[clt] = []; }
+      newClients[clt].push(grp);
+    });
+    for (const client in newClients) {
+      myClient = client;
+      clientArray.push({
+        id: client,
+        groups: newClients[client]
+      });
+    }
+    let putPerson = {
+      person_id: patient.person_id,
+      client_id: myClient,
+      "name": {
+        first: updatePerson.first,
+        last: updatePerson.last,
+      },
+      messaging: {
+        email: updatePerson.email,
+        sms: updatePerson.sms,
+        voice: updatePerson.voice,
+        office: updatePerson.office,
+        email_private: !!updatePerson.email_private,
+        sms_private: !!updatePerson.sms_private,
+        voice_private: !!updatePerson.voice_private,
+        office_private: !!updatePerson.office_private,
+        surrogate: localData.surrogate,
+      },
+      search_data: localData.searchTerm,
+      preferred_method: localData.preferred_method || 'AVA',
+      favorite_activities: localData.favorite_activities,
+      favorite_blocked: localData.favorite_blocked,
+      requirePassword: localData.requirePassword,
+      storePassword: localData.storePassword,
+      directory_option: localData.directoryOption || 'normal',
+      directory_partner: localData.directoryPartner || 'na',
+      time_based_rules: patient.time_based_rules,
+      clients: clientArray,
+      location: localData.location ? localData.location.replace(/,/g, '') : null,
+      pwdReset: resettingPwd,
+      newPassword: localData.inputPWD
+    };
+    await dbClient
+      .put({
+        Item: putPerson,
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => { console.log(`caught error updating People; error is:`, error); });
+
     if (typeof cropper !== "undefined") {
       // const croppedFile = dataUrlToFile(cropper.getCroppedCanvas().toDataURL('image/jpeg'), (patient.person_id + '_cropped.jpg'));
       cropper
@@ -472,6 +518,7 @@ export default ({ patient, picture, open, onClose }) => {
           await handleSavePhoto(new File([pBlob], (patient.person_id + '_cropped.jpg'), { type: 'image/jpeg' }), '');
         }), 'image/jpeg');
     }
+
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
     let newFactData = {
@@ -491,8 +538,8 @@ export default ({ patient, picture, open, onClose }) => {
 
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `v22.10.9`,
-        'environment': window.location.href.split('//')[1].charAt(0),
+        'version': `v22.11.11`,
+        'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'action': 'Updated Person record',
         'source': 'patient_dialog'
@@ -516,13 +563,19 @@ export default ({ patient, picture, open, onClose }) => {
       attributeValues[':pcd'] = new Date().toLocaleString();
       updateExpression += 'last_login = :ll, password_change_date = :pcd';
     }
-    if (localData.requirePassword) {
-      attributeValues[':rp'] = localData.requirePassword;
-      updateExpression += 'requirePassword = :rp, ';
-    };
-    if (localData.storePassword) {
-      attributeValues[':sp'] = localData.storePassword;
-      updateExpression += 'storePassword = :sp, ';
+    attributeValues[':rp'] = localData.requirePassword;
+    updateExpression += 'requirePassword = :rp, ';
+
+    attributeValues[':sp'] = localData.storePassword;
+    updateExpression += 'storePassword = :sp, ';
+
+    if (localData.sessionClient === '#need') {
+      attributeValues[':c'] = myClient;
+      updateExpression += 'client_id = :c, ';
+    }
+    if ((localData.sessionPatient === '#need') && !proxy) {
+      attributeValues[':p'] = patient.person_id;
+      updateExpression += 'patient_id = :p, person_id = :p, user_id = :p, ';
     }
     updateExpression = updateExpression.substring(0, updateExpression.length - 2);
     await dbClient
@@ -597,6 +650,13 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+
+  const handleChangeOffice = event => {
+    localData.office = formatPhone('' + event.target.value.replace(/\D/g, ''));
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
   const handleChangeSurrogate = event => {
     let checkNum = event.target.value.replace(/[\d\s\-()]/g, '');
     if (checkNum) { localData.surrogate = event.target.value; }
@@ -633,16 +693,38 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const handleChangeMethod = event => {
-    localData.prefMethod = event.target.value;
+    localData.preferred_method = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setMethod(event.target.value);
     setChanges(true);
   };
 
   const handleChangeDirectoryOption = event => {
     localData.directoryOption = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setDirectoryOption(event.target.value);
+    setChanges(true);
+  };
+
+  const handleChangeEmailPrivacy = event => {
+    localData.email_private = !localData.email_private;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
+  const handleChangeSmsPrivacy = event => {
+    localData.sms_private = !localData.sms_private;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
+  const handleChangeVoicePrivacy = event => {
+    localData.voice_private = !localData.voice_private;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  };
+
+  const handleChangeOfficePrivacy = event => {
+    localData.office_private = !localData.office_private;
+    setRefreshTrigger(!refreshTrigger);
     setChanges(true);
   };
 
@@ -751,7 +833,9 @@ export default ({ patient, picture, open, onClose }) => {
                 <div>
                   <TextField id='cell' value={localData.cell} onChange={handleChangeCell} helperText='cell phone' />
                   {'    '}
-                  <TextField id='home' value={localData.voice} onChange={handleChangeVoice} helperText='home phone' />
+                  <TextField id='home' value={localData.voice} onChange={handleChangeVoice} helperText='home phone' />{'    '}
+                  {'    '}
+                  <TextField id='work' value={localData.office} onChange={handleChangeOffice} helperText='work phone' />
                 </div>
                 <div>
                   <TextField id='surrogate' value={localData.surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
@@ -764,13 +848,14 @@ export default ({ patient, picture, open, onClose }) => {
                     justifyContent="center"
                   >
                     <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
-                    {localData.prefMethod &&
+                    {localData.preferred_method &&
                       <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup row defaultValue={localData.prefMethod} aria-label="PrefMethod" name="method" value={localData.prefMethod} onChange={handleChangeMethod}>
+                        <RadioGroup row defaultValue={localData.preferred_method} aria-label="PreferredMethod" name="method" value={localData.preferred_method} onChange={handleChangeMethod}>
                           <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!localData.cell} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!localData.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!localData.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>phone</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!localData.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>home phone</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="office" control={<Radio disabled={!localData.office} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>work phone</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!localData.surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>time-based</Typography>} />
                         </RadioGroup>
@@ -781,7 +866,7 @@ export default ({ patient, picture, open, onClose }) => {
                       {`My userID is ${patient?.person_id}`}
                     </Typography>
 
-                    <Typography className={classes.radioTextWithTopMargin}>With regard to the printed Directory...</Typography>
+                    <Typography className={classes.radioTextWithTopMargin}>With regard to the Directory...</Typography>
                     {localData.directoryOption &&
                       <FormControl className={classes.formControl} component="fieldset">
                         <RadioGroup row={false} defaultValue={localData.directoryOption} aria-label="DirOptions" name="dirOption" value={localData.directoryOption} onChange={handleChangeDirectoryOption}>
@@ -825,6 +910,11 @@ export default ({ patient, picture, open, onClose }) => {
                         </FormControl>
                       </React.Fragment>
                     }
+                    <Typography className={classes.radioTextWithTopMargin}>Please don't share my...</Typography>
+                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeEmailPrivacy} control={<Checkbox disableRipple checked={localData.email_private} disabled={!localData.email} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail address</Typography>} />
+                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeSmsPrivacy} control={<Checkbox disableRipple checked={localData.sms_private} disabled={!localData.cell} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Cell number</Typography>} />
+                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeVoicePrivacy} control={<Checkbox disableRipple checked={localData.voice_private} disabled={!localData.voice} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Home number</Typography>} />
+                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeOfficePrivacy} control={<Checkbox disableRipple checked={localData.office_private} disabled={!localData.office} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Work number</Typography>} />
 
                     <Box mt={3}>
                       <TextField id='searchTerm' value={localData.searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
@@ -843,7 +933,7 @@ export default ({ patient, picture, open, onClose }) => {
             </Box>
           </Paper>
         </Box>
-        {localData.prefMethod === 'time_based' ?
+        {localData.preferred_method === 'time_based' ?
           <MessageRouting
             person={patient}
             updateSetChange={() => { setChanges(true); }}

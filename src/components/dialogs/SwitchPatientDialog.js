@@ -1,6 +1,5 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { API, graphqlOperation } from 'aws-amplify';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import List from '@material-ui/core/List';
@@ -8,13 +7,19 @@ import Paper from '@material-ui/core/Paper';
 
 import { Lambda } from 'aws-sdk';
 
-import { updateSession } from '../../graphql/mutations';
-import { getPerson } from '../../graphql/queries';
 import { SET_PATIENT, SET_SESSION, SET_PATIENTS } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 import PersonFilter from '../forms/PersonFilter';
 
-export default ({ open, roles, onClose }) => {
+const AWS = require('aws-sdk');
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
+export default ({ open, roles, onClose, forceSwitch }) => {
   // const [selected, setSelected] = React.useState(null);
   const [callPending, setCallPending] = React.useState(false);
 
@@ -127,7 +132,8 @@ export default ({ open, roles, onClose }) => {
         }
       }
     );
-    getPatients();
+    if (forceSwitch) { handleConfirmation(forceSwitch) }
+    else { getPatients(); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClose = () => {
@@ -142,32 +148,56 @@ export default ({ open, roles, onClose }) => {
     (async () => {
 
       if (session) {
-        const result1 = await API.graphql(
-          graphqlOperation(updateSession, { input: { session_id: session.user_id, patient_id: newPatient.split(':')[1] } })
-        ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching a session: ${error.errors[0].message}`, {
-            variant: 'error',
-          });
-        });
-
-        const result2 = await API.graphql(
-          graphqlOperation(getPerson, {
-            person_id: result1.data.updateSession.patient_id || result1.data.updateSession.user_id,
+        let [pName, pID] = newPatient.split(':');
+        session.patient_id = pID;
+        let ans = pName.split(',');
+        switch (ans.length) {
+          case 3: {
+            session.patient_display_name = `${ans[2].trim()} ${ans[0].trim()}, ${ans[1].trim()}`;
+            break;
+          }
+          case 2: {
+            if (ans[1].startsWith('group=')) { session.patient_display_name = ''; }
+            else { session.patient_display_name = `${ans[1].trim()} ${ans[0].trim()}`; }
+            break;
+          }
+          default: { session.patient_display_name = ans[0].trim(); }
+        }
+        await dbClient
+          .update({
+            Key: { session_id: session.user_id },
+            UpdateExpression: 'set patient_id = :p, patient_display_name = :d',
+            ExpressionAttributeValues: {
+              ':p': session.patient_id,
+              ':d': session.patient_display_name
+            },
+            TableName: "SessionsV2",
           })
-        ).catch(error => {
-          enqueueSnackbar(`Whoops! Something went wrong when fetching a patient by session: ${error.errors[0].message}`, {
-            variant: 'error',
-          });
-        });
-
-        dispatch({ type: SET_SESSION, payload: result1.data.updateSession });
-        dispatch({ type: SET_PATIENT, payload: result2.data.getPerson });
+          .promise()
+          .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+        let personRec = await dbClient
+          .get({
+            Key: { person_id: (session.patient_id || session.user_id) },
+            TableName: "People"
+          })
+          .promise()
+          .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+        if (recordExists(personRec)) { 
+          dispatch({ type: SET_PATIENT, payload: personRec.Item });
+        }
+        dispatch({ type: SET_SESSION, payload: session });
       }
       let jumpTo = window.location.href.replace('refresh', 'theseus');
       window.location.replace(jumpTo);
       //    onClose();
     })();
   };
+
+  function recordExists(recordId) {
+    if (!recordId) { return false; }
+    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
+    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
+  }
 
   React.useEffect(() => {
     if (session) {

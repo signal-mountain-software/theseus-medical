@@ -14,9 +14,6 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
 
-import TextSMSIcon from '@material-ui/icons/Textsms';
-import CallIcon from '@material-ui/icons/Call';
-import EmailIcon from '@material-ui/icons/Email';
 import SwapIcon from '@material-ui/icons/SwapHoriz';
 
 import Button from '@material-ui/core/Button';
@@ -157,8 +154,8 @@ const useStyles = makeStyles(theme => ({
 
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3({
-  accessKeyId: 'AKIAR2O24AQ2HGHS4SFF',
-  secretAccessKey: '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'
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
 export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, pRole, isMobile, onReset }) => {
@@ -166,8 +163,8 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   const classes = useStyles();
   const { dispatch } = useSession();
 
-  const [person_filter, setPersonFilter] = React.useState('');
-  const [person_filter_lower, setPersonFilterLower] = React.useState('');
+  const [person_filter, setPersonFilter] = React.useState(' ');
+  const [person_filter_lower, setPersonFilterLower] = React.useState(' ');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -177,7 +174,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
   const [deletePending, setDeletePending] = React.useState(false);
   const [personRec, setPersonRec] = React.useState();
-  const [sessionRec, setSessionRec] = React.useState();
   const [showPatientDialog, setShowPatientDialog] = React.useState(false);
   const [confirmMessage, setConfirmMessage] = React.useState('');
   const [confirmPerson, setConfirmPerson] = React.useState('');
@@ -429,34 +425,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     };
   };
 
-
-
-  const getSessionInfo = async (pPerson) => {
-    let invokeFailed = false;
-
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    params.Payload = JSON.stringify({
-      action: "get_session_details",
-      clientId: pClient,
-      request: {
-        "person_id": pPerson,
-      }
-    });
-    let lambdaResponse = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let returnedSession = JSON.parse(lambdaResponse.Payload);
-      if (returnedSession.status === 200) {
-        setSessionRec(returnedSession.body);
-        return returnedSession.body;
-      }
-    };
-  };
-
   const onScroll = event => {
     if (rowLimit < workingMemberList.length) {
       let currentY = window.scrollY;
@@ -468,66 +436,30 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     }
   };
 
-  const toggleOpen = async (pIndex) => {
-    let workingOpen = [];
-    setSessionRec(null);
-    if (!open[pIndex]) {
-      workingOpen[pIndex] = true;
-      if (pRole === 'admin' || pRole === 'responsible') {
-        getSessionInfo(workingMemberList[pIndex].person_id);
-      }
-    }
-    setOpen(workingOpen);
-    setForceRedisplay(!forceRedisplay);
-  };
-
   function formatPhone(pPhone) {
     let match = ('' + pPhone).replace(/\D/g, '').match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
     if (match) { return `(${match[2]}) ${match[3]}-${match[4]}`; }
     else { return pPhone; }
   }
 
-  function filteredPerson(pName = { last: '*$*' }, pLoc, pMessaging = { sms: '*$*' }) {
+  function okToShow(pItem) {
+    if (person_filter && !filteredPerson(pItem.name, pItem.location, pItem.messaging, pItem)) { return false; }
+    if (pGroup.toLowerCase() === '*all') { return true; } 
+    if (['responsible', 'admin'].includes(pRole)) { return true; }
+    if (pItem.directory_option !== 'exclude') { return true; };
+    return false;
+}
+
+  function filteredPerson(pName = { last: '*$*' }, pLoc = '*na*', pMessaging = { sms: '*$*' }, pPerson) {
     if (singleFilterDigit) {
-      return (pName.last.toLowerCase().startsWith(person_filter_lower) || pLoc.toLowerCase().startsWith(person_filter_lower + '-'));
+      return (pName.last.toLowerCase().startsWith(person_filter_lower.trim()) || pLoc.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
     }
     else {
-      let searchString = [...Object.values(pName), pLoc, ...Object.values(pMessaging)].join(' ');
-      return searchString.toLowerCase().includes(person_filter_lower);
+      let searchString = [...Object.values(pName), pPerson.search_data, pLoc, ...Object.values(pMessaging)].join(' ');
+      return searchString.toLowerCase().includes(person_filter_lower.trim());
     }
   }
-
-  function makeLink(pMessaging, pPreference) {
-    if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
-      try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
-      catch (e) { pPreference = 'AVA'; }
-    }
-
-    switch (pPreference) {
-      case 'sms': { return `sms:${pMessaging.sms}`; }
-      case 'voice': { return `tel:${pMessaging.voice}`; }
-      case 'email': { return `mailto:${pMessaging.email}`; }
-      default: {
-        return null;
-      }
-    }
-  }
-
-  function makeIcon(pMessaging, pPreference, pIndex) {
-    if (!pPreference || ('sms%email%voice'.includes(pPreference) && !pMessaging[pPreference])) {
-      try { pPreference = Object.keys(pMessaging)[0] || 'AVA'; }
-      catch (e) { pPreference = 'AVA'; }
-    }
-    switch (pPreference) {
-      case 'sms': { return (isMobile ? <TextSMSIcon className={classes.makeIconStyle} key={`sms-icon.${pIndex}`} /> : null); }
-      case 'voice': { return (isMobile ? <CallIcon className={classes.makeIconStyle} key={`call-icon.${pIndex}`} /> : null); }
-      case 'email': { return <EmailIcon className={classes.makeIconStyle} key={`email-icon.${pIndex}`} />; }
-      default: {
-        return null;
-      }
-    }
-  }
-
+  
   function getImage(pPerson) {
     return s3.getSignedUrl('getObject', {
       Bucket: imageBucket,
@@ -541,25 +473,31 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     for (const messageType in pMessaging) {
       switch (messageType) {
         case 'sms': {
-          if (pMessaging.sms) {
-            returnArray.push(`cell ${formatPhone(pMessaging.sms)}${(pPreference === messageType) ? ' (pref)' : ''}`);
+          if (pMessaging.sms && (!pMessaging.sms_private || (pGroup.toLowerCase() === '*all'))) {
+            returnArray.push(`sms:${pMessaging.sms}~cell ${formatPhone(pMessaging.sms)}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.sms_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
         case 'voice': {
-          if (pMessaging.voice) {
-            returnArray.push(`home ${formatPhone(pMessaging.voice)}${(pPreference === messageType) ? ' (pref)' : ''}`);
+          if (pMessaging.voice && (!pMessaging.voice_private || (pGroup.toLowerCase() === '*all'))) {
+            returnArray.push(`tel:${pMessaging.voice}~home ${formatPhone(pMessaging.voice)}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.voice_private ? ' *UNPUBLISHED*' : ''}`);
+          }
+          break;
+        }
+        case 'office': {
+          if (pMessaging.office && (!pMessaging.office_private || (pGroup.toLowerCase() === '*all'))) {
+            returnArray.push(`tel:${pMessaging.office}~work ${formatPhone(pMessaging.office)}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.office_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
         case 'email': {
-          if (pMessaging.email) {
+          if (pMessaging.email && (!pMessaging.email_private || (pGroup.toLowerCase() === '*all'))) {
             let emailLines = [];
-            if ((pMessaging.email.length < 30) || !isMobile) { returnArray.push(`e-Mail ${pMessaging.email}${(pPreference === messageType) ? ' (pref)' : ''}`); }
+            if ((pMessaging.email.length < 30) || !isMobile) { returnArray.push(`mailto:${pMessaging.email}~e-Mail ${pMessaging.email}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.email_private ? ' *UNPUBLISHED*' : ''}`); }
             else {
               emailLines = pMessaging.email.split('@');
-              returnArray.push(`e-Mail ${emailLines[0]}@`);
-              returnArray.push(`  ${emailLines[1]}${(pPreference === messageType) ? ' (pref)' : ''}`);
+              returnArray.push(`mailto:${pMessaging.email}~e-Mail ${emailLines[0]}@`);
+              returnArray.push(`mailto:${pMessaging.email}~  ${emailLines[1]}${(pPreference === messageType) ? ' (pref)' : ''}`);
             }
           }
           break;
@@ -569,60 +507,6 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     }
     return returnArray;
   }
-
-  const getPersonSession = (pPerson) => {
-    if (sessionRec) {
-      let sessionData = [
-        '~~ Tech Info ~~',
-        `User ID: ${pPerson}`,
-        `Platform: ${sessionRec.platform}`,
-        `Version: ${sessionRec.lastVersion || 'not recorded'}`,
-        `Last use: ${sessionRec.lastUse || 'not recorded'}`,
-      ];
-
-      sessionData.push('Log-in history:');
-      if (sessionRec.access_log && sessionRec.access_log.length > 0) {
-        sessionRec.access_log.forEach(lRec => {
-          sessionData.push('->' + lRec);
-        });
-      }
-      else {
-        sessionData.push('->None');
-      }
-
-      sessionData.push('Recent Transactions:');
-      if (sessionRec.recentFacts && sessionRec.recentFacts.length > 0) {
-        sessionRec.recentFacts.forEach(fact => {
-          sessionData.push('->' + fact);
-        });
-      }
-      else {
-        sessionData.push('->None');
-      }
-
-      sessionData.push('Recent Activity:');
-      if (sessionRec.activity_log && sessionRec.activity_log.length > 0) {
-        sessionRec.activity_log.forEach(actL => {
-          sessionData.push('->' + actL);
-        });
-      }
-      else {
-        sessionData.push('->None');
-      }
-
-      sessionData.push('Associated accounts:');
-      if (sessionRec.associated_account && sessionRec.associated_account.length > 0) {
-        sessionRec.associated_account.forEach(aInfo => {
-          sessionData.push('->' + aInfo);
-        });
-      }
-      else {
-        sessionData.push('->None');
-      }
-      return sessionData;
-    }
-    else { return []; }
-  };
 
   // ******************
 
@@ -641,7 +525,10 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
             className={classes.title}
             id='scroll-dialog-title'
           >
-            {`Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`}
+            {(pGroup.toLowerCase() === '*all') ?
+              'Administrative View - All Accounts' :
+              `Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`
+            }
           </DialogContentText>
           <TextField
             id='List Filter'
@@ -658,7 +545,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                 {rowsWritten = 0}
               </Typography>
               {workingMemberList.map((this_item, index) => (
-                ((rowsWritten <= rowLimit) && (!person_filter || filteredPerson(this_item.name, this_item.location || '*na*', this_item.messaging)) ?
+                ((rowsWritten <= rowLimit) && okToShow(this_item) &&
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsWritten++}
@@ -668,132 +555,135 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                         display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
                         key={this_item.person_id + 'r' + index}
                         className={classes.listItem}
-                        onClick={() => { toggleOpen(index); }}
                       >
                         <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                           <Box display='flex' flexDirection='column'>
-                            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                              <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
-                              {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
-                            </Box>
-                            {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
-                            {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (<Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>))}
-                            <a href={makeLink(this_item.messaging, this_item.preferred_method)}
-                              style={{ color: 'inherit', textDecoration: 'none' }}>
-                              <Box
-                                display='flex'
-                                flexDirection='row'
-                                justifyContent='flex-start'
-                                alignItems='center'
-                                key={`contactRows.${index}`}
-                                onClick={() => { toggleOpen(index); }}
-                              >
-                                {makeIcon(this_item.messaging, this_item.preferred_method, index)}
-                                <Box display='flex' flexDirection='column'>
-                                  {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
-                                    .map((prefLine, prefIndex) => (
-                                      <Typography key={`prefLine-${index}.${prefIndex}`} className={classes.preferenceLine}>{prefLine}</Typography>
-                                    )))}
-                                </Box>
+                            <Box onClick={() => {
+                              setPromptForMessage(true);
+                              setMessageType(this_item.preferred_method);
+                              setRecipient(`${this_item.name.first} ${this_item.name.last || this_item.display_name}:` + this_item.person_id);
+                            }}>
+                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
+                                {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
                               </Box>
-                            </a>
+                              {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                            </Box>
+                            {(this_item.member_of) &&
+                              <Typography key={`member_of-${index}`} className={classes.lastName}>{this_item.member_of}</Typography>
+                            }
+                            {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
+                              <Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>
+                            ))}
+                            {(this_item.directory_option === 'exclude') &&
+                              <Typography key={`excluded-${index}`} className={classes.locationLine}>{'** Excluded from Directory **'}</Typography>
+                            }
+                            <Box
+                              display='flex'
+                              flexDirection='row'
+                              justifyContent='flex-start'
+                              alignItems='center'
+                              key={`contactRows.${index}`}
+                            >
+                              <Box display='flex' flexDirection='column'>
+                                {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
+                                  .map((prefLine, prefIndex) => (
+                                    <a href={prefLine.split('~')[0]}
+                                      key={`prefLink-${index}.${prefIndex}`}
+                                      style={{ color: 'inherit', textDecoration: 'none' }}>
+                                      <Typography
+                                        key={`prefLine-${index}.${prefIndex}`}
+                                        className={classes.preferenceLine}
+                                      >
+                                        {prefLine.split('~')[1]}
+                                      </Typography>
+                                    </a>
+                                  )))}
+                              </Box>
+                            </Box>
                           </Box>
                         </Box>
-                        <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-                          <Box
-                            component="img"
-                            ml={isMobile ? 2 : 5}
-                            mr={1}
-                            minWidth={isMobile ? 100 : 150}
-                            maxWidth={isMobile ? 100 : 150}
-                            alt=''
-                            src={getImage(this_item.person_id)}
-                          />
+                        <Box
+                          display='flex'
+                          flexDirection='row'
+                          justifyContent='space-between'
+                          alignItems='center'
+                          onClick={() => {
+                            if (pRole === 'admin' || pRole === 'responsible') {
+                              open[index] = !open[index];
+                              setOpen(open);
+                              setForceRedisplay(!forceRedisplay);
+                            }
+                          }}
+                        >
+                          <Box>
+                            <Box
+                              component="img"
+                              ml={isMobile ? 2 : 5}
+                              mr={1}
+                              minWidth={isMobile ? 100 : 150}
+                              maxWidth={isMobile ? 100 : 150}
+                              alt=''
+                              src={getImage(this_item.person_id)}
+                            />
+                          </Box>
+                          {(pRole === 'admin' || pRole === 'responsible') &&
+                            (!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />)
+                          }
                         </Box>
-                        {!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />}
                       </Box>
                       {open[index] &&
-                        <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
-                          <Box display='flex' flexDirection='column'>
+                        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                          {(pRole === 'admin' || pRole === 'responsible') &&
                             <Button
-                              onClick={() => {
-                                setPromptForMessage(true);
-                                setMessageType(this_item.preferred_method);
-                                setRecipient(`${this_item.name.first} ${this_item.name.last || this_item.display_name}:` + this_item.person_id);
+                              onClick={async () => {
+                                let switchData = await prepareSwitch(
+                                  pPatient,
+                                  this_item.person_id,
+                                  `${this_item.name.first} ${this_item.name.last || this_item.display_name}:`
+                                );
+                                dispatch({ type: SET_SESSION, payload: switchData[0] });
+                                dispatch({ type: SET_PATIENT, payload: switchData[1] });
+                                let jumpTo = window.location.href.replace('refresh', 'theseus');
+                                window.location.replace(jumpTo);
                               }}
                               className={classes.rowButtonGreen}
-                              startIcon={<SendIcon fontSize="small" />}
+                              startIcon={<SwapIcon fontSize="small" />}
                             >
-                              Message
+                              Switch to
                             </Button>
-                            <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
-                              {(pRole === 'admin' || pRole === 'responsible') &&
-                                <Button
-                                  onClick={async () => {
-                                    let switchData = await prepareSwitch(
-                                      pPatient,
-                                      this_item.person_id,
-                                      `${this_item.name.first} ${this_item.name.last || this_item.display_name}:`
-                                    );
-                                    dispatch({ type: SET_SESSION, payload: switchData[0] });
-                                    dispatch({ type: SET_PATIENT, payload: switchData[1] });
-                                    let jumpTo = window.location.href.replace('refresh', 'theseus');
-                                    window.location.replace(jumpTo);
-                                  }}
-                                  className={classes.rowButtonGreen}
-                                  startIcon={<SwapIcon fontSize="small" />}
-                                >
-                                  Switch to
-                                </Button>
-                              }
-                              {pRole === 'responsible' &&
-                                <Button
-                                  onClick={() => {
-                                    setEditIndex(index);
-                                    handlePatientEdit(this_item.person_id);
-                                  }}
-                                  className={classes.rowButtonDefault}
-                                  startIcon={<EditIcon fontSize="small" />}
-                                >
-                                  View/Edit
-                                </Button>
-                              }
-                              {(pRole === 'admin' || pRole === 'responsible') &&
-                                <Button
-                                  onClick={() => {
-                                    setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                                    setConfirmPerson(this_item.person_id);
-                                    setConfirmIndex(index);
-                                    setDeletePending(true);
-                                    setForceRedisplay(false);
-                                  }}
-                                  className={classes.rowButtonGreen}
-                                  startIcon={<DeleteIcon fontSize="small" />}
-                                >
-                                  Remove from Group
-                                </Button>
-                              }
-                            </Box>
-                          </Box>
-                        </Box>
-                      }
-                      {open[index] &&
-                        (pRole === 'admin' || pRole === 'responsible') &&
-                        <Box display='flex' flexDirection='column' paddingTop={1} paddingBottom={1}>
-                          {(getPersonSession(this_item.person_id)
-                            .map((sessLine, sessIndex) => (
-                              <Typography
-                                key={`prefLine-${index}.${sessIndex}`}
-                                className={(!sessLine.startsWith('->')) ? classes.techInfoLine : classes.techInfoLine2}
-                              >
-                                {sessLine.replace('->', '')}
-                              </Typography>
-                            )))}
+                          }
+                          {pRole === 'responsible' &&
+                            <Button
+                              onClick={() => {
+                                setEditIndex(index);
+                                handlePatientEdit(this_item.person_id);
+                              }}
+                              className={classes.rowButtonDefault}
+                              startIcon={<EditIcon fontSize="small" />}
+                            >
+                              View/Edit
+                            </Button>
+                          }
+                          {(pRole === 'admin' || pRole === 'responsible') && (pGroup.toLowerCase() !== '*all') &&
+                            <Button
+                              onClick={() => {
+                                setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                                setConfirmPerson(this_item.person_id);
+                                setConfirmIndex(index);
+                                setDeletePending(true);
+                                setForceRedisplay(false);
+                              }}
+                              className={classes.rowButtonGreen}
+                              startIcon={<DeleteIcon fontSize="small" />}
+                            >
+                              Remove from Group
+                            </Button>
+                          }
                         </Box>
                       }
                     </Box>
                   </Paper>
-                  : null
                 )
               ))}
             </List>
@@ -805,8 +695,9 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
               open={true}
               onClose={(updatedPerson) => {
                 if (updatedPerson) {
-                  workingMemberList[editIndex].preferred_method = updatedPerson.prefMethod;
+                  workingMemberList[editIndex].preferred_method = updatedPerson.preferred_method;
                   workingMemberList[editIndex].home = updatedPerson.voice;
+                  workingMemberList[editIndex].work = updatedPerson.office;
                   workingMemberList[editIndex].cell = updatedPerson.sms;
                   workingMemberList[editIndex].email = updatedPerson.email;
                   workingMemberList[editIndex].name = {
@@ -835,7 +726,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
           }
           {promptForMessage &&
             <AVATextInput
-              promptText={`What should your ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : messageType)} message to ${recipient.split(':')[0]} say?`}
+              promptText={`What should your ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : (!messageType ? 'AVA' : messageType))} message to ${recipient.split(':')[0]} say?`}
               buttonText='Send'
               onCancel={() => { setPromptForMessage(false); }}
               onSave={(messageText) => {
@@ -871,15 +762,17 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                   </Button>
                   {(pRole === 'admin' || pRole === 'responsible') &&
                     <React.Fragment>
-                      <Button
-                        className={classes.rowButtonGreen}
-                        onClick={() => {
-                          setShowAddPrompt(true);
-                        }}
-                        startIcon={<GroupAddIcon size="small" />}
-                      >
-                        {'Add Member'}
-                      </Button>
+                      {(pGroup.toLowerCase() !== '*all') &&
+                        <Button
+                          className={classes.rowButtonGreen}
+                          onClick={() => {
+                            setShowAddPrompt(true);
+                          }}
+                          startIcon={<GroupAddIcon size="small" />}
+                        >
+                          {'Add Member'}
+                        </Button>
+                      }
                       <Button
                         className={classes.rowButtonDefault}
                         onClick={() => { handlePrintDirectory(pGroup); }}

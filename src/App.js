@@ -23,8 +23,8 @@ import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
-import BottomNav from './components/BottomNav';
-import TopBar from './components/TopBar';
+// import BottomNav from './components/BottomNav';
+// import TopBar from './components/TopBar';
 import { createPutFact } from './graphql/mutations';
 import { API, graphqlOperation } from 'aws-amplify';
 
@@ -81,7 +81,7 @@ const handleWriteError = async (parmMessage) => {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = 22.10.9~${errorTime}`,
+    status: `Version = 22.11.11~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
@@ -95,11 +95,9 @@ const handleWriteError = async (parmMessage) => {
 const App = () => (
   <ErrorBoundary>
     <Box>
-      <TopBar />
       <Box pb={7}>
         <RootNavigation menu={menu} homePath={HOME} />
       </Box>
-      <BottomNav menu={menu} homePath={HOME} />
     </Box>
   </ErrorBoundary>
 );

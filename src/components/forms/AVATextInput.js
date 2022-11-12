@@ -20,6 +20,9 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(2),
     marginBottom: 0
   },
+  contentBox: {
+    minWidth: '80%'
+  },
   rowButtonRed: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
@@ -124,12 +127,11 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
             {titleText}
           </DialogContentText>
         }
-        <DialogContent>
+        <DialogContent className={classes.contentBox}>
           <Box
             display='flex'
             grow={1}
             mb={0}
-            width={350}
             flexDirection='column'
             justifyContent='center'
             alignItems='flex-start'
@@ -140,6 +142,7 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
                 id={`prompt-${ndx}`}
                 key={`prompt-${ndx}`}
                 fullWidth
+                inputRef={input => (ndx === 0) && input && input.focus()}
                 label={(prompt === titleText) ? '' : prompt}
                 value={textInput[ndx] || ''}
                 onChange={(event) => {
