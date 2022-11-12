@@ -37,7 +37,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
 });
 const CognitoClient = new AWS.CognitoIdentityServiceProvider({
   region: "us-east-1"
-})
+});
 
 export default Component => props => {
 
@@ -90,10 +90,12 @@ export default Component => props => {
           .catch(e => {
             console.log(e);
           });
-        let expirationTime = cognitoCredentials.expiration.getTime();
-        let now = new Date().getTime();
-        if (expirationTime < now) {
-          enqueueSnackbar(`Your session expired on ${cognitoCredentials.expiration.toLocaleDateString()} at ${cognitoCredentials.expiration.toLocaleTimeString()}.`, { 'persist': true })
+        if (cognitoCredentials && cognitoCredentials.expiration) {
+          let expirationTime = cognitoCredentials.expiration.getTime();
+          let now = new Date().getTime();
+          if (expirationTime < now) {
+            enqueueSnackbar(`Your session expired on ${cognitoCredentials.expiration.toLocaleDateString()} at ${cognitoCredentials.expiration.toLocaleTimeString()}.`, { 'persist': true });
+          }
         }
         let cognitoUser = await Auth
           .currentUserInfo()
@@ -105,16 +107,17 @@ export default Component => props => {
           .catch(e => {
             console.log(e);
           });
-        const refresh_token = await cognitoSession.getRefreshToken();
-        let goodRefresh = CognitoClient.adminInitiateAuth(
-          {
-            'AuthFlow': 'REFRESH_TOKEN_AUTH',
-            'ClientId': cognitoPoolUser.pool.clientId,
-            'UserPoolId': cognitoPoolUser.pool.userPoolId,
-            'AuthParameters': refresh_token
-          });
-        console.log({ cognitoSession, cognitoCredentials, cognitoUser, cognitoPoolUser, goodRefresh });
-          // Does the URL contain a UserID?
+        if (cognitoSession) {
+          const refresh_token = await cognitoSession.getRefreshToken();
+          let goodRefresh = CognitoClient.adminInitiateAuth(
+            {
+              'AuthFlow': 'REFRESH_TOKEN_AUTH',
+              'ClientId': cognitoPoolUser.pool.clientId,
+              'UserPoolId': cognitoPoolUser.pool.userPoolId,
+              'AuthParameters': refresh_token
+            });
+        }
+        // Does the URL contain a UserID?
         let urlData = getParamsFromURL();
         if (urlData) {
           if (urlData.client || urlData.client_id) {
@@ -237,7 +240,7 @@ export default Component => props => {
         {promptForUser() &&
           <AVATextInput
             titleText="AVA Sign-in"
-          promptText={isMobile ? "User ID / Name" : "Enter your User ID or Name"}
+            promptText={isMobile ? "User ID / Name" : "Enter your User ID or Name"}
             buttonText='Sign In'
             onCancel={() => {
               enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
