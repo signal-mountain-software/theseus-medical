@@ -293,9 +293,13 @@ export default Component => props => {
             }}
             onSave={async (enteredUserID) => {
               closeSnackbar();
-              enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
+              enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
               let cookieValues = getCookie();
-              await tryUser(enteredUserID, cookieValues.client, 'entered');
+              let result = await tryUser(enteredUserID.toLowerCase(), cookieValues.client, 'entered');
+              if ((result === 'invalid') && (enteredUserID.toLowerCase() !== enteredUserID)) {
+                enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
+                await tryUser(enteredUserID, cookieValues.client, 'entered');
+              }
             }}
             allowCancel={false}
           />
@@ -325,27 +329,33 @@ export default Component => props => {
               enqueueSnackbar(`Still looking...`, { variant: 'info' });
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let possibility = AVAFollowUpData.possibleUserRecs[p];
-                if (possibility.location.includes(enteredPass)) {
+                if (possibility.location.includes(enteredPass) || possibility.location.includes(enteredPass.toLowerCase())) {
                   if (possibility.sessionRec.requirePassword) {
                     let eMessage = `Using the information provided, AVA located account "${possibility.person_id}", but that account requires a password.  ("${enteredPass}" is not the right password.)`;
                     pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
-                    enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'info', persist: true });
+                    enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
                     return;
                   }
                   let result = await tryUser(possibility.person_id, possibility.client_id, 'location match');
                   if (result !== 'good') {
                     let eMessage = `Using the information provided, AVA located account "${possibility.person_id}".  However, we can't log that account into AVA.`;
                     pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
-                    enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'info', persist: true });
+                    enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
                     return;
                   }
                   else {
-                    pushLoginAttemptToArray(possibility.person_id, '', false, `Successful Log-in using entered location; user ID from list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`);
+                    let eMessage = `Successful Login for ${possibility.person_id} using entered location list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`;
+                    enqueueSnackbar(eMessage, { variant: 'info', persist: true });
+                    pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
                     launchAVA(possibility.person_id);
                     return;
                   }
                 }
               }
+              let eMessage = `None of the accounts we found have "${enteredPass}" as a password or location`;
+              pushLoginAttemptToArray('Text - not a UserID', '', false, eMessage);
+              enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
+              return;
             }}
           />
         }
