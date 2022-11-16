@@ -45,12 +45,9 @@ export default Component => props => {
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const { dispatch } = useSession();
-  // const { patient, session, profile } = state;
-  // const AVASessionData = sessionStorage.getItem('AVASessionData');
 
   const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
 
-  const [cognitoConfirmed, setCognitoConfirmed] = React.useState();
   const [AVAReady, setAVAReady] = React.useState(false);
   let localAVAReady = false;
   const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
@@ -59,6 +56,8 @@ export default Component => props => {
   const [platform] = useIosCheck();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const AVA_default_user = process.env.REACT_APP_AVA_PU;
+  const AVA_default_password = process.env.REACT_APP_AVA_PP;
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -75,129 +74,176 @@ export default Component => props => {
   let accessLogRecords = [];
 
   React.useEffect(() => {
-    let currentUser, currentSession, currentClient;
-    let currentPatient, currentProfile;
-    let cognitoUser;
     let checkUser = (
       async () => {
-        let cognitoSession = await Auth
+        let activeUser;
+        let localObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+        let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+        let localCognitoSession = await Auth
           .currentSession()
           .catch(e => {
             console.log(e);
           });
-        let cognitoCredentials = await Auth
-          .currentCredentials()
-          .catch(e => {
-            console.log(e);
-          });
-        if (cognitoCredentials && cognitoCredentials.expiration) {
-          let expirationTime = cognitoCredentials.expiration.getTime();
-          let now = new Date().getTime();
-          if (expirationTime < now) {
-            enqueueSnackbar(`Your session expired on ${cognitoCredentials.expiration.toLocaleDateString()} at ${cognitoCredentials.expiration.toLocaleTimeString()}.`, { 'persist': true });
+        console.log({ localObject, sessionObject });
+        if (localCognitoSession) {
+          await refreshSession(localCognitoSession.getRefreshToken());
+          if (sessionObject) {          // There is a good sessionObject.  This contains actual info about user
+            activeUser = sessionObject.currentProfile.person_id;
+            let uMessage = `Found ${activeUser} in session memory (AVASessionData)`;
+            pushLoginAttemptToArray(activeUser, '', false, uMessage);
+            let goodLaunch = launchAVA(activeUser);
+            if (goodLaunch) {
+              setAVAFollowUpData({ 'Completed': true });
+              pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+              return;
+            }
+          }
+          else if (localCognitoSession.idToken.payload['cognito:username'] !== AVA_default_user) {
+            activeUser = localCognitoSession.idToken.payload['cognito:username'];
+            let uMessage = `${activeUser} is already logged in`;
+            pushLoginAttemptToArray(activeUser, '', false, uMessage);
+            let goodLaunch = launchAVA(activeUser);
+            if (goodLaunch) {
+              setAVAFollowUpData({ 'Completed': true });
+              pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+              return;
+            }
+          }
+          else if (localCognitoSession.idToken.payload.jti) {
+            let AVAsession = await getSessions(localCognitoSession.idToken.payload.jti);
+            if (AVAsession && AVAsession.login.user_id) {
+              activeUser = AVAsession.login.user_id;
+              let uMessage = `Found ${activeUser} in Sessions table with jti (session_id) ${localCognitoSession.idToken.payload.jti}`;
+              pushLoginAttemptToArray(activeUser, '', false, uMessage);
+              let goodLaunch = launchAVA(activeUser);
+              if (goodLaunch) {
+                setAVAFollowUpData({ 'Completed': true });
+                pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+                return;
+              }
+            }
           }
         }
-        let cognitoUser = await Auth
-          .currentUserInfo()
-          .catch(e => {
-            console.log(e);
-          });
-        let cognitoPoolUser = await Auth
-          .currentUserPoolUser()
-          .catch(e => {
-            console.log(e);
-          });
-        if (cognitoSession) {
-          const refresh_token = await cognitoSession.getRefreshToken();
-          let goodRefresh = CognitoClient.adminInitiateAuth(
-            {
-              'AuthFlow': 'REFRESH_TOKEN_AUTH',
-              'ClientId': cognitoPoolUser.pool.clientId,
-              'UserPoolId': cognitoPoolUser.pool.userPoolId,
-              'AuthParameters': refresh_token
-            });
-        }
-        // Does the URL contain a UserID?
+        // No security session OR already logged in, but with an unknown user.  Do we know who this is?
+        let sessionUserID = null;
+        // Does the URL contain a User ID and/or client?
         let urlData = getParamsFromURL();
-        if (urlData) {
-          if (urlData.client || urlData.client_id) {
-            currentClient = urlData.client || urlData.client_id;
-          }
-          if (urlData.user || urlData.user_id) {
-            currentUser = urlData.user || urlData.user_id;
-            accessLog(currentUser, 'from URL', 'na',
-              'Using URL supplied UserID -' + (currentClient ? `with Client = ${currentClient}` : 'No client')
-            );
-            let allGood = await prepareAVAEnv(false, null, currentUser, currentSession, currentClient, currentPatient, currentProfile, urlData);
-            if (!allGood) { setAVAFollowUpData({ 'NeedUser': true }); }
-          }
+        if (urlData && (urlData.user || urlData.user_id)) {
+          sessionUserID = urlData.user || urlData.user_id;
+          await tryUser(sessionUserID, (urlData.client || urlData.client_id || null), 'url');
+          return;
         }
-        // Are we already authenticated with a "good" user?
-        if (!currentUser) {
-          cognitoUser = await Auth
-            .currentAuthenticatedUser()
-            .catch(e => {
-              console.log(e);
-            });
-          if (cognitoUser && (cognitoUser.username !== process.env.REACT_APP_AVA_PU)) {
-            // Someone is logged in (other than the default generic account)
-            let [goodSession, foundSession] = await getSession(cognitoUser.username);
-            if (goodSession) {
-              setCognitoConfirmed(true);
-              currentUser = foundSession.user_id;
-              currentClient = foundSession.client_id;
-              currentSession = foundSession;
-              accessLog(cognitoUser.username, '', currentSession.last_login, 'Existing AVA session used.');
-              let allGood = await prepareAVAEnv(true, currentSession.last_login, currentUser, currentSession, currentClient, currentPatient, currentProfile);
-              if (!allGood) {
-                setAVAFollowUpData({ 'NeedUser': true });
-                enqueueSnackbar(`AVA tried couldn't continue your previous session.  Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
-              }
-            }
-            else {
-              accessLog(cognitoUser, 'Cached', '', 'Cached user info incomplete.  Log-in required.');
-            }
-          }
-        }
-        // Does a Cookie exist and contain a UserID?
-        if (!currentUser) {
+        else {   // Check for a cookie
           let cookieValues = getCookie();
-          if (cookieValues.client) {
-            currentClient = cookieValues.client;
+          if (cookieValues && cookieValues.user_id) {
+            sessionUserID = cookieValues.user_id;
+            await tryUser(sessionUserID, cookieValues.client, 'cookie');
+            return;
           }
-          if (cookieValues.user_id) {
-            currentUser = cookieValues.user_id;
-            let [, currentSession] = await getSession(currentUser);
-            currentClient = currentSession.client_id;
-            accessLog(currentUser, 'from Cookie', '',
-              'Using Cookie supplied UserID ' + (currentClient ? `with Client = ${currentClient}` : 'with no client')
-            );
-            let goodLogIn = false;
-            let lActual;
-            [goodLogIn, , lActual] = await logMeIn(cookieValues.user_id, cookieValues.last_login, !!cognitoUser);
-            if (goodLogIn) {
-              let allGood = await prepareAVAEnv(goodLogIn, lActual, currentUser, currentSession, currentClient, currentPatient, currentProfile);
-              if (!allGood) {
-                setAVAFollowUpData({ 'NeedUser': true });
-                enqueueSnackbar(`AVA couldn't use the stored data.  Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
-              }
-            }
+          else {    // No URL data and no cookie
+            setAVAFollowUpData({ 'NeedUser': true });
+            return;
           }
         }
-        else if (!currentClient) {
-          let cookieValues = getCookie();
-          if (cookieValues.client) {
-            currentClient = cookieValues.client;
-          }
-        }
-        if (!currentUser) {
-          setAVAFollowUpData({ 'NeedUser': true });
-          enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
-        }
-      }
-    );
+      });
     checkUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function tryUser(pUser, pClient, pSource) {
+    // return values:
+    //    good - locked and loaded.  AVA signed-in and ready
+    //    invalid - not a valid user ID
+    //    password - user ID is valid, but password needed to log in
+    //
+    // Do we know this person's password?
+    let [goodSessionV2, foundSession] = await getSessionV2(pUser);
+    if (!goodSessionV2) {     // That is not a valid User ID, maybe it's a name?
+      pushLoginAttemptToArray(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).  Trying names.`);
+      let [goodUser, possibleUserRecs] = await validateUserAccount({    // look for account by name
+        'nameTest': pUser,
+        'client': pClient
+      });
+      if (goodUser) {
+        if (possibleUserRecs.length === 1) {     // found exactly one match?
+          return tryUser(possibleUserRecs[0].person_id, pClient, `resolved ${pUser}`);
+        }
+        else if (possibleUserRecs.length > 1) {
+          enqueueSnackbar(`AVA found ${possibleUserRecs.length} matches for "${pUser}".  Please enter a password or apartment number to help figure out which one you are.`, { variant: 'error', persist: true });
+          setAVAFollowUpData({ 'enteredUserID': pUser, 'possibleUserRecs': possibleUserRecs });
+          return 'ambiguous';
+        }
+      }
+      pushLoginAttemptToArray(pUser, '', '', `No UserID found from entered name: ${pUser}.`);
+      enqueueSnackbar(`"${pUser}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
+      setAVAFollowUpData({ 'NeedUser': true });
+      return 'invalid';
+    }
+    else {
+      if (foundSession.requirePassword && (pSource === 'entered')) {
+        pushLoginAttemptToArray(pUser, '', false, 'Good UserID entered.  Password is required for this account.');
+        enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
+        let [goodUser, foundPatient] = await getPerson(pUser);
+        if (!goodUser) {
+          let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
+          pushLoginAttemptToArray(pUser, '', '', eMessage);
+          enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
+          sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+          setAVAFollowUpData({ 'NeedUser': true });
+          return 'invalid';
+        }
+        foundPatient.sessionRec = foundSession;
+        setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': pUser, 'possibleUserRecs': [foundPatient] });
+        return 'password';
+      }
+      else if (foundSession.last_login) {   // Yes!  We have a User and a Password
+        let goodLogin = await cognitoLogin(pUser, foundSession.last_login);
+        if (goodLogin) {
+          pushLoginAttemptToArray(pUser, foundSession.last_login, true, `Successful Log-in using stored password; user ID supplied from ${pSource}`);
+          launchAVA(pUser);
+          return 'good';
+        }
+        else {
+          pushLoginAttemptToArray(pUser, foundSession.last_login, false, `Failed Log-in.  Attempted stored password; user ID supplied from ${pSource}`);
+          // intentionally fall through to attempt default credentials
+        }
+      }
+      // We know the person, but have not been able to log them in yet
+      // Attempt to log person is with generic credentials
+      let goodLogin = await cognitoLogin(AVA_default_user, AVA_default_password);
+      if (goodLogin) {
+        pushLoginAttemptToArray(pUser, '', true, `Successful Log-in using generic credentials; user ID supplied from ${pSource}`);
+        launchAVA(pUser);
+        return 'good';
+      }
+      else {
+        let eMessage = `Failed Log-in using generic credentials; user ID supplied from ${pSource}`;
+        pushLoginAttemptToArray(pUser, '', false, eMessage);
+        enqueueSnackbar(`${eMessage}..  AVA support has been notified.`, { variant: 'error', persist: true });
+        sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+      }
+      // If we got to here...  we had a good User, but did not get that user authenticated
+      // Let's ask for the password and try to get in that way...
+      enqueueSnackbar(`We're having trouble logging you in automatically.  Please enter your password.`, { variant: 'error', persist: true });
+      setAVAFollowUpData({ 'enteredUserID': pUser, 'NeedUser': false });
+      return 'password';
+    }
+  }
+
+  async function refreshSession(refresh_token) {
+    let cognitoPoolUser = await Auth
+      .currentUserPoolUser()
+      .catch(e => {
+        console.log(e);
+      });
+    let goodRefresh = CognitoClient.adminInitiateAuth(
+      {
+        'AuthFlow': 'REFRESH_TOKEN_AUTH',
+        'ClientId': cognitoPoolUser.pool.clientId,
+        'UserPoolId': cognitoPoolUser.pool.userPoolId,
+        'AuthParameters': refresh_token
+      });
+    console.log(goodRefresh);
+  }
 
   function promptForUser() {
     return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('NeedUser'));
@@ -248,69 +294,8 @@ export default Component => props => {
             onSave={async (enteredUserID) => {
               closeSnackbar();
               enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
-              let [goodSession, foundSession] = await getSession(enteredUserID);
-              if (goodSession) {
-                if (foundSession.requirePassword) {
-                  let [, foundUser] = await getPerson(foundSession.user_id);
-                  foundUser.sessionRec = foundSession;
-                  accessLog(enteredUserID, '', '', 'Good UserID entered.  Password is required for this account.');
-                  enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
-                  setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': enteredUserID, 'possibleUserRecs': [foundUser] });
-                }
-                else {
-                  accessLog(enteredUserID, '', '', 'Good UserID entered.');
-                  let allGood = await prepareAVAEnv(
-                    false,
-                    null,
-                    foundSession.user_id,
-                    foundSession,
-                    foundSession.client_id,
-                    null,
-                    null);
-                  if (!allGood) {
-                    setAVAFollowUpData({ 'NeedUser': true });
-                    enqueueSnackbar(`AVA couldn't use that UserID.  Please try again.`, { variant: 'info', persist: true });
-                  }
-                }
-              }
-              else {
-                let requestObj = { 'nameTest': enteredUserID };
-                let cookieValues = getCookie();
-                if (cookieValues.client) { requestObj.client = cookieValues.client; }
-                let [goodUser, possibleUserRecs] = await validateUserAccount(requestObj);
-                if (goodUser) {
-                  if (possibleUserRecs.length === 1) {
-                    if (possibleUserRecs[0].sessionRec.requirePassword) {
-                      accessLog(enteredUserID, '', '', 'User found from name.  Password is required for this account.');
-                      enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
-                      setAVAFollowUpData({ 'passwordRequired': true, 'enteredUserID': possibleUserRecs[0].person_id, 'possibleUserRecs': possibleUserRecs });
-                    }
-                    else {
-                      accessLog(possibleUserRecs[0].person_id, '', '', `Good UserID found from entered name: ${enteredUserID}.`);
-                      let allGood = await prepareAVAEnv(
-                        false,
-                        null,
-                        possibleUserRecs[0].person_id,
-                        possibleUserRecs[0].sessionRec,
-                        possibleUserRecs[0].client_id,
-                        (possibleUserRecs[0].sessionRec.patient_id === possibleUserRecs[0].person_id) ? possibleUserRecs[0] : null,
-                        possibleUserRecs[0]);
-                      if (!allGood) {
-                        setAVAFollowUpData({ 'NeedUser': true });
-                        enqueueSnackbar(`AVA couldn't use the UserID it found.  Please try again.`, { variant: 'info', persist: true });
-                      }
-                    }
-                  }
-                  else {
-                    enqueueSnackbar(`AVA found ${possibleUserRecs.length} matches for "${enteredUserID}".  Please enter a password or apartment number to help figure out which one you are.`, { variant: 'error', persist: true });
-                    setAVAFollowUpData({ 'enteredUserID': enteredUserID, 'possibleUserRecs': possibleUserRecs });
-                  }
-                }
-                else {
-                  accessLog('unknown', '', '', `No UserID found from entered name: ${enteredUserID}.`);
-                  enqueueSnackbar(`"${enteredUserID}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
-                }
-              }
+              let cookieValues = getCookie();
+              await tryUser(enteredUserID, cookieValues.client, 'entered');
             }}
             allowCancel={false}
           />
@@ -318,7 +303,7 @@ export default Component => props => {
         {promptForPassword() &&
           <AVATextInput
             titleText="AVA Sign-in"
-            promptText={`Enter your Password or Apartment Number.`}
+            promptText={isMobile ? "Password / Apartment" : "Enter your Password or Apartment Number."}
             buttonText='Continue'
             onCancel={() => {
               closeSnackbar();
@@ -327,67 +312,38 @@ export default Component => props => {
             }}
             onSave={async (enteredPass) => {
               closeSnackbar();
-              enqueueSnackbar(`AVA is verifying your information`, { variant: 'info', persist: true });
-              let foundUserAt = -1;
-              let confirmedPass;
+              enqueueSnackbar(`AVA is verifying your information`, { variant: 'info' });
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
-                let goodPwd = false;
-                [goodPwd, , confirmedPass] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
-                if (goodPwd) {
-                  foundUserAt = p;
-                  break;
+                let [thatWorked, ,] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
+                if (thatWorked) {
+                  pushLoginAttemptToArray(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password; user ID from list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`);
+                  launchAVA(AVAFollowUpData.possibleUserRecs[p].person_id);
+                  return;
                 }
               }
-              if (foundUserAt > -1) {
-                setCognitoConfirmed(true);
-                let allGood = await prepareAVAEnv(
-                  true,
-                  confirmedPass,
-                  AVAFollowUpData.possibleUserRecs[foundUserAt].person_id,
-                  AVAFollowUpData.possibleUserRecs[foundUserAt].sessionRec,
-                  AVAFollowUpData.possibleUserRecs[foundUserAt].client_id,
-                  (AVAFollowUpData.possibleUserRecs[foundUserAt].sessionRec.patient_id === AVAFollowUpData.possibleUserRecs[foundUserAt].person_id) ? AVAFollowUpData.possibleUserRecs[foundUserAt] : null,
-                  AVAFollowUpData.possibleUserRecs[foundUserAt]);
-                if (!allGood) {
-                  setAVAFollowUpData({ 'NeedUser': true });
-                  enqueueSnackbar(`AVA couldn't use the UserID that the location matched.  Please try again.`, { variant: 'info', persist: true });
-                }
-              }
-              else {
-                enqueueSnackbar(`Still looking...`, { variant: 'info', persist: true });
-                let requestObj = { 'nameTest': AVAFollowUpData.enteredUserID, 'numbersTest': enteredPass };
-                let cookieValues = getCookie();
-                if (cookieValues.client) { requestObj.client = cookieValues.client; }
-                let [goodUser, possibleUserRecs] = await validateUserAccount(requestObj);
-                closeSnackbar();
-                if (goodUser && (possibleUserRecs.length === 1)) {
-                  if (possibleUserRecs[0].sessionRec.requirePassword) {
-                    enqueueSnackbar(`Using that information, AVA located account "${possibleUserRecs[0].person_id}".  However, that account requires a password and "${enteredPass}" isn't the correct password.  Please try again.`, { variant: 'info', persist: true });
+              // the entered data did not work as a password; perhaps as a apartment number, etc?
+              enqueueSnackbar(`Still looking...`, { variant: 'info' });
+              for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
+                let possibility = AVAFollowUpData.possibleUserRecs[p];
+                if (possibility.location.includes(enteredPass)) {
+                  if (possibility.sessionRec.requirePassword) {
+                    let eMessage = `Using the information provided, AVA located account "${possibility.person_id}", but that account requires a password.  ("${enteredPass}" is not the right password.)`;
+                    pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
+                    enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'info', persist: true });
+                    return;
+                  }
+                  let result = await tryUser(possibility.person_id, possibility.client_id, 'location match');
+                  if (result !== 'good') {
+                    let eMessage = `Using the information provided, AVA located account "${possibility.person_id}".  However, we can't log that account into AVA.`;
+                    pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
+                    enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'info', persist: true });
+                    return;
                   }
                   else {
-                    accessLog(possibleUserRecs[0].person_id, '', '', `Good UserID found from name/location: ${AVAFollowUpData.enteredUserID}/${enteredPass}`);
-                    let allGood = await prepareAVAEnv(
-                      false,
-                      null,
-                      possibleUserRecs[0].person_id,
-                      possibleUserRecs[0].sessionRec,
-                      possibleUserRecs[0].client_id,
-                      (possibleUserRecs[0].sessionRec.patient_id === possibleUserRecs[0].person_id) ? possibleUserRecs[0] : null,
-                      possibleUserRecs[0]
-                    );
-                    if (!allGood) {
-                      setAVAFollowUpData({ 'NeedUser': true });
-                      enqueueSnackbar(`AVA matched that up but couldn't use the info to log you in.  Please try again.`, { variant: 'info', persist: true });
-                    }
+                    pushLoginAttemptToArray(possibility.person_id, '', false, `Successful Log-in using entered location; user ID from list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`);
+                    launchAVA(possibility.person_id);
+                    return;
                   }
-                }
-                else if (goodUser && (possibleUserRecs.length > 1)) {
-                  accessLog(AVAFollowUpData.enteredUserID, '', '', `Multiple matches for attempted user/password OR name/location. (${AVAFollowUpData.enteredUserID}/${enteredPass})`);
-                  enqueueSnackbar(`"${enteredPass}" still matches ${possibleUserRecs.length} accounts.  Please try again`, { variant: 'error', persist: true });
-                }
-                else {
-                  accessLog(AVAFollowUpData.enteredUserID, '', '', `No account found for attempted user/password OR name/location. (${AVAFollowUpData.enteredUserID}/${enteredPass})`);
-                  enqueueSnackbar(`"${AVAFollowUpData.enteredUserID}" and "${enteredPass}" didn't match any account in AVA.  Please try again`, { variant: 'error', persist: true });
                 }
               }
             }}
@@ -400,72 +356,51 @@ export default Component => props => {
     return (<Component {...props} />);
   }
 
-  async function logMeIn(pUser, pPass, pAlready = false) {
-    if (pPass) {
-      let [logInSuccess, logInUser, logInActual] = await cognitoLogin(pUser, pPass, pUser);
-      if (logInSuccess) { return [logInSuccess, logInUser, logInActual]; }
-    }
-    if (!pAlready) {
-      let [logInSuccess, ,] = await cognitoLogin(process.env.REACT_APP_AVA_PU, process.env.REACT_APP_AVA_PP, pUser);
-      if (logInSuccess) { accessLog(pUser, '', '', 'Generic Login used.'); }
-      return [logInSuccess, 'GenericUser', 'GenericPWD'];
-    }
-    else {
-      accessLog(pUser, '', '', 'Retained Generic Login.');
-      return [true, 'GenericUser', 'GenericPWD'];
-    }
-
-  };
-
   async function cognitoLogin(pUser, pPass, pWho = null) {
     try {
-      await Auth.signIn({ username: pUser, password: pPass.trim(), validationData: { avaAccount: pWho || pUser } });
-      setCognitoConfirmed(true);
-      if (pUser !== process.env.REACT_APP_AVA_PU) {
-        accessLog(pUser, pPass, pPass, 'Successful Log-in');
-      }
+      await Auth.signIn({ username: pUser, password: pPass.trim(), clientMetadata: { avaAccount: pWho || pUser } });
       return [true, pUser, pPass];
     }
     catch (e) {
+      pushLoginAttemptToArray(pUser, pPass, '',
+        `Failed login. Reason:${e.code} Message:${e.message}`
+      );
       if ((e.code !== 'NotAuthorizedException')
         || (e.message.includes('expired'))
         || (e.message.includes('exceeded'))) {
-        setCognitoConfirmed(false);
-        accessLog(pUser, pPass, '',
-          `Failed Log-in. Reason:${e.code} Message:${e.message}`
-        );
         return [false, null, null];
       }
+      // Likely this is a bad password situation
+      // First, try to case-correct the first character of the passed in password
       let c0 = pPass.trim().charAt(0);
-      let newP;
+      let caseCorrectedPassword;
       if (c0 === c0.toUpperCase()) {   // first character was a capital letter
-        newP = c0.toLowerCase() + pPass.trim().substring(1);
+        caseCorrectedPassword = c0.toLowerCase() + pPass.trim().substring(1);
       }
       else {   // first character was a lower case letter
-        newP = c0.toUpperCase() + pPass.trim().substring(1);
+        caseCorrectedPassword = c0.toUpperCase() + pPass.trim().substring(1);
       }
       try {
-        await Auth.signIn({ username: pUser, password: newP, validationData: { avaAccount: pUser } });
-        setCognitoConfirmed(true);
-        accessLog(pUser, pPass, newP, 'Successful Log-in with case corrected password');
-        return [true, pUser, newP];
+        await Auth.signIn({ username: pUser, password: caseCorrectedPassword, validationData: { avaAccount: pUser } });
+        pushLoginAttemptToArray(pUser, pPass, caseCorrectedPassword, 'Successful Log-in with case corrected password');
+        return [true, pUser, caseCorrectedPassword];
       }
       catch (e2) {
-        setCognitoConfirmed(false);
-        accessLog(pUser, `${newP} (case corrected)`, '',
-          `Failed Log-in. Reason:${e2.code} Message:${e2.message}`
+        pushLoginAttemptToArray(pUser, `${caseCorrectedPassword} (case corrected)`, '',
+          `Failed case corrected login. Reason:${e2.code} Message:${e2.message}`
         );
         return [false, null, null];
       }
     }
   }
 
-  function bakeCookie(pUser, pPwd, pClient, pSession, pPatient, pProfile) {
-    setCookie('AVAuser', JSON.stringify({
-      user_id: pUser,
-      client: pClient,
-      last_login: pPwd || ''
-    }), { path: '/' });
+  function bakeCookie(pUser, pClient) {
+    let ninetyDays = 90 * (24 * 60 * 60);
+    setCookie('AVAuser',
+      JSON.stringify({
+        user_id: pUser,
+        client: pClient,
+      }), { path: '/', maxAge: ninetyDays });
     if (pClient) {
       setCookie('AVAclient', JSON.stringify({
         client: pClient,
@@ -473,23 +408,31 @@ export default Component => props => {
     };
   }
 
-  function putValidationCookie(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL) {
+  function putValidationCookie() {
     setCookie('AVAvalidated', 'true', { path: '/' });
   }
 
   function getCookie() {
-    let returnObj = { "empty": "no data" };
+    let returnObj;
     if (cookies.AVAuser && cookies.AVAuser !== 'undefined') {
       if (typeof (cookies.AVAuser) === 'string') { returnObj = JSON.parse(cookies.AVAuser); }
       else { returnObj = cookies.AVAuser; }
+      if (!('client' in returnObj)) { returnObj.client = getClientCookie(); }
+      return returnObj;
     }
-    if (!returnObj.hasOwnProperty('client')) {
-      if (cookies.AVAclient && cookies.AVAclient !== 'undefined') {
-        if (typeof (cookies.AVAclient) === 'string') { returnObj.client = cookies.AVAclient; }
-        else { returnObj.client = cookies.AVAclient.client_id || cookies.AVAclient.client_id; }
-      }
+    else {
+      let cClient = getClientCookie();
+      if (cClient) { return { 'client': cClient }; }
+      return false;
+    };
+  }
+
+  function getClientCookie() {
+    if (cookies.AVAclient && cookies.AVAclient !== 'undefined') {
+      if (typeof (cookies.AVAclient) === 'string') { return cookies.AVAclient; }
+      else { return (cookies.AVAclient.client_id || cookies.AVAclient.client_id); }
     }
-    return returnObj;
+    else { return null; }
   }
 
   function getParamsFromURL() {
@@ -526,7 +469,7 @@ export default Component => props => {
       });
   };
 
-  async function getSession(pSessionID) {
+  async function getSessionV2(pSessionID) {
     let sessionRec = await dbClient
       .get({
         Key: { session_id: pSessionID.toLowerCase() },
@@ -539,7 +482,7 @@ export default Component => props => {
         };
         console.log({ 'Bad get on Session - caught error is': error });
       });
-    if (!recordExists(sessionRec)) {
+    if (!recordExists(sessionRec) && (pSessionID.toLowerCase() !== pSessionID)) {
       sessionRec = await dbClient
         .get({
           Key: { session_id: pSessionID },
@@ -549,7 +492,6 @@ export default Component => props => {
         .catch(error => {
           console.log({ 'Bad get on Session - caught error is': error });
         });
-      return [false, null];
     }
     if (!recordExists(sessionRec)) {
       return [false, null];
@@ -585,22 +527,36 @@ export default Component => props => {
     if (recordExists(peopleRec)) { return [true, peopleRec.Item]; }
     else { return [false, null]; }
   }
+  async function getSessions(pSession) {
+    let sessionRec = await dbClient
+      .get({
+        Key: { session_key: pSession },
+        TableName: "Sessions"
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on Sessions - caught error is': error });
+      });
+    if (recordExists(sessionRec)) { return sessionRec.Item; }
+    else { return null; }
+  }
 
-  async function accessLog(pUser, pAttempted, pActual, pResult) {
+  async function pushLoginAttemptToArray(pUser, pAttempted, pOK, pMessage) {
     let nowTime = new Date();
     let accessLogRec = {
       timestamp: nowTime.getTime(),
       timestring: nowTime.toLocaleString(),
-      user_key: `${pUser}${pActual ? ('/' + pActual) : ''}`,
+      user_key: `${pUser}${pOK ? ('/' + pAttempted) : ''}`,
       attempted_user: pUser,
       attempted_password: pAttempted,
-      result: pResult
+      result: pMessage
     };
     accessLogRecords.push(accessLogRec);
   };
 
-  async function putAccessLog() {
+  async function batchWriteAccessLogArray(pUser) {
     let putObj = accessLogRecords.map(r => {
+      r.user_key = pUser;
       return { PutRequest: { Item: r } };
     });
     await dbClient
@@ -613,7 +569,7 @@ export default Component => props => {
       });
   }
 
-  async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage) {
+  async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
         'version': `v22.11.11`,
@@ -665,6 +621,20 @@ export default Component => props => {
       })
       .promise()
       .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+    await dbClient
+      .put({
+        TableName: 'Sessions',
+        Item: {
+          session_key: pSessionInfo.accessToken.payload.jti,
+          last_update: new Date().toLocaleString(),
+          platform: platform,
+          login: {
+            user_id: pSessionID
+          }
+        }
+      })
+      .promise()
+      .catch(error => { console.error('Error adding a fact:', error.message); });
   }
 
   async function validateUserAccount(payload) {
@@ -680,7 +650,6 @@ export default Component => props => {
         if (err.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        console.log('Call failed.  Error is', JSON.stringify(err));
         return [false, 'AVA could not validate your Account'];
       });
     try {
@@ -695,106 +664,72 @@ export default Component => props => {
     catch { return [false, 'unknown']; }
   };
 
-  async function prepareAVAEnv(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL = null) {
-    // if no session, get the session
-    if (!currentSession) {
-      let goodSession = false;
-      [goodSession, currentSession] = await getSession(currentUser);
-      if (!goodSession) {
-        accessLog(currentUser, '', '', `No SessionV2 record for ${currentUser}.  This is not a valid account.`);
-        setAVAReady(false);
-        setAVAFollowUpData();
-        return false;
-      }
-    };
-    // Get the User's profile (info about the logged in person)
-    if (!currentProfile) {
-      if (currentPatient && (currentPatient.person_id === currentUser)) {
-        currentProfile = currentPatient;
-      }
-      else {
-        let [goodUser, foundUser] = await getPerson(currentUser);
-        if (goodUser) { currentProfile = foundUser; }
-        else {
-          enqueueSnackbar(`No AVA Profile information for ${currentUser}.  This is a valid Account but cannot be used.  AVA Support has been notified.`, { variant: 'error', persist: true });
-          sendMessage('AVA', 'bootstrap', `Account ${currentUser} cannot map to any valid Person to use as its currentProfile`, 'ava_support');
-          return false;
-        }
-      }
-    }
-    // assure you are logged in to Cognito
-    if (!cognitoConfirmed && !recentlyConfirmed) {
-      if (currentSession.last_login) {
-        accessLog(currentUser, currentSession.last_login, '', 'Using password saved in Session record');
-        recentlyConfirmed = await logMeIn(currentUser, currentSession.last_login);
-      }
-      else {
-        accessLog(currentUser, currentSession.last_login, '', 'Found User.  No password stored.  Attempting generic login.');
-        recentlyConfirmed = await logMeIn(currentUser, null);
-      }
-      setCognitoConfirmed(recentlyConfirmed);
-      if (!recentlyConfirmed) {
-        accessLog(currentUser, '', '', 'All login attempts failed.');
-        return false;
-      }
-    }
-    // Get Patient record (this is the person you are actively using)
-    if (!currentPatient) {
-      if (currentSession.patient_id) {
-        let [goodUser, foundUser] = await getPerson(currentSession.patient_id);
-        if (goodUser) { currentPatient = foundUser; }
-      }
-      if (!currentPatient && (!currentSession.patient_id || (currentSession.patient_id !== currentUser))) {
-        let [goodUser, foundUser] = await getPerson(currentUser);
-        if (goodUser) {
-          currentPatient = foundUser;
-          currentProfile = foundUser;
-        }
-      }
-      if (!currentPatient) {
-        enqueueSnackbar(`Incomplete User Account information for ${currentUser}.  This is a valid Account but cannot be used.  AVA Support has been notified.`, { variant: 'error', persist: true });
-        sendMessage('AVA', 'bootstrap', `SessionV2 record for ${currentUser} cannot map to any valid Person to use as its currentPatient`, 'ava_support');
-        return false;
-      }
-    }
-    // 
-    if ((cognitoConfirmed || recentlyConfirmed) && currentPatient && currentSession && currentProfile) {
-      enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
-      let urlData = getParamsFromURL();
-      if (urlData) {
-        currentSession.url_parameters = urlData;
-      }
-      else {
-        currentSession.url_parameters = null;
-      }
-      dispatch({ type: SET_SESSION, payload: currentSession });
-      dispatch({ type: SET_PROFILE, payload: currentProfile });
-      dispatch({ type: SET_USER, payload: currentProfile });
-      dispatch({ type: SET_PATIENT, payload: currentPatient });
-
-      sessionStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient }));
-      bakeCookie(currentSession.session_id, confirmedLogin, currentSession.client_id, currentSession, currentPatient, currentProfile);
-      updateSession(currentSession.session_id, currentSession, currentPatient, currentProfile, currentSession.last_login, pURL, 'AVA Launch');
-      putValidationCookie(recentlyConfirmed, confirmedLogin, currentUser, currentSession, currentClient, currentPatient, currentProfile, pURL);
-      await putAccessLog();
-      setAVAReady(true);
-      localAVAReady = true;
-      setAVAFollowUpData({ 'Completed': true });
-      return true;
-    }
-    else {
-      if (!cognitoConfirmed && !recentlyConfirmed) {
-        enqueueSnackbar(`A security system error occurred.  AVA Support has been notified.`, { variant: 'error', persist: true });
-        sendMessage('AVA', 'bootstrap', `No valid COGNITO login for ${currentUser} and generic login failed (${process.env.REACT_APP_AVA_PU}/${process.env.REACT_APP_AVA_PP}).`, 'ava_support');
-      }
-      else {
-        enqueueSnackbar(`Something went wrong.  AVA can't use this information to log you in.  AVA Support has been notified.`, { variant: 'error', persist: true });
-        sendMessage('AVA', 'bootstrap', `AVA data missing or invalid for ${currentUser}`, 'ava_support');
-      }
+  async function launchAVA(pLaunchUser) {
+    // Get the session
+    let [goodSession, currentSession] = await getSessionV2(pLaunchUser);
+    if (!goodSession) {
+      let eMessage = `No SessionV2 record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
+      pushLoginAttemptToArray(pLaunchUser, '', false, eMessage);
+      enqueueSnackbar(eMessage, { variant: 'error', persist: true });
+      sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       setAVAReady(false);
       setAVAFollowUpData();
       return false;
     }
+    // Get the User's profile (info about the logged in person)
+    let [goodUser, currentProfile] = await getPerson(pLaunchUser);
+    if (!goodUser) {
+      let eMessage = `No People record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
+      pushLoginAttemptToArray(pLaunchUser, '', false, eMessage);
+      enqueueSnackbar(eMessage, { variant: 'error', persist: true });
+      sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+      setAVAReady(false);
+      setAVAFollowUpData();
+      return false;
+    }
+    // Get the Patient's profile (info about the active person - usually the same as the logged in user)
+    let currentPatient;
+    if (currentSession.patient_id === pLaunchUser) {
+      currentPatient = currentProfile;
+    }
+    else {
+      [goodUser, currentPatient] = await getPerson(currentSession.patient_id);
+      if (!goodUser) {
+        let eMessage = `Attempt to user account ${currentSession.patient_id} failed.  That Account is not set up properly in AVA.  Using ${pLaunchUser} instead.`;
+        pushLoginAttemptToArray(pLaunchUser, '', false, eMessage);
+        enqueueSnackbar(eMessage, { variant: 'error' });
+        sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+        currentPatient = currentProfile;
+        currentSession.patient_id = pLaunchUser;
+        currentSession.patient_name = (`${currentProfile.name.first} ${currentProfile.name.last}`).trim();
+      }
+    }
+    enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
+
+    dispatch({ type: SET_SESSION, payload: currentSession });
+    dispatch({ type: SET_PROFILE, payload: currentProfile });
+    dispatch({ type: SET_USER, payload: currentProfile });
+    dispatch({ type: SET_PATIENT, payload: currentPatient });
+
+    let sessionInfo = await Auth
+      .currentSession()
+      .catch(e => {
+        console.log(e);
+      });
+
+    localStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
+    sessionStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
+    bakeCookie(currentSession.session_id, currentSession.client_id);
+
+    currentSession.url_parameters = getParamsFromURL();
+    updateSession(currentSession.session_id, currentSession, currentPatient, currentProfile, currentSession.last_login, currentSession.url_parameters, 'AVA Launch', sessionInfo);
+
+    putValidationCookie();
+    await batchWriteAccessLogArray(pLaunchUser);
+    setAVAReady(true);
+    localAVAReady = true;
+    setAVAFollowUpData({ 'Completed': true });
+    return true;
   }
 
   function recordExists(recordId) {

@@ -276,8 +276,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
   const [loading, setLoading] = React.useState('Initializing');
 
-  const [cognitoCredentials, setCognitoCredentials] = React.useState();
-  
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [activityLogRecords, setActivityLogRecords] = React.useState([]);
 
@@ -313,13 +311,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     localLastRefresh = nowTime;
     setLastActive(nowTime);
     localLastActive = nowTime;
-    const localCredentials = await Auth
-      .currentCredentials()
-      .catch(e => {
-        console.log(e);
-      });
-    if (localCredentials) { setCognitoCredentials(localCredentials); }
-    else { setCognitoCredentials({ 'expiration': (nowTime + oneHour) }); } 
     console.log(`Refreshed at ${new Date().toLocaleString()}.`);
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
@@ -1005,6 +996,18 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     return response;
   }
 
+  function makeExpiration() {
+    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+    let sTime = new Date((sessionObject?.cognitoSession?.accessToken?.payload?.exp * 1000) || (nowTime + oneHour)); 
+    return `Sess exp ${sTime.toLocaleDateString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    })}`;
+  }
+
   function makeGreeting() {
     let current_hour = Number(new Date().toTimeString().split(':')[0]);
     let response = '';
@@ -1246,13 +1249,8 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   key={'vRowRefresh'}
                 >
                   <Typography className={classes.popUpFooter} >{`AVA vers 22.11.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                  <Typography className={classes.popUpFooter} >{`Sess exp ${cognitoCredentials ? cognitoCredentials.expiration.toLocaleDateString('en-US', {
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    hour12: true
-                  }) : 'na'}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{makeExpiration()}
+                  </Typography>
                   <Typography className={classes.popUpFooter} >{`User ${session.patient_id}`}</Typography>
                 </Box>
               </MenuItem>
