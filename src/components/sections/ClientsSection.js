@@ -59,7 +59,14 @@ export default ({ person, updateGroups }) => {
             },
           })
         ).catch(error => {
-          console.log(`Whoops! Something went wrong when fetching list of groups: ${error.errors[0].message}`);
+          console.log(`Something went wrong when fetching list of groups: ${error}`, {
+            client_id: person.client_id,
+            person_id: state.session.user_id,
+            event_id: '',
+            activity_type: '$$query.get_group',
+            limit: 500,
+            history_only: false
+          });
         });
       };
       let gKeys = [...new Set(result?.data?.getActivityData[0]?.valid_values_list.sort())];

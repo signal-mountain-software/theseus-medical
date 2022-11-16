@@ -1,13 +1,13 @@
 import React from 'react';
 import Box from '@material-ui/core/Box';
-// import AccountCircleIcon from '@material-ui/icons/AccountCircle';
+
 import AssignmentIcon from '@material-ui/icons/Assignment';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
-// import ChatIcon from '@material-ui/icons/Chat';
+import Typography from '@material-ui/core/Typography';
+
 import { Auth } from '@aws-amplify/auth';
 
-// import withA2HS from './wrappers/withA2HS';
 import withRecoil from './wrappers/withRecoil';
 import withRoot from './wrappers/withRoot';
 import hocFactory from './util/hocFactory';
@@ -44,24 +44,36 @@ class ErrorBoundary extends React.Component {
   }
 
   static getDerivedStateFromError(error) {
-    if (window.location.href.split('//')[1].slice(0, 1) !== 'd') {
-      alert(`Error "${error.toString()}" caught by getDerviedStateFromError`);
-    }
     hasError = true;
-    handleWriteError(`Error "${error.toString()}" caught by getDerviedStateFromError`);
+    handleWriteError(`Error "${JSON.stringify(error)}" caught by getDerviedStateFromError`);
   }
 
   componentDidCatch(error, info) {
-    if (window.location.href.split('//')[1].slice(0, 1) !== 'd') {
-      alert(`Error "${error.toString()}" encountered.`);
-    }
     hasError = true;
     handleWriteError(`Error "${error.toString()}" encountered.  Info is ${JSON.stringify(info)}`);
   }
 
   render() {
     if (hasError) {
-      return <h3>AVA encountered an error</h3>;
+      return (
+        <Box
+          display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+          key={'loadingBox'}
+          ml={2} mr={2} mb={2} mt={12}
+        >
+          <React.Fragment>
+            <Box
+              display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+              flexWrap='wrap' textOverflow='ellipsis' width='100%'
+              key={'loadingBox'}
+              mb={2}
+            >
+              <Typography variant='h5' >{`AVA Encountered an Error`}</Typography>
+              <Typography variant='caption' >{`version 22.11.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+            </Box>
+          </React.Fragment>
+        </Box>
+      );
     }
     else {
       return this.props.children;
@@ -70,18 +82,22 @@ class ErrorBoundary extends React.Component {
 }
 
 const handleWriteError = async (parmMessage) => {
+  if (window.location.href.split('//')[1].slice(0, 1).toLocaleLowerCase() === 'l') {
+    alert(parmMessage);
+  }
   const user = await Auth
     .currentAuthenticatedUser()
     .catch(e => {
       parmMessage += 'Auth error thrown = ' + JSON.stringify(e);
 
     });
+  
   let errorTime = new Date().toString();
   let instruction = {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = 22.11.11~${errorTime}`,
+    status: `Version = 22.11.15~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
