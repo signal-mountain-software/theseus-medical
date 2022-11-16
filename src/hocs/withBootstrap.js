@@ -394,12 +394,13 @@ export default Component => props => {
     }
   }
 
-  function bakeCookie(pUser, pClient) {
+  function bakeCookie(pUser, pClient, pPerson) {
     let ninetyDays = 90 * (24 * 60 * 60);
     setCookie('AVAuser',
       JSON.stringify({
         user_id: pUser,
         client: pClient,
+        person_id: pPerson
       }), { path: '/', maxAge: ninetyDays });
     if (pClient) {
       setCookie('AVAclient', JSON.stringify({
@@ -719,7 +720,7 @@ export default Component => props => {
 
     localStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
     sessionStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
-    bakeCookie(currentSession.session_id, currentSession.client_id);
+    bakeCookie(currentSession.session_id, currentSession.client_id, currentPatient.person_id);
 
     currentSession.url_parameters = getParamsFromURL();
     updateSession(currentSession.session_id, currentSession, currentPatient, currentProfile, currentSession.last_login, currentSession.url_parameters, 'AVA Launch', sessionInfo);
