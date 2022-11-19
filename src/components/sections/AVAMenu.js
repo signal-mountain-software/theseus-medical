@@ -824,7 +824,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       user_id: pUser,
       activity_code: pCode,
       activity_name: pName,
-      AVA_version: `22.11.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+      AVA_version: `22.11.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
     };
     let workLog = activityLogRecords;
     workLog.push(activityLogRec);
@@ -1248,7 +1248,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA vers 22.11.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA vers 22.11.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   <Typography className={classes.popUpFooter} >{makeExpiration()}
                   </Typography>
                   <Typography className={classes.popUpFooter} >{`User ${session.patient_id}`}</Typography>
@@ -1284,7 +1284,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 22.11.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography variant='caption' >{`version 22.11.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -1574,17 +1574,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                           >
                             {(rowOpen === index) &&
                               <Box display={'block'} ml={5} mr={2} pb={2}>
-                                {(selected && ('fact_history' in selected) && (selected.fact_history.length > 0)) ?
-                                  selected.fact_history.map((hItem, hNdx) => (
-                                    <Typography key={selected.activity_key + 'h' + hNdx} variant='body2'>
-                                      {hNdx > 0 ? <br /> : null}
-                                      {new Date(hItem.posted_time).toLocaleString()} <br /> <strong> {hItem.value.replace('.', '^').split('^')[1]} </strong>
-                                    </Typography>
-                                  )) :
-                                  <Typography key={'nohistory'} variant='body2'>
-                                    <strong> {`Last used ${new Date(this_row.last_used).toLocaleString()}`} </strong>
-                                  </Typography>
-                                }
+                                <Typography key={'nohistory'} variant='body2'>
+                                  <strong> {`Last used ${new Date(this_row.last_used).toLocaleString()}`} </strong>
+                                </Typography>
                               </Box>
                             }
                           </Box>

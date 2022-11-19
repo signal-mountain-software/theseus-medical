@@ -208,8 +208,9 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
   const handleChangePersonFilter = event => {
     if (event.target.value.length === 0) {
-      setPersonFilter(null);
-      setPersonFilterLower(null);
+      setPersonFilter(' ');
+      setPersonFilterLower(' ');
+      setSingleFilterDigit(false);
     }
     else {
       setPersonFilter(event.target.value);
@@ -443,7 +444,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   }
 
   function okToShow(pItem) {
-    if (person_filter && !filteredPerson(pItem.name, pItem.location, pItem.messaging, pItem)) { return false; }
+    if ((person_filter.length > 0) && !filteredPerson(pItem.name, pItem.location, pItem.messaging, pItem)) { return false; }
     if (pGroup.toLowerCase() === '*all') { return true; } 
     if (['responsible', 'admin'].includes(pRole)) { return true; }
     if (pItem.directory_option !== 'exclude') { return true; };

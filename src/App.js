@@ -5,6 +5,7 @@ import AssignmentIcon from '@material-ui/icons/Assignment';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import Typography from '@material-ui/core/Typography';
+import Button from '@material-ui/core/Button';
 
 import { Auth } from '@aws-amplify/auth';
 
@@ -16,15 +17,12 @@ import ThankYouScreen from './screens/ThankYouScreen';
 
 import Reloader from './screens/Reloader';
 import RootNavigation from './navigation/RootNavigation';
-// import withAuth from './hocs/withAuth';
 import withBootstrap from './hocs/withBootstrap';
 import withDarkMode from './hocs/withDarkMode';
 import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
-// import BottomNav from './components/BottomNav';
-// import TopBar from './components/TopBar';
 import { createPutFact } from './graphql/mutations';
 import { API, graphqlOperation } from 'aws-amplify';
 
@@ -45,12 +43,12 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    handleWriteError(`Error "${JSON.stringify(error)}" caught by getDerviedStateFromError`);
+    handleWriteError(`AVA caught error "${error.stack}"`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(`Error "${error.toString()}" encountered.  Info is ${JSON.stringify(info)}`);
+    handleWriteError(`AVA caught error "${error.stack}"`);
   }
 
   render() {
@@ -69,7 +67,17 @@ class ErrorBoundary extends React.Component {
               mb={2}
             >
               <Typography variant='h5' >{`AVA Encountered an Error`}</Typography>
-              <Typography variant='caption' >{`version 22.11.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+              <Typography variant='caption' >{`version 22.11.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+              <Button
+                aria-label='showActivities'
+                variant='contained'
+                onClick={async () => {
+                  let jumpTo = window.location.href.replace('refresh', 'theseus');
+                  window.location.replace(jumpTo);
+                }}
+              >
+                {'Tap here'}
+              </Button>
             </Box>
           </React.Fragment>
         </Box>
@@ -91,13 +99,13 @@ const handleWriteError = async (parmMessage) => {
       parmMessage += 'Auth error thrown = ' + JSON.stringify(e);
 
     });
-  
+
   let errorTime = new Date().toString();
   let instruction = {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = 22.11.15~${errorTime}`,
+    status: `Version = 22.11.18~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
