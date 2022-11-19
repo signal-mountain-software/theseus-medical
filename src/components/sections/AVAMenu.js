@@ -1574,17 +1574,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                           >
                             {(rowOpen === index) &&
                               <Box display={'block'} ml={5} mr={2} pb={2}>
-                                {(selected && ('fact_history' in selected) && (selected.fact_history.length > 0)) ?
-                                  selected.fact_history.map((hItem, hNdx) => (
-                                    <Typography key={selected.activity_key + 'h' + hNdx} variant='body2'>
-                                      {hNdx > 0 ? <br /> : null}
-                                      {new Date(hItem.posted_time).toLocaleString()} <br /> <strong> {hItem.value.replace('.', '^').split('^')[1]} </strong>
-                                    </Typography>
-                                  )) :
-                                  <Typography key={'nohistory'} variant='body2'>
-                                    <strong> {`Last used ${new Date(this_row.last_used).toLocaleString()}`} </strong>
-                                  </Typography>
-                                }
+                                <Typography key={'nohistory'} variant='body2'>
+                                  <strong> {`Last used ${new Date(this_row.last_used).toLocaleString()}`} </strong>
+                                </Typography>
                               </Box>
                             }
                           </Box>
