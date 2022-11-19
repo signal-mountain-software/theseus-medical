@@ -141,6 +141,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
 
         // Get all Groups this person is associated with
         groupList = await getGroupsPersonBelongsTo(pPerson);
+        groupList.sort((a, b) => { 
+            if (a.group_id < b.group_id) { return -1; }
+            else { return 1; }
+        })
         // ('** GROUPS **');
         let gL = groupList.length;
         for (let g = 0; g < gL; g++) {
