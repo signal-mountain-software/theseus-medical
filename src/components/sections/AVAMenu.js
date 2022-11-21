@@ -1251,7 +1251,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   <Typography className={classes.popUpFooter} >{`AVA vers 22.11.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   <Typography className={classes.popUpFooter} >{makeExpiration()}
                   </Typography>
-                  <Typography className={classes.popUpFooter} >{`User ${session.patient_id}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
                 </Box>
               </MenuItem>
             </MenuList>
