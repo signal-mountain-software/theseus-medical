@@ -279,8 +279,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [activityLogRecords, setActivityLogRecords] = React.useState([]);
 
-  const [lastMessageCheck, setLastMessageCheck] = React.useState(new Date().getTime());
-  const [lastRefresh, setLastRefresh] = React.useState(new Date().getTime());
   const [lastActive, setLastActive] = React.useState(new Date().getTime());
 
   let currentSection = '';
@@ -290,8 +288,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   const msBeforeSleeping = 5 * oneMinute;
 
   let nowTime = new Date().getTime();
-  let localLastMessageCheck = nowTime;
-  let localLastRefresh = nowTime;
   let localLastActive = nowTime;
 
   const imageBucket = 'theseus-medical-storage';
@@ -307,8 +303,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
   const buildMenu = async (beQuiet = null) => {
     let nowTime = new Date().getTime();
-    setLastRefresh(nowTime);
-    localLastRefresh = nowTime;
     setLastActive(nowTime);
     localLastActive = nowTime;
     console.log(`Refreshed at ${new Date().toLocaleString()}.`);
@@ -426,8 +420,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
   const getMessage = async (pPerson) => {
     let now = new Date().getTime();
-    setLastMessageCheck(now);
-    localLastMessageCheck = now;
     console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
     let mRecs = await dbClient
       .query({
@@ -875,8 +867,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     else {
       enqueueSnackbar(`Your ${pFactName.split(/[-/]/)[0]} is being processed by AVA.`, { variant: 'success' });
     }
-    setLastMessageCheck(0);   // this will force the next screen action to get messages
-    localLastMessageCheck = 0;
   };
 
   const getActivityDetail = async (pActivity) => {
@@ -1047,28 +1037,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         {/* Idle timer always running */}
         <IdleTimer
           timeout={msBeforeSleeping}   // every "n" minutes
-          onAction={async (event) => {
-            if (!showAddAccount && (showNewFactDialog === -1) && !showProfileEdit && !showPersonSelect) {
-              let timeNow = new Date().getTime();
-              if (Math.round(timeNow - Math.max(lastRefresh, localLastRefresh)) >= (msBeforeSleeping)) {
-                closeSnackbar();
-                await updateAVA(sectionOpen, mainMenu);
-                makeGreeting();
-                await getMessage(session.patient_id || patient.person_id);
-                await buildMenu(true);
-                setCurrentMenu('main');
-                setMenuArray(['main']);
-                setMenuNames([]);
-                setForceRedisplay(!forceRedisplay);
-              }
-              else if (Math.round(((new Date().getTime()) - Math.max(lastMessageCheck, localLastMessageCheck)) / oneMinute) > 0) {
-                console.log(`GetMessage fired at ${new Date().toLocaleString()}.  Last message check at ${new Date(lastMessageCheck).toLocaleString()}`);
-                await getMessage(session.patient_id || patient.person_id);
-              }
-              setLastActive(timeNow);
-              localLastActive = timeNow;
-            }
-          }}
           onIdle={async () => {
             console.log(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
             makeGreeting();
@@ -1166,7 +1134,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   >
                     <EditIcon />
                     <Typography className={classes.popUpMenuRow} >
-                      {`Edit ${greetingName}'${greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
+                      {(session.patient_id === session.user_id) ? `Edit your Profile` : `Edit ${greetingName}'${greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
                     </Typography>
                   </Box>
                 </MenuItem>
@@ -1216,25 +1184,25 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   <Typography className={classes.popUpMenuRow} >{'Sign Out'}</Typography>
                 </Box>
               </MenuItem>
-              <MenuItem onClick={async () => {
-                setPopupMenuOpen(false);
-                setLoading('Resetting greeting');
-                setForceRedisplay(!forceRedisplay);
-                makeGreeting();
-                setLoading('Checking messages');
-                setForceRedisplay(!forceRedisplay);
-                await getMessage(session.patient_id);
-                setLoading('Refreshing your AVA menu');
-                setForceRedisplay(!forceRedisplay);
-                await updateAVA(sectionOpen, mainMenu);
-                await buildMenu();
-                setCurrentMenu('main');
-                setMenuArray(['main']);
-                setMenuNames([]);
-                setLoading(false);
-                setForceRedisplay(!forceRedisplay);
-              }
-              }>
+              <MenuItem
+                onClick={async () => {
+                  setPopupMenuOpen(false);
+                  setLoading('Resetting greeting');
+                  setForceRedisplay(!forceRedisplay);
+                  makeGreeting();
+                  setLoading('Checking messages');
+                  setForceRedisplay(!forceRedisplay);
+                  await getMessage(session.patient_id);
+                  setLoading('Refreshing your AVA menu');
+                  setForceRedisplay(!forceRedisplay);
+                  await updateAVA(sectionOpen, mainMenu);
+                  await buildMenu();
+                  setCurrentMenu('main');
+                  setMenuArray(['main']);
+                  setMenuNames([]);
+                  setLoading(false);
+                  setForceRedisplay(!forceRedisplay);
+                }}>
                 <Box
                   display='flex' flexDirection='row' alignItems={'center'}
                   key={'vRowRefresh'}
