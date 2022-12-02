@@ -80,8 +80,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   const [groupName, setGroupName] = React.useState();
   const [groupID, setGroupID] = React.useState();
   const [groupRole, setGroupRole] = React.useState();
+  const [groupRec, setGroupRec] = React.useState();
 
-  // const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [progressMessage, setprogressMessage] = React.useState('Building Member List');
 
   const classes = useStyles();
@@ -165,19 +165,26 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       }
       if (gaL === 1) {
         setGroupName(groupRec.name);
+        setGroupRec(groupRec);
         setGroupID(groupRec.group_id);
-        if (('responsible_for' in pSession) && pSession.responsible_for.includes(groupRec.group_id)) {
-          setGroupRole('responsible');
+        let myRole = groupsManagedObject[groupRec.name] ? groupsManagedObject[groupRec.name].role : null;
+        if (!myRole) {
+          let patientSession = await getSession(pSession.patient_id);
+          if (('responsible_for' in patientSession) && patientSession.responsible_for.includes(groupRec.group_id)) {
+            setGroupRole('responsible');
+          }
+          else if (('groups_managed' in patientSession) && patientSession.groups_managed.join(' ').includes(groupRec.group_id)) {
+            setGroupRole('responsible');
+          }
+          else {
+            setGroupRole(groupRec.admin_list.includes(patientSession.patient_id) ? 'responsible' : 'member');
+          }
         }
-        else if (('groups_managed' in pSession) && pSession.groups_managed.join(' ').includes(groupRec.group_id)) {
-          setGroupRole('responsible');
-        }
-        else {
-          setGroupRole(groupRec.admin_list.includes(pSession.patient_id) ? 'admin' : 'member');
-        }
+        setGroupRole(myRole);
       }
       else {
         setGroupName('Directory Search');
+        setGroupRec({});
         setGroupID(...inGroup);
         setGroupRole('');
       }
@@ -218,6 +225,22 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     return peopleRecs.Items;
   };
 
+  async function getSession(who) {
+    let sRec = await dbClient
+      .get({
+        Key: {
+          session_id: who
+        },
+        TableName: "SessionsV2"
+      })
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on SessionsV2 - caught error is': error });
+      });
+    if (sRec && ('Item' in sRec)) { return sRec.Item; }
+    else { return {}; }
+  }
+
   async function getPerson(pPerson) {
     let peopleRec = await dbClient
       .get({
@@ -251,12 +274,13 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     else { return {}; }
   }
 
-  const getGroupsManagedObject = async (pPerson) => {
+  const getGroupsManagedObject = async (pPatient) => {
+    let patientSession = await getSession(pPatient);
     var returnObject = {};
     let foundGroups = [];
     // First, get Groups that this person explicitly manages (as per the SessionsV2 table)
-    if ('groups_managed' in pSession) {
-      pSession.groups_managed.forEach(group => {
+    if ('groups_managed' in patientSession) {
+      patientSession.groups_managed.forEach(group => {
         let [gID, gName] = group.split('~');
         returnObject[gName.trim()] = {
           group_id: gID.trim(),
@@ -268,12 +292,13 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
     // If there are groups in the "responsible for" array, include those
     let respArray = [];
-    if ('responsible_for' in pSession) {
-      if (Array.isArray(pSession.responsible_for)) { respArray.push(...pSession.responsible_for); }
-      else if (pSession.responsible_for.startsWith('[')) { respArray = pSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-      else { respArray.push(pSession.responsible_for); }
+    if ('responsible_for' in patientSession) {
+      if (Array.isArray(patientSession.responsible_for)) { respArray.push(...patientSession.responsible_for); }
+      else if (patientSession.responsible_for.startsWith('[')) { respArray = patientSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+      else { respArray.push(patientSession.responsible_for); }
     }
-    respArray.forEach(async (group) => {
+    for (let g = 0; g < respArray.length; g++) {
+      let group = respArray[g];
       if (!foundGroups.includes(group)) {
         let checkGroup = await getGroupDetails(pSession.client_id, group);
         if (checkGroup.hasOwnProperty('name')) {
@@ -284,11 +309,12 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
           foundGroups.push(group.trim());
         }
       }
-    });
+    };
 
     // Next, get any other Groups that this person belongs to
-    var personRec = await getPerson(pSession.patient_id); 
-    personRec.groups.forEach(async (group) => {
+    var personRec = await getPerson(pPatient); 
+    for (let g = 0; g < personRec.groups.length; g++) {
+      let group = personRec.groups[g];
       if (!foundGroups.includes(group)) {
         let checkGroup = await getGroupDetails(pSession.client_id, group);
         if (checkGroup.hasOwnProperty('name')) {
@@ -299,7 +325,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
           foundGroups.push(group.trim());
         }
       }
-    });
+    };
 
     // Finally, get open Groups that this person does not already belong to
     let openGroups = await dbClient
@@ -338,36 +364,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       finalObject[key] = returnObject[key];
     });
     setGroupsManagedObject(finalObject);
-    // setForceRedisplay(!forceRedisplay);
     return finalObject;
 
-    /*
-    let invokeFailed = false;
-    params.Payload = JSON.stringify({
-      action: "get_groups_managed",
-      clientId: pSession.client_id,
-      request: {
-        "person_id": pPerson,
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let groupsManagedReturn = JSON.parse(fResp.Payload);
-      if (groupsManagedReturn.status === 200) {
-        setGroupsManagedObject(groupsManagedReturn.body);
-        return groupsManagedReturn.body;
-      }
-    };
-    return [];
-    */
   };
 
   const handleAbort = async () => {
@@ -375,7 +373,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     else {
       setChanges(false);
       setShowGroupSelect(true);
-      // await getGroupsManagedObject(pSession.patient_id);
+      await getGroupsManagedObject(pSession.patient_id)
     }
   };
 
@@ -431,8 +429,10 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               groupMemberList={groupMemberList}
               peopleList={peopleList}
               pPatient={pSession.patient_id}
+              pPatientName={pSession.patient_display_name}
               pClient={pSession.client_id}
               pGroup={groupID}
+              pGroupRec={groupRec}
               pGroupName={groupName}
               pRole={groupRole}
               isMobile={isMobile}
@@ -455,11 +455,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               setGroupID(groupsManagedObject[selectedGroup].group_id);
               setGroupRole(groupsManagedObject[selectedGroup].role);
               await getGroupMemberList([groupsManagedObject[selectedGroup].group_id]);
-              // setForceRedisplay(!forceRedisplay);
             }}
             onRefresh={async () => {
               setShowGroupSelect(true);
-              // setForceRedisplay(!forceRedisplay);
               await getGroupsManagedObject(pSession.patient_id);
             }}
           >

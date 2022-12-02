@@ -158,7 +158,7 @@ const s3 = new AWS.S3({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroupName, pRole, isMobile, onReset }) => {
+export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, isMobile, onReset }) => {
 
   const classes = useStyles();
   const { dispatch } = useSession();
@@ -182,6 +182,8 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
   const [open, setOpen] = React.useState([]);
+
+  const [overrideRole, setOverrideRole] = React.useState();
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const [previousY, setCurrentY] = React.useState(0);
@@ -376,6 +378,9 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
     else {
       nqMessage = `Posted "${pMessage}" as an AVA alert for ${pRecipient.split(':')[0]}`;
     }
+    if (pRecipient.includes('Administrator')) {
+      pMessage = 'Message for ' + pRecipient.split(':')[0] + ' is: ' + pMessage;
+    }
     let lambdaPayload = {
       "body": {
         "client": pClient,
@@ -445,11 +450,11 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
 
   function okToShow(pItem) {
     if ((person_filter.length > 0) && !filteredPerson(pItem.name, pItem.location, pItem.messaging, pItem)) { return false; }
-    if (pGroup.toLowerCase() === '*all') { return true; } 
+    if (pGroup.toLowerCase() === '*all') { return true; }
     if (['responsible', 'admin'].includes(pRole)) { return true; }
     if (pItem.directory_option !== 'exclude') { return true; };
     return false;
-}
+  }
 
   function filteredPerson(pName = { last: '*$*' }, pLoc = '*na*', pMessaging = { sms: '*$*' }, pPerson) {
     if (singleFilterDigit) {
@@ -460,7 +465,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
       return searchString.toLowerCase().includes(person_filter_lower.trim());
     }
   }
-  
+
   function getImage(pPerson) {
     return s3.getSignedUrl('getObject', {
       Bucket: imageBucket,
@@ -744,6 +749,7 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
               }}
               onConfirm={() => {
                 handleRemoveGroupMember(confirmPerson, confirmIndex);
+                if (confirmPerson === pPatient) { setOverrideRole('non-member'); }
                 setDeletePending(false);
               }}
             >
@@ -756,7 +762,10 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
                     className={classes.rowButtonGreen}
-                    onClick={onReset}
+                    onClick={() => {
+                      setOverrideRole(null);
+                      onReset();
+                    }}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Close'}
@@ -789,6 +798,54 @@ export default ({ groupMemberList, peopleList, pPatient, pClient, pGroup, pGroup
                         {'Roster'}
                       </Button>
                     </React.Fragment>
+                  }
+                  {(overrideRole === 'member' || (!overrideRole && (pRole === 'member'))) &&
+                    <Button
+                      onClick={() => {
+                        setConfirmMessage(`Confirm removing ${pPatientName} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                        setConfirmPerson(pPatient);
+                        setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === pPatient; }));
+                        setDeletePending(true);
+                        setForceRedisplay(false);
+                      }}
+                      className={classes.rowButtonGreen}
+                      startIcon={<DeleteIcon fontSize="small" />}
+                    >
+                      Remove me
+                    </Button>
+                  }
+                  {(overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
+                    <React.Fragment>
+                      {(pGroup.toLowerCase() !== '*all') &&
+                        <Button
+                          className={classes.rowButtonGreen}
+                          onClick={() => {
+                            handleAddPersonToGroup(pPatient, pGroup, pPatientName);
+                            setOverrideRole('member');
+                          }}
+                          startIcon={<GroupAddIcon sisetMessageTypeze="small" />}
+                        >
+                          {'Add Myself'}
+                        </Button>
+                      }
+                    </React.Fragment>
+                  }
+                  {(pRole && (pRole !== 'admin') && (pRole !== 'responsible')) &&
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('');
+                        let rKey = '';
+                        pGroupRec.admin_list.forEach((g, i) => {
+                          rKey += ((i > 0) ? ' ~ ' : '') + `${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'} Administrator:${g}`;
+                        });
+                        setRecipient(rKey);
+                      }}
+                      className={classes.rowButtonGreen}
+                      startIcon={<SendIcon size='small' />}
+                    >
+                      {`Msg Admin`}
+                    </Button>
                   }
                 </Box>
                 {(pRole === 'admin' || pRole === 'responsible') &&
