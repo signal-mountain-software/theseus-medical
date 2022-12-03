@@ -538,7 +538,7 @@ export default ({ patient, picture, open, onClose }) => {
 
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `v22.11.18`,
+        'version': `v22.12.04`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'action': 'Updated Person record',
@@ -790,7 +790,7 @@ export default ({ patient, picture, open, onClose }) => {
     patient.time_based_rules[tableRow].keyWords = event.target.value;
     setChanges(true);
   };
-  
+
   function recordExists(recordId) {
     if (!recordId) { return false; }
     if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
@@ -959,8 +959,8 @@ export default ({ patient, picture, open, onClose }) => {
             updateSetChange={() => { setChanges(true); }}
             onChangeMethod={onChangeMethod}
             onChangeEscalationType={onChangeEscalationType}
-          onChangeWaitTime={onChangeWaitTime}
-          onChangeKeyWords={onChangeKeyWords}
+            onChangeWaitTime={onChangeWaitTime}
+            onChangeKeyWords={onChangeKeyWords}
             onChangeEscalationData={onChangeEscalationData}
             numberRows={patient.time_based_rules?.length || 1}
             session={patientSession}
