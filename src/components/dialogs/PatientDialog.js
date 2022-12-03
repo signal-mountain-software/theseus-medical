@@ -771,6 +771,26 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
+  const onChangeEscalationType = tableRow => event => {
+    patient.time_based_rules[tableRow].escalationType = event.target.value;
+    setChanges(true);
+  };
+
+  const onChangeEscalationData = tableRow => event => {
+    patient.time_based_rules[tableRow].escalationData = event.target.value;
+    setChanges(true);
+  };
+
+  const onChangeWaitTime = tableRow => event => {
+    patient.time_based_rules[tableRow].waitTime = event.target.value;
+    setChanges(true);
+  };
+
+  const onChangeKeyWords = tableRow => event => {
+    patient.time_based_rules[tableRow].keyWords = event.target.value;
+    setChanges(true);
+  };
+  
   function recordExists(recordId) {
     if (!recordId) { return false; }
     if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
@@ -847,7 +867,7 @@ export default ({ patient, picture, open, onClose }) => {
                     flexDirection='column'
                     justifyContent="center"
                   >
-                    <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
+                    <Typography className={classes.radioText}>Simple option - I prefer to always receive communications via...</Typography>
                     {localData.preferred_method &&
                       <FormControl className={classes.formControl} component="fieldset">
                         <RadioGroup row defaultValue={localData.preferred_method} aria-label="PreferredMethod" name="method" value={localData.preferred_method} onChange={handleChangeMethod}>
@@ -857,7 +877,7 @@ export default ({ patient, picture, open, onClose }) => {
                           <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!localData.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>home phone</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="office" control={<Radio disabled={!localData.office} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>work phone</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!localData.surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>time-based</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>use rules to manage messages</Typography>} />
                         </RadioGroup>
                       </FormControl>
                     }
@@ -933,14 +953,19 @@ export default ({ patient, picture, open, onClose }) => {
             </Box>
           </Paper>
         </Box>
-        {localData.preferred_method === 'time_based' ?
+        {localData.preferred_method === 'time_based' &&
           <MessageRouting
             person={patient}
             updateSetChange={() => { setChanges(true); }}
             onChangeMethod={onChangeMethod}
+            onChangeEscalationType={onChangeEscalationType}
+          onChangeWaitTime={onChangeWaitTime}
+          onChangeKeyWords={onChangeKeyWords}
+            onChangeEscalationData={onChangeEscalationData}
             numberRows={patient.time_based_rules?.length || 1}
+            session={patientSession}
           />
-          : null}
+        }
         <Box m={2}>
           <Paper component={Box} variant={'outlined'}>
             <Box mt={1} py={1} px={3} borderBottom={2}>
