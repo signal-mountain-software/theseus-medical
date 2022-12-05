@@ -4,7 +4,6 @@ import Table from '@material-ui/core/Table';
 import TableBody from '@material-ui/core/TableBody';
 import TableCell from '@material-ui/core/TableCell';
 import TableContainer from '@material-ui/core/TableContainer';
-import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -16,6 +15,7 @@ import Typography from '@material-ui/core/Typography';
 import Radio from '@material-ui/core/Radio';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
+import FormGroup from '@material-ui/core/FormGroup';
 
 import Box from '@material-ui/core/Box';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -46,13 +46,53 @@ const useStyles = makeStyles(theme => ({
     paddingTop: 0,
     height: theme.spacing(2.5),
   },
-  picture: {
-    width: theme.spacing(16),
-    height: theme.spacing(16),
-    [theme.breakpoints.down('xs')]: {
-      width: theme.spacing(8),
-      height: theme.spacing(8),
-    },
+  formControlFrom: {
+    margin: 0,
+    paddingTop: 0,
+    height: theme.spacing(2.5),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: theme.spacing(2)
+  },
+  formControlOn: {
+    margin: 0,
+    paddingTop: 0,
+    marginRight: theme.spacing(1),
+    height: theme.spacing(2.5),
+    fontSize: theme.typography.fontSize * 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formControlDayRow: {
+    margin: 0,
+    paddingTop: 0,
+    height: theme.spacing(2.5),
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginBottom: theme.spacing(1)
+  },
+  formControlTo: {
+    margin: 0,
+    paddingTop: 0,
+    height: theme.spacing(2.5),
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: theme.spacing(1)
+  },
+  formControlDays: {
+    margin: 0,
+    paddingTop: 0,
+    height: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 0
+  },
+  centerCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: -12
   },
   photoButton: {
     alignSelf: 'center',
@@ -107,6 +147,11 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
+  radioDays: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginTop: 2,
+    marginLeft: 0,
+  },
   radioTextBold: {
     fontSize: theme.typography.fontSize * 0.8,
     fontWeight: 'bold',
@@ -117,7 +162,9 @@ const useStyles = makeStyles(theme => ({
   radioTextHeader: {
     fontSize: theme.typography.fontSize * 0.8,
     fontWeight: 'bold',
-    marginBottom: -25,
+    marginLeft: theme.spacing(2),
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     paddingLeft: 0,
     paddingRight: 10,
   },
@@ -224,6 +271,13 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
     updateSetChange();
   };
 
+  const handleChangeMethod = tableRow => event => {
+    person.time_based_rules[tableRow].method = event.target.value;
+    setRuleRows(person.time_based_rules);
+    setViewVersion(viewVersion + 1);
+    updateSetChange();
+  };
+
   const handleChangeKeyWordType = tableRow => event => {
     person.time_based_rules[tableRow].keyWordType = event.target.value;
     person.time_based_rules[tableRow].keyWordData = '';
@@ -262,7 +316,10 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
   };
 
   const updateRoutingDay = (tableRow, dayValue, removeEntry) => {
-    if (removeEntry) { person.time_based_rules[tableRow].day.replace(dayValue, ''); }
+    if (removeEntry) {
+      let newString = person.time_based_rules[tableRow].day.replace(dayValue, '');
+      person.time_based_rules[tableRow].day = newString;
+    }
     else { person.time_based_rules[tableRow].day += dayValue; };
     setRuleRows(person.time_based_rules);
     setViewVersion(viewVersion + 1);
@@ -298,159 +355,187 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
     <Section title='Message Delivery' outlined>
       <TableContainer className={classes.container} component={Paper}>
         <Table size='small' stickyHeader>
-          {(lastEntry > 0) &&
-            <TableHead>
-              <TableRow>
-                <TableCell style={{ width: 200 }}>From</TableCell>
-                <TableCell style={{ width: 200 }}>To</TableCell>
-                <TableCell style={{ width: 20 }}>Su</TableCell>
-                <TableCell style={{ width: 20 }}>M</TableCell>
-                <TableCell style={{ width: 20 }}>Tu</TableCell>
-                <TableCell style={{ width: 20 }}>W</TableCell>
-                <TableCell style={{ width: 20 }}>Th</TableCell>
-                <TableCell style={{ width: 20 }}>F</TableCell>
-                <TableCell style={{ width: 20 }}>Sa</TableCell>
-              </TableRow>
-            </TableHead>
-          }
           {(person && viewVersion > 0) &&
             <TableBody>
               {ruleRows.map((route, i) => (
                 <React.Fragment key={`message_fragment_${i}`}>
                   {(i < lastEntry) &&
                     <React.Fragment key={`header_message_${i}`}>
-                      <TableRow key={`message_greeting`} style={{ marginLeft: '20px', borderTop: 'none', borderBottom: 'none' }} colSpan={9}>
-                        <TableCell colSpan={9} style={{ borderTop: 'none', borderBottom: 'none' }}>
-                          <Typography className={classes.radioTextHeader}>Set a time frame for this rule</Typography>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow key={`message_routing_${i}`}>
-                        <TableCell style={{ width: 200, borderBottom: 'none' }} key={`message_routing_${i}_from`}>
-                          <TimePicker
-                            value={route.time_from || '0:00'}
-                            clearIcon={null}
-                            clockIcon={null}
-                            disableClock={true}
-                            onChange={onChangeFromTime(i)}
-                          />
-                        </TableCell>
-                        <TableCell style={{ width: 200, borderBottom: 'none' }} key={`message_routing_${i}_to`}>
-                          <TimePicker
-                            value={route.time_to || '23:59'}
-                            clearIcon={null}
-                            clockIcon={null}
-                            disableClock={true}
-                            onChange={onChangeToTime(i)}
-                          />
-                        </TableCell>
-                        <TableCell style={{ width: 20, borderBottom: 'none' }}>
-                          <Checkbox
-                            edge='start'
-                            checked={route?.day?.includes('0')}
-                            name={`message_routing_${i}_0`}
-                            disableRipple
-                            onChange={(event) => {
-                              updateRoutingDay(i, '0', route?.day?.includes('0'));
-                            }}
-                            inputProps={{ 'aria-labelledby': `message_routing_${i}_0` }}
-                          />
-                        </TableCell>
-                        <TableCell style={{ width: 20, borderBottom: 'none' }}>
-                          <Checkbox
-                            edge='start'
-                            checked={route?.day?.includes('1')}
-                            name={`message_routing_${i}_1`}
-                            disableRipple
-                            onChange={(event) => {
-                              updateRoutingDay(i, '1', route?.day?.includes('1'));
-                            }}
-                            inputProps={{ 'aria-labelledby': `message_routing_${i}_1` }}
-                          />
-                        </TableCell>
-                        <TableCell style={{ width: 20, borderBottom: 'none' }}>
-                          <Checkbox
-                            edge='start'
-                            checked={route?.day?.includes('2')}
-                            name={`message_routing_${i}_2`}
-                            disableRipple
-                            onClick={(event) => {
-                              console.log('checkbox 2 tapped');
-                              updateRoutingDay(i, '2', route?.day?.includes('2'));
-                            }}
-                            inputProps={{ 'aria-labelledby': `message_routing_${i}_2` }}
-                          />
-                        </TableCell>
-                        <TableCell style={{ width: 20, borderBottom: 'none' }}>
-                          <Checkbox
-                            edge='start'
-                            checked={route?.day?.includes('3')}
-                            name={`message_routing_${i}_3`}
-                            disableRipple
-                            onChange={(event) => {
-                              console.log('checkbox 3 tapped');
-                              updateRoutingDay(i, '3', route?.day?.includes('3'));
-                            }}
-                            inputProps={{ 'aria-labelledby': `message_routing_${i}_3` }}
-                          />
-                        </TableCell>
-                        <TableCell style={{ width: 20, borderBottom: 'none' }}>
-                          <Checkbox
-                            edge='start'
-                            checked={route?.day?.includes('4')}
-                            name={`message_routing_${i}_4`}
-                            disableRipple
-                            onChange={(event) => {
-                              updateRoutingDay(i, '4', route?.day?.includes('4'));
-                            }}
-                            inputProps={{ 'aria-labelledby': `message_routing_${i}_4` }}
-                          />
-                        </TableCell>
-                        <TableCell style={{ width: 20, borderBottom: 'none' }}>
-                          <Checkbox
-                            edge='start'
-                            checked={route?.day?.includes('5')}
-                            name={`message_routing_${i}_5`}
-                            disableRipple
-                            onChange={(event) => {
-                              updateRoutingDay(i, '5', route?.day?.includes('5'));
-                            }}
-                            inputProps={{ 'aria-labelledby': `message_routing_${i}_5` }}
-                          />
-                        </TableCell>
-                        <TableCell style={{ width: 20, borderBottom: 'none' }}>
-                          <Checkbox
-                            edge='start'
-                            checked={route?.day?.includes('6')}
-                            name={`message_routing_${i}_6`}
-                            disableRipple
-                            onChange={(event) => {
-                              updateRoutingDay(i, '6', route?.day?.includes('6'));
-                            }}
-                            inputProps={{ 'aria-labelledby': `message_routing_${i}_6` }}
-                          />
-                        </TableCell>
-                      </TableRow>
+                      <Typography className={classes.radioTextHeader}>{`Message Handling Rule ${i + 1}`}</Typography>
+                      <Box >
+                        <FormControl className={classes.formControl} component="fieldset">
+                          <FormGroup row aria-label={`message_route_${i}_method`} name="method">
+                            <FormControlLabel
+                              className={classes.formControlFrom}
+                              value="AVA"
+                              control={
+                                <TimePicker
+                                  value={route.time_from || '0:00'}
+                                  clearIcon={null}
+                                  clockIcon={null}
+                                  disableClock={true}
+                                  onChange={onChangeFromTime(i)}
+                                />
+                              }
+                              label={<Typography className={classes.radioText}>From</Typography>}
+                              labelPlacement='start'
+                            />
+                            <FormControlLabel
+                              className={classes.formControlTo}
+                              value="AVA"
+                              control={
+                                <TimePicker
+                                  value={route.time_to || '23:59'}
+                                  clearIcon={null}
+                                  clockIcon={null}
+                                  disableClock={true}
+                                  onChange={onChangeToTime(i)}
+                                />
+                              }
+                              label={<Typography className={classes.radioText}>To</Typography>}
+                              labelPlacement='start'
+                            />
+                          </FormGroup>
+                        </FormControl>
+                      </Box>
+                      <Box flexDirection={'row'} className={classes.formControlDayRow} >
+                        <FormControl className={classes.formControl} component="fieldset">
+                          <FormGroup row aria-label={`message_routedays_${i}_method`} name="method">
+                            <FormControlLabel
+                              className={classes.formControlDays}
+                              control={
+                                <Checkbox
+                                  className={classes.centerCenter}
+                                  checked={route?.day?.includes('0')}
+                                  name={`message_routing_${i}_0`}
+                                  disableRipple
+                                  onChange={() => updateRoutingDay(i, '0', route?.day?.includes('0'))}
+                                  inputProps={{ 'aria-labelledby': `message_routing_${i}_0` }}
+                                />
+                              }
+                              label={<Typography className={classes.radioDays}>Sun</Typography>}
+                              labelPlacement='bottom'
+                            />
+                            <FormControlLabel
+                              className={classes.formControlDays}
+                              control={
+                                <Checkbox
+                                  className={classes.centerCenter}
+                                  checked={route?.day?.includes('1')}
+                                  name={`message_routing_${i}_1`}
+                                  disableRipple
+                                  onClick={() => updateRoutingDay(i, '1', route?.day?.includes('1'))}
+                                  inputProps={{ 'aria-labelledby': `message_routing_${i}_1` }}
+                                />
+                              }
+                              label={<Typography className={classes.radioDays}>Mon</Typography>}
+                              labelPlacement='bottom'
+                            />
+                            <FormControlLabel
+                              className={classes.formControlDays}
+                              value="AVA"
+                              control={
+                                <Checkbox
+                                  className={classes.centerCenter}
+                                  checked={route?.day?.includes('2')}
+                                  name={`message_routing_${i}_2`}
+                                  disableRipple
+                                  onChange={() => updateRoutingDay(i, '2', route?.day?.includes('2'))}
+                                  inputProps={{ 'aria-labelledby': `message_routing_${i}_2` }}
+                                />
+                              }
+                              label={<Typography className={classes.radioDays}>Tue</Typography>}
+                              labelPlacement='bottom'
+                            />
+                            <FormControlLabel
+                              className={classes.formControlDays}
+                              value="AVA"
+                              control={
+                                <Checkbox
+                                  className={classes.centerCenter}
+                                  checked={route?.day?.includes('3')}
+                                  name={`message_routing_${i}_3`}
+                                  disableRipple
+                                  onClick={() => updateRoutingDay(i, '3', route?.day?.includes('3'))}
+                                  inputProps={{ 'aria-labelledby': `message_routing_${i}_3` }}
+                                />
+                              }
+                              label={<Typography className={classes.radioDays}>Wed</Typography>}
+                              labelPlacement='bottom'
+                            />
+                            <FormControlLabel
+                              className={classes.formControlDays}
+                              value="AVA"
+                              control={
+                                <Checkbox
+                                  className={classes.centerCenter}
+                                  checked={route?.day?.includes('4')}
+                                  name={`message_routing_${i}_4`}
+                                  disableRipple
+                                  onClick={() => updateRoutingDay(i, '4', route?.day?.includes('4'))}
+                                  inputProps={{ 'aria-labelledby': `message_routing_${i}_4` }}
+                                />
+                              }
+                              label={<Typography className={classes.radioDays}>Thu</Typography>}
+                              labelPlacement='bottom'
+                            />
+                            <FormControlLabel
+                              className={classes.formControlDays}
+                              value="AVA"
+                              control={
+                                <Checkbox
+                                  className={classes.centerCenter}
+                                  checked={route?.day?.includes('5')}
+                                  name={`message_routing_${i}_5`}
+                                  disableRipple
+                                  onChange={() => updateRoutingDay(i, '5', route?.day?.includes('5'))}
+                                  inputProps={{ 'aria-labelledby': `message_routing_${i}_5` }}
+                                />
+                              }
+                              label={<Typography className={classes.radioDays}>Fri</Typography>}
+                              labelPlacement='bottom'
+                            />
+                            <FormControlLabel
+                              className={classes.formControlDays}
+                              value="AVA"
+                              control={
+                                <Checkbox
+                                  className={classes.centerCenter}
+                                  checked={route?.day?.includes('6')}
+                                  name={`message_routing_${i}_6`}
+                                  disableRipple
+                                  onClick={() => updateRoutingDay(i, '6', route?.day?.includes('6'))}
+                                  inputProps={{ 'aria-labelledby': `message_routing_${i}_6` }}
+                                />
+                              }
+                              label={<Typography className={classes.radioDays}>Sat</Typography>}
+                              labelPlacement='bottom'
+                            />
+                          </FormGroup>
+                        </FormControl>
+                      </Box>
                     </React.Fragment>
                   }
                   <TableRow key={`message_selection_${i}`} style={{ borderTop: 'none', borderBottom: 'none' }} colSpan={9}>
                     <TableCell colSpan={9} style={{ borderTop: 'none', borderBottom: 'none' }}>
                       {(lastEntry === 0) &&
-                        <Typography className={classes.radioTextBold}>I prefer to receive communications via...</Typography>
+                        <Typography className={classes.radioText}>I prefer to receive communications via...</Typography>
                       }
                       {(lastEntry > 0) && (i < lastEntry) &&
-                        <Typography className={classes.radioTextBold}>During these times, I prefer...</Typography>
+                        <Typography className={classes.radioText}>During these times, I prefer...</Typography>
                       }
                       {(lastEntry > 0) && (i === lastEntry) &&
                         <Typography className={classes.radioTextMoreTop}>At all other times, use this method...</Typography>
                       }
                       <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup row defaultValue={route.method || ''} aria-label={`message_routing_${i}_method`} name="method" value={prefMethod} onChange={onChangeMethod(i)}>
+                        <RadioGroup row defaultValue={route.method || ''} aria-label={`message_routing_${i}_method`} name="method" value={prefMethod} onChange={handleChangeMethod(i)}>
                           <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!person.messaging.sms} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!person.messaging.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!person.messaging.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>home phone</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="office" control={<Radio disabled={!person.messaging.office} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>work phone</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!person.messaging.surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
+                          <FormControlLabel className={classes.formControlLbl} value="hold" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>hold all non-urgent messages</Typography>} />
                         </RadioGroup>
                       </FormControl>
                     </TableCell>
@@ -458,9 +543,14 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                   <TableRow>
                     <TableCell colSpan={9} style={{ borderTop: 'none', borderBottom: 'none' }}>
                       <Box alignItems="flex-end" justifyContent="flex-start" display='flex' flexDirection='row'>
-                        <Typography className={classes.radioTextLeft}>For urgent messages, give me</Typography>
-                        <Input classes={{ root: classes.idText, input: classes.inputRule }} key={`wait_time_${i}`} defaultValue={route.waitTime || '15'} value={waitTime} onChange={onChangeWaitTime(i)} />
-                        <Typography className={classes.radioTextRight}>minutes to respond, then...</Typography>
+                        <Typography className={classes.radioTextLeft}>For urgent messages</Typography>
+                        {(route.method !== 'hold') &&
+                          <React.Fragment>
+                            <Typography className={classes.radioText}>give me</Typography>
+                            <Input classes={{ root: classes.idText, input: classes.inputRule }} key={`wait_time_${i}`} defaultValue={route.waitTime || '15'} value={waitTime} onChange={onChangeWaitTime(i)} />
+                            <Typography className={classes.radioTextRight}>minutes to respond, then...</Typography>
+                          </React.Fragment>
+                        }
                       </Box>
                       <FormControl className={classes.formControl} component="fieldset">
                         <RadioGroup row
@@ -470,7 +560,7 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                           name="escalation"
                           onChange={handleChangeEscalationType(i)}
                         >
-                          <FormControlLabel className={classes.formControlLbl} value="retry" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>try again</Typography>} />
+                          {(route.method !== 'hold') && <FormControlLabel className={classes.formControlLbl} value="retry" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>try again</Typography>} />}
                           <FormControlLabel className={classes.formControlLbl} value="altMethod" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>try another method</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="altID" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>send it to one of my linked accounts</Typography>} />
                           <FormControlLabel className={classes.formControlLbl} value="altAddress" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>try another address or phone number</Typography>} />
@@ -655,7 +745,7 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
             </TableBody>
           }
         </Table>
-      </TableContainer>
+      </TableContainer >
       <Button onClick={handleAddRule} className={classes.topButton}>
         Add a new Rule
       </Button>
