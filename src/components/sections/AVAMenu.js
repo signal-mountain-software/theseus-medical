@@ -102,7 +102,7 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
     marginBottom: 0,
-    fontSize: '1.3rem',
+    fontSize: theme.typography.fontSize * 1.5,
   },
   messageScroll: {
     maxHeight: 100,
@@ -1082,13 +1082,13 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 className={classes.hello}
                 id='scroll-dialog-title'
               >
-                {`${isMobile ? 'Hi' : ('Good ' + greetingTime)}, ${greetingName}!`}
+                {`Good ${greetingTime},${isMobile ? '' : (' ' + greetingName + '!')}`}
               </Typography>
               <Typography
                 className={classes.hello}
                 id='scroll-dialog-title'
               >
-                {`${(!isMobile ? 'Welcome to ' : '')}AVA`}
+                {`${isMobile ? (greetingName + '!') : 'Welcome to AVA'}`}
               </Typography>
             </Box>
           </Box>
