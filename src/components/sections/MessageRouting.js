@@ -95,6 +95,7 @@ const useStyles = makeStyles(theme => ({
   },
   idText: {
     display: 'inline',
+    marginTop: -5,
     marginRight: theme.spacing(1),
   },
   idTextNoSpacing: {
@@ -102,14 +103,14 @@ const useStyles = makeStyles(theme => ({
   },
   inputRule: {
     display: 'inline',
-    fontSize: theme.typography.fontSize,
+    fontSize: theme.typography.fontSize * 0.8,
     padding: 0,
     maxWidth: theme.spacing(3),
     margin: 0,
   },
   inputRuleWide: {
     display: 'inline',
-    fontSize: theme.typography.fontSize,
+    fontSize: theme.typography.fontSize * 0.8,
     padding: 0,
     maxWidth: theme.spacing(30),
     margin: 0,
@@ -135,7 +136,7 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
     variant: 'outlined',
     textTransform: 'none',
-    outline: '1px solid',
+    outline: '1px solid black',
     size: 'small',
     fontSize: theme.typography.fontSize * 0.8,
     color: theme.palette.reject[theme.palette.type],
@@ -145,6 +146,12 @@ const useStyles = makeStyles(theme => ({
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 10,
+  },
+  radioTextNoSpacing: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 2,
   },
   radioDays: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -202,6 +209,7 @@ const useStyles = makeStyles(theme => ({
   radioTextTopRight: {
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: theme.spacing(2),
+    marginTop: theme.spacing(1),
     paddingLeft: 0,
     paddingRight: 0,
   },
@@ -230,11 +238,10 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
 
 export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationType, onChangeWaitTime, onChangeKeyWords, onChangeEscalationData, numRows, session }) => {
   const classes = useStyles();
-  let prefMethod;
   let waitTime;
-  let escalationType, escalationData;
+  let escalationData;
   let keyWords;
-  let keyWordType, keyWordData;
+  let keyWordData;
 
   let l = person.time_based_rules?.length || 0;
   if (l === 0) {
@@ -543,7 +550,7 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                     <Typography className={classes.radioText}>At all other times, use this method...</Typography>
                   }
                   <FormControl className={classes.formControl} component="fieldset">
-                    <RadioGroup row defaultValue={route.method || ''} aria-label={`message_routing_${i}_method`} name="method" value={prefMethod} onChange={handleChangeMethod(i)}>
+                    <RadioGroup row aria-label={`message_routing_${i}_method`} name="method" value={route.method} onChange={handleChangeMethod(i)}>
                       <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!person.messaging.sms} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
                       <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!person.messaging.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
@@ -555,19 +562,23 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                   </FormControl>
                 </Box>
                 <Box className={classes.topicBox} >
-                  <Box alignItems="flex-end" justifyContent="flex-start" display='flex' flexDirection='row'>
-                    <Typography className={classes.radioText}>{`For urgent messages${(route.method !== 'hold') ? ', give me' : ''}`}</Typography>
-                    {(route.method !== 'hold') &&
-                      <React.Fragment>
-                        <Input classes={{ root: classes.idTextNoSpacing, input: classes.inputRule }} key={`wait_time_${i}`} defaultValue={route.waitTime || '15'} value={waitTime} onChange={onChangeWaitTime(i)} />
-                        <Typography className={classes.radioTextRight}>minutes to respond, then...</Typography>
-                      </React.Fragment>
+                  <Box alignItems="flex-start" justifyContent="flex-start" display='flex' flexDirection='row'>
+                    {(route.method === 'hold') ?
+                      <Typography className={classes.radioText}>{`For urgent messages`}</Typography>
+                      :
+                      <FormControl className={classes.formControl} component="fieldset">
+                        <FormControlLabel className={classes.formControlLbl}
+                          control={<Input classes={{ root: classes.idTextNoSpacing, input: classes.inputRule }} key={`wait_time_${i}`} defaultValue={route.waitTime || '15'} value={waitTime} onChange={onChangeWaitTime(i)} />}
+                          label={<Typography className={classes.radioTextNoSpacing}>{`For urgent messages, wait how many minutes?:`}</Typography>}
+                          labelPlacement={'start'}
+                        />
+                        <Typography className={classes.radioText}>Then...</Typography>
+                      </FormControl>
                     }
                   </Box>
                   <FormControl className={classes.formControl} component="fieldset">
                     <RadioGroup row
-                      defaultValue={route.escalationType || 'noAction'}
-                      value={escalationType}
+                      value={route.escalationType}
                       aria-label={`message_routing_${i}_escalation`}
                       name="escalation"
                       onChange={handleChangeEscalationType(i)}
@@ -611,8 +622,7 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                             <RadioGroup row
                               aria-label={`message_routing_${i}_method`}
                               name="method"
-                              defaultValue={route.escalationData || ''}
-                              value={escalationData}
+                              value={route.escalationData}
                               onChange={handleChangeEscalationData(i)}
                             >
                               {(route.method !== 'sms') && <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!person.messaging.sms} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />}
@@ -630,8 +640,7 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                             <RadioGroup row
                               aria-label="altIDselection"
                               name="method"
-                              defaultValue={route.escalationData || ''}
-                              value={escalationData}
+                              value={route.escalationData}
                               onChange={handleChangeEscalationData(i)}
                             >
                               {linkedAccounts.map((presp) => (
@@ -652,17 +661,22 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                   }
                 </Box>
                 <Box className={classes.topicBox} >
-                  <Box alignItems="flex-end" justifyContent="flex-start" display='flex' flexDirection='row'>
+                  <Box sx={{ marginTop: '5px', maxWidth: '40px' }} display='flex' flexDirection='column'>
                     <Typography className={classes.radioText}>Look for any of these words:</Typography>
-                    <Input classes={{ root: classes.idText, input: classes.inputRuleWide }} key={`key_words_${i}`} defaultValue={route.keyWords || ''} value={keyWords} onChange={onChangeKeyWords(i)} />
+                    <Input
+                      classes={{ root: classes.idText, underline: classes.inputRuleWide, input: classes.inputRuleWide }}
+                      key={`key_words_${i}`}
+                      defaultValue={route.keyWords || ''}
+                      value={keyWords}
+                      onChange={onChangeKeyWords(i)}
+                    />
                   </Box>
                   {(route.keyWords && (route.keyWords.length > 0)) &&
                     <Box className={classes.radioTextTopRight} >
                       <Typography className={classes.radioText} >If found, ignore other rules and...</Typography>
                       <FormControl className={classes.formControl} component="fieldset">
                         <RadioGroup row
-                          defaultValue={route.keyWordType || ''}
-                          value={keyWordType}
+                          value={route.keyWordType}
                           aria-label={`message_routing_${i}_keywordtype`}
                           name="keywordType"
                           onChange={handleChangeKeyWordType(i)}
@@ -691,8 +705,7 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                               <RadioGroup row
                                 aria-label={`message_routing_${i}_method`}
                                 name="method"
-                                defaultValue={route.keyWordData || ''}
-                                value={keyWordData}
+                                value={route.keyWordData}
                                 onChange={handleChangeKeyWordData(i)}
                               >
                                 {(route.method !== 'sms') && <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!person.messaging.sms} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />}
@@ -710,8 +723,7 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                               <RadioGroup row
                                 aria-label="altIDselection"
                                 name="method"
-                                defaultValue={route.keyWordData || ''}
-                                value={keyWordData}
+                                value={route.keyWordData}
                                 onChange={handleChangeKeyWordData(i)}
                               >
                                 {linkedAccounts.map((presp) => (
