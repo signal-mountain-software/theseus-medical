@@ -379,12 +379,16 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
         // ({ 'in getGroupsPersonBelongsTo': { pPerson } });
         let batchGetRequest = {
             RequestItems: {
-            'Groups': {
-                Keys: []
+                'Groups': {
+                    Keys: []
+                }
             }
-            }
-        }
-        requestor.groups.forEach(g => { 
+        };
+
+        // requestor.groups was unexpectedly found to have duplicate entries in one instance
+        // When that happened, this batchGetRequest would fail and no menu was rendered at all
+        // the code "[...new Set(requestor.groups)]" assures that unique values only are considered
+        [...new Set(requestor.groups)].forEach(g => { 
             batchGetRequest.RequestItems.Groups.Keys.push(
                 {
                 client_id: masterClient,
