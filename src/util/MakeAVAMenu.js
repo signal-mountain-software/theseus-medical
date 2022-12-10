@@ -141,6 +141,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
 
         // Get all Groups this person is associated with
         groupList = await getGroupsPersonBelongsTo(pPerson);
+        groupList.sort((a, b) => { 
+            if (a.group_id < b.group_id) { return -1; }
+            else { return 1; }
+        })
         // ('** GROUPS **');
         let gL = groupList.length;
         for (let g = 0; g < gL; g++) {
@@ -375,12 +379,16 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
         // ({ 'in getGroupsPersonBelongsTo': { pPerson } });
         let batchGetRequest = {
             RequestItems: {
-            'Groups': {
-                Keys: []
+                'Groups': {
+                    Keys: []
+                }
             }
-            }
-        }
-        requestor.groups.forEach(g => { 
+        };
+
+        // requestor.groups was unexpectedly found to have duplicate entries in one instance
+        // When that happened, this batchGetRequest would fail and no menu was rendered at all
+        // the code "[...new Set(requestor.groups)]" assures that unique values only are considered
+        [...new Set(requestor.groups)].forEach(g => { 
             batchGetRequest.RequestItems.Groups.Keys.push(
                 {
                 client_id: masterClient,
