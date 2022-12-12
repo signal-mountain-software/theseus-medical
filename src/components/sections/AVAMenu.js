@@ -253,7 +253,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   const [messageText, setMessageText] = React.useState('');
   const [imageURL, setImageURL] = React.useState('');
   const [greetingName, setGreetingName] = React.useState('');
-  const [greetingTime, setGreetingTime] = React.useState('');
+  const [greetingWords, setGreetingWords] = React.useState('');
   const [confirmMessage, setConfirmMessage] = React.useState('');
   const [pendingFact, setPendingFact] = React.useState('');
 
@@ -419,43 +419,23 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   };
 
   const getMessage = async (pPerson) => {
-    let now = new Date().getTime();
-    console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
-    let mRecs = await dbClient
-      .query({
-        KeyConditionExpression: 'sender_id = :p and posted_time > :t',
-        FilterExpression: 'common_key = :msr and recipient_address <> :s and delete_flag <> :true',
-        ExpressionAttributeValues: {
-          ':p': pPerson,
-          ':t': now - (10 * oneMinute),
-          ':msr': 'message_status_record',
-          ':s': 'self',
-          ':true': true
-        },
-        TableName: "Messages",
-        IndexName: 'sender_id-index',
-        ScanIndexForward: false,
-        Limit: 10
-      })
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-        }
-        console.log({ 'Error reading Messages': error });
-      });
-    if (!recordExists(mRecs)) {
-      mRecs = await dbClient
+    makeGreeting();
+    try {
+      let now = new Date().getTime();
+      console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
+      let mRecs = await dbClient
         .query({
-          KeyConditionExpression: 'recipient_id = :p and posted_time > :t',
-          FilterExpression: 'delete_flag <> :true',
+          KeyConditionExpression: 'sender_id = :p and posted_time > :t',
+          FilterExpression: 'common_key = :msr and recipient_address <> :s and delete_flag <> :true',
           ExpressionAttributeValues: {
             ':p': pPerson,
-            ':t': now - (24 * oneHour),
+            ':t': now - (10 * oneMinute),
+            ':msr': 'message_status_record',
+            ':s': 'self',
             ':true': true
           },
           TableName: "Messages",
-          IndexName: 'recipient_id-index',
+          IndexName: 'sender_id-index',
           ScanIndexForward: false,
           Limit: 10
         })
@@ -466,40 +446,68 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           }
           console.log({ 'Error reading Messages': error });
         });
-      if (recordExists(mRecs)) {
-        // handle a received message
+      if (!recordExists(mRecs)) {
+        mRecs = await dbClient
+          .query({
+            KeyConditionExpression: 'recipient_id = :p and posted_time > :t',
+            FilterExpression: 'delete_flag <> :true',
+            ExpressionAttributeValues: {
+              ':p': pPerson,
+              ':t': now - (24 * oneHour),
+              ':true': true
+            },
+            TableName: "Messages",
+            IndexName: 'recipient_id-index',
+            ScanIndexForward: false,
+            Limit: 10
+          })
+          .promise()
+          .catch(error => {
+            if (error.code === 'NetworkingError') {
+              enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+            }
+            console.log({ 'Error reading Messages': error });
+          });
+        if (recordExists(mRecs)) {
+          // handle a received message
+          let msg = mRecs.Items[0];
+          let httpAt = msg.message_content.indexOf('http');
+          if (httpAt > -1) {
+            let lastSentenceAt = msg.message_content.lastIndexOf('.', httpAt);
+            msg.message_content = msg.message_content.substring(0, lastSentenceAt + 1);
+          }
+          if (!msg.message_content.startsWith('Message from') && (msg.sender_id !== pPerson)) {
+            msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
+          }
+          let foundMessage = `${msg.posted_time}$~~$${new Date(Number(msg.posted_time)).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          })
+            } - ${msg.message_content}$~~$${msg.message_id}$~~$to$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
+          setMessageReplyRecipient(`${msg.sender_name}:${msg.response_target || msg.sender_id}`);
+          setMessageText(foundMessage);
+          return foundMessage;
+        }
+      }
+      else {
+        // handle a sent message
         let msg = mRecs.Items[0];
-        let httpAt = msg.message_content.indexOf('http');
-        if (httpAt > -1) {
-          let lastSentenceAt = msg.message_content.lastIndexOf('.', httpAt);
-          msg.message_content = msg.message_content.substring(0, lastSentenceAt + 1);
-        }
-        if (!msg.message_content.startsWith('Message from') && (msg.sender_id !== pPerson)) {
-          msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
-        }
-        let foundMessage = `${msg.posted_time}$~~$${new Date(Number(msg.posted_time)).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        })
-          } - ${msg.message_content}$~~$${msg.message_id}$~~$to$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
-        setMessageReplyRecipient(`${msg.sender_name}:${msg.response_target || msg.sender_id}`);
+        let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$from$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
         setMessageText(foundMessage);
         return foundMessage;
       }
+      setMessageText(null);
+      setForceRedisplay(!forceRedisplay);
+      return null;
     }
-    else {
-      // handle a sent message
-      let msg = mRecs.Items[0];
-      let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$from$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
-      setMessageText(foundMessage);
-      return foundMessage;
+    catch (e) {
+      setMessageText(null);
+      setForceRedisplay(!forceRedisplay);
+      return null;
     }
-    setMessageText(null);
-    setForceRedisplay(!forceRedisplay);
-    return null;
   };
 
   async function putS3Object(pMediaData, pType) {
@@ -816,7 +824,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       user_id: pUser,
       activity_code: pCode,
       activity_name: pName,
-      AVA_version: `22.12.04${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+      AVA_version: `22.12.12${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
     };
     let workLog = activityLogRecords;
     workLog.push(activityLogRec);
@@ -1001,10 +1009,10 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   function makeGreeting() {
     let current_hour = Number(new Date().toTimeString().split(':')[0]);
     let response = '';
-    if (current_hour < 12) { response = 'morning'; }
-    else if (current_hour < 17) { response = 'afternoon'; }
-    else { response = 'evening'; }
-    setGreetingTime(response);
+    if (current_hour < 12) { response = 'Good morning'; }
+    else if (current_hour < 17) { response = 'Good afternoon'; }
+    else { response = 'Good evening'; }
+    setGreetingWords(response);
     return response;
   }
 
@@ -1039,10 +1047,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           timeout={msBeforeSleeping}   // every "n" minutes
           onIdle={async () => {
             console.log(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
-            makeGreeting();
             await getMessage(session.patient_id);
+            setGreetingWords('Welcome back');
             await updateAVA(sectionOpen, mainMenu);
-            enqueueSnackbar(`AVA is asleep.  ${isMobile ? 'Touch the screen' : 'Move your mouse'} or tap something to wake her up!`, { variant: 'info', persist: true });
           }}
           debounce={250}
         />
@@ -1082,7 +1089,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 className={classes.hello}
                 id='scroll-dialog-title'
               >
-                {`Good ${greetingTime},${isMobile ? '' : (' ' + greetingName + '!')}`}
+                {`${greetingWords},${isMobile ? '' : (' ' + greetingName + '!')}`}
               </Typography>
               <Typography
                 className={classes.hello}
@@ -1216,7 +1223,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA vers 22.12.04${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA vers 22.12.12${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   <Typography className={classes.popUpFooter} >{makeExpiration()}
                   </Typography>
                   <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
@@ -1252,7 +1259,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 22.12.04${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography variant='caption' >{`version 22.12.12${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'

@@ -23,8 +23,10 @@ import Section from '../Section';
 
 const useStyles = makeStyles(theme => ({
   container: {
-    // maxHeight: 400,
     flexGrow: 1,
+    marginLeft: '-24px',
+    marginRight: '-24px',
+    marginTop: '-12px',
     marginBottom: theme.spacing(2)
   },
   title: {
@@ -58,12 +60,13 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
   },
   formControlDayRow: {
+    display: 'flex',
     margin: 0,
     paddingTop: 0,
     height: theme.spacing(2.5),
     alignItems: 'center',
     justifyContent: 'flex-start',
-    marginTop: theme.spacing(3),
+    marginTop: theme.spacing(1.5),
     marginBottom: theme.spacing(1)
   },
   formControlTo: {
@@ -76,6 +79,8 @@ const useStyles = makeStyles(theme => ({
   },
   formControlDays: {
     margin: 0,
+    marginLeft: '-8px',
+    marginRight: '2px',
     paddingTop: 0,
     height: 1,
     alignItems: 'center',
@@ -421,7 +426,7 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                         </FormGroup>
                       </FormControl>
                     </Box>
-                    <Box flexDirection={'row'} className={classes.formControlDayRow} >
+                    <Box display={'flex'}  flexDirection={'row'} className={classes.formControlDayRow} flexWrap={'wrap'} >
                       <FormControl className={classes.formControl} component="fieldset">
                         <FormGroup row aria-label={`message_routedays_${i}_method`} name="method">
                           <FormControlLabel
@@ -661,88 +666,91 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
                   }
                 </Box>
                 <Box className={classes.topicBox} >
-                  <Box sx={{ marginTop: '5px', maxWidth: '40px' }} display='flex' flexDirection='column'>
-                    <Typography className={classes.radioText}>Look for any of these words:</Typography>
-                    <Input
-                      classes={{ root: classes.idText, underline: classes.inputRuleWide, input: classes.inputRuleWide }}
-                      key={`key_words_${i}`}
-                      defaultValue={route.keyWords || ''}
-                      value={keyWords}
-                      onChange={onChangeKeyWords(i)}
-                    />
+                  <Box alignItems="flex-start" justifyContent="flex-start" display='flex' flexDirection='row'>
+                    <FormControl className={classes.formControl} component="fieldset">
+                      <FormControlLabel className={classes.formControlLbl}
+                        control={<Input
+                          classes={{ root: classes.idText, underline: classes.inputRuleWide, input: classes.inputRuleWide }}
+                          key={`key_words_${i}`}
+                          defaultValue={route.keyWords || ''}
+                          value={keyWords}
+                          onChange={onChangeKeyWords(i)}
+                        />}
+                        label={<Typography className={classes.radioText}>If message has keywords</Typography>}
+                        labelPlacement={'start'}
+                      />
+                      <Typography className={classes.radioText}>Ignore other rules and...</Typography>
+                    </FormControl>
                   </Box>
-                  {(route.keyWords && (route.keyWords.length > 0)) &&
-                    <Box className={classes.radioTextTopRight} >
-                      <Typography className={classes.radioText} >If found, ignore other rules and...</Typography>
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup row
-                          value={route.keyWordType}
-                          aria-label={`message_routing_${i}_keywordtype`}
-                          name="keywordType"
-                          onChange={handleChangeKeyWordType(i)}
-                        >
-                          <FormControlLabel className={classes.formControlLbl} value="altMethod" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>use a different method</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="altID" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>send to one of my linked accounts</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="altAddress" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>send to a different address or phone number</Typography>} />
-                        </RadioGroup>
-                      </FormControl>
-                      <Box className={classes.radioTextTopRight}>
-                        {(route.keyWordType === 'altAddress') &&
-                          <Box alignItems="flex-end" justifyContent="flex-start" display='flex' flexDirection='row'>
-                            <Typography className={classes.radioText}>Send to this e-Mail address or phone number instead</Typography>
-                            <Input classes={{ root: classes.idText, input: classes.inputRuleWide }}
-                              key={`escData_${i}`}
-                              defaultValue={route.keyWordData || ''}
-                              value={keyWordData}
-                              onChange={handleChangeKeyWordData(i)}
-                            />
-                          </Box>
-                        }
-                        {(route.keyWordType === 'altMethod') &&
-                          <Box alignItems="flex-start" justifyContent="flex-start" display='flex' flexDirection='column'>
-                            <Typography className={classes.radioText}>This is the method to use</Typography>
-                            <FormControl className={classes.formControl} component="fieldset">
-                              <RadioGroup row
-                                aria-label={`message_routing_${i}_method`}
-                                name="method"
-                                value={route.keyWordData}
-                                onChange={handleChangeKeyWordData(i)}
-                              >
-                                {(route.method !== 'sms') && <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!person.messaging.sms} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />}
-                                {(route.method !== 'email') && <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!person.messaging.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />}
-                                {(route.method !== 'voice') && <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!person.messaging.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>home phone</Typography>} />}
-                                {(route.method !== 'office') && <FormControlLabel className={classes.formControlLbl} value="office" control={<Radio disabled={!person.messaging.office} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>work phone</Typography>} />}
-                              </RadioGroup>
-                            </FormControl>
-                          </Box>
-                        }
-                        {(route.keyWordType === 'altID') &&
-                          <React.Fragment>
-                            <Typography className={classes.radioText}>Send to this account instead</Typography>
-                            <FormControl className={classes.formControl} component="fieldset">
-                              <RadioGroup row
-                                aria-label="altIDselection"
-                                name="method"
-                                value={route.keyWordData}
-                                onChange={handleChangeKeyWordData(i)}
-                              >
-                                {linkedAccounts.map((presp) => (
-                                  <FormControlLabel
-                                    key={`nameNlinkdaccts+${presp}`}
-                                    className={classes.formControlLbl}
-                                    value={presp.split('(')[1].replace(')', '').trim()}
-                                    control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                                    label={<Typography className={classes.radioText}>{presp}</Typography>}
-                                  />
-                                ))
-                                }
-                              </RadioGroup>
-                            </FormControl>
-                          </React.Fragment>
-                        }
+
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup row
+                      value={route.keyWordType}
+                      aria-label={`message_routing_${i}_keywordtype`}
+                      name="keywordType"
+                      onChange={handleChangeKeyWordType(i)}
+                    >
+                      <FormControlLabel className={classes.formControlLbl} value="altMethod" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>use a different method</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="altID" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>send to one of my linked accounts</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="altAddress" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>send to a different address or phone number</Typography>} />
+                    </RadioGroup>
+                  </FormControl>
+                  <Box className={classes.radioTextTopRight}>
+                    {(route.keyWordType === 'altAddress') &&
+                      <Box alignItems="flex-end" justifyContent="flex-start" display='flex' flexDirection='row'>
+                        <Typography className={classes.radioText}>Send to this e-Mail address or phone number instead</Typography>
+                        <Input classes={{ root: classes.idText, input: classes.inputRuleWide }}
+                          key={`escData_${i}`}
+                          defaultValue={route.keyWordData || ''}
+                          value={keyWordData}
+                          onChange={handleChangeKeyWordData(i)}
+                        />
                       </Box>
-                    </Box>
-                  }
+                    }
+                    {(route.keyWordType === 'altMethod') &&
+                      <Box alignItems="flex-start" justifyContent="flex-start" display='flex' flexDirection='column'>
+                        <Typography className={classes.radioText}>This is the method to use</Typography>
+                        <FormControl className={classes.formControl} component="fieldset">
+                          <RadioGroup row
+                            aria-label={`message_routing_${i}_method`}
+                            name="method"
+                            value={route.keyWordData}
+                            onChange={handleChangeKeyWordData(i)}
+                          >
+                            {(route.method !== 'sms') && <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!person.messaging.sms} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />}
+                            {(route.method !== 'email') && <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!person.messaging.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />}
+                            {(route.method !== 'voice') && <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!person.messaging.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>home phone</Typography>} />}
+                            {(route.method !== 'office') && <FormControlLabel className={classes.formControlLbl} value="office" control={<Radio disabled={!person.messaging.office} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>work phone</Typography>} />}
+                          </RadioGroup>
+                        </FormControl>
+                      </Box>
+                    }
+                    {(route.keyWordType === 'altID') &&
+                      <React.Fragment>
+                        <Typography className={classes.radioText}>Send to this account instead</Typography>
+                        <FormControl className={classes.formControl} component="fieldset">
+                          <RadioGroup row
+                            aria-label="altIDselection"
+                            name="method"
+                            value={route.keyWordData}
+                            onChange={handleChangeKeyWordData(i)}
+                          >
+                            {linkedAccounts.map((presp) => (
+                              <FormControlLabel
+                                key={`nameNlinkdaccts+${presp}`}
+                                className={classes.formControlLbl}
+                                value={presp.split('(')[1].replace(')', '').trim()}
+                                control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                                label={<Typography className={classes.radioText}>{presp}</Typography>}
+                              />
+                            ))
+                            }
+                          </RadioGroup>
+                        </FormControl>
+                      </React.Fragment>
+                    }
+                  </Box>
+
                 </Box>
                 {(i !== lastEntry) &&
                   <Box className={classes.buttonBox} display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
