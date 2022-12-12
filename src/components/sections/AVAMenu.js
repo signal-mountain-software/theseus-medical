@@ -1090,7 +1090,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 className={classes.hello}
                 id='scroll-dialog-title'
               >
-                {`Good ${greetingWords},${isMobile ? '' : (' ' + greetingName + '!')}`}
+                {`${greetingWords},${isMobile ? '' : (' ' + greetingName + '!')}`}
               </Typography>
               <Typography
                 className={classes.hello}
