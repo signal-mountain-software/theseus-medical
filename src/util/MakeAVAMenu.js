@@ -146,6 +146,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
             else { return 1; }
         })
         // ('** GROUPS **');
+        let allowDuplicates = false;
         let gL = groupList.length;
         for (let g = 0; g < gL; g++) {
             let this_group = groupList[g];
@@ -159,11 +160,15 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
             let aL = this_group.common_activities.length;
             for (let a = 0; a < aL; a++) {
                 let this_activity = this_group.common_activities[a];
-                if (duplicateCheck.includes(this_activity)) {
-                    // (`${this_activity} is a duplicate`);
+                if (!allowDuplicates && duplicateCheck.includes(this_activity)) {   // this_activity is already loaded
                     continue;
                 }
                 if (this_activity.startsWith('~~')) {
+                    if (this_activity.includes('~~duplicate=OK')) {
+                        allowDuplicates = true;
+                        this_activity = this_activity.replace('~~duplicate=OK', '');
+                    }
+                    else { allowDuplicates = false; }
                     let sectionKeys = this_activity.split('~~');
                     if (sectionKeys.length > 2) {
                         sectionSort = sectionKeys[1];
