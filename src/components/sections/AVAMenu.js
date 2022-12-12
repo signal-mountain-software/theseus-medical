@@ -419,6 +419,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   };
 
   const getMessage = async (pPerson) => {
+    makeGreeting();
     try {
       let now = new Date().getTime();
       console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
@@ -1046,11 +1047,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           timeout={msBeforeSleeping}   // every "n" minutes
           onIdle={async () => {
             console.log(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
-            // makeGreeting();
-            setGreetingWords('Welcome back');
             await getMessage(session.patient_id);
+            setGreetingWords('Welcome back');
             await updateAVA(sectionOpen, mainMenu);
-            // enqueueSnackbar(`AVA is asleep.  ${isMobile ? 'Touch the screen' : 'Move your mouse'} or tap something to wake her up!`, { variant: 'info', persist: true });
           }}
           debounce={250}
         />
