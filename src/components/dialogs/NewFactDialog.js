@@ -399,23 +399,27 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       }
       setMessage(eString);
     }
-    let defaultValue = (
-      fact.fact_history &&
+    let defaultValue = '';
+    let lQ = [];
+    try {
+      if (fact.fact_history &&
         fact.fact_history[0].value &&
         !fact.observation_status.includes('(exp)') &&
         !fact.code.startsWith('form.') &&
         !fact.code.startsWith('media.')
-        ? fact.fact_history[0].value
-        : fact.default_value
-    );
-    let lQ = (
-      fact.fact_history &&
+      ) { defaultValue = fact.fact_history[0].value; }
+      else { defaultValue = fact.default_value; };
+      if (
+        fact.fact_history &&
         fact.fact_history[0].qualifier &&
         fact.fact_history[0].qualifier.length > 0 &&
-        !fact.code.startsWith('form.')
-        ? fact.fact_history[0].qualifier
-        : []
-    );
+        !fact.code.startsWith('form.')) {
+        lQ = fact.fact_history[0].qualifier;
+      };
+    }
+    catch (e) {
+      console.error(e);
+    }
     // if (!newFact.value) {
     let qT = {};
     setValue(defaultValue);
