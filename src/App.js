@@ -43,12 +43,12 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    handleWriteError(`AVA caught error "${error.stack}"`);
+    handleWriteError(`AVA caught error "${error.message}"`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(`AVA caught error "${error.stack}"`);
+    handleWriteError(`AVA caught error "${error.message}"`);
   }
 
   render() {
