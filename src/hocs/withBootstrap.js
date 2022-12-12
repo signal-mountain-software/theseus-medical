@@ -91,7 +91,7 @@ export default Component => props => {
             activeUser = sessionObject.currentProfile.person_id;
             let uMessage = `Found ${activeUser} in session memory (AVASessionData)`;
             pushLoginAttemptToArray(activeUser, '', false, uMessage);
-            let goodLaunch = launchAVA(activeUser);
+            let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
               pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
@@ -102,7 +102,7 @@ export default Component => props => {
             activeUser = localCognitoSession.idToken.payload['cognito:username'];
             let uMessage = `${activeUser} is already logged in`;
             pushLoginAttemptToArray(activeUser, '', false, uMessage);
-            let goodLaunch = launchAVA(activeUser);
+            let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
               pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
@@ -115,7 +115,7 @@ export default Component => props => {
               activeUser = AVAsession.login.user_id;
               let uMessage = `Found ${activeUser} in Sessions table with jti (session_id) ${localCognitoSession.idToken.payload.jti}`;
               pushLoginAttemptToArray(activeUser, '', false, uMessage);
-              let goodLaunch = launchAVA(activeUser);
+              let goodLaunch = await launchAVA(activeUser);
               if (goodLaunch) {
                 setAVAFollowUpData({ 'Completed': true });
                 pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
@@ -199,7 +199,7 @@ export default Component => props => {
         let goodLogin = await cognitoLogin(pUser, foundSession.last_login);
         if (goodLogin) {
           pushLoginAttemptToArray(pUser, foundSession.last_login, true, `Successful Log-in using stored password; user ID supplied from ${pSource}`);
-          launchAVA(pUser);
+          await launchAVA(pUser);
           return 'good';
         }
         else {
@@ -212,7 +212,7 @@ export default Component => props => {
       let goodLogin = await cognitoLogin(AVA_default_user, AVA_default_password);
       if (goodLogin) {
         pushLoginAttemptToArray(pUser, '', true, `Successful Log-in using generic credentials; user ID supplied from ${pSource}`);
-        launchAVA(pUser);
+        await launchAVA(pUser);
         return 'good';
       }
       else {
