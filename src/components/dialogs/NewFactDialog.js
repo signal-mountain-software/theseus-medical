@@ -399,6 +399,12 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       }
       setMessage(eString);
     }
+
+    if (!fact) {
+      // eslint-disable-next-line
+      fact = { "noData": true };
+    };
+
     let defaultValue = '';
     let lQ = [];
     try {
@@ -420,7 +426,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     catch (e) {
       console.error(e);
     }
-    // if (!newFact.value) {
+  
     let qT = {};
     setValue(defaultValue);
     // console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
