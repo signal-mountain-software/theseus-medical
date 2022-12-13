@@ -831,6 +831,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     setActivityLogRecords(workLog);
     mainMenu[pIndex].last_used = postTime;
     setMainMenu(mainMenu);
+    putActivityLog();
   };
 
   async function putActivityLog() {
@@ -1630,6 +1631,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
         {/* Launch Children */}
         {(showNewFactDialog > -1) &&
+          selected &&
           <NewFactDialog
             fact={selected}
             session={session}
