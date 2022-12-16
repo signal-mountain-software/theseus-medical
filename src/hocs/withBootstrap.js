@@ -278,7 +278,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.12.13${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+              {`AVA version 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
             </Typography>
             <CircularProgress />
           </Box>
@@ -488,6 +488,7 @@ export default Component => props => {
       })
       .promise()
       .catch(error => {
+        pushLoginAttemptToArray(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is: ${JSON.stringify(error)}`);
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         };
@@ -501,6 +502,7 @@ export default Component => props => {
         })
         .promise()
         .catch(error => {
+          pushLoginAttemptToArray(pSessionID, '', false, `Error reading SessionsV2 is: ${JSON.stringify(error)}`);
           console.log({ 'Bad get on Session - caught error is': error });
         });
     }
@@ -563,6 +565,7 @@ export default Component => props => {
       result: pMessage
     };
     accessLogRecords.push(accessLogRec);
+    await batchWriteAccessLogArray(pUser);
   };
 
   async function batchWriteAccessLogArray(pUser) {
@@ -583,7 +586,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
-        'version': `v22.12.13`,
+        'version': `v22.12.17`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'signin_status': pMessage,

@@ -67,7 +67,7 @@ class ErrorBoundary extends React.Component {
               mb={2}
             >
               <Typography variant='h5' >{`AVA Encountered an Error`}</Typography>
-              <Typography variant='caption' >{`version 22.12.13${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+              <Typography variant='caption' >{`version 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
               <Button
                 aria-label='showActivities'
                 variant='contained'
@@ -105,7 +105,7 @@ const handleWriteError = async (parmMessage) => {
     patient_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = 22.12.13~${errorTime}`,
+    status: `Version = 22.12.17~${errorTime}`,
     session: {
       user_id: user?.username || 'no user logged',
       session_id: 'no session recorded',
