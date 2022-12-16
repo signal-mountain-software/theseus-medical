@@ -84,7 +84,6 @@ export default Component => props => {
           .catch(e => {
             console.log(e);
           });
-        console.log({ localObject, sessionObject });
         if (localCognitoSession) {
           await refreshSession(localCognitoSession.getRefreshToken());
           if (sessionObject) {          // There is a good sessionObject.  This contains actual info about user
@@ -94,7 +93,7 @@ export default Component => props => {
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
-              pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+              pushLoginAttemptToArray(activeUser, '', false, `Good AVA session object found in memory; AVA launched successfully`);
               return;
             }
           }
@@ -105,7 +104,7 @@ export default Component => props => {
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
-              pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+              pushLoginAttemptToArray(activeUser, '', false, `No AVA session in memory; Cognito session for known user found; AVA launched successfully`);
               return;
             }
           }
@@ -118,7 +117,7 @@ export default Component => props => {
               let goodLaunch = await launchAVA(activeUser);
               if (goodLaunch) {
                 setAVAFollowUpData({ 'Completed': true });
-                pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+                pushLoginAttemptToArray(activeUser, '', false, `Device found in Sessions table; AVA launched successfully`);
                 return;
               }
             }
@@ -235,14 +234,13 @@ export default Component => props => {
       .catch(e => {
         console.log(e);
       });
-    let goodRefresh = CognitoClient.adminInitiateAuth(
+    CognitoClient.adminInitiateAuth(
       {
         'AuthFlow': 'REFRESH_TOKEN_AUTH',
         'ClientId': cognitoPoolUser.pool.clientId,
         'UserPoolId': cognitoPoolUser.pool.userPoolId,
         'AuthParameters': refresh_token
       });
-    console.log(goodRefresh);
   }
 
   function promptForUser() {
@@ -320,7 +318,9 @@ export default Component => props => {
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let [thatWorked, ,] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
                 if (thatWorked) {
-                  pushLoginAttemptToArray(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password; user ID from list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`);
+                  let userFrom = '';
+                  if (AVAFollowUpData.possibleUserRecs.length > 1) { userFrom = `- user ID is #${p + 1} of ${AVAFollowUpData.possibleUserRecs.length} possible matches`; }
+                  pushLoginAttemptToArray(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password ${userFrom}`);
                   launchAVA(AVAFollowUpData.possibleUserRecs[p].person_id);
                   return;
                 }
@@ -679,7 +679,7 @@ export default Component => props => {
   };
 
   async function launchAVA(pLaunchUser) {
-    // Get the session
+    // Get the sessionlaunchAVA
     let [goodSession, currentSession] = await getSessionV2(pLaunchUser);
     if (!goodSession) {
       let eMessage = `No SessionV2 record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
