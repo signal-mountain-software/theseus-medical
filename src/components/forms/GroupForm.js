@@ -101,6 +101,14 @@ const useStyles = makeStyles(theme => ({
     size: 'small',
     // color: theme.palette.confirm[theme.palette.type],
   },
+  rowButtonBack: {
+      marginLeft: theme.spacing(3),
+      marginBottom: theme.spacing(2),
+      variant: 'outlined',
+      textTransform: 'none',
+      size: 'small',
+      color: theme.palette.reject[theme.palette.type],
+  },
   rowButtonBlue: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
@@ -149,6 +157,25 @@ const useStyles = makeStyles(theme => ({
   lastName: {
     fontWeight: 'bold',
     marginRight: theme.spacing(1),
+  },
+  superSizeLast: {
+    fontWeight: 'bold',
+    fontSize: theme.typography.fontSize * 2.8
+  },
+  superSizeFirst: {
+    fontSize: theme.typography.fontSize * 2.8
+  },
+  upSizeLast: {
+    fontSize: theme.typography.fontSize * 2.0
+  },
+  upSizeLocation: {
+    fontSize: theme.typography.fontSize * 2.0
+  },
+  superSizePreferenceLine: {
+    fontSize: theme.typography.fontSize * 2.0
+  },
+  superSizeArea: {
+    minHeight: '100%'
   }
 }));
 
@@ -179,6 +206,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [confirmPerson, setConfirmPerson] = React.useState('');
   const [confirmIndex, setConfirmIndex] = React.useState('');
   const [promptForMessage, setPromptForMessage] = React.useState('');
+  const [showSuperSize, setshowSuperSize] = React.useState(false);
+  const [superSizeData, setSuperSizeData] = React.useState(false);
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
   const [open, setOpen] = React.useState([]);
@@ -480,30 +509,30 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       switch (messageType) {
         case 'sms': {
           if (pMessaging.sms && (!pMessaging.sms_private || (pGroup.toLowerCase() === '*all'))) {
-            returnArray.push(`sms:${pMessaging.sms}~cell ${formatPhone(pMessaging.sms)}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.sms_private ? ' *UNPUBLISHED*' : ''}`);
+            returnArray.push(`sms:${pMessaging.sms}~cell ${formatPhone(pMessaging.sms)}${pMessaging.sms_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
         case 'voice': {
           if (pMessaging.voice && (!pMessaging.voice_private || (pGroup.toLowerCase() === '*all'))) {
-            returnArray.push(`tel:${pMessaging.voice}~home ${formatPhone(pMessaging.voice)}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.voice_private ? ' *UNPUBLISHED*' : ''}`);
+            returnArray.push(`tel:${pMessaging.voice}~home ${formatPhone(pMessaging.voice)}${pMessaging.voice_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
         case 'office': {
           if (pMessaging.office && (!pMessaging.office_private || (pGroup.toLowerCase() === '*all'))) {
-            returnArray.push(`tel:${pMessaging.office}~work ${formatPhone(pMessaging.office)}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.office_private ? ' *UNPUBLISHED*' : ''}`);
+            returnArray.push(`tel:${pMessaging.office}~work ${formatPhone(pMessaging.office)}${pMessaging.office_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
         case 'email': {
           if (pMessaging.email && (!pMessaging.email_private || (pGroup.toLowerCase() === '*all'))) {
             let emailLines = [];
-            if ((pMessaging.email.length < 30) || !isMobile) { returnArray.push(`mailto:${pMessaging.email}~e-Mail ${pMessaging.email}${(pPreference === messageType) ? ' (pref)' : ''}${pMessaging.email_private ? ' *UNPUBLISHED*' : ''}`); }
+            if ((pMessaging.email.length < 30) || !isMobile) { returnArray.push(`mailto:${pMessaging.email}~e-Mail ${pMessaging.email}${pMessaging.email_private ? ' *UNPUBLISHED*' : ''}`); }
             else {
               emailLines = pMessaging.email.split('@');
               returnArray.push(`mailto:${pMessaging.email}~e-Mail ${emailLines[0]}@`);
-              returnArray.push(`mailto:${pMessaging.email}~  ${emailLines[1]}${(pPreference === messageType) ? ' (pref)' : ''}`);
+              returnArray.push(`mailto:${pMessaging.email}~  ${emailLines[1]}`);
             }
           }
           break;
@@ -527,26 +556,30 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     >
       {workingMemberList && workingMemberList.length > 0 &&
         <React.Fragment>
-          <DialogContentText
-            className={classes.title}
-            id='scroll-dialog-title'
-          >
-            {(pGroup.toLowerCase() === '*all') ?
-              'Administrative View - All Accounts' :
-              `Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`
-            }
-          </DialogContentText>
-          <TextField
-            id='List Filter'
-            value={person_filter}
-            onChange={handleChangePersonFilter}
-            className={classes.freeInput}
-            label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
-            variant={'standard'}
-            autoComplete='off'
-          />
+          {!showSuperSize &&
+            <React.Fragment>
+              <DialogContentText
+                className={classes.title}
+                id='scroll-dialog-title'
+              >
+                {(pGroup.toLowerCase() === '*all') ?
+                  'Administrative View - All Accounts' :
+                  `Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`
+                }
+              </DialogContentText>
+              <TextField
+                id='List Filter'
+                value={person_filter}
+                onChange={handleChangePersonFilter}
+                className={classes.freeInput}
+                label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+                variant={'standard'}
+                autoComplete='off'
+              />
+            </React.Fragment>
+          }
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
-            <List  >
+            <List>
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsWritten = 0}
               </Typography>
@@ -565,9 +598,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                           <Box display='flex' flexDirection='column'>
                             <Box onClick={() => {
-                              setPromptForMessage(true);
-                              setMessageType(this_item.preferred_method);
-                              setRecipient(`${this_item.name.first} ${this_item.name.last || this_item.display_name}:` + this_item.person_id);
+                              setshowSuperSize(true);
+                              setSuperSizeData(this_item);
                             }}>
                               <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                                 <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
@@ -756,7 +788,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             </AVAConfirm>
           }
 
-          { // Command Area
+          {!showSuperSize &&    // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
@@ -889,6 +921,55 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             </DialogActions>
           }
         </React.Fragment>
+      }
+      {showSuperSize &&
+        <List classes={{ root: classes.superSizeArea }}   >
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
+            <Box>
+              <Box
+                component="img"
+                mt={5}
+                minWidth={250}
+                maxWidth={250}
+                alt=''
+                src={getImage(superSizeData.person_id)}
+              />
+            </Box>
+            <Typography className={classes.superSizeLast} >{superSizeData.name.last || superSizeData.display_name}</Typography>
+            <Typography className={classes.superSizeFirst}>{superSizeData.name.first}</Typography>
+            {(superSizeData.member_of) &&
+              <Typography key={`member_of-superSize`} className={classes.upSizeLast}>{superSizeData.member_of}</Typography>
+            }
+            {superSizeData.location && superSizeData.location.split('~').map((locLine, locIndex) => (
+              <Typography key={`locationLine-superSize`} className={classes.upSizeLocation}>{locLine.trim()}</Typography>
+            ))}
+            {(superSizeData.directory_option === 'exclude') &&
+              <Typography key={`excluded-superSize`} className={classes.locationLine}>{'** Excluded from Directory **'}</Typography>
+            }
+            {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
+              .map((prefLine, prefIndex) => (
+                <a href={prefLine.split('~')[0]}
+                  key={`prefLink-superSize.${prefIndex}`}
+                  style={{ color: 'inherit', textDecoration: 'none' }}>
+                  <Typography
+                    key={`prefLine-superSize.${prefIndex}`}
+                    className={classes.superSizePreferenceLine}
+                  >
+                    {prefLine.split('~')[1]}
+                  </Typography>
+                </a>
+              )))}
+            <Button
+              className={classes.rowButtonBack}
+              onClick={() => {
+                setshowSuperSize(false);
+                setForceRedisplay(!forceRedisplay);
+              }}
+            >
+              {'Back'}
+            </Button>
+          </Box>
+        </List>
       }
     </Dialog >
   );
