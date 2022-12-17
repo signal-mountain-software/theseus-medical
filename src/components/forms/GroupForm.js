@@ -102,12 +102,14 @@ const useStyles = makeStyles(theme => ({
     // color: theme.palette.confirm[theme.palette.type],
   },
   rowButtonBack: {
-      marginLeft: theme.spacing(3),
-      marginBottom: theme.spacing(2),
-      variant: 'outlined',
-      textTransform: 'none',
-      size: 'small',
-      color: theme.palette.reject[theme.palette.type],
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+    outlineColor: theme.palette.reject[theme.palette.type],
+    outlineWidth: '2px',
+    outlineStyle: 'auto',
+    textTransform: 'none',
+    size: 'small',
+    color: theme.palette.reject[theme.palette.type],
   },
   rowButtonBlue: {
     marginLeft: theme.spacing(1),
@@ -159,20 +161,34 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
   },
   superSizeLast: {
+    marginTop: theme.spacing(0),
     fontWeight: 'bold',
     fontSize: theme.typography.fontSize * 2.8
   },
   superSizeFirst: {
+    marginTop: theme.spacing(-2.5),
     fontSize: theme.typography.fontSize * 2.8
   },
   upSizeLast: {
+    marginTop: theme.spacing(0),
     fontSize: theme.typography.fontSize * 2.0
   },
   upSizeLocation: {
+    marginTop: theme.spacing(-1.5),
     fontSize: theme.typography.fontSize * 2.0
   },
-  superSizePreferenceLine: {
-    fontSize: theme.typography.fontSize * 2.0
+  superSizePreferenceLine1: {
+    fontSize: theme.typography.fontSize * 2.0,
+    marginRight: theme.spacing(1),
+  },
+  superSizePreferenceLine2: {
+    fontSize: theme.typography.fontSize * 2.0,
+    fontWeight: 'bold'
+  },
+  superSizePreferenceLine3: {
+    marginTop: theme.spacing(-1.5),
+    fontSize: theme.typography.fontSize * 2.0,
+    fontWeight: 'bold'
   },
   superSizeArea: {
     minHeight: '100%'
@@ -495,12 +511,14 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     }
   }
 
-  function getImage(pPerson) {
-    return s3.getSignedUrl('getObject', {
-      Bucket: imageBucket,
-      Key: imageURI.replace('[person_id]', pPerson),
-      Expires: 3600
-    });
+  function getImage(pPerson, pIndex) {
+    workingMemberList[pIndex].image =
+      s3.getSignedUrl('getObject', {
+        Bucket: imageBucket,
+        Key: imageURI.replace('[person_id]', pPerson),
+        Expires: 3600
+      });
+    return workingMemberList[pIndex];
   }
 
   function makeContactLines(pMessaging, pPreference, pPerson) {
@@ -662,7 +680,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               minWidth={isMobile ? 100 : 150}
                               maxWidth={isMobile ? 100 : 150}
                               alt=''
-                              src={getImage(this_item.person_id)}
+                              src={this_item.image || getImage(this_item.person_id, index)}
                             />
                           </Box>
                           {(pRole === 'admin' || pRole === 'responsible') &&
@@ -932,7 +950,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 minWidth={250}
                 maxWidth={250}
                 alt=''
-                src={getImage(superSizeData.person_id)}
+                src={superSizeData.image}
               />
             </Box>
             <Typography className={classes.superSizeLast} >{superSizeData.name.last || superSizeData.display_name}</Typography>
@@ -944,19 +962,30 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               <Typography key={`locationLine-superSize`} className={classes.upSizeLocation}>{locLine.trim()}</Typography>
             ))}
             {(superSizeData.directory_option === 'exclude') &&
-              <Typography key={`excluded-superSize`} className={classes.locationLine}>{'** Excluded from Directory **'}</Typography>
+              <Typography key={`excluded-superSize`} className={classes.upSizeLocation}>{'** Excluded from Directory **'}</Typography>
             }
             {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
               .map((prefLine, prefIndex) => (
                 <a href={prefLine.split('~')[0]}
                   key={`prefLink-superSize.${prefIndex}`}
                   style={{ color: 'inherit', textDecoration: 'none' }}>
-                  <Typography
-                    key={`prefLine-superSize.${prefIndex}`}
-                    className={classes.superSizePreferenceLine}
-                  >
-                    {prefLine.split('~')[1]}
-                  </Typography>
+                  {(prefLine.split('~')[1].split(' ')[0].trim() !== '')
+                    ?
+                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' >
+                      <Typography key={`prefLine-superSize.${prefIndex}`} className={classes.superSizePreferenceLine1}>
+                        {prefLine.split('~')[1].split(' ')[0]}:
+                      </Typography>
+                      <Typography key={`prefLine-superSize.${prefIndex}`} className={classes.superSizePreferenceLine2}>
+                        {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
+                      </Typography>
+                    </Box>
+                    :
+                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' >
+                      <Typography key={`prefLine-superSize.${prefIndex}`} className={classes.superSizePreferenceLine3}>
+                        {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
+                      </Typography>
+                    </Box>
+                  }
                 </a>
               )))}
             <Button
