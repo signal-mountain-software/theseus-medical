@@ -77,7 +77,6 @@ export default Component => props => {
     let checkUser = (
       async () => {
         let activeUser;
-        let localObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
         let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
         let localCognitoSession = await Auth
           .currentSession()
