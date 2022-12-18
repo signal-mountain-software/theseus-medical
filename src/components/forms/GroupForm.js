@@ -102,7 +102,7 @@ const useStyles = makeStyles(theme => ({
     // color: theme.palette.confirm[theme.palette.type],
   },
   rowButtonBack: {
-    marginTop: theme.spacing(2),
+    marginTop: theme.spacing(4),
     marginBottom: theme.spacing(2),
     outlineColor: theme.palette.reject[theme.palette.type],
     outlineWidth: '2px',
@@ -174,14 +174,23 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 2.0
   },
   upSizeLocation: {
-    marginTop: theme.spacing(-1.5),
-    fontSize: theme.typography.fontSize * 2.0
+    marginTop: theme.spacing(2),
+    fontSize: theme.typography.fontSize * 2.0,
+    flexGrow: 1,
+    textAlign: 'center',
+    lineHeight: `${theme.spacing(3)}px`,
+  },
+  upSizePreferenceBox: {
+    marginTop: theme.spacing(2),
+    lineHeight: `${theme.spacing(3)}px`,
   },
   superSizePreferenceLine1: {
     fontSize: theme.typography.fontSize * 2.0,
     marginRight: theme.spacing(1),
   },
   superSizePreferenceLine2: {
+    lineHeight: `${theme.spacing(3)}px`,
+    // marginTop: theme.spacing(0),
     fontSize: theme.typography.fontSize * 2.0,
     fontWeight: 'bold'
   },
@@ -959,7 +968,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               <Typography key={`member_of-superSize`} className={classes.upSizeLast}>{superSizeData.member_of}</Typography>
             }
             {superSizeData.location && superSizeData.location.split('~').map((locLine, locIndex) => (
-              <Typography key={`locationLine-superSize`} className={classes.upSizeLocation}>{locLine.trim()}</Typography>
+              <Typography key={`locationLine-superSize_${locIndex}`} className={classes.upSizeLocation}>{locLine.trim()}</Typography>
             ))}
             {(superSizeData.directory_option === 'exclude') &&
               <Typography key={`excluded-superSize`} className={classes.upSizeLocation}>{'** Excluded from Directory **'}</Typography>
@@ -971,7 +980,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   style={{ color: 'inherit', textDecoration: 'none' }}>
                   {(prefLine.split('~')[1].split(' ')[0].trim() !== '')
                     ?
-                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' >
+                    <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center' >
                       <Typography key={`prefLine-superSize.${prefIndex}`} className={classes.superSizePreferenceLine1}>
                         {prefLine.split('~')[1].split(' ')[0]}:
                       </Typography>
