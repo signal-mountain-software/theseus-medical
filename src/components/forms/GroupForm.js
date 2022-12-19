@@ -981,16 +981,16 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   {(prefLine.split('~')[1].split(' ')[0].trim() !== '')
                     ?
                     <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center' >
-                      <Typography key={`prefLine-superSize.${prefIndex}`} className={classes.superSizePreferenceLine1}>
+                      <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.superSizePreferenceLine1}>
                         {prefLine.split('~')[1].split(' ')[0]}:
                       </Typography>
-                      <Typography key={`prefLine-superSize.${prefIndex}`} className={classes.superSizePreferenceLine2}>
+                      <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
                         {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
                       </Typography>
                     </Box>
                     :
                     <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' >
-                      <Typography key={`prefLine-superSize.${prefIndex}`} className={classes.superSizePreferenceLine3}>
+                      <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine3}>
                         {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
                       </Typography>
                     </Box>
