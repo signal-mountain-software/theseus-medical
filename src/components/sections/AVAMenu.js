@@ -1562,18 +1562,20 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   </React.Fragment>
                 )
               ))}
-              {sectionOpen[mainMenu[mainMenu.length - 1].section_name] && <Box
-                display='flex'
-                style={{
-                  borderRadius: '0px 0px 30px 30px',
-                  backgroundColor: lastColor,
-                  textDecoration: 'none'
-                }}
-                ml={2} mr={2}
-                justifyContent='center'
-                flexDirection='column'
-                height={30}
-              />}
+              {rowIsOpen(mainMenu[mainMenu.length - 1]) &&
+                <Box
+                  display='flex'
+                  style={{
+                    borderRadius: '0px 0px 30px 30px',
+                    backgroundColor: lastColor,
+                    textDecoration: 'none'
+                  }}
+                  ml={2} mr={2}
+                  justifyContent='center'
+                  flexDirection='column'
+                  height={30}
+                />
+              }
             </List>
           </Paper>
         }
