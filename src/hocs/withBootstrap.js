@@ -717,6 +717,45 @@ export default Component => props => {
         currentSession.patient_name = (`${currentProfile.name.first} ${currentProfile.name.last}`).trim();
       }
     }
+    // Get Client Defaults
+    var customizationsRec = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        ExpressionAttributeValues: { ':c': currentSession.client_id },
+        TableName: "Customizations",
+      })
+      .promise()
+      .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
+    if (recordExists(customizationsRec)) {
+      for (let c = 0; c < customizationsRec.Items.length; c++) { 
+        let cRec = customizationsRec.Items[c];
+        switch (cRec.custom_key) {
+          case 'logo': {
+            currentSession.client_logo = cRec.icon;
+            break;
+          }
+          case 'greeting': 
+          case 'greetings': {
+            let today = new Date();
+            let this_year = today.getFullYear();
+            let this_month = today.getMonth() + 1;
+            let this_day = today.getDate();
+            let mmdd = `${this_month}.${this_day}`;
+            let yymmdd = `${this_year % 100}.${mmdd}`;
+            if (cRec.customization_value.hasOwnProperty(yymmdd)) {
+              currentSession.custom_greeting = cRec.customization_value[yymmdd];
+            }
+            else if (cRec.customization_value.hasOwnProperty(mmdd)) {
+              currentSession.custom_greeting = cRec.customization_value[mmdd];
+            } 
+            break;
+          }
+          default: { break; }
+        }
+      }
+    }
+
+
     enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
 
     dispatch({ type: SET_SESSION, payload: currentSession });

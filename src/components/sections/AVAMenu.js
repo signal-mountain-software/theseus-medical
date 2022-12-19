@@ -1008,6 +1008,10 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   }
 
   function makeGreeting() {
+    if (session?.custom_greeting) {
+      setGreetingWords(session.custom_greeting);
+      return session.custom_greeting;
+    }
     let current_hour = Number(new Date().toTimeString().split(':')[0]);
     let response = '';
     if (current_hour < 12) { response = 'Good morning'; }
@@ -1239,19 +1243,16 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
-            ml={2} mr={2} mb={2} mt={12}
+            ml={2} mr={2} mb={2} mt={8}
           >
-            <Card
-              className={classes.logoSmall}
-              raised={false}
-              variant='elevation' elevation={0}
-            >
-              <CardMedia
-                component="img"
-                image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
-                alt='AVA'
-              />
-            </Card>
+            <Box
+              component="img"
+              mb={2}
+              minWidth={isMobile ? 150 : 175}
+              maxWidth={isMobile ? 150 : 175}
+              alt=''
+              src={session?.client_logo || 'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+            />
             <React.Fragment>
               <Box
                 display='flex' flexDirection='column' justifyContent='center' alignItems='center'
