@@ -43,12 +43,12 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    handleWriteError(`AVA caught error "${error.message}"`);
+    handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(`AVA caught error "${error.message}"`);
+    handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
   }
 
   render() {
