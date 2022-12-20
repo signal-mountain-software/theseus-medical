@@ -301,7 +301,7 @@ export default ({ patient, session }) => {
         user_id: pUser,
         activity_code: pCodeOut,
         activity_name: pName,
-        AVA_version: `22.12.17${window.location.href.split('//')[1].slice(0, 1)}`
+        AVA_version: `22.12.21${window.location.href.split('//')[1].slice(0, 1)}`
       }
     };
     let params = {
@@ -404,7 +404,7 @@ export default ({ patient, session }) => {
           patient_id: patient.person_id,
           activity_key: '***ERROR_CAUGHT***',
           value: parmMessage,
-          status: `Version = 22.12.17~${errorTime}`,
+          status: `Version = 22.12.21~${errorTime}`,
           session: {
             user_id: patient.person_id,
             session_id: session.client_id,
@@ -1240,7 +1240,7 @@ export default ({ patient, session }) => {
                 />
               </Card>
               <Typography align='center'>
-                {`Loading AVA version 22.12.17${window.location.href.split('//')[1].slice(0, 1)}`}
+                {`Loading AVA version 22.12.21${window.location.href.split('//')[1].slice(0, 1)}`}
               </Typography>
               <CircularProgress />
             </Box>

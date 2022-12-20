@@ -275,7 +275,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+              {`AVA version 22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
             </Typography>
             <CircularProgress />
           </Box>
@@ -585,7 +585,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
-        'version': `v22.12.17`,
+        'version': `v22.12.21`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'signin_status': pMessage,
@@ -727,14 +727,14 @@ export default Component => props => {
       .promise()
       .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
     if (recordExists(customizationsRec)) {
-      for (let c = 0; c < customizationsRec.Items.length; c++) { 
+      for (let c = 0; c < customizationsRec.Items.length; c++) {
         let cRec = customizationsRec.Items[c];
         switch (cRec.custom_key) {
           case 'logo': {
             currentSession.client_logo = cRec.icon;
             break;
           }
-          case 'greeting': 
+          case 'greeting':
           case 'greetings': {
             let today = new Date();
             let this_year = today.getFullYear();
@@ -747,7 +747,7 @@ export default Component => props => {
             }
             else if (cRec.customization_value.hasOwnProperty(mmdd)) {
               currentSession.custom_greeting = cRec.customization_value[mmdd];
-            } 
+            }
             break;
           }
           default: { break; }
