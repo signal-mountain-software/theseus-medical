@@ -22,6 +22,10 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     paddingTop: 0,
   },
+  noDisplay: {
+    display: 'none',
+    visibility: 'hidden'
+  },
   formControlLbl: {
     margin: 0,
     paddingTop: 0,
@@ -139,16 +143,36 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
   const [person_filter, setPersonFilter] = React.useState('');
+  const [rowLimit, setRowLimit] = React.useState(20);
+  const [maxY, setMaxY] = React.useState(0);
+  const [previousY, setCurrentY] = React.useState(0);
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const classes = useStyles();
+
+  const scrollValue = 20;
+  var rowsWritten;
+
+  const onScroll = event => {
+    if (rowLimit < peopleList.length) {
+      let currentY = window.scrollY;
+      if (currentY - (previousY + 50)) {
+        setCurrentY(currentY);
+        let newLimit = rowLimit + scrollValue;
+        setRowLimit(newLimit);
+        setMaxY(Math.max(maxY, newLimit));
+        setForceRedisplay(!forceRedisplay);
+      }
+    }
+  };
 
   const handleChangePersonFilter = event => {
     setPersonFilter(event.target.value.toLowerCase());
     if (event.target.value.toLowerCase() === 'sign out') { onSignOut() }
   };
 
-  function goodEntry(pLine, x) {
-    if (!pLine) { return x; }
+  function okToShow(pLine) {
+    if (!pLine) { return false; }
     else { return pLine.toLowerCase().includes(person_filter); }
   }
 
@@ -197,7 +221,8 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
 
   return (
     <Dialog
-      open={true}
+      open={true || forceRedisplay}
+      onScroll={onScroll}
       p={2}
       height={250}
       fullWidth
@@ -221,16 +246,21 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
       />
       <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
         <List component='nav'>
+          <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+            {rowsWritten = 0}
+          </Typography>
           {peopleList.map((listEntry, x) => (
-            (
-              goodEntry(listEntry, x) &&
+              ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
                 <ListItem
                   key={'person-list_' + x }
                   onClick={() => {
                     onSelect(listEntry);
                   }}
                   button
-                >
+              >
+                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                  {rowsWritten++}
+                </Typography>
                   <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                     <Typography variant='h5' className={classes.lastName}>{makeLastName(listEntry)}</Typography>
                     <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
