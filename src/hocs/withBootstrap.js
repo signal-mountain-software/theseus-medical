@@ -77,14 +77,12 @@ export default Component => props => {
     let checkUser = (
       async () => {
         let activeUser;
-        let localObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
         let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
         let localCognitoSession = await Auth
           .currentSession()
           .catch(e => {
             console.log(e);
           });
-        console.log({ localObject, sessionObject });
         if (localCognitoSession) {
           await refreshSession(localCognitoSession.getRefreshToken());
           if (sessionObject) {          // There is a good sessionObject.  This contains actual info about user
@@ -94,7 +92,7 @@ export default Component => props => {
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
-              pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+              pushLoginAttemptToArray(activeUser, '', false, `Good AVA session object found in memory; AVA launched successfully`);
               return;
             }
           }
@@ -105,7 +103,7 @@ export default Component => props => {
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
-              pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+              pushLoginAttemptToArray(activeUser, '', false, `No AVA session in memory; Cognito session for known user found; AVA launched successfully`);
               return;
             }
           }
@@ -118,7 +116,7 @@ export default Component => props => {
               let goodLaunch = await launchAVA(activeUser);
               if (goodLaunch) {
                 setAVAFollowUpData({ 'Completed': true });
-                pushLoginAttemptToArray(activeUser, '', false, `AVA launch failed`);
+                pushLoginAttemptToArray(activeUser, '', false, `Device found in Sessions table; AVA launched successfully`);
                 return;
               }
             }
@@ -235,14 +233,13 @@ export default Component => props => {
       .catch(e => {
         console.log(e);
       });
-    let goodRefresh = CognitoClient.adminInitiateAuth(
+    CognitoClient.adminInitiateAuth(
       {
         'AuthFlow': 'REFRESH_TOKEN_AUTH',
         'ClientId': cognitoPoolUser.pool.clientId,
         'UserPoolId': cognitoPoolUser.pool.userPoolId,
         'AuthParameters': refresh_token
       });
-    console.log(goodRefresh);
   }
 
   function promptForUser() {
@@ -278,7 +275,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.12.13${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+              {`AVA version 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
             </Typography>
             <CircularProgress />
           </Box>
@@ -320,7 +317,9 @@ export default Component => props => {
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let [thatWorked, ,] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
                 if (thatWorked) {
-                  pushLoginAttemptToArray(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password; user ID from list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`);
+                  let userFrom = '';
+                  if (AVAFollowUpData.possibleUserRecs.length > 1) { userFrom = `- user ID is #${p + 1} of ${AVAFollowUpData.possibleUserRecs.length} possible matches`; }
+                  pushLoginAttemptToArray(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password ${userFrom}`);
                   launchAVA(AVAFollowUpData.possibleUserRecs[p].person_id);
                   return;
                 }
@@ -488,6 +487,7 @@ export default Component => props => {
       })
       .promise()
       .catch(error => {
+        pushLoginAttemptToArray(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is: ${JSON.stringify(error)}`);
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         };
@@ -501,6 +501,7 @@ export default Component => props => {
         })
         .promise()
         .catch(error => {
+          pushLoginAttemptToArray(pSessionID, '', false, `Error reading SessionsV2 is: ${JSON.stringify(error)}`);
           console.log({ 'Bad get on Session - caught error is': error });
         });
     }
@@ -563,6 +564,7 @@ export default Component => props => {
       result: pMessage
     };
     accessLogRecords.push(accessLogRec);
+    await batchWriteAccessLogArray(pUser);
   };
 
   async function batchWriteAccessLogArray(pUser) {
@@ -583,7 +585,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
-        'version': `v22.12.13`,
+        'version': `v22.12.17`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'signin_status': pMessage,
@@ -676,7 +678,7 @@ export default Component => props => {
   };
 
   async function launchAVA(pLaunchUser) {
-    // Get the session
+    // Get the sessionlaunchAVA
     let [goodSession, currentSession] = await getSessionV2(pLaunchUser);
     if (!goodSession) {
       let eMessage = `No SessionV2 record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
@@ -715,6 +717,45 @@ export default Component => props => {
         currentSession.patient_name = (`${currentProfile.name.first} ${currentProfile.name.last}`).trim();
       }
     }
+    // Get Client Defaults
+    var customizationsRec = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        ExpressionAttributeValues: { ':c': currentSession.client_id },
+        TableName: "Customizations",
+      })
+      .promise()
+      .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
+    if (recordExists(customizationsRec)) {
+      for (let c = 0; c < customizationsRec.Items.length; c++) { 
+        let cRec = customizationsRec.Items[c];
+        switch (cRec.custom_key) {
+          case 'logo': {
+            currentSession.client_logo = cRec.icon;
+            break;
+          }
+          case 'greeting': 
+          case 'greetings': {
+            let today = new Date();
+            let this_year = today.getFullYear();
+            let this_month = today.getMonth() + 1;
+            let this_day = today.getDate();
+            let mmdd = `${this_month}.${this_day}`;
+            let yymmdd = `${this_year % 100}.${mmdd}`;
+            if (cRec.customization_value.hasOwnProperty(yymmdd)) {
+              currentSession.custom_greeting = cRec.customization_value[yymmdd];
+            }
+            else if (cRec.customization_value.hasOwnProperty(mmdd)) {
+              currentSession.custom_greeting = cRec.customization_value[mmdd];
+            } 
+            break;
+          }
+          default: { break; }
+        }
+      }
+    }
+
+
     enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
 
     dispatch({ type: SET_SESSION, payload: currentSession });

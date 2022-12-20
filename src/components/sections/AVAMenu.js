@@ -824,7 +824,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       user_id: pUser,
       activity_code: pCode,
       activity_name: pName,
-      AVA_version: `22.12.13${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+      AVA_version: `22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
     };
     let workLog = activityLogRecords;
     workLog.push(activityLogRec);
@@ -1008,6 +1008,10 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   }
 
   function makeGreeting() {
+    if (session?.custom_greeting) {
+      setGreetingWords(session.custom_greeting);
+      return session.custom_greeting;
+    }
     let current_hour = Number(new Date().toTimeString().split(':')[0]);
     let response = '';
     if (current_hour < 12) { response = 'Good morning'; }
@@ -1224,7 +1228,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA vers 22.12.13${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA vers 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   <Typography className={classes.popUpFooter} >{makeExpiration()}
                   </Typography>
                   <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
@@ -1239,19 +1243,16 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
-            ml={2} mr={2} mb={2} mt={12}
+            ml={2} mr={2} mb={2} mt={8}
           >
-            <Card
-              className={classes.logoSmall}
-              raised={false}
-              variant='elevation' elevation={0}
-            >
-              <CardMedia
-                component="img"
-                image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
-                alt='AVA'
-              />
-            </Card>
+            <Box
+              component="img"
+              mb={2}
+              minWidth={isMobile ? 150 : 175}
+              maxWidth={isMobile ? 150 : 175}
+              alt=''
+              src={session?.client_logo || 'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+            />
             <React.Fragment>
               <Box
                 display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -1260,7 +1261,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 22.12.13${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography variant='caption' >{`version 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -1562,18 +1563,20 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   </React.Fragment>
                 )
               ))}
-              {sectionOpen[mainMenu[mainMenu.length - 1].section_name] && <Box
-                display='flex'
-                style={{
-                  borderRadius: '0px 0px 30px 30px',
-                  backgroundColor: lastColor,
-                  textDecoration: 'none'
-                }}
-                ml={2} mr={2}
-                justifyContent='center'
-                flexDirection='column'
-                height={30}
-              />}
+              {rowIsOpen(mainMenu[mainMenu.length - 1]) &&
+                <Box
+                  display='flex'
+                  style={{
+                    borderRadius: '0px 0px 30px 30px',
+                    backgroundColor: lastColor,
+                    textDecoration: 'none'
+                  }}
+                  ml={2} mr={2}
+                  justifyContent='center'
+                  flexDirection='column'
+                  height={30}
+                />
+              }
             </List>
           </Paper>
         }
