@@ -21,7 +21,7 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0
   },
   contentBox: {
-    minWidth: '80%'
+    minWidth: '100%'
   },
   rowButtonRed: {
     marginLeft: theme.spacing(1),
@@ -142,6 +142,7 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
                 id={`prompt-${ndx}`}
                 key={`prompt-${ndx}`}
                 fullWidth
+                multiline
                 inputRef={input => (ndx === 0) && input && input.focus()}
                 label={(prompt === titleText) ? '' : prompt}
                 value={textInput[ndx] || ''}
