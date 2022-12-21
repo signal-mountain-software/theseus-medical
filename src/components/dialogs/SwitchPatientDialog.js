@@ -33,74 +33,30 @@ export default ({ open, roles, onClose, forceSwitch }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
-  const getPeopleList = async (pClient, pGroup) => {
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
+  const getPeopleList = async (pClient, pGroupArray) => {
+    let queryExpression = {
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: { ':c': pClient },
+      ExpressionAttributeNames: { '#n': 'name', '#f': 'first', '#l': 'last' },
+      TableName: "People",
+      IndexName: "client_id-index",
+      ProjectionExpression: "person_id, #n.#f, #n.#l, search_data"
     };
-    let invokeFailed = false;
-    let lambdaPayload = {
-      action: "get_group_members",
-      clientId: pClient,
-      request: {
-        "group_id": pGroup,
-      }
-    };
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    params.Payload = JSON.stringify(lambdaPayload);
-    setCallPending(true);
-    const fResp = await lambda
-      .invoke(params)
+    var peopleRecs = await dbClient
+      .query(queryExpression)
       .promise()
-      .catch(err => {
-        console.log('Call failed.  Error is', JSON.stringify(err));
-        invokeFailed = true;
+      .catch(error => {
+        console.log({ 'Bad query on People in getGroupMembers - caught error is': error });
       });
-    if (!invokeFailed) {
-      let groupMemberList = JSON.parse(fResp.Payload);
-      if (groupMemberList.status === 200) {
-        setCallPending(false);
-        return (groupMemberList.body.map(p => {
-          return `${p.name.last.trim()}, ${p.name.first.trim()}:${p.person_id}:${p.search_data}`;
-        }));
-      }
-    };
-    setCallPending(false);
-    return [];
-  };
-
-  const getGroupsManaged = async (pClient, pPerson) => {
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-    };
-    let invokeFailed = false;
-    params.Payload = JSON.stringify({
-      action: "get_groups_responsible_for",
-      clientId: pClient,
-      request: {
-        "person_id": pPerson,
+    if (!recordExists(peopleRecs)) { return []; }
+    let allPeople = (pGroupArray.find(g => { return (g.toLowerCase() === '*all'); }));
+    let returnArray = [];
+    peopleRecs.Items.forEach(p => {
+      if (allPeople || (p.groups && p.groups.some(g => pGroupArray.includes(g)))) {
+        returnArray.push((`${p.name?.last}, ${p.name?.first}:${p.person_id}:${p.search_data}`).trim());
       }
     });
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let groupsManagedReturn = JSON.parse(fResp.Payload);
-      if (groupsManagedReturn.status === 200) {
-        return groupsManagedReturn.body;
-      }
-    };
-    return [];
+    return returnArray.sort();
   };
 
   React.useEffect(() => {
@@ -115,24 +71,19 @@ export default ({ open, roles, onClose, forceSwitch }) => {
             else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
             else { respArray.push(session.responsible_for); }
             if (respArray.length > 0) {
-              if (respArray.some(g => { return g.toLowerCase() === '*all'; })) {   // case insensitive array search
-                responsibleList = await getPeopleList(session.client_id, '*all');
-              }
-              else {
-                responsibleList = await getGroupsManaged(session.client_id, session.patient_id);
-              };
+              responsibleList = await getPeopleList(profile.client_id, respArray);
               let myInfo = `${profile.name.last}, ${profile.name.first}:${profile.person_id}:${profile.search_data}`;
               if (responsibleList && responsibleList.length > 0 && (responsibleList[0].split(':')[1] !== profile.person_id)) {
                 responsibleList.unshift(myInfo);
               }
-              else {  responsibleList = [myInfo] }  
+              else { responsibleList = [myInfo]; }
               dispatch({ type: SET_PATIENTS, payload: responsibleList });
             }
           };
         }
       }
     );
-    if (forceSwitch) { handleConfirmation(forceSwitch) }
+    if (forceSwitch) { handleConfirmation(forceSwitch); }
     else { getPatients(); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -182,7 +133,7 @@ export default ({ open, roles, onClose, forceSwitch }) => {
           })
           .promise()
           .catch(error => { console.log(`caught error getting People record; error is:`, error); });
-        if (recordExists(personRec)) { 
+        if (recordExists(personRec)) {
           dispatch({ type: SET_PATIENT, payload: personRec.Item });
         }
         dispatch({ type: SET_SESSION, payload: session });
