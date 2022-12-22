@@ -1,13 +1,10 @@
 import React from 'react';
-import { useSnackbar } from 'notistack';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import List from '@material-ui/core/List';
 import Paper from '@material-ui/core/Paper';
 
-import { Lambda } from 'aws-sdk';
-
-import { SET_PATIENT, SET_SESSION, SET_PATIENTS } from '../../contexts/Session/actions';
+import { SET_PATIENT, SET_SESSION, SET_MESSAGE_TARGETS } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 import PersonFilter from '../forms/PersonFilter';
 
@@ -19,19 +16,10 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ open, roles, onClose, forceSwitch }) => {
-  // const [selected, setSelected] = React.useState(null);
-  const [callPending, setCallPending] = React.useState(false);
+export default ({ open, onClose, onSelect }) => {
 
-  const { enqueueSnackbar } = useSnackbar();
   const { state, dispatch } = useSession();
-  const { patients, session, profile } = state;
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
+  const { message_targets, session, profile } = state;
 
   const getPeopleList = async (pClient, pGroupArray) => {
     let queryExpression = {
@@ -60,31 +48,25 @@ export default ({ open, roles, onClose, forceSwitch }) => {
   };
 
   React.useEffect(() => {
-    let getPatients = (
+    let getTargets = (
       async () => {
-        if ((!patients || (patients.length === 0)) && !callPending) {
-          // get a group of patients a user is responsible for
+        if (!message_targets || (message_targets.length === 0)) {
+          // get a list of people a user may send messages to: anyone in any group you are responsible for or are a member of
           let responsibleList = [];
           if (session.responsible_for) {
-            let respArray = [];
+            let respArray = profile.groups || [];
             if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
             else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
             else { respArray.push(session.responsible_for); }
             if (respArray.length > 0) {
               responsibleList = await getPeopleList(profile.client_id, respArray);
-              let myInfo = `${profile.name.last}, ${profile.name.first}:${profile.person_id}:${profile.search_data}`;
-              if (responsibleList && responsibleList.length > 0 && (responsibleList[0].split(':')[1] !== profile.person_id)) {
-                responsibleList.unshift(myInfo);
-              }
-              else { responsibleList = [myInfo]; }
-              dispatch({ type: SET_PATIENTS, payload: responsibleList });
+              dispatch({ type: SET_MESSAGE_TARGETS, payload: responsibleList });
             }
           };
         }
       }
     );
-    if (forceSwitch) { handleConfirmation(forceSwitch); }
-    else { getPatients(); }
+    getTargets();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClose = () => {
@@ -150,28 +132,22 @@ export default ({ open, roles, onClose, forceSwitch }) => {
     else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
   }
 
-  React.useEffect(() => {
-    if (session) {
-      // const { patient_id, patient_display_name } = session;
-      // setSelected({ patient_id, patient_display_name });
-    }
-  }, [session]);
-
   return (
     <Dialog open={open} onClose={handleClose}>
-      {patients &&
+      {message_targets &&
         <Box p={3}>
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
             <List component='nav'>
-              {(patients.length > 0) &&
+              {(message_targets.length > 0) &&
                 <PersonFilter
-                  prompt={'Switch to which account?'}
-                  peopleList={patients}
+                  prompt={'Send a message to...?'}
+                  peopleList={message_targets}
                   onCancel={() => {
                     onClose();
                   }}
                   onSelect={(selectedPerson) => {
-                    handleConfirmation(selectedPerson);
+                    open = false;
+                    onSelect(selectedPerson);
                   }}
                   showID={true}
                 />

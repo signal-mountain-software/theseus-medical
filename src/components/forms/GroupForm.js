@@ -102,6 +102,8 @@ const useStyles = makeStyles(theme => ({
     // color: theme.palette.confirm[theme.palette.type],
   },
   rowButtonBack: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
     marginTop: theme.spacing(4),
     marginBottom: theme.spacing(2),
     outlineColor: theme.palette.reject[theme.palette.type],
@@ -109,7 +111,17 @@ const useStyles = makeStyles(theme => ({
     outlineStyle: 'auto',
     textTransform: 'none',
     size: 'small',
-    color: theme.palette.reject[theme.palette.type],
+  },
+  rowButtonSend: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginTop: theme.spacing(4),
+    marginBottom: theme.spacing(2),
+    outlineColor: theme.palette.confirm[theme.palette.type],
+    outlineWidth: '2px',
+    outlineStyle: 'auto',
+    textTransform: 'none',
+    size: 'small',
   },
   rowButtonBlue: {
     marginLeft: theme.spacing(1),
@@ -997,15 +1009,28 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   }
                 </a>
               )))}
-            <Button
-              className={classes.rowButtonBack}
-              onClick={() => {
-                setshowSuperSize(false);
-                setForceRedisplay(!forceRedisplay);
-              }}
-            >
-              {'Back'}
-            </Button>
+            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+              <Button
+                className={classes.rowButtonBack}
+                onClick={() => {
+                  setshowSuperSize(false);
+                  setForceRedisplay(!forceRedisplay);
+                }}
+              >
+                {'Back'}
+              </Button>
+              <Button
+                onClick={() => {
+                  setPromptForMessage(true);
+                  setMessageType('');
+                  let rKey = `${superSizeData.name.first} ${superSizeData.name.last}:${superSizeData.person_id}`;
+                  setRecipient(rKey.trim());
+                }}
+                className={classes.rowButtonSend}
+              >
+                {`Send Msg`}
+              </Button>
+            </Box>
           </Box>
         </List>
       }

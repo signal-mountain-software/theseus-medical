@@ -27,8 +27,6 @@ import Button from '@material-ui/core/Button';
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
-import Card from '@material-ui/core/Card';
-import CardMedia from '@material-ui/core/CardMedia';
 
 import Collapse from '@material-ui/core/Collapse';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
@@ -824,7 +822,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       user_id: pUser,
       activity_code: pCode,
       activity_name: pName,
-      AVA_version: `22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+      AVA_version: `22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
     };
     let workLog = activityLogRecords;
     workLog.push(activityLogRec);
@@ -1228,7 +1226,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA vers 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA vers 22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   <Typography className={classes.popUpFooter} >{makeExpiration()}
                   </Typography>
                   <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
@@ -1261,7 +1259,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography variant='caption' >{`version 22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'

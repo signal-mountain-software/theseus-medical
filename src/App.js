@@ -1,4 +1,6 @@
 import React from 'react';
+import { useCookies } from 'react-cookie';
+
 import Box from '@material-ui/core/Box';
 
 import AssignmentIcon from '@material-ui/icons/Assignment';
@@ -26,6 +28,14 @@ import withTheme from './hocs/withTheme';
 import { createPutFact } from './graphql/mutations';
 import { API, graphqlOperation } from 'aws-amplify';
 
+const AWS = require('aws-sdk');
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 const menu = [
   { label: 'AVA', path: '/theseus', icon: <AssignmentIcon />, screen: <TheseusScreen /> },
   { label: 'Refresh', path: '/refresh', icon: <AutorenewIcon />, screen: <Reloader /> },
@@ -34,6 +44,7 @@ const menu = [
 
 const HOME = '/theseus';
 var hasError = false;
+let cookies;
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -43,12 +54,16 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    handleWriteError(`AVA caught error "${error.message}"`);
+    const [getCookies, setCookie] = useCookies(['AVAuser']);
+    cookies = getCookies;
+    handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(`AVA caught error "${error.message}"`);
+    const [getCookies, setCookie] = useCookies(['AVAuser']);
+    cookies = getCookies;
+    handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
   }
 
   render() {
@@ -67,7 +82,7 @@ class ErrorBoundary extends React.Component {
               mb={2}
             >
               <Typography variant='h5' >{`AVA Encountered an Error`}</Typography>
-              <Typography variant='caption' >{`version 22.12.17${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+              <Typography variant='caption' >{`version 22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
               <Button
                 aria-label='showActivities'
                 variant='contained'
@@ -90,30 +105,94 @@ class ErrorBoundary extends React.Component {
 }
 
 const handleWriteError = async (parmMessage) => {
-  if (window.location.href.split('//')[1].slice(0, 1).toLocaleLowerCase() === 'l') {
+  let AVA_env = window.location.href.split('//')[1].slice(0, 1).toLocaleUpperCase();
+  if (AVA_env === 'L') {
     alert(parmMessage);
   }
   const user = await Auth
     .currentAuthenticatedUser()
     .catch(e => {
-      parmMessage += 'Auth error thrown = ' + JSON.stringify(e);
+      parmMessage = `*** Auth error thrown is ${JSON.stringify(e)} *** original error is ${parmMessage}`;
 
     });
 
-  let errorTime = new Date().toString();
-  let instruction = {
-    patient_id: user?.username || 'no info',
+  let eUser = user.userName;
+  let ePerson = user.userName;
+  let cookie_user = 'no cookie';
+
+  if (cookies.AVAuser && cookies.AVAuser !== 'undefined') {
+    if (typeof (cookies.AVAuser) === 'string') {
+      let cObj = JSON.parse(cookies.AVAuser);
+      ePerson = cObj.user_id;
+      cookie_user = cObj.user_id;
+    }
+    else {
+      ePerson = cookies.AVAuser.user_id;
+      cookie_user = cookies.AVAuser.user_id;
+    }
+  }
+
+  let sObj_user = 'no sessionObject';
+  let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+  if (sessionObject.currentProfile?.person_id) {
+    ePerson = sessionObject.currentProfile.person_id;
+    sObj_user = sessionObject.currentProfile.person_id;
+  }
+
+  let errorTime = new Date();
+  const newFact = {
+    person_id: user?.username || 'no info',
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
-    status: `Version = 22.12.17~${errorTime}`,
-    session: {
-      user_id: user?.username || 'no user logged',
-      session_id: 'no session recorded',
+    status: {
+      'version': '22.12.21',
+      'env': AVA_env,
+      'time': errorTime.toString(),
+      'cognito_user': user?.username,
+      'cookie_user': cookie_user,
+      'sessObj_user': sObj_user
     },
+    user_id: user?.username || 'no user logged',
+    session_id: 'no session recorded',
+    method: 'AVAMenu',
+    posted_time: errorTime.getTime()
   };
-  await API
-    .graphql(graphqlOperation(createPutFact, { input: instruction }))
-    .catch(e => { alert(`Temporary connection failure, possible cause: ${parmMessage}`); });
+  await dbClient
+    .put({
+      TableName: 'Facts',
+      Item: newFact
+    })
+    .promise()
+    .catch(async (error) => {
+      let instruction = {
+        patient_id: newFact.person_id,
+        activity_key: '***ERROR_CAUGHT***',
+        value: `error.*** Write to Fact failed; used graphQL *** ${parmMessage}`,
+        status: `Version = 22.12.21~${errorTime}`,
+        session: {
+          user_id: user?.username || 'no user logged',
+          session_id: 'no session recorded',
+        },
+      };
+      await API
+        .graphql(graphqlOperation(createPutFact, { input: instruction }))
+        .catch(e => { alert(`Temporary connection failure, possible cause: ${parmMessage}`); }); console.error('Error adding a fact:', error.message);
+    });
+
+  let activityLogRec = {
+    timestamp: errorTime.getTime(),
+    user_id: newFact.person_id,
+    activity_code: newFact.activity_key,
+    activity_name: newFact.value,
+    AVA_version: `22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+  };
+  await dbClient
+    .put({
+      Item: activityLogRec,
+      TableName: "ActivityLog",
+    })
+    .promise()
+    .catch(error => { console.log(`caught error updating ActivityLog; error is:`, error); });
 };
 
 const App = () => (

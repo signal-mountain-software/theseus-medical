@@ -29,7 +29,7 @@ import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
 import AVAConfirm from './AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
-import PersonFilter from '../forms/PersonFilter';
+import SendMessageDialog from '../dialogs/SendMessageDialog';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -555,19 +555,18 @@ export default ({ pPerson, pClient, pMessageList, onReset }) => {
             </AVAConfirm>
           }
           {showAddPrompt &&
-            <PersonFilter
-              prompt={'Tap the name of the person you wish to send a message to'}
-              peopleList={peopleList}
-              onCancel={() => {
+            <SendMessageDialog
+              open={true}
+              onClose={() => {
                 setShowAddPrompt(false);
               }}
               onSelect={(selectedPerson) => {
-                setShowAddPrompt(false);
+           //     setShowAddPrompt(false);
                 setPromptForMessage(true);
                 setRecipient(selectedPerson);
               }}
             >
-            </PersonFilter>
+            </SendMessageDialog>
           }
           { // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
@@ -594,9 +593,6 @@ export default ({ pPerson, pClient, pMessageList, onReset }) => {
                   </Button>
                   <Button
                     onClick={async () => {
-                      if (!peopleList || peopleList.length === 0) {
-                        setPeopleList(await getPeopleList(pPerson))
-                      }
                       setShowAddPrompt(true);
                     }}
                     className={classes.rowButtonGreen}
