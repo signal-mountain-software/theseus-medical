@@ -1,11 +1,8 @@
 import React from 'react';
-import { useSnackbar } from 'notistack';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import List from '@material-ui/core/List';
 import Paper from '@material-ui/core/Paper';
-
-import { Lambda } from 'aws-sdk';
 
 import { SET_PATIENT, SET_SESSION, SET_PATIENTS } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
@@ -21,17 +18,10 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
 
 export default ({ open, roles, onClose, forceSwitch }) => {
   // const [selected, setSelected] = React.useState(null);
-  const [callPending, setCallPending] = React.useState(false);
 
-  const { enqueueSnackbar } = useSnackbar();
   const { state, dispatch } = useSession();
   const { patients, session, profile } = state;
 
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   const getPeopleList = async (pClient, pGroupArray) => {
     let queryExpression = {
@@ -62,7 +52,7 @@ export default ({ open, roles, onClose, forceSwitch }) => {
   React.useEffect(() => {
     let getPatients = (
       async () => {
-        if ((!patients || (patients.length === 0)) && !callPending) {
+        if (!patients || (patients.length === 0)) {
           // get a group of patients a user is responsible for
           let responsibleList = [];
           if (session.responsible_for) {

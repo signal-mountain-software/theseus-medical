@@ -4,7 +4,7 @@ import Dialog from '@material-ui/core/Dialog';
 import List from '@material-ui/core/List';
 import Paper from '@material-ui/core/Paper';
 
-import { SET_PATIENT, SET_SESSION, SET_MESSAGE_TARGETS } from '../../contexts/Session/actions';
+import { SET_MESSAGE_TARGETS } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 import PersonFilter from '../forms/PersonFilter';
 
@@ -77,6 +77,7 @@ export default ({ open, onClose, onSelect }) => {
     onClose();
   };
 
+/*
   const handleConfirmation = (newPatient) => {
     (async () => {
 
@@ -125,6 +126,7 @@ export default ({ open, onClose, onSelect }) => {
       //    onClose();
     })();
   };
+*/
 
   function recordExists(recordId) {
     if (!recordId) { return false; }

@@ -161,7 +161,6 @@ export default ({ pPerson, pClient, pMessageList, onReset }) => {
 
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [messageResults, setMessageResults] = React.useState();
-  const [peopleList, setPeopleList] = React.useState();
   const [deletePending, setDeletePending] = React.useState(false);
   // const [showDeleted, setShowDeleted] = React.useState(false);
   const showDeleted = false;
@@ -252,34 +251,6 @@ export default ({ pPerson, pClient, pMessageList, onReset }) => {
     setOpen(workingOpen);
     setForceRedisplay(!forceRedisplay);
     return tempMessageList;
-  };
-
-  async function getPeopleList(pPerson) {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    params.Payload = JSON.stringify({
-      action: "get_people_list",
-      clientId: pClient,
-      request: {
-        "person_id": pPerson
-      }
-    });
-    let invokeFailed = false;
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let returnData = JSON.parse(fResp.Payload);
-      if (returnData.status === 200) {
-        return returnData.body;
-      }
-    }
-    return [];
   };
 
   async function getMessageResults(pCommonKey) {

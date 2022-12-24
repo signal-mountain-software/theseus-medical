@@ -54,14 +54,14 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    const [getCookies, setCookie] = useCookies(['AVAuser']);
+    const [getCookies] = useCookies(['AVAuser']);
     cookies = getCookies;
     handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    const [getCookies, setCookie] = useCookies(['AVAuser']);
+    const [getCookies] = useCookies(['AVAuser']);
     cookies = getCookies;
     handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
   }
@@ -116,18 +116,14 @@ const handleWriteError = async (parmMessage) => {
 
     });
 
-  let eUser = user.userName;
-  let ePerson = user.userName;
   let cookie_user = 'no cookie';
 
   if (cookies.AVAuser && cookies.AVAuser !== 'undefined') {
     if (typeof (cookies.AVAuser) === 'string') {
       let cObj = JSON.parse(cookies.AVAuser);
-      ePerson = cObj.user_id;
       cookie_user = cObj.user_id;
     }
     else {
-      ePerson = cookies.AVAuser.user_id;
       cookie_user = cookies.AVAuser.user_id;
     }
   }
@@ -135,7 +131,6 @@ const handleWriteError = async (parmMessage) => {
   let sObj_user = 'no sessionObject';
   let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
   if (sessionObject.currentProfile?.person_id) {
-    ePerson = sessionObject.currentProfile.person_id;
     sObj_user = sessionObject.currentProfile.person_id;
   }
 
