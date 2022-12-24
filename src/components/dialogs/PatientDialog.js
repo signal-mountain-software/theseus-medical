@@ -637,7 +637,7 @@ export default ({ patient, picture, open, onClose }) => {
   };
 
   const handleChangeCell = event => {
-    localData.cell = event.target.value;
+    localData.cell = formatPhone('' + event.target.value.replace(/\D/g, ''));
     setRefreshTrigger(!refreshTrigger);
     // setCell(formatPhone('' + event.target.value.replace(/\D/g, '')));
     setChanges(true);
