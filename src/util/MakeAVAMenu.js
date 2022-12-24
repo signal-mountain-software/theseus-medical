@@ -319,7 +319,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
         let favorite = (pReason === 'History') || requestor.favorite_activities.includes(activityRec.activity_code);
         let pSort;
         if (activityRec.section_name && !favorite) {
-            pSort = `#need-9${numberOfRows}`;
+            pSort = `#need-${numberOfRows}`;
         }
         else {
             pSort = `${pSectionSort}-${numberOfRows}`;
