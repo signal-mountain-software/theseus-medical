@@ -85,7 +85,9 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
     return returnName;
   }
 
-  function filteredPerson(pID, pName = { last: '*$*_null', first: '*$*_null' }) {
+  function filteredPerson(pID, pName = { last: '*No Name*', first: '*No Name*' }) {
+    if (!pName.first) { pName.first = '*No First Name*'; }
+    if (!pName.last) { pName.last = '*No Last Name*'; }
     let inTheList = (
       (respArray.includes(pID) ||
         ((enoughFilterDigits) &&
