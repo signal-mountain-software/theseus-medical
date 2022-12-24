@@ -180,7 +180,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             setGroupRole(groupRec.admin_list.includes(patientSession.patient_id) ? 'responsible' : 'member');
           }
         }
-        setGroupRole(myRole);
+        else { setGroupRole(myRole); }
       }
       else {
         setGroupName('Directory Search');
