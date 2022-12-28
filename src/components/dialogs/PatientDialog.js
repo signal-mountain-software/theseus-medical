@@ -174,8 +174,10 @@ export default ({ patient, picture, open, onClose }) => {
   const [resettingPwd, setResettingPwd] = React.useState(false);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
 
+  const [savedImageFile, setSavedImageFile] = React.useState(); 
+  const [savedTmp, setSavedTmp] = React.useState([]); 
   const [editPhoto, setEditPhoto] = React.useState('');
-  const [cropper, setCropper] = React.useState();
+  const [cropperInstance, setCropper] = React.useState();
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
@@ -197,6 +199,28 @@ export default ({ patient, picture, open, onClose }) => {
     if (match.length > 3) { formatted += ') ' + match.substring(3, 6); }
     if (match.length > 6) { formatted += '-' + match.substring(6, 10); }
     return formatted;
+  }
+
+  const imageBucket = 'theseus-medical-storage';
+  const imageURI = 'public/patients/[person_id].jpg';
+  const updatedImageURI = 'public/patients/[person_id]$cropped$.jpg';
+
+  function getOriginalImage(pPerson) {
+    let imageURL = s3.getSignedUrl('getObject', {
+      Bucket: imageBucket,
+      Key: imageURI.replace('[person_id]', pPerson),
+      Expires: 3600
+    });
+    return imageURL;
+  }
+
+  function getUpdatedImage(pPerson) {
+    let imageURL = s3.getSignedUrl('getObject', {
+      Bucket: imageBucket,
+      Key: updatedImageURI.replace('[person_id]', pPerson),
+      Expires: 3600
+    });
+    return imageURL;
   }
 
   const lambda = new Lambda({
@@ -297,6 +321,7 @@ export default ({ patient, picture, open, onClose }) => {
           preferred_method: localPersonRec.preferred_method || 'AVA',
           respArray: (finalRespArray || []),
           nameObj: (nameObj || {}),
+          temp_photo: getOriginalImage(patient.person_id),
           requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
           storePassword: (targetSession.hasOwnProperty('storePassword') ? targetSession.storePassword : true),
           groupMemberList: (workingGroupMemberList || []),
@@ -458,6 +483,7 @@ export default ({ patient, picture, open, onClose }) => {
     let newClients = {};
     let myClient = null;
     let clientArray = [];
+    let groupArray = [];
     patientGroups.forEach(g => {
       let [clt, grp] = g.split('~');
       if (!(clt in newClients)) { newClients[clt] = []; }
@@ -469,6 +495,7 @@ export default ({ patient, picture, open, onClose }) => {
         id: client,
         groups: newClients[client]
       });
+      groupArray = newClients[client];
     }
     let putPerson = {
       person_id: patient.person_id,
@@ -498,6 +525,7 @@ export default ({ patient, picture, open, onClose }) => {
       directory_partner: localData.directoryPartner || 'na',
       time_based_rules: patient.time_based_rules,
       clients: clientArray,
+      groups: groupArray,
       location: localData.location ? localData.location.replace(/,/g, '') : null,
       pwdReset: resettingPwd,
       newPassword: localData.inputPWD
@@ -509,16 +537,22 @@ export default ({ patient, picture, open, onClose }) => {
       })
       .promise()
       .catch(error => { console.log(`caught error updating People; error is:`, error); });
-
-    if (typeof cropper !== "undefined") {
-      // const croppedFile = dataUrlToFile(cropper.getCroppedCanvas().toDataURL('image/jpeg'), (patient.person_id + '_cropped.jpg'));
-      cropper
-        .getCroppedCanvas()
-        .toBlob((async (pBlob) => {
-          await handleSavePhoto(new File([pBlob], (patient.person_id + '_cropped.jpg'), { type: 'image/jpeg' }), '');
-        }), 'image/jpeg');
+    if (savedImageFile) { 
+      s3.copyObject({
+        Bucket: 'theseus-medical-storage',
+        CopySource: `theseus-medical-storage/${savedImageFile}`,
+        Key: savedImageFile.replace(savedTmp[savedTmp.length - 1], '')
+      })
+        .promise()
+        .then(() =>
+          s3.deleteObject({
+            Bucket: 'theseus-medical-storage',
+            Key: savedImageFile
+          }).promise()
+        )
+        // Error handling is left up to reader
+        .catch((e) => console.error(e))
     }
-
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
     let newFactData = {
@@ -682,7 +716,10 @@ export default ({ patient, picture, open, onClose }) => {
         enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
       });
     console.log(s3Resp);
-    return ('public/patients/' + patient.person_id + pTmp + '.' + extension);
+    setSavedImageFile(pFile.Key);
+    savedTmp.push(pTmp);
+    setSavedTmp(savedTmp);
+    return pFile.Key;
   }
 
   const handleChangeSearch = event => {
@@ -808,7 +845,7 @@ export default ({ patient, picture, open, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {(changes || pwdConfirmed) &&
+            {((changes || pwdConfirmed) && (!editPhoto || (editPhoto === ''))) &&
               <Button
                 onClick={handleUpdate}
                 disabled={!changes && !pwdConfirmed}
@@ -993,7 +1030,7 @@ export default ({ patient, picture, open, onClose }) => {
                 minWidth={150}
                 maxWidth={150}
                 alt='No photo'
-                src={localData.temp_photo ? `https://theseus-medical-storage.s3.amazonaws.com/${localData.temp_photo}` : `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${patient.person_id}.jpg`}
+                src={localData.temp_photo}
               />
               <br />
               <Box display='flex'
@@ -1041,7 +1078,7 @@ export default ({ patient, picture, open, onClose }) => {
                       color='primary'
                       size='small'
                       onClick={() => {
-                        cropper.rotate(90);
+                        cropperInstance.rotate(90);
                       }}
                     >
                       <Typography>Rotate</Typography>
@@ -1052,11 +1089,30 @@ export default ({ patient, picture, open, onClose }) => {
                       color='primary'
                       size='small'
                       onClick={() => {
+                        cropperInstance.destroy();
                         setEditPhoto('');
                         setRefreshTrigger(!refreshTrigger);
                       }}
                     >
-                      <Typography>Close</Typography>
+                      <Typography>Cancel Edits</Typography>
+                    </Button>
+                    <Button
+                      className={classes.photoButton}
+                      variant='outlined'
+                      color='primary'
+                      size='small'
+                      onClick={async () => {
+                        setEditPhoto('');
+                        cropperInstance
+                          .getCroppedCanvas()
+                          .toBlob((async (pBlob) => {
+                            await handleSavePhoto(new File([pBlob], patient.person_id, { type: 'image/jpeg' }), '$cropped$');
+                          }), 'image/jpeg');
+                        localData.temp_photo = getUpdatedImage(patient.person_id);
+                        setRefreshTrigger(!refreshTrigger);
+                      }}
+                    >
+                      <Typography>Save Edits</Typography>
                     </Button>
                   </React.Fragment>
                 }
@@ -1066,7 +1122,7 @@ export default ({ patient, picture, open, onClose }) => {
                   zoomTo={0.5}
                   style={{ width: "100%", height: "400px" }}
                   aspectRatio={1 / 1}
-                  src={`https://theseus-medical-storage.s3.amazonaws.com/${editPhoto}`}
+                  src={localData.temp_photo}
                   viewMode={0}
                   minCropBoxHeight={150}
                   minCropBoxWidth={150}
@@ -1214,7 +1270,7 @@ export default ({ patient, picture, open, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {changes || pwdConfirmed ?
+            {((changes || pwdConfirmed) && (!editPhoto || (editPhoto === ''))) &&
               <Button
                 onClick={handleUpdate}
                 disabled={!changes && !pwdConfirmed}
@@ -1224,7 +1280,7 @@ export default ({ patient, picture, open, onClose }) => {
               >
                 {isMobile ? 'Save' : 'Save Changes'}
               </Button>
-              : null}
+            }
           </Toolbar>
         </AppBar>
         <Toolbar />
