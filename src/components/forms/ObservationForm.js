@@ -289,7 +289,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
   if (!initialLoadComplete) {
     for (let vIndex = 0; vIndex < listValues.length; vIndex++) {
       let instruction = listValues[vIndex].split(/[~:]+/);
-      if ((instruction[1]) && (instruction[1].charAt(0) === '[')) {
+      if (instruction[1] && (instruction[1].charAt(0) === '[')) {
         let [, oControl, oValue] = instruction[1].split(/[=[\]]+/);
         switch (oControl) {
           case 'checkbox': {
@@ -584,7 +584,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
                           <Box display='flex' flexDirection='row' justifyContent='flex-start'
                             alignItems='center' flexWrap='wrap' key={'qrOpt' + qR.title}
                           >
-                            {qR.option.map((opt, oX) => (
+                            {qR.option && qR.option.map((opt, oX) => (
                               <Box display='flex' flexDirection='row' justifyContent='flex-start'
                                 alignItems='center' key={'qrOpt2' + oX}
                                 onClick={() => {

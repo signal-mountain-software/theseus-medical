@@ -430,7 +430,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     let qT = {};
     setValue(defaultValue);
     // console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
-    if (fact.value_qualifiers && Array.isArray(fact.value_qualifiers) && (fact.value_qualifiers > 0)) {
+    if (fact.value_qualifiers && Array.isArray(fact.value_qualifiers) && (fact.value_qualifiers.length > 0)) {
       fact.value_qualifiers.forEach(vQual => {
         if (vQual && Object.keys(vQual).length > 0) {
           qT[vQual.value] = vQual;
