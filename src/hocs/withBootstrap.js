@@ -194,7 +194,7 @@ export default Component => props => {
         return 'password';
       }
       else if (foundSession.last_login) {   // Yes!  We have a User and a Password
-        let goodLogin = await cognitoLogin(pUser, foundSession.last_login);
+        let [goodLogin, ,] = await cognitoLogin(pUser, foundSession.last_login);
         if (goodLogin) {
           pushLoginAttemptToArray(pUser, foundSession.last_login, true, `Successful Log-in using stored password; user ID supplied from ${pSource}`);
           await launchAVA(pUser);
@@ -207,7 +207,7 @@ export default Component => props => {
       }
       // We know the person, but have not been able to log them in yet
       // Attempt to log person is with generic credentials
-      let goodLogin = await cognitoLogin(AVA_default_user, AVA_default_password);
+      let [goodLogin, ,] = await cognitoLogin(AVA_default_user, AVA_default_password);
       if (goodLogin) {
         pushLoginAttemptToArray(pUser, '', true, `Successful Log-in using generic credentials; user ID supplied from ${pSource}`);
         await launchAVA(pUser);
@@ -328,7 +328,7 @@ export default Component => props => {
               enqueueSnackbar(`Still looking...`, { variant: 'info' });
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let possibility = AVAFollowUpData.possibleUserRecs[p];
-                if (possibility.location.includes(enteredPass) || possibility.location.includes(enteredPass.toLowerCase())) {
+                if (enteredPass && (possibility.location.includes(enteredPass) || possibility.location.includes(enteredPass.toLowerCase()))) {
                   if (possibility.sessionRec.requirePassword) {
                     let eMessage = `Using the information provided, AVA located account "${possibility.person_id}", but that account requires a password.  ("${enteredPass}" is not the right password.)`;
                     pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
@@ -674,7 +674,9 @@ export default Component => props => {
         return [true, fRespObj.body];
       }
     }
-    catch { return [false, 'unknown']; }
+    catch {
+      return [false, 'unknown'];
+    }
   };
 
   async function launchAVA(pLaunchUser) {
