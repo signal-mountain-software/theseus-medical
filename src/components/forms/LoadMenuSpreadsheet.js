@@ -173,14 +173,14 @@ export default ({ pClient, showUpload, handleClose }) => {
   function parseSpreadsheet(pWorkbook) {
     let dateWords = 'monday%tuesday%wednesday%thursday%friday%saturday%sunday%january%february%march%april%may%june%july%august%september%october%november%december';
     let itemType = ['header', 'soup', 'salad', 'entree', 'salad', 'side', 'bread', 'side', 'dessert', 'entree', 'side', 'side'];
+    let sundayType = ['header', 'entree', 'side', 'entree', 'salad', 'entree', 'side', 'side', 'bread', 'side', 'dessert', 'side', 'side'];
     let dateString = '';
     let results = [];
     let needDate = true;
     let fullValue, cellValue, cellKey, cellOKey;
-    let workingDate;
+    let workingDate, workingDoW;
     let messages = [];
     let itemTypeNumber = 0;
-    let currentYear = new Date().getFullYear();
     pWorkbook.SheetNames.forEach((sheetName) => {
       let currentSheet = pWorkbook.Sheets[sheetName];
       let previousRow = 0;
@@ -190,12 +190,12 @@ export default ({ pClient, showUpload, handleClose }) => {
         fullValue = currentSheet[currentCell].v;
         let valueArray = fullValue.toString().split('~');
         if (!valueArray || valueArray.length < 2) {
-          cellValue = fullValue;
+          cellValue = (isNaN(fullValue) ? fullValue.trim() : fullValue);
           cellOKey = null
         }
         else {
-          cellValue = valueArray[0];
-          cellOKey = valueArray[1];
+          cellValue = valueArray[0].trim();
+          cellOKey = valueArray[1].trim();
         }
         let cellColumn = currentCell.replace(/[^A-Z]+/, '');
         let cellRow = Number(currentCell.replace(cellColumn, ''));
@@ -213,10 +213,19 @@ export default ({ pClient, showUpload, handleClose }) => {
           dateRow = cellRow;
           continue;
         }
-        else if (needDate && Number(cellValue) < 32) {
-          dateString += ' ' + cellValue;
-          dateRow = cellRow;
-          continue;
+        else {
+          if (needDate) {
+            let valueNumber = Number(cellValue);
+            if (valueNumber < 32) {
+              dateString += ' ' + cellValue;
+              dateRow = cellRow;
+              continue;
+            }
+            else if (valueNumber > 2000) {
+              dateString += ' ' + cellValue;
+              dateRow = cellRow;
+            }
+          }
         }
         if (needDate) {
           if (dateString === '') {
@@ -224,7 +233,8 @@ export default ({ pClient, showUpload, handleClose }) => {
             continue;
           }
           else {
-            workingDate = new Date(dateString + ' ' + currentYear);
+            workingDate = new Date(dateString);
+            workingDoW = workingDate.getDay();
             dateString = '';
             needDate = false;
             itemTypeNumber = 0;
@@ -261,14 +271,14 @@ export default ({ pClient, showUpload, handleClose }) => {
           results.push({
             date: workingDate,
             item: firstValue,
-            type: itemType[itemTypeNumber]
+            type: ((workingDoW > 0) ? itemType[itemTypeNumber] : sundayType[itemTypeNumber])
           });
           cellValue = secondValue;
         }
         results.push({
           date: workingDate,
           item: cellValue,
-          type: itemType[itemTypeNumber],
+          type: ((workingDoW > 0) ? itemType[itemTypeNumber] : sundayType[itemTypeNumber]),
           oKey: cellOKey || null
         });
       }
