@@ -663,19 +663,40 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       ) {
         setPendingFact(pFact);
         let foundText = [];
-        let valueArray = pFact.value.selected.map(selection => {
+        let valueArray = pFact.value.selected.map(selection => {    // this adds anything that was selected (checkbox)
+          // add qualifiers if applicable
+          let constructedQualifier = '';
+          if (pFact.value.hasOwnProperty('qualifiers') && (selection in pFact.value.qualifiers)) {
+            let qArray =
+              Object
+                .keys(pFact.value.qualifiers[selection])
+                .map(key => {
+                  return `${key}: ${pFact.value.qualifiers[selection][key].join(' and ')}`;
+                });
+            constructedQualifier = ` ( ${qArray.join('; ')} )`;
+          }
           if (pFact.value.freeText.hasOwnProperty(selection)) {
             let freeText = pFact.value.freeText[selection];
-            foundText.push(selection);
-            return `${selection} = ${freeText}`;
+            foundText.push(selection);    // we might have free text that is NOT associated with a check box, use foundText to prevent duplication
+            return `${selection} = ${freeText}${constructedQualifier}`;
           }
           else {
-            return selection;
+            return `${selection}${constructedQualifier}`;
           }
         });
         for (const key in pFact.value.freeText) {
           if (key !== '%filter%' && !foundText.includes(key)) {
-            valueArray.push(`${key} = ${pFact.value.freeText[key]}`);
+            let constructedQualifier = '';
+            if (pFact.value.hasOwnProperty('qualifiers') && (key in pFact.value.qualifiers)) {
+              let qArray =
+                Object
+                  .keys(pFact.value.qualifiers[key])
+                  .map(subkey => {
+                    return `${subkey}: ${pFact.value.qualifiers[key][subkey].join(' and ')}`;
+                  });
+              constructedQualifier = ` ( ${qArray.join('; ')} )`;
+            }
+            valueArray.push(`${key} = ${pFact.value.freeText[key]}${constructedQualifier}`);
           }
         }
 
@@ -716,13 +737,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
         // set the value that will be written into the Fact table
         pFact.value = factValueType + '.' + valueArray.join(' ~ ');
-
-        // add qualifiers if applicable
-        if (pFact.value.hasOwnProperty('qualifiers') && Object.keys(pFact.value.qualifiers).length > 0) {
-          pFact.qualifier = Object.keys(pFact.value.qualifiers).map(k => {
-            return `${k}:${pFact.value.qualifiers[k]}`;
-          });
-        }
 
         // write the Fact Table entry
         putFact(pFact, pFactName, pIndex);
