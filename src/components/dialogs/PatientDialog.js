@@ -174,8 +174,8 @@ export default ({ patient, picture, open, onClose }) => {
   const [resettingPwd, setResettingPwd] = React.useState(false);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
 
-  const [savedImageFile, setSavedImageFile] = React.useState(); 
-  const [savedTmp, setSavedTmp] = React.useState([]); 
+  const [savedImageFile, setSavedImageFile] = React.useState();
+  const [savedTmp, setSavedTmp] = React.useState([]);
   const [editPhoto, setEditPhoto] = React.useState('');
   const [cropperInstance, setCropper] = React.useState();
 
@@ -537,7 +537,7 @@ export default ({ patient, picture, open, onClose }) => {
       })
       .promise()
       .catch(error => { console.log(`caught error updating People; error is:`, error); });
-    if (savedImageFile) { 
+    if (savedImageFile) {
       s3.copyObject({
         Bucket: 'theseus-medical-storage',
         CopySource: `theseus-medical-storage/${savedImageFile}`,
@@ -551,7 +551,7 @@ export default ({ patient, picture, open, onClose }) => {
           }).promise()
         )
         // Error handling is left up to reader
-        .catch((e) => console.error(e))
+        .catch((e) => console.error(e));
     }
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
@@ -572,7 +572,7 @@ export default ({ patient, picture, open, onClose }) => {
 
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `v22.12.25`,
+        'version': `v23.1.6`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'action': 'Updated Person record',

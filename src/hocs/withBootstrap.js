@@ -275,7 +275,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 22.12.25${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+              {`AVA version 23.1.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
             </Typography>
             <CircularProgress />
           </Box>
@@ -585,7 +585,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
-        'version': `v22.12.25`,
+        'version': `v23.1.6`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'signin_status': pMessage,
