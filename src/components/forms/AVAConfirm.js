@@ -30,6 +30,16 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
+function makeLine(str) {
+  if (str.startsWith('[indent=')) {
+    let pieces = str.split(/[=\]]/);
+    if (!isNaN(pieces[1])) {
+      return ('-' + String.fromCharCode(9).repeat(Number(pieces[1])) + pieces[2]);
+    }
+  }
+  return str;
+}
+
 export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', onCancel, onConfirm }) => {
 
   let promptLines = [];
@@ -55,7 +65,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
           id='scroll-dialog-title'
           key={'promptConfirm' + index}
         >
-          {pLine}
+          {makeLine(pLine)}
         </Typography>
       ))}
       <DialogActions style={{ justifyContent: 'center', marginTop: 20 }}>

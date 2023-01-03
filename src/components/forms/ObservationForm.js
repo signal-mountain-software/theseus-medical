@@ -462,15 +462,17 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
       }
       if (r.checkbox || textInput.hasOwnProperty(r.text)) {
         let rText = '';
-        if (pChecked.includes(r.text) || textInput[r.text]) { rText = r.text; }
-        if (textInput[r.text]) { rText += (rText.length > 0 ? ': ' : '') + textInput[r.text]; }
+        if (pChecked.includes(r.text)) { rText = r.text; }
+        if (textInput.hasOwnProperty(r.text) && (textInput[r.text].length > 0)) { rText = textInput[r.text]; }
         if (rText) {
           if (pChecked.includes(r.text)) { workChecked.push(rText); }
           responseArray.push(rText);
           if (dataRows.hasOwnProperty('chosenQual') && dataRows.chosenQual[r.text]) {
             for (let key in dataRows.chosenQual[r.text]) {
               if (dataRows.chosenQual[r.text][key] && (dataRows.chosenQual[r.text][key].length > 0)) {
-                responseArray.push(...dataRows.chosenQual[r.text][key]);
+                dataRows.chosenQual[r.text][key].forEach(qRow => {
+                  responseArray.push(`[indent=1]${qRow}`)  
+                })
               }
             }
           }
