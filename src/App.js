@@ -1,5 +1,4 @@
 import React from 'react';
-import { useCookies } from 'react-cookie';
 
 import Box from '@material-ui/core/Box';
 
@@ -44,7 +43,6 @@ const menu = [
 
 const HOME = '/theseus';
 var hasError = false;
-let cookies;
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -54,15 +52,11 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    const [getCookies] = useCookies(['AVAuser']);
-    cookies = getCookies;
     handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    const [getCookies] = useCookies(['AVAuser']);
-    cookies = getCookies;
     handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
   }
 
@@ -116,18 +110,6 @@ const handleWriteError = async (parmMessage) => {
 
     });
 
-  let cookie_user = 'no cookie';
-
-  if (cookies.AVAuser && cookies.AVAuser !== 'undefined') {
-    if (typeof (cookies.AVAuser) === 'string') {
-      let cObj = JSON.parse(cookies.AVAuser);
-      cookie_user = cObj.user_id;
-    }
-    else {
-      cookie_user = cookies.AVAuser.user_id;
-    }
-  }
-
   let sObj_user = 'no sessionObject';
   let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
   if (sessionObject.currentProfile?.person_id) {
@@ -144,7 +126,6 @@ const handleWriteError = async (parmMessage) => {
       'env': AVA_env,
       'time': errorTime.toString(),
       'cognito_user': user?.username,
-      'cookie_user': cookie_user,
       'sessObj_user': sObj_user
     },
     user_id: user?.username || 'no user logged',
