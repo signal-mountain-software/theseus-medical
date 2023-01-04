@@ -31,6 +31,7 @@ import Checkbox from '@material-ui/core/Checkbox';
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
+import MakeMessage from './MakeMessage';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -1163,6 +1164,21 @@ export default ({
             values.map(v => { return (JSON.parse(v)); })
           }
           onReset={onSave}
+        />
+      );
+    case 'make_message':
+      let defaultValueObj = JSON.parse(defaultValue);
+      return (
+        <MakeMessage
+          titleText={defaultValueObj.title || `Send a Message to ${defaultValueObj.recipientName}`}
+          promptText={defaultValueObj.prompt ? defaultValueObj.prompt.split('//') : [`What's the Message?`]}
+          buttonText={defaultValueObj.button || 'Send'}
+          sender={session}
+          recipientID={defaultValueObj.recipientID}
+          recipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
+          onCancel={onClose}
+          onComplete={onSave}
+          allowCancel={true}
         />
       );
     case 'observation_form':

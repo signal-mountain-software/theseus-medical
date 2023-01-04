@@ -354,10 +354,26 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     }
 
     async function getActivity(pActivityCode) {
-        let pActivity = pActivityCode;
         let pClient = masterClient;
         let addClient = false;
-        if (pActivityCode.includes('//')) {
+        let overrideDefault, overrideTitle;
+        let parts = pActivityCode.split('~[');
+        let pActivity = parts[0];
+        for (let p = 1; p < parts.length; p++) {
+            let [iType, iData] = parts[p].split(/[=\]]/);
+            switch (iType) {
+                case 'default': {
+                    overrideDefault = iData;
+                    break;
+                }
+                case 'title': {
+                    overrideTitle = iData;
+                    break;
+                }
+                default: { break; }
+            } 
+        }
+        if (pActivity.includes('//')) {
             [pClient, pActivity] = pActivityCode.split('//');
             addClient = true;
         }
@@ -375,6 +391,13 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
             });
         if (recordExists(aRecs)) {
             if (addClient) { aRecs.Item.activity_code = `${pClient}//${pActivity}`; };
+            if (overrideDefault) {
+                if (!('validation' in aRecs.Item)) { aRecs.Item.validation = {}; }
+                aRecs.Item.validation.default_value = overrideDefault;
+            }
+            if (overrideTitle) {
+                aRecs.Item.name = overrideTitle;
+            }
             return aRecs.Item;
         }
         return {};

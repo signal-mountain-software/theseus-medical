@@ -354,6 +354,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           }
           break;
         }
+        case 'make_message': {
+          setFactIOClass(false);
+          break;
+        }
         case 'message': {
           if (fact.prompt) {
             eString = fact.prompt;
@@ -480,6 +484,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     if (defaultValue
       && fact.type !== 'reservation'
       && fact.type !== 'play_video'
+      && fact.type !== 'make_message'
     ) {
       let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
       let defaultSelections;

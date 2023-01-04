@@ -890,7 +890,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     }
   };
 
-  const getActivityDetail = async (pActivity) => {
+  const getActivityDetail = async (pActivity, pDefault) => {
     let invokeFailed = false;
     let cClient = pClient;
     let cActivity = pActivity;
@@ -932,6 +932,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       if (activityResponse.status === 200) {
         if (cClient !== pClient) {
           activityResponse.body.activityData[0].client_id = cClient;
+        }
+        if (pDefault && (pDefault !== '') && !pDefault.includes('[')) {
+          activityResponse.body.activityData[0].default_value = pDefault;
         }
         setSelected(activityResponse.body.activityData[0]);
         return activityResponse.body.activityData[0];
@@ -1492,7 +1495,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                                     setForceRedisplay(!forceRedisplay);
                                   }
                                   else {
-                                    await getActivityDetail(this_row.activity_code);
+                                    await getActivityDetail(this_row.activity_code, this_row.default_value);
                                     setShowNewFactDialog(index);
                                   }
                                 }
