@@ -380,14 +380,17 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   // **************************
 
   React.useEffect(() => {
-    if (pGroup_id) {
-      setShowGroupSelect(false);
-      getGroupMemberList(pGroup_id);
+    async function prepare() {
+      if (pGroup_id) {
+        setShowGroupSelect(false);
+        await getGroupMemberList(pGroup_id);
+      }
+      else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
+        setShowGroupSelect(true);
+        await getGroupsManagedObject(pSession.patient_id);
+      }
     }
-    else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
-      setShowGroupSelect(true);
-      getGroupsManagedObject(pSession.patient_id);
-    }
+    prepare();
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
