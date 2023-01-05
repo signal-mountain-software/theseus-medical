@@ -154,6 +154,7 @@ export default Component => props => {
     //    password - user ID is valid, but password needed to log in
     //
     // Do we know this person's password?
+    pUser = pUser.trim();
     let [goodSessionV2, foundSession] = await getSessionV2(pUser);
     if (!goodSessionV2) {     // That is not a valid User ID, maybe it's a name?
       pushLoginAttemptToArray(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).  Trying names.`);
@@ -667,7 +668,7 @@ export default Component => props => {
       });
     try {
       let fRespObj = JSON.parse(fResp.Payload);
-      if (fRespObj.status === 400) {
+      if (!fResp.hasOwnProperty('status') || (fRespObj.status === 400)) {
         return [false, fRespObj.body];
       }
       else {
