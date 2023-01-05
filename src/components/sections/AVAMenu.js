@@ -1040,6 +1040,17 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     setAnchorEl(event.currentTarget);
   };
 
+  let pendingColor;
+  function setPending(pColor) {
+    pendingColor = pColor;
+    return pColor;
+  };
+
+  function clearPending(pColor) {
+    pendingColor = null;
+    return pColor;
+  };
+
   let lastColor, lastOpen;
   function rowIsOpen(pRow) {
     if (sectionOpen[pRow.section_name] || (currentMenu !== 'main')) {
@@ -1350,7 +1361,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
                   <Box
                     display='flex'
-                    style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: '#d25958', textDecoration: 'none' }}
+                    style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: clearPending('#d25958'), textDecoration: 'none' }}
                     ml={2} mr={2}
                     justifyContent='center'
                     flexDirection='column'
@@ -1401,7 +1412,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                             display='flex'
                             style={{
                               borderRadius: '0px 0px 30px 30px',
-                              backgroundColor: lastColor,
+                              backgroundColor: clearPending(lastColor),
                               textDecoration: 'none'
                             }}
                             ml={2} mr={2}
@@ -1455,7 +1466,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                         ml={2} mr={2} mt={.2} mb={.2} key={this_row.activity_code + 'detail' + index} >
                         <Box
                           display='flex'
-                          style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                          style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: setPending(this_row.row_color), textDecoration: 'none' }}
                           p={2}
                           justifyContent='center'
                           flexDirection='column'
@@ -1560,7 +1571,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                         </Box>
                         <Collapse in={(rowOpen === index)} timeout="auto" unmountOnExit>
                           <Box
-                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: setPending(this_row.row_color), textDecoration: 'none' }}
                             display='flex'
                             flexDirection='row' paddingBottom={1} justifyContent='flex-start' alignItems='center'
                           >
@@ -1578,12 +1589,12 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   </React.Fragment>
                 )
               ))}
-              {rowIsOpen(mainMenu[mainMenu.length - 1]) &&
+              {(rowIsOpen(mainMenu[mainMenu.length - 1]) || pendingColor) &&
                 <Box
                   display='flex'
                   style={{
                     borderRadius: '0px 0px 30px 30px',
-                    backgroundColor: lastColor,
+                    backgroundColor: clearPending(pendingColor || lastColor),
                     textDecoration: 'none'
                   }}
                   ml={2} mr={2}
