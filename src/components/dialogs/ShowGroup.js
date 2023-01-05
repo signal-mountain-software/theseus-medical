@@ -417,8 +417,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
           </Typography>
         </Box>
         <DialogContent dividers={true} className={classes.dialogBox}>
-          {groupMemberList.length === 0 && groupID
-            ?
+          {groupMemberList.length === 0 && groupID &&
             <Box display='flex' marginBottom={5} flexDirection='column' justifyContent='center' alignItems='center'>
               <Typography className={classes.formControl} variant='h5' >
                 {progressMessage}
@@ -427,7 +426,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
                 <CircularProgress />
               </div>
             </Box>
-            :
+          }
+          {groupMemberList.length > 0 &&
             <GroupForm
               groupMemberList={groupMemberList}
               peopleList={peopleList}
