@@ -29,7 +29,7 @@ import Radio from '@material-ui/core/Radio';
 import Checkbox from '@material-ui/core/Checkbox';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
-import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+// import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 
 import CircularProgress from '@material-ui/core/CircularProgress';
 
@@ -171,10 +171,12 @@ export default ({ patient, picture, open, onClose }) => {
   const [sessionVersion, setSessionVersion] = React.useState(0);
 
   const [changes, setChanges] = React.useState(false);
+  const [photoChanges, setPhotoChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(false);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
 
   const [savedImageFile, setSavedImageFile] = React.useState();
+  const [savedImageKey, setSavedImageKey] = React.useState();
   const [savedTmp, setSavedTmp] = React.useState([]);
   const [editPhoto, setEditPhoto] = React.useState('');
   const [cropperInstance, setCropper] = React.useState();
@@ -214,6 +216,15 @@ export default ({ patient, picture, open, onClose }) => {
     return imageURL;
   }
 
+  function getTempImage(pKey) {
+    let imageURL = s3.getSignedUrl('getObject', {
+      Bucket: imageBucket,
+      Key: pKey,
+      Expires: 3600
+    });
+    return imageURL;
+  }
+
   function getUpdatedImage(pPerson) {
     let imageURL = s3.getSignedUrl('getObject', {
       Bucket: imageBucket,
@@ -240,27 +251,8 @@ export default ({ patient, picture, open, onClose }) => {
     async function initialize() {
       if (patient) {
         let localPersonRec = await getPersonRec(patient.person_id);
-        let foundAt;
         let groupFound;
-        if (Array.isArray(localPersonRec.clients)) {
-          // patient.clients is an array...   each element is a single object with 
-          //     key = client_id and 
-          //     value = array of groups this patient is a member of in that client
-          // First - find the array element that contains the object key (id) = current client (patient.client_id)
-          groupFound = localPersonRec.clients.some((e, i) => {
-            foundAt = i;
-            return (e.id === localPersonRec.client_id);
-          });
-          if (groupFound) {
-            // We found the right array element... load the React patientGroups value with
-            //    an array of client, group entries as in 'SMSoft~AVT_residents'...   
-            setPatientGroups(localPersonRec.clients[foundAt].groups.map(e => {
-              return (`${localPersonRec.client_id}~${e}`);
-            }));
-            // Next, are there any entries in this array that represent a group that
-            // belongs to another group?
-          }
-        }
+        setPatientGroups(localPersonRec.groups)
         if (localPersonRec.relationships) {
           localPersonRec.relationships.forEach(async (relationship, index) => {
             let result = await API.graphql(
@@ -328,7 +320,7 @@ export default ({ patient, picture, open, onClose }) => {
           groupMemberList: (workingGroupMemberList || []),
           directoryOption: (localPersonRec.directory_option || 'normal'),
           directoryPartner: (localPersonRec.directory_partner || 'na'),
-          patientGroups: (localPersonRec.clients[foundAt].groups.map(e => { return (`${localPersonRec.client_id}~${e}`); }))
+          patientGroups: (localPersonRec.groups)
         };
         if (isNaN(localPersonRec.messaging?.surrogate)) { workLocalData.surrogate = localPersonRec.messaging?.surrogate; }
         else { workLocalData.surrogate = (formatPhone('' + localPersonRec.messaging?.surrogate)); }
@@ -432,6 +424,13 @@ export default ({ patient, picture, open, onClose }) => {
     setPwdConfirmed(false);
     localData.inputPWD = (patientSession ? (patientSession.last_login || 'password') : 'password');
     setChanges(false);
+    setPhotoChanges(false);
+    if (savedImageKey) {
+      s3.deleteObject({
+        Bucket: 'theseus-medical-storage',
+        Key: savedImageKey
+      }).promise();
+    };
     onClose();
   };
 
@@ -455,6 +454,7 @@ export default ({ patient, picture, open, onClose }) => {
       enqueueSnackbar(`User ID ${patient.person_id} assigned`, { variant: 'success', persist: true });
     }
     let updatePerson = {
+      client_id: state.session.client_id,
       person_id: patient.person_id,
       first: localData.firstName.substr(0, 1).toUpperCase() + localData.firstName.substr(1),
       last: localData.lastName.substr(0, 1).toUpperCase() + localData.lastName.substr(1),
@@ -482,23 +482,7 @@ export default ({ patient, picture, open, onClose }) => {
       pwdReset: resettingPwd,
       newPassword: localData.inputPWD
     };
-    let newClients = {};
-    let myClient = null;
-    let clientArray = [];
-    let groupArray = [];
-    patientGroups.forEach(g => {
-      let [clt, grp] = g.split('~');
-      if (!(clt in newClients)) { newClients[clt] = []; }
-      newClients[clt].push(grp);
-    });
-    for (const client in newClients) {
-      myClient = client;
-      clientArray.push({
-        id: client,
-        groups: newClients[client]
-      });
-      groupArray = newClients[client];
-    }
+    let myClient = state.session.client_id;
     let putPerson = {
       person_id: patient.person_id,
       client_id: myClient,
@@ -527,8 +511,11 @@ export default ({ patient, picture, open, onClose }) => {
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || 'na',
       time_based_rules: patient.time_based_rules,
-      clients: clientArray,
-      groups: groupArray,
+      clients: {
+        id: myClient,
+        groups: patientGroups
+      },
+      groups: patientGroups,
       location: localData.location ? localData.location.replace(/,/g, '') : null,
       pwdReset: resettingPwd,
       newPassword: localData.inputPWD
@@ -540,22 +527,20 @@ export default ({ patient, picture, open, onClose }) => {
       })
       .promise()
       .catch(error => { console.log(`caught error updating People; error is:`, error); });
+    
     if (savedImageFile) {
       s3.copyObject({
         Bucket: 'theseus-medical-storage',
-        CopySource: `theseus-medical-storage/${savedImageFile}`,
-        Key: savedImageFile.replace(savedTmp[savedTmp.length - 1], '')
-      })
-        .promise()
-        .then(() =>
-          s3.deleteObject({
-            Bucket: 'theseus-medical-storage',
-            Key: savedImageFile
-          }).promise()
-        )
-        // Error handling is left up to reader
+        CopySource: savedImageFile,
+        Key: savedImageKey.replace(savedTmp[savedTmp.length - 1], '')
+      }).promise()
         .catch((e) => console.error(e));
+      s3.deleteObject({
+        Bucket: 'theseus-medical-storage',
+        Key: savedImageKey
+      }).promise();
     }
+    
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
     let newFactData = {
@@ -630,6 +615,7 @@ export default ({ patient, picture, open, onClose }) => {
     patient.name.first = localData.firstName;
     patient.name.last = localData.lastName;
     setChanges(false);
+    setPhotoChanges(false);
     setResettingPwd(false);
     setPwdConfirmed(false);
     onClose(updatePerson);
@@ -719,7 +705,8 @@ export default ({ patient, picture, open, onClose }) => {
         enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
       });
     console.log(s3Resp);
-    setSavedImageFile(pFile.Key);
+    setSavedImageFile(s3Resp.Location);
+    setSavedImageKey(s3Resp.Key);
     savedTmp.push(pTmp);
     setSavedTmp(savedTmp);
     return pFile.Key;
@@ -848,11 +835,9 @@ export default ({ patient, picture, open, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {((changes || pwdConfirmed) && (!editPhoto || (editPhoto === ''))) &&
+            {(changes || pwdConfirmed || photoChanges) &&
               <Button
                 onClick={handleUpdate}
-                disabled={!changes && !pwdConfirmed}
-                hidden={!changes && !pwdConfirmed}
                 variant='contained'
                 className={classes.topButton}
               >
@@ -1049,7 +1034,6 @@ export default ({ patient, picture, open, onClose }) => {
                       color='primary'
                       hidden={patient.person_id.startsWith('*NEW~')}
                       size='small'
-                      startIcon={<CloudUploadIcon />}
                       onClick={async () => {
                         handlePhotoUpload();
                       }}
@@ -1065,7 +1049,6 @@ export default ({ patient, picture, open, onClose }) => {
                         size='small'
                         onClick={async () => {
                           setEditPhoto(localData.temp_photo || `public/patients/${patient.person_id}.jpg`);
-                          setChanges(true);
                         }}
                       >
                         <Typography>Edit this photo</Typography>
@@ -1094,6 +1077,8 @@ export default ({ patient, picture, open, onClose }) => {
                       onClick={() => {
                         cropperInstance.destroy();
                         setEditPhoto('');
+                        setPhotoChanges(false);
+                        localData.temp_photo = getOriginalImage(patient.person_id);
                         setRefreshTrigger(!refreshTrigger);
                       }}
                     >
@@ -1106,6 +1091,7 @@ export default ({ patient, picture, open, onClose }) => {
                       size='small'
                       onClick={async () => {
                         setEditPhoto('');
+                        setPhotoChanges(true);
                         cropperInstance
                           .getCroppedCanvas()
                           .toBlob((async (pBlob) => {
@@ -1145,15 +1131,19 @@ export default ({ patient, picture, open, onClose }) => {
                 style={{ display: 'none' }}
                 ref={hiddenFileInput}
                 onChange={async (target) => {
-                  localData.temp_photo = await handleSavePhoto(target.target.files[0], 'tmp');
+                  let photoKey = await handleSavePhoto(target.target.files[0], 'tmp');
+                  localData.temp_photo = await getTempImage(photoKey);
                   setEditPhoto(localData.temp_photo);
-                  setChanges(true);
                 }}
               />
             </Box>
           </Paper>
         </Box >
-        <ClientsSection person={patient} updateGroups={handleChangeGroups} />
+        <ClientsSection
+          person={patient}
+          updateGroups={handleChangeGroups}
+          patientSession={patientSession}
+        />
         <RelationshipSection person={patient} />
         <LinkedAccountsSection
           groupMemberList={localData.groupMemberList}
@@ -1273,7 +1263,7 @@ export default ({ patient, picture, open, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {((changes || pwdConfirmed) && (!editPhoto || (editPhoto === ''))) &&
+            {((changes || pwdConfirmed || photoChanges) && (!editPhoto || (editPhoto === ''))) &&
               <Button
                 onClick={handleUpdate}
                 disabled={!changes && !pwdConfirmed}
