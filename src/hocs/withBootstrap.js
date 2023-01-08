@@ -71,8 +71,6 @@ export default Component => props => {
     return React.useMemo(() => new URLSearchParams(search), [search]);
   };
 
-  let accessLogRecords = [];
-
   React.useEffect(() => {
     let checkUser = (
       async () => {
@@ -88,22 +86,22 @@ export default Component => props => {
           if (sessionObject) {          // There is a good sessionObject.  This contains actual info about user
             activeUser = sessionObject.currentProfile.person_id;
             let uMessage = `Found ${activeUser} in session memory (AVASessionData)`;
-            pushLoginAttemptToArray(activeUser, '', false, uMessage);
+            await logAccessAttempt(activeUser, '', false, uMessage);
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
-              pushLoginAttemptToArray(activeUser, '', false, `Good AVA session object found in memory; AVA launched successfully`);
+              await logAccessAttempt(activeUser, '', false, `Good AVA session object found in memory; AVA launched successfully`);
               return;
             }
           }
           else if (localCognitoSession.idToken.payload['cognito:username'] !== AVA_default_user) {
             activeUser = localCognitoSession.idToken.payload['cognito:username'];
             let uMessage = `${activeUser} is already logged in`;
-            pushLoginAttemptToArray(activeUser, '', false, uMessage);
+            await logAccessAttempt(activeUser, '', false, uMessage);
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
-              pushLoginAttemptToArray(activeUser, '', false, `No AVA session in memory; Cognito session for known user found; AVA launched successfully`);
+              await logAccessAttempt(activeUser, '', false, `No AVA session in memory; Cognito session for known user found; AVA launched successfully`);
               return;
             }
           }
@@ -112,11 +110,11 @@ export default Component => props => {
             if (AVAsession && AVAsession.login.user_id) {
               activeUser = AVAsession.login.user_id;
               let uMessage = `Found ${activeUser} in Sessions table with jti (session_id) ${localCognitoSession.idToken.payload.jti}`;
-              pushLoginAttemptToArray(activeUser, '', false, uMessage);
+              await logAccessAttempt(activeUser, '', false, uMessage);
               let goodLaunch = await launchAVA(activeUser);
               if (goodLaunch) {
                 setAVAFollowUpData({ 'Completed': true });
-                pushLoginAttemptToArray(activeUser, '', false, `Device found in Sessions table; AVA launched successfully`);
+                await logAccessAttempt(activeUser, '', false, `Device found in Sessions table; AVA launched successfully`);
                 return;
               }
             }
@@ -157,7 +155,7 @@ export default Component => props => {
     pUser = pUser.trim();
     let [goodSessionV2, foundSession] = await getSessionV2(pUser);
     if (!goodSessionV2) {     // That is not a valid User ID, maybe it's a name?
-      pushLoginAttemptToArray(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).  Trying names.`);
+      await logAccessAttempt(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).  Trying names.`);
       let [goodUser, possibleUserRecs] = await validateUserAccount({    // look for account by name
         'nameTest': pUser,
         'client': pClient
@@ -172,19 +170,19 @@ export default Component => props => {
           return 'ambiguous';
         }
       }
-      pushLoginAttemptToArray(pUser, '', '', `No UserID found from entered name: ${pUser}.`);
+      await logAccessAttempt(pUser, '', '', `No UserID found from entered name: ${pUser}.`);
       enqueueSnackbar(`"${pUser}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
       setAVAFollowUpData({ 'NeedUser': true });
       return 'invalid';
     }
     else {
       if (foundSession.requirePassword && (pSource === 'entered')) {
-        pushLoginAttemptToArray(pUser, '', false, 'Good UserID entered.  Password is required for this account.');
+        await logAccessAttempt(pUser, '', false, 'Good UserID entered.  Password is required for this account.');
         enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
         let [goodUser, foundPatient] = await getPerson(pUser);
         if (!goodUser) {
           let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
-          pushLoginAttemptToArray(pUser, '', '', eMessage);
+          await logAccessAttempt(pUser, '', '', eMessage);
           enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
           sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
           setAVAFollowUpData({ 'NeedUser': true });
@@ -197,12 +195,12 @@ export default Component => props => {
       else if (foundSession.last_login) {   // Yes!  We have a User and a Password
         let [goodLogin, ,] = await cognitoLogin(pUser, foundSession.last_login);
         if (goodLogin) {
-          pushLoginAttemptToArray(pUser, foundSession.last_login, true, `Successful Log-in using stored password; user ID supplied from ${pSource}`);
+          await logAccessAttempt(pUser, foundSession.last_login, true, `Successful Log-in using stored password; user ID supplied from ${pSource}`);
           await launchAVA(pUser);
           return 'good';
         }
         else {
-          pushLoginAttemptToArray(pUser, foundSession.last_login, false, `Failed Log-in.  Attempted stored password; user ID supplied from ${pSource}`);
+          await logAccessAttempt(pUser, foundSession.last_login, false, `Failed Log-in.  Attempted stored password; user ID supplied from ${pSource}`);
           // intentionally fall through to attempt default credentials
         }
       }
@@ -210,13 +208,13 @@ export default Component => props => {
       // Attempt to log person is with generic credentials
       let [goodLogin, ,] = await cognitoLogin(AVA_default_user, AVA_default_password);
       if (goodLogin) {
-        pushLoginAttemptToArray(pUser, '', true, `Successful Log-in using generic credentials; user ID supplied from ${pSource}`);
+        await logAccessAttempt(pUser, '', true, `Successful Log-in using generic credentials; user ID supplied from ${pSource}`);
         await launchAVA(pUser);
         return 'good';
       }
       else {
         let eMessage = `Failed Log-in using generic credentials; user ID supplied from ${pSource}`;
-        pushLoginAttemptToArray(pUser, '', false, eMessage);
+        await logAccessAttempt(pUser, '', false, eMessage);
         enqueueSnackbar(`${eMessage}..  AVA support has been notified.`, { variant: 'error', persist: true });
         sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       }
@@ -320,7 +318,7 @@ export default Component => props => {
                 if (thatWorked) {
                   let userFrom = '';
                   if (AVAFollowUpData.possibleUserRecs.length > 1) { userFrom = `- user ID is #${p + 1} of ${AVAFollowUpData.possibleUserRecs.length} possible matches`; }
-                  pushLoginAttemptToArray(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password ${userFrom}`);
+                  await logAccessAttempt(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password ${userFrom}`);
                   launchAVA(AVAFollowUpData.possibleUserRecs[p].person_id);
                   return;
                 }
@@ -332,28 +330,28 @@ export default Component => props => {
                 if (enteredPass && (possibility.location.includes(enteredPass) || possibility.location.includes(enteredPass.toLowerCase()))) {
                   if (possibility.sessionRec.requirePassword) {
                     let eMessage = `Using the information provided, AVA located account "${possibility.person_id}", but that account requires a password.  ("${enteredPass}" is not the right password.)`;
-                    pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
+                    await logAccessAttempt(possibility.person_id, '', false, eMessage);
                     enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
                     return;
                   }
                   let result = await tryUser(possibility.person_id, possibility.client_id, 'location match');
                   if (result !== 'good') {
                     let eMessage = `Using the information provided, AVA located account "${possibility.person_id}".  However, we can't log that account into AVA.`;
-                    pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
+                    await logAccessAttempt(possibility.person_id, '', false, eMessage);
                     enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
                     return;
                   }
                   else {
                     let eMessage = `Successful Login for ${possibility.person_id} using entered location list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`;
                     enqueueSnackbar(eMessage, { variant: 'info', persist: true });
-                    pushLoginAttemptToArray(possibility.person_id, '', false, eMessage);
+                    await logAccessAttempt(possibility.person_id, '', false, eMessage);
                     launchAVA(possibility.person_id);
                     return;
                   }
                 }
               }
               let eMessage = `None of the accounts we found have "${enteredPass}" as a password or location`;
-              pushLoginAttemptToArray('Text - not a UserID', '', false, eMessage);
+              await logAccessAttempt('Text - not a UserID', '', false, eMessage);
               enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
               return;
             }}
@@ -372,7 +370,7 @@ export default Component => props => {
       return [true, pUser, pPass];
     }
     catch (e) {
-      pushLoginAttemptToArray(pUser, pPass, '',
+      await logAccessAttempt(pUser, pPass, '',
         `Failed login. Reason:${e.code} Message:${e.message}`
       );
       if ((e.code !== 'NotAuthorizedException')
@@ -392,11 +390,11 @@ export default Component => props => {
       }
       try {
         await Auth.signIn({ username: pUser, password: caseCorrectedPassword, validationData: { avaAccount: pUser } });
-        pushLoginAttemptToArray(pUser, pPass, caseCorrectedPassword, 'Successful Log-in with case corrected password');
+        await logAccessAttempt(pUser, pPass, caseCorrectedPassword, 'Successful Log-in with case corrected password');
         return [true, pUser, caseCorrectedPassword];
       }
       catch (e2) {
-        pushLoginAttemptToArray(pUser, `${caseCorrectedPassword} (case corrected)`, '',
+        await logAccessAttempt(pUser, `${caseCorrectedPassword} (case corrected)`, '',
           `Failed case corrected login. Reason:${e2.code} Message:${e2.message}`
         );
         return [false, null, null];
@@ -487,8 +485,8 @@ export default Component => props => {
         TableName: "SessionsV2"
       })
       .promise()
-      .catch(error => {
-        pushLoginAttemptToArray(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is: ${JSON.stringify(error)}`);
+      .catch(async (error) => {
+        await logAccessAttempt(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is: ${JSON.stringify(error)}`);
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         };
@@ -501,8 +499,8 @@ export default Component => props => {
           TableName: "SessionsV2"
         })
         .promise()
-        .catch(error => {
-          pushLoginAttemptToArray(pSessionID, '', false, `Error reading SessionsV2 is: ${JSON.stringify(error)}`);
+        .catch(async (error) => {
+          await logAccessAttempt(pSessionID, '', false, `Error reading SessionsV2 is: ${JSON.stringify(error)}`);
           console.log({ 'Bad get on Session - caught error is': error });
         });
     }
@@ -554,34 +552,30 @@ export default Component => props => {
     else { return null; }
   }
 
-  async function pushLoginAttemptToArray(pUser, pAttempted, pOK, pMessage) {
+  async function logAccessAttempt(pUser, pAttempted, pOK, pMessage) {
     let nowTime = new Date();
-    let accessLogRec = {
-      timestamp: nowTime.getTime(),
-      timestring: nowTime.toLocaleString(),
-      user_key: `${pUser}${pOK ? ('/' + pAttempted) : ''}`,
-      attempted_user: pUser,
-      attempted_password: pAttempted,
-      result: pMessage
-    };
-    accessLogRecords.push(accessLogRec);
-    await batchWriteAccessLogArray(pUser);
-  };
-
-  async function batchWriteAccessLogArray(pUser) {
-    let putObj = accessLogRecords.map(r => {
-      r.user_key = pUser;
-      return { PutRequest: { Item: r } };
-    });
     await dbClient
-      .batchWrite({
-        RequestItems: { 'AccessLog': putObj }
+      .put({
+        TableName: 'AccessLog',
+        Item: {
+          timestamp: nowTime.getTime(),
+          timestring: nowTime.toLocaleString(),
+          user_key: `${pUser}${pOK ? ('/' + pAttempted) : ''}`,
+          attempted_user: pUser,
+          attempted_password: pAttempted,
+          result: pMessage
+        }
       })
       .promise()
       .catch(error => {
-        console.log({ 'Bad put to AccessLog - caught error is': error });
+        console.log('Error adding an access log record:', error.message);
+        enqueueSnackbar(`Error adding an access log for ${pMessage}. WriteeError is ${error.message}`, { variant: 'error', persist: true });
       });
-  }
+    if (window.location.href.split('//')[1].slice(0, 1).toUpperCase() === 'T') {
+      enqueueSnackbar(pMessage, { variant: 'error', persist: true });
+    }
+    return;
+  };
 
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
@@ -685,7 +679,7 @@ export default Component => props => {
     let [goodSession, currentSession] = await getSessionV2(pLaunchUser);
     if (!goodSession) {
       let eMessage = `No SessionV2 record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
-      pushLoginAttemptToArray(pLaunchUser, '', false, eMessage);
+      await logAccessAttempt(pLaunchUser, '', false, eMessage);
       enqueueSnackbar(eMessage, { variant: 'error', persist: true });
       sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       setAVAReady(false);
@@ -696,7 +690,7 @@ export default Component => props => {
     let [goodUser, currentProfile] = await getPerson(pLaunchUser);
     if (!goodUser) {
       let eMessage = `No People record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
-      pushLoginAttemptToArray(pLaunchUser, '', false, eMessage);
+      await logAccessAttempt(pLaunchUser, '', false, eMessage);
       enqueueSnackbar(eMessage, { variant: 'error', persist: true });
       sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       setAVAReady(false);
@@ -712,7 +706,7 @@ export default Component => props => {
       [goodUser, currentPatient] = await getPerson(currentSession.patient_id);
       if (!goodUser) {
         let eMessage = `Attempt to user account ${currentSession.patient_id} failed.  That Account is not set up properly in AVA.  Using ${pLaunchUser} instead.`;
-        pushLoginAttemptToArray(pLaunchUser, '', false, eMessage);
+        await logAccessAttempt(pLaunchUser, '', false, eMessage);
         enqueueSnackbar(eMessage, { variant: 'error' });
         sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
         currentPatient = currentProfile;
@@ -780,7 +774,6 @@ export default Component => props => {
     updateSession(currentSession.session_id, currentSession, currentPatient, currentProfile, currentSession.last_login, currentSession.url_parameters, 'AVA Launch', sessionInfo);
 
     putValidationCookie();
-    await batchWriteAccessLogArray(pLaunchUser);
     setAVAReady(true);
     localAVAReady = true;
     setAVAFollowUpData({ 'Completed': true });
