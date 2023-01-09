@@ -4,7 +4,7 @@ import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
 
 import Box from '@material-ui/core/Box';
-import CircularProgress from '@material-ui/core/CircularProgress';
+import Button from '@material-ui/core/Button';
 import Card from '@material-ui/core/Card';
 import CardMedia from '@material-ui/core/CardMedia';
 import Typography from '@material-ui/core/Typography';
@@ -25,6 +25,15 @@ const useStyles = makeStyles(theme => ({
   logoSmall: {
     maxWidth: '100px',
     marginBottom: '15px'
+  },
+  notTitle: {
+    marginTop: theme.spacing(2),
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  buttonArea: {
+    marginTop: theme.spacing(4)
   },
 }));
 
@@ -48,6 +57,7 @@ export default Component => props => {
 
   const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
 
+  const [doneTrying, setDoneTrying] = React.useState(false);
   const [AVAReady, setAVAReady] = React.useState(false);
   let localAVAReady = false;
   const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
@@ -58,12 +68,15 @@ export default Component => props => {
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
+  const AVA_environment = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
   const lambda = new Lambda({
     region: 'us-east-1',
     accessKeyId: process.env.REACT_APP_AVA_ID,
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
+
+  const [messageList, setMessageList] = React.useState([]);
 
   const allParams = useParams();
   function useParams() {
@@ -86,22 +99,24 @@ export default Component => props => {
           if (sessionObject) {          // There is a good sessionObject.  This contains actual info about user
             activeUser = sessionObject.currentProfile.person_id;
             let uMessage = `Found ${activeUser} in session memory (AVASessionData)`;
-            await logAccessAttempt(activeUser, '', false, uMessage);
+            await logAccessAttempt(activeUser, '', true, uMessage);
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
-              await logAccessAttempt(activeUser, '', false, `Good AVA session object found in memory; AVA launched successfully`);
+              await logAccessAttempt(activeUser, '', true, `Good AVA session object found in memory; AVA launched successfully`);
+              setDoneTrying(true);
               return;
             }
           }
           else if (localCognitoSession.idToken.payload['cognito:username'] !== AVA_default_user) {
             activeUser = localCognitoSession.idToken.payload['cognito:username'];
             let uMessage = `${activeUser} is already logged in`;
-            await logAccessAttempt(activeUser, '', false, uMessage);
+            await logAccessAttempt(activeUser, '', true, uMessage);
             let goodLaunch = await launchAVA(activeUser);
             if (goodLaunch) {
               setAVAFollowUpData({ 'Completed': true });
-              await logAccessAttempt(activeUser, '', false, `No AVA session in memory; Cognito session for known user found; AVA launched successfully`);
+              await logAccessAttempt(activeUser, '', true, `No AVA session in memory; Cognito session for known user found; AVA launched successfully`);
+              setDoneTrying(true);
               return;
             }
           }
@@ -110,11 +125,12 @@ export default Component => props => {
             if (AVAsession && AVAsession.login.user_id) {
               activeUser = AVAsession.login.user_id;
               let uMessage = `Found ${activeUser} in Sessions table with jti (session_id) ${localCognitoSession.idToken.payload.jti}`;
-              await logAccessAttempt(activeUser, '', false, uMessage);
+              await logAccessAttempt(activeUser, '', true, uMessage);
               let goodLaunch = await launchAVA(activeUser);
               if (goodLaunch) {
                 setAVAFollowUpData({ 'Completed': true });
-                await logAccessAttempt(activeUser, '', false, `Device found in Sessions table; AVA launched successfully`);
+                await logAccessAttempt(activeUser, '', true, `Device found in Sessions table; AVA launched successfully`);
+                setDoneTrying(true);
                 return;
               }
             }
@@ -153,9 +169,14 @@ export default Component => props => {
     //
     // Do we know this person's password?
     pUser = pUser.trim();
-    let [goodSessionV2, foundSession] = await getSessionV2(pUser);
+    let [goodSessionV2, foundSession, dbError] = await getSessionV2(pUser);
     if (!goodSessionV2) {     // That is not a valid User ID, maybe it's a name?
+      if (dbError) {
+        setDoneTrying(true);
+        return 'network';
+      }
       await logAccessAttempt(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).  Trying names.`);
+      setDoneTrying(false);
       let [goodUser, possibleUserRecs] = await validateUserAccount({    // look for account by name
         'nameTest': pUser,
         'client': pClient
@@ -170,19 +191,21 @@ export default Component => props => {
           return 'ambiguous';
         }
       }
-      await logAccessAttempt(pUser, '', '', `No UserID found from entered name: ${pUser}.`);
+      await logAccessAttempt(pUser, '', false, `No UserID found from entered name: ${pUser}.`);
+      setDoneTrying(true);
       enqueueSnackbar(`"${pUser}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
       setAVAFollowUpData({ 'NeedUser': true });
       return 'invalid';
     }
     else {
       if (foundSession.requirePassword && (pSource === 'entered')) {
-        await logAccessAttempt(pUser, '', false, 'Good UserID entered.  Password is required for this account.');
+        await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password is required for this account.');
         enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
         let [goodUser, foundPatient] = await getPerson(pUser);
         if (!goodUser) {
           let eMessage = `When fetching People account for this password-required Session, ${pUser} is not found`;
-          await logAccessAttempt(pUser, '', '', eMessage);
+          await logAccessAttempt(pUser, '', false, eMessage);
+          setDoneTrying(true);
           enqueueSnackbar(`${eMessage}.  This is an unusual situation.  AVA Support has been notified.`, { variant: 'error', persist: true });
           sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
           setAVAFollowUpData({ 'NeedUser': true });
@@ -201,6 +224,7 @@ export default Component => props => {
         }
         else {
           await logAccessAttempt(pUser, foundSession.last_login, false, `Failed Log-in.  Attempted stored password; user ID supplied from ${pSource}`);
+          setDoneTrying(false);
           // intentionally fall through to attempt default credentials
         }
       }
@@ -222,6 +246,7 @@ export default Component => props => {
       // Let's ask for the password and try to get in that way...
       enqueueSnackbar(`We're having trouble logging you in automatically.  Please enter your password.`, { variant: 'error', persist: true });
       setAVAFollowUpData({ 'enteredUserID': pUser, 'NeedUser': false });
+      setDoneTrying(true);
       return 'password';
     }
   }
@@ -242,11 +267,17 @@ export default Component => props => {
   }
 
   function promptForUser() {
+    if (testModeErrorTrap()) { return false; }
     return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('NeedUser'));
   }
 
   function promptForPassword() {
+    if (testModeErrorTrap()) { return false; }
     return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID'));
+  }
+
+  function testModeErrorTrap() {
+    return (doneTrying && (messageList.length > 0) && (['L', 'T'].includes(AVA_environment)));
   }
 
   if (!AVAReady && !localAVAReady) {
@@ -260,7 +291,7 @@ export default Component => props => {
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
-            ml={2} mr={2} mt={30}
+            ml={2} mr={2} mt={20}
           >
             <Card
               className={classes.logoSmall}
@@ -274,11 +305,40 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 23.1.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+              {`AVA version 23.1.6${AVA_environment}`}
             </Typography>
-            <CircularProgress />
           </Box>
         </React.Fragment>
+        {testModeErrorTrap() &&
+          <Box
+            display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'
+            flexWrap='wrap' textOverflow='ellipsis' width='100%'
+            key={'loadingBox'}
+            mb={2}
+          >
+            <Typography variant='h5' >{`AVA Testing Assistant`}</Typography>
+            {messageList.map((pLine, index) => (
+              <Typography
+                className={classes.notTitle}
+                id='scroll-dialog-title'
+                key={'promptConfirm' + index}
+              >
+                {pLine}
+              </Typography>
+            ))}
+            <Button
+              className={classes.buttonArea}
+              aria-label='showActivities'
+              variant='contained'
+              onClick={() => {
+                let emptyList = [];
+                setMessageList(emptyList);
+              }}
+            >
+              {'Dismiss'}
+            </Button>
+          </Box>
+        }
         {promptForUser() &&
           <AVATextInput
             titleText="AVA Sign-in"
@@ -286,8 +346,10 @@ export default Component => props => {
             buttonText='Sign In'
             onCancel={() => {
               enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
+              setMessageList([]);
             }}
             onSave={async (enteredUserID) => {
+              setMessageList([]);
               closeSnackbar();
               enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
               let cookieValues = getCookie();
@@ -296,6 +358,7 @@ export default Component => props => {
                 enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
                 await tryUser(enteredUserID, cookieValues.client, 'entered');
               }
+              setDoneTrying(true);
             }}
             allowCancel={false}
           />
@@ -306,11 +369,13 @@ export default Component => props => {
             promptText={isMobile ? "Password / Apartment" : "Enter your Password or Apartment Number."}
             buttonText='Continue'
             onCancel={() => {
+              setMessageList([]);
               closeSnackbar();
               enqueueSnackbar(`Please enter your User ID or Name`, { variant: 'info', persist: true });
               setAVAFollowUpData({ 'NeedUser': true });
             }}
             onSave={async (enteredPass) => {
+              setMessageList([]);
               closeSnackbar();
               enqueueSnackbar(`AVA is verifying your information`, { variant: 'info' });
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
@@ -327,10 +392,11 @@ export default Component => props => {
               enqueueSnackbar(`Still looking...`, { variant: 'info' });
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let possibility = AVAFollowUpData.possibleUserRecs[p];
-                if (enteredPass && (possibility.location.includes(enteredPass) || possibility.location.includes(enteredPass.toLowerCase()))) {
+                if (enteredPass && possibility.location && possibility.location.toLowerCase().includes(enteredPass.toLowerCase())) {
                   if (possibility.sessionRec.requirePassword) {
                     let eMessage = `Using the information provided, AVA located account "${possibility.person_id}", but that account requires a password.  ("${enteredPass}" is not the right password.)`;
                     await logAccessAttempt(possibility.person_id, '', false, eMessage);
+                    setDoneTrying(false);
                     enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
                     return;
                   }
@@ -344,7 +410,7 @@ export default Component => props => {
                   else {
                     let eMessage = `Successful Login for ${possibility.person_id} using entered location list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`;
                     enqueueSnackbar(eMessage, { variant: 'info', persist: true });
-                    await logAccessAttempt(possibility.person_id, '', false, eMessage);
+                    await logAccessAttempt(possibility.person_id, '', true, eMessage);
                     launchAVA(possibility.person_id);
                     return;
                   }
@@ -353,6 +419,7 @@ export default Component => props => {
               let eMessage = `None of the accounts we found have "${enteredPass}" as a password or location`;
               await logAccessAttempt('Text - not a UserID', '', false, eMessage);
               enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
+              setDoneTrying(true);
               return;
             }}
           />
@@ -370,9 +437,10 @@ export default Component => props => {
       return [true, pUser, pPass];
     }
     catch (e) {
-      await logAccessAttempt(pUser, pPass, '',
-        `Failed login. Reason:${e.code} Message:${e.message}`
+      await logAccessAttempt(pUser, pPass, false,
+        `Failed login. Attempted ${pUser} and ${pPass.trim()}.  Cognito responded with ${e.code} - ${e.message}`
       );
+      setDoneTrying(false);
       if ((e.code !== 'NotAuthorizedException')
         || (e.message.includes('expired'))
         || (e.message.includes('exceeded'))) {
@@ -390,13 +458,14 @@ export default Component => props => {
       }
       try {
         await Auth.signIn({ username: pUser, password: caseCorrectedPassword, validationData: { avaAccount: pUser } });
-        await logAccessAttempt(pUser, pPass, caseCorrectedPassword, 'Successful Log-in with case corrected password');
+        await logAccessAttempt(pUser, pPass, true, 'Successful Log-in with case corrected password');
         return [true, pUser, caseCorrectedPassword];
       }
       catch (e2) {
-        await logAccessAttempt(pUser, `${caseCorrectedPassword} (case corrected)`, '',
+        await logAccessAttempt(pUser, `${caseCorrectedPassword} (case corrected)`, false,
           `Failed case corrected login. Reason:${e2.code} Message:${e2.message}`
         );
+        setDoneTrying(true);
         return [false, null, null];
       }
     }
@@ -479,6 +548,7 @@ export default Component => props => {
   };
 
   async function getSessionV2(pSessionID) {
+    let goodIO = true;
     let sessionRec = await dbClient
       .get({
         Key: { session_id: pSessionID.toLowerCase() },
@@ -486,12 +556,19 @@ export default Component => props => {
       })
       .promise()
       .catch(async (error) => {
-        await logAccessAttempt(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is: ${JSON.stringify(error)}`);
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-        };
+        }
+        else { 
+          await logAccessAttempt(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is ${JSON.stringify(error.message)}`);
+        }
         console.log({ 'Bad get on Session - caught error is': error });
+        goodIO = false;
       });
+    if (!goodIO) {
+      setDoneTrying(true);
+      return [false, null, true];
+    }
     if (!recordExists(sessionRec) && (pSessionID.toLowerCase() !== pSessionID)) {
       sessionRec = await dbClient
         .get({
@@ -502,9 +579,15 @@ export default Component => props => {
         .catch(async (error) => {
           await logAccessAttempt(pSessionID, '', false, `Error reading SessionsV2 is: ${JSON.stringify(error)}`);
           console.log({ 'Bad get on Session - caught error is': error });
+          goodIO = false;
         });
     }
+    if (!goodIO) {
+      setDoneTrying(true);
+      return [false, null, true];
+    }
     if (!recordExists(sessionRec)) {
+      setDoneTrying(true);
       return [false, null];
     }
     let logoRec = await dbClient
@@ -522,6 +605,7 @@ export default Component => props => {
     if (recordExists(logoRec)) {
       sessionRec.Item.client_icon = logoRec.Item.icon;
     }
+    setDoneTrying(true);
     return [true, sessionRec.Item];
   }
 
@@ -538,6 +622,7 @@ export default Component => props => {
     if (recordExists(peopleRec)) { return [true, peopleRec.Item]; }
     else { return [false, null]; }
   }
+
   async function getSessions(pSession) {
     let sessionRec = await dbClient
       .get({
@@ -553,6 +638,10 @@ export default Component => props => {
   }
 
   async function logAccessAttempt(pUser, pAttempted, pOK, pMessage) {
+    let pMessageList = messageList;
+    if (!pOK) {
+      pMessageList.push(pMessage);
+    }
     let nowTime = new Date();
     await dbClient
       .put({
@@ -560,7 +649,7 @@ export default Component => props => {
         Item: {
           timestamp: nowTime.getTime(),
           timestring: nowTime.toLocaleString(),
-          user_key: `${pUser}${pOK ? ('/' + pAttempted) : ''}`,
+          user_key: pUser,
           attempted_user: pUser,
           attempted_password: pAttempted,
           result: pMessage
@@ -569,10 +658,10 @@ export default Component => props => {
       .promise()
       .catch(error => {
         console.log('Error adding an access log record:', error.message);
-        enqueueSnackbar(`Error adding an access log for ${pMessage}. WriteeError is ${error.message}`, { variant: 'error', persist: true });
+        pMessageList.push(`Error adding accessLog is ${error.message}`);
       });
-    if (window.location.href.split('//')[1].slice(0, 1).toUpperCase() === 'T') {
-      enqueueSnackbar(pMessage, { variant: 'error', persist: true });
+    if (!pOK) {
+      setMessageList(pMessageList);
     }
     return;
   };
@@ -662,7 +751,7 @@ export default Component => props => {
       });
     try {
       let fRespObj = JSON.parse(fResp.Payload);
-      if (!fResp.hasOwnProperty('status') || (fRespObj.status === 400)) {
+      if (!fRespObj.hasOwnProperty('status') || (fRespObj.status === 400)) {
         return [false, fRespObj.body];
       }
       else {
@@ -676,14 +765,21 @@ export default Component => props => {
 
   async function launchAVA(pLaunchUser) {
     // Get the sessionlaunchAVA
-    let [goodSession, currentSession] = await getSessionV2(pLaunchUser);
+    let [goodSession, currentSession, dbError] = await getSessionV2(pLaunchUser);
     if (!goodSession) {
-      let eMessage = `No SessionV2 record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
+      let eMessage;
+      if (dbError) {
+        eMessage = `No Internet connection.  Can't connect to the AVA database.`;
+      }
+      else { 
+        eMessage = `No SessionV2 record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
+      }
       await logAccessAttempt(pLaunchUser, '', false, eMessage);
       enqueueSnackbar(eMessage, { variant: 'error', persist: true });
       sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       setAVAReady(false);
       setAVAFollowUpData();
+      setDoneTrying(true);
       return false;
     }
     // Get the User's profile (info about the logged in person)
@@ -695,6 +791,7 @@ export default Component => props => {
       sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       setAVAReady(false);
       setAVAFollowUpData();
+      setDoneTrying(true);
       return false;
     }
     // Get the Patient's profile (info about the active person - usually the same as the logged in user)

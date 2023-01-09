@@ -251,7 +251,6 @@ export default ({ patient, picture, open, onClose }) => {
     async function initialize() {
       if (patient) {
         let localPersonRec = await getPersonRec(patient.person_id);
-        let groupFound;
         setPatientGroups(localPersonRec.groups)
         if (localPersonRec.relationships) {
           localPersonRec.relationships.forEach(async (relationship, index) => {
