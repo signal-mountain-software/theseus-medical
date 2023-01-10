@@ -28,7 +28,7 @@ export default ({ open, onClose, onSelect }) => {
       ExpressionAttributeNames: { '#n': 'name', '#f': 'first', '#l': 'last' },
       TableName: "People",
       IndexName: "client_id-index",
-      ProjectionExpression: "person_id, #n.#f, #n.#l, search_data"
+      ProjectionExpression: "person_id, #n.#f, #n.#l, search_data, groups"
     };
     var peopleRecs = await dbClient
       .query(queryExpression)
@@ -53,16 +53,16 @@ export default ({ open, onClose, onSelect }) => {
         if (!message_targets || (message_targets.length === 0)) {
           // get a list of people a user may send messages to: anyone in any group you are responsible for or are a member of
           let responsibleList = [];
+          let respArray = profile.groups || [];
           if (session.responsible_for) {
-            let respArray = profile.groups || [];
             if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
             else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
             else { respArray.push(session.responsible_for); }
-            if (respArray.length > 0) {
-              responsibleList = await getPeopleList(profile.client_id, respArray);
-              dispatch({ type: SET_MESSAGE_TARGETS, payload: responsibleList });
-            }
           };
+          if (respArray.length > 0) {
+            responsibleList = await getPeopleList(profile.client_id, respArray);
+            dispatch({ type: SET_MESSAGE_TARGETS, payload: responsibleList });
+          }
         }
       }
     );

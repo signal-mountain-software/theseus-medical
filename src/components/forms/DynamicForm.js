@@ -1167,15 +1167,17 @@ export default ({
         />
       );
     case 'make_message':
-      let defaultValueObj = JSON.parse(defaultValue);
+      let defaultValueObj;
+      if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
+      else { defaultValueObj = JSON.parse(defaultValue); }
       return (
         <MakeMessage
-          titleText={defaultValueObj.title || `Send a Message to ${defaultValueObj.recipientName}`}
+          titleText={defaultValueObj.title}
           promptText={defaultValueObj.prompt || `What's the Message?`}
           buttonText={defaultValueObj.button || 'Send'}
           sender={session}
-          recipientID={defaultValueObj.recipientID}
-          recipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
+          pRecipientID={defaultValueObj.recipientID}
+          pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
           onCancel={onClose}
           onComplete={onSave}
           allowCancel={true}

@@ -16,6 +16,8 @@ import TextField from '@material-ui/core/TextField';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
 
+import SendMessageDialog from '../dialogs/SendMessageDialog';
+
 import makeStyles from '@material-ui/core/styles/makeStyles';
 const useStyles = makeStyles(theme => ({
   containerBox: {
@@ -117,8 +119,8 @@ export default ({
   promptText,
   buttonText,
   sender,
-  recipientID,
-  recipientName,
+  pRecipientID,
+  pRecipientName,
   onCancel,
   onComplete,
   allowCancel = true
@@ -127,6 +129,9 @@ export default ({
   const classes = useStyles();
 
   const { enqueueSnackbar } = useSnackbar();
+
+  const [recipientID, setRecipientID] = React.useState(pRecipientID);
+  const [recipientName, setRecipientName] = React.useState(pRecipientName);
 
   const [textInput, setTextInput] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
@@ -173,6 +178,19 @@ export default ({
     if (event.key === 'Enter') { await handleSave(); }
   };
 
+  const selectRecipient = () => {
+    return (recipientID === '*select');
+  };
+
+  function makeName(pName) {
+    let ans = pName.split(',');
+    switch (ans.length) {
+      case 3: { return `${ans[2].trim()} ${ans[0].trim()}, ${ans[1].trim()}`; }
+      case 2: { return `${ans[1].trim()} ${ans[0].trim()}`; }
+      default: { return ans[0].trim(); }
+    }
+  }
+
   function getImage(pPerson) {
     if (!imageURL) {
       const imageBucket = 'theseus-medical-storage';
@@ -190,101 +208,123 @@ export default ({
 
   return (
     <Dialog open={forceRedisplay || true} fullScreen className={classes.containerBox}>
-      <Box display='flex'
-        grow={1}
-        mb={0}
-        flexDirection='column'
-        justifyContent='center'
-        alignItems='flex-start'
-      >
-        <DialogContentText className={classes.title} id='scroll-dialog-title'>
-          {titleText || `Send a message to ${recipientName}`}
-        </DialogContentText>
-        <Box>
-          <Box
-            className={classes.imageArea}
-            component="img"
-            alt=''
-            src={getImage(recipientID)}
-          />
-        </Box>
-        <DialogContent className={classes.contentBox}>
-          <Box
-            display='flex'
+      {selectRecipient() &&
+        <SendMessageDialog
+          open={true}
+          onClose={() => {
+            onCancel();
+          }}
+          onSelect={(selectedPerson) => {
+            let [sRecipientName, sRecipientID] = selectedPerson.split(':');
+            setRecipientID(sRecipientID);
+            setRecipientName(makeName(sRecipientName));
+            setImageURL(null);
+            setForceRedisplay(!forceRedisplay);
+          }}
+        >
+        </SendMessageDialog>
+      }
+      {!selectRecipient() &&
+        <React.Fragment>
+          <Box display='flex'
             grow={1}
             mb={0}
-            ml={0}
             flexDirection='column'
             justifyContent='center'
             alignItems='flex-start'
           >
-            <TextField
-              classes={{ root: classes.idText }}
-              id={`prompt-msg`}
-              key={`prompt-msg`}
-              fullWidth
-              multiline
-              inputRef={input => input && input.focus()}
-              helperText={promptText}
-              value={textInput || ''}
-              onChange={(event) => {
-                handleChangeTextInput(event);
-              }}
-              onKeyPress={(event) => {
-                onCheckEnter(event);
-              }}
-              autoComplete='off'
-            />
-            <Box
-              key={'qRow'}
-              display="flex"
-              className={classes.qualOption}
-              flexDirection='column'
-              justifyContent="center"
-            >
-              <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                alignItems='center' flexWrap='wrap' key={'qrOpt'}
-              >
-                <Checkbox
-                  className={classes.radioButton}
-                  size="small"
-                  onClick={() => { setIsUrgent(!isUrgent); }}
-                  checked={isUrgent}
-                />
-                <Typography className={classes.radioText}>Mark as Urgent</Typography>
-              </Box>
+            <DialogContentText className={classes.title} id='scroll-dialog-title'>
+              {titleText || `Send a message to ${recipientName}`}
+            </DialogContentText>
+            <Box>
+              <Box
+                className={classes.imageArea}
+                component="img"
+                alt=''
+                src={getImage(recipientID)}
+              />
             </Box>
+            <DialogContent className={classes.contentBox}>
+              <Box
+                display='flex'
+                grow={1}
+                mb={0}
+                ml={0}
+                flexDirection='column'
+                justifyContent='center'
+                alignItems='flex-start'
+              >
+                <TextField
+                  classes={{ root: classes.idText }}
+                  id={`prompt-msg`}
+                  key={`prompt-msg`}
+                  fullWidth
+                  multiline
+                  inputRef={input => input && input.focus()}
+                  helperText={promptText}
+                  value={textInput || ''}
+                  onChange={(event) => {
+                    handleChangeTextInput(event);
+                  }}
+                  onKeyPress={(event) => {
+                    onCheckEnter(event);
+                  }}
+                  autoComplete='off'
+                />
+                <Box
+                  key={'qRow'}
+                  display="flex"
+                  className={classes.qualOption}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                    alignItems='center' flexWrap='wrap' key={'qrOpt'}
+                  >
+                    <Checkbox
+                      className={classes.radioButton}
+                      size="small"
+                      onClick={() => { setIsUrgent(!isUrgent); }}
+                      checked={isUrgent}
+                    />
+                    <Typography className={classes.radioText}>Mark as Urgent</Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </DialogContent>
           </Box>
-        </DialogContent>
-      </Box>
-      <DialogActions style={{ justifyContent: 'center' }}>
-        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-          {allowCancel &&
-            <Button
-              className={classes.rowButtonReject}
-              size='small'
-              onClick={() => {
-                onCancel();
-              }}
-              startIcon={<CloseIcon size="small" />}
-            >
-              {'Back'}
-            </Button>
-          }
-          <Button
-            className={classes.rowButtonConfirm}
-            size='small'
-            disabled={noInput()}
-            onClick={async () => {
-              await handleSave();
-              onCancel();
-            }}
-            startIcon={<SendIcon className={classes.tightRight} size="small" />}
-          >
-            {buttonText}
-          </Button>
-        </Box>
-      </DialogActions>
+          <DialogActions style={{ justifyContent: 'center' }}>
+            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+              {allowCancel &&
+                <Button
+                  className={classes.rowButtonReject}
+                  size='small'
+                  onClick={() => {
+                    if (pRecipientID !== '*select') { onCancel(); }
+                    setRecipientID(pRecipientID);
+                  }}
+                  startIcon={<CloseIcon size="small" />}
+                >
+                  {'Back'}
+                </Button>
+              }
+              <Button
+                className={classes.rowButtonConfirm}
+                size='small'
+                disabled={noInput()}
+                onClick={async () => {
+                  await handleSave();
+                  onCancel();
+                }}
+                startIcon={<SendIcon className={classes.tightRight} size="small" />}
+              >
+                {buttonText}
+              </Button>
+            </Box>
+          </DialogActions>
+        </React.Fragment>
+      }
     </Dialog>
+
   );
 };
