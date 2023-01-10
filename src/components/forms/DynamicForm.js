@@ -1171,7 +1171,7 @@ export default ({
       return (
         <MakeMessage
           titleText={defaultValueObj.title || `Send a Message to ${defaultValueObj.recipientName}`}
-          promptText={defaultValueObj.prompt ? defaultValueObj.prompt.split('//') : [`What's the Message?`]}
+          promptText={defaultValueObj.prompt || `What's the Message?`}
           buttonText={defaultValueObj.button || 'Send'}
           sender={session}
           recipientID={defaultValueObj.recipientID}

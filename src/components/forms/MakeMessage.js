@@ -112,38 +112,42 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ titleText, promptText, buttonText, sender, recipientID, recipientName, onCancel, onComplete, allowCancel = true }) => {
+export default ({
+  titleText,
+  promptText,
+  buttonText,
+  sender,
+  recipientID,
+  recipientName,
+  onCancel,
+  onComplete,
+  allowCancel = true
+}) => {
 
   const classes = useStyles();
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const [textInput, setTextInput] = React.useState([]);
+  const [textInput, setTextInput] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [isUrgent, setIsUrgent] = React.useState(false);
   const [imageURL, setImageURL] = React.useState('');
 
-  const handleChangeTextInput = (event, ndx) => {
-    textInput[ndx] = event.target.value;
-    setTextInput(textInput);
+  const handleChangeTextInput = (event) => {
+    setTextInput(event.target.value);
     setForceRedisplay(!forceRedisplay);
   };
 
   const noInput = () => {
-    return (!textInput || !textInput[0] || (textInput[0].length === 0));
-  }; 
+    return (!textInput);
+  };
 
   const handleSave = async () => {
     let postTime = new Date().getTime();
     let messageValue =
       'form_selections.'
-      + 'MessageText = ' + textInput[0]
+      + 'MessageText = ' + textInput
       + ' ~ Recipient = ' + recipientName + ':' + recipientID;
-    if (Array.isArray(promptText) && (promptText.length > 1)) {
-      for (let p = 1; p < promptText.length; p++) {
-        messageValue += ' ~ ' + promptText[p] + textInput[p];
-      }
-    }
     messageValue += ' ~ Urgent = ' + (isUrgent ? 'urgent' : 'normal');
     const newFact = {
       person_id: sender.patient_id,
@@ -166,7 +170,7 @@ export default ({ titleText, promptText, buttonText, sender, recipientID, recipi
   };
 
   const onCheckEnter = async (event) => {
-    if ((event.key === 'Enter') && !Array.isArray(promptText)) { await handleSave(); }
+    if (event.key === 'Enter') { await handleSave(); }
   };
 
   function getImage(pPerson) {
@@ -182,13 +186,6 @@ export default ({ titleText, promptText, buttonText, sender, recipientID, recipi
     return imageURL;
   };
 
-  let promptArray = [];
-  if (Array.isArray(promptText)) { promptArray = promptText; }
-  else {
-    promptArray = [promptText];
-    if (!titleText) { titleText = promptText; }
-  }
-
   // **************************
 
   return (
@@ -200,11 +197,9 @@ export default ({ titleText, promptText, buttonText, sender, recipientID, recipi
         justifyContent='center'
         alignItems='flex-start'
       >
-        {titleText &&
-          <DialogContentText className={classes.title} id='scroll-dialog-title'>
-            {titleText}
-          </DialogContentText>
-        }
+        <DialogContentText className={classes.title} id='scroll-dialog-title'>
+          {titleText || `Send a message to ${recipientName}`}
+        </DialogContentText>
         <Box>
           <Box
             className={classes.imageArea}
@@ -223,25 +218,23 @@ export default ({ titleText, promptText, buttonText, sender, recipientID, recipi
             justifyContent='center'
             alignItems='flex-start'
           >
-            {promptArray.map((prompt, ndx) => (
-              <TextField
-                classes={{ root: classes.idText }}
-                id={`prompt-${ndx}`}
-                key={`prompt-${ndx}`}
-                fullWidth
-                multiline
-                inputRef={input => (ndx === 0) && input && input.focus()}
-                helperText={(prompt === titleText) ? '' : prompt}
-                value={textInput[ndx] || ''}
-                onChange={(event) => {
-                  handleChangeTextInput(event, ndx);
-                }}
-                onKeyPress={(event) => {
-                  onCheckEnter(event);
-                }}
-                autoComplete='off'
-              />
-            ))}
+            <TextField
+              classes={{ root: classes.idText }}
+              id={`prompt-msg`}
+              key={`prompt-msg`}
+              fullWidth
+              multiline
+              inputRef={input => input && input.focus()}
+              helperText={promptText}
+              value={textInput || ''}
+              onChange={(event) => {
+                handleChangeTextInput(event);
+              }}
+              onKeyPress={(event) => {
+                onCheckEnter(event);
+              }}
+              autoComplete='off'
+            />
             <Box
               key={'qRow'}
               display="flex"
