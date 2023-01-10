@@ -28,7 +28,7 @@ export default ({ open, onClose, onSelect }) => {
       ExpressionAttributeNames: { '#n': 'name', '#f': 'first', '#l': 'last' },
       TableName: "People",
       IndexName: "client_id-index",
-      ProjectionExpression: "person_id, #n.#f, #n.#l, search_data, groups"
+      ProjectionExpression: "person_id, #n.#f, #n.#l, search_data, messaging, groups"
     };
     var peopleRecs = await dbClient
       .query(queryExpression)
@@ -41,11 +41,43 @@ export default ({ open, onClose, onSelect }) => {
     let returnArray = [];
     peopleRecs.Items.forEach(p => {
       if (allPeople || (p.groups && p.groups.some(g => pGroupArray.includes(g)))) {
-        returnArray.push((`${p.name?.last}, ${p.name?.first}:${p.person_id}:${p.search_data}`).trim());
+        returnArray.push((`${p.name?.last}, ${p.name?.first}:${p.person_id}:${p.search_data} ${((typeof p.messaging) === 'object') ? JSON.stringify(p.messaging) : ''}`).trim());
       }
     });
     return returnArray.sort();
   };
+
+
+  async function getGroupInfo(pClient, pGroupArray) {
+    let batchGetRequest = {
+      RequestItems: {
+        'Groups': {
+          Keys: []
+        }
+      }
+    };
+    [...new Set(pGroupArray)].forEach(g => {
+      batchGetRequest.RequestItems.Groups.Keys.push(
+        {
+          client_id: pClient,
+          group_id: g
+        }
+      );
+    });
+    let groupRecs = await dbClient
+      .batchGet(batchGetRequest)
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad get on Groups - caught error is': error });
+      });
+    let returnArray = [];
+    if (groupRecs && ('Responses' in groupRecs)) {
+      groupRecs.Responses.Groups.forEach(gRec => { 
+        returnArray.push(`${gRec.name}:GRP//${pClient}/${gRec.group_id}`)
+      });
+    }
+    return returnArray;
+  }
 
   React.useEffect(() => {
     let getTargets = (
@@ -61,7 +93,8 @@ export default ({ open, onClose, onSelect }) => {
           };
           if (respArray.length > 0) {
             responsibleList = await getPeopleList(profile.client_id, respArray);
-            dispatch({ type: SET_MESSAGE_TARGETS, payload: responsibleList });
+            responsibleList.push(...await getGroupInfo(profile.client_id, profile.groups));            
+            dispatch({ type: SET_MESSAGE_TARGETS, payload: responsibleList.sort() });
           }
         }
       }
@@ -77,56 +110,56 @@ export default ({ open, onClose, onSelect }) => {
     onClose();
   };
 
-/*
-  const handleConfirmation = (newPatient) => {
-    (async () => {
-
-      if (session) {
-        let [pName, pID] = newPatient.split(':');
-        session.patient_id = pID;
-        let ans = pName.split(',');
-        switch (ans.length) {
-          case 3: {
-            session.patient_display_name = `${ans[2].trim()} ${ans[0].trim()}, ${ans[1].trim()}`;
-            break;
+  /*
+    const handleConfirmation = (newPatient) => {
+      (async () => {
+  
+        if (session) {
+          let [pName, pID] = newPatient.split(':');
+          session.patient_id = pID;
+          let ans = pName.split(',');
+          switch (ans.length) {
+            case 3: {
+              session.patient_display_name = `${ans[2].trim()} ${ans[0].trim()}, ${ans[1].trim()}`;
+              break;
+            }
+            case 2: {
+              if (ans[1].startsWith('group=')) { session.patient_display_name = ''; }
+              else { session.patient_display_name = `${ans[1].trim()} ${ans[0].trim()}`; }
+              break;
+            }
+            default: { session.patient_display_name = ans[0].trim(); }
           }
-          case 2: {
-            if (ans[1].startsWith('group=')) { session.patient_display_name = ''; }
-            else { session.patient_display_name = `${ans[1].trim()} ${ans[0].trim()}`; }
-            break;
+          await dbClient
+            .update({
+              Key: { session_id: session.user_id },
+              UpdateExpression: 'set patient_id = :p, patient_display_name = :d',
+              ExpressionAttributeValues: {
+                ':p': session.patient_id,
+                ':d': session.patient_display_name
+              },
+              TableName: "SessionsV2",
+            })
+            .promise()
+            .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+          let personRec = await dbClient
+            .get({
+              Key: { person_id: (session.patient_id || session.user_id) },
+              TableName: "People"
+            })
+            .promise()
+            .catch(error => { console.log(`caught error getting People record; error is:`, error); });
+          if (recordExists(personRec)) {
+            dispatch({ type: SET_PATIENT, payload: personRec.Item });
           }
-          default: { session.patient_display_name = ans[0].trim(); }
+          dispatch({ type: SET_SESSION, payload: session });
         }
-        await dbClient
-          .update({
-            Key: { session_id: session.user_id },
-            UpdateExpression: 'set patient_id = :p, patient_display_name = :d',
-            ExpressionAttributeValues: {
-              ':p': session.patient_id,
-              ':d': session.patient_display_name
-            },
-            TableName: "SessionsV2",
-          })
-          .promise()
-          .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-        let personRec = await dbClient
-          .get({
-            Key: { person_id: (session.patient_id || session.user_id) },
-            TableName: "People"
-          })
-          .promise()
-          .catch(error => { console.log(`caught error getting People record; error is:`, error); });
-        if (recordExists(personRec)) {
-          dispatch({ type: SET_PATIENT, payload: personRec.Item });
-        }
-        dispatch({ type: SET_SESSION, payload: session });
-      }
-      let jumpTo = window.location.href.replace('refresh', 'theseus');
-      window.location.replace(jumpTo);
-      //    onClose();
-    })();
-  };
-*/
+        let jumpTo = window.location.href.replace('refresh', 'theseus');
+        window.location.replace(jumpTo);
+        //    onClose();
+      })();
+    };
+  */
 
   function recordExists(recordId) {
     if (!recordId) { return false; }
@@ -151,7 +184,7 @@ export default ({ open, onClose, onSelect }) => {
                     open = false;
                     onSelect(selectedPerson);
                   }}
-                  showID={true}
+                  allowRandom={true}
                 />
               }
             </List>

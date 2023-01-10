@@ -1,4 +1,5 @@
 import React from 'react';
+import { Lambda } from 'aws-sdk';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -138,6 +139,19 @@ export default ({
   const [isUrgent, setIsUrgent] = React.useState(false);
   const [imageURL, setImageURL] = React.useState('');
 
+  const lambda = new Lambda({
+    region: 'us-east-1',
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY,
+  });
+
+  let params = {
+    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine',
+    InvocationType: 'RequestResponse',
+    LogType: 'Tail',
+    Payload: ''
+  };
+
   const handleChangeTextInput = (event) => {
     setTextInput(event.target.value);
     setForceRedisplay(!forceRedisplay);
@@ -148,29 +162,31 @@ export default ({
   };
 
   const handleSave = async () => {
-    let postTime = new Date().getTime();
-    let messageValue =
-      'form_selections.'
-      + 'MessageText = ' + textInput
-      + ' ~ Recipient = ' + recipientName + ':' + recipientID;
-    messageValue += ' ~ Urgent = ' + (isUrgent ? 'urgent' : 'normal');
-    const newFact = {
-      person_id: sender.patient_id,
-      activity_key: (sender.client_id ? ((sender.client_id) + '//') : '') + 'MakeMessage#' + postTime,
-      value: messageValue,
-      status: 'recorded',
-      user_id: sender.user_id,
-      session_id: sender.session_id,
-      method: 'AVAMenu',
-      posted_time: postTime
+    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
+    let pRecipient = recipientName + ':';
+    if (recipientID.startsWith('GRP//')) {
+      pRecipient += 'group=' + recipientID.split('//')[1].replace('/', '~');
+    }
+    else {
+      pRecipient += recipientID;
+    }
+    let lambdaPayload = {
+      "body": {
+        "client": sender.client_id,
+        "author": sender.patient_id,
+        "values": pRecipient + ' ~ MessageText = ' + textInput
+      }
     };
-    await dbClient
-      .put({
-        TableName: 'Facts',
-        Item: newFact
-      })
+    lambdaPayload.body.values += ' ~ Urgent = ' + (isUrgent ? 'urgent' : 'normal');
+    params.Payload = JSON.stringify(lambdaPayload);
+    lambda
+      .invoke(params)
       .promise()
-      .catch(error => { console.error('Error adding a fact:', error.message); });
+      .catch(err => {
+        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
+          variant: 'error'
+        });
+      });
     enqueueSnackbar(`Your ${isUrgent ? 'urgent' : ''} message is on the way to ${recipientName}`, { variant: 'success' });
   };
 

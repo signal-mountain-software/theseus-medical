@@ -532,7 +532,6 @@ export default ({ pPerson, pClient, pMessageList, onReset }) => {
                 setShowAddPrompt(false);
               }}
               onSelect={(selectedPerson) => {
-           //     setShowAddPrompt(false);
                 setPromptForMessage(true);
                 setRecipient(selectedPerson);
               }}
