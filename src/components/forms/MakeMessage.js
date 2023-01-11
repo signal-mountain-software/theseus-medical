@@ -133,8 +133,10 @@ export default ({
 
   const [recipientID, setRecipientID] = React.useState(pRecipientID);
   const [recipientName, setRecipientName] = React.useState(pRecipientName);
+  const [newAccount, setNewAccount] = React.useState(false);
 
   const [textInput, setTextInput] = React.useState('');
+  const [nameInput, setNameInput] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [isUrgent, setIsUrgent] = React.useState(false);
   const [imageURL, setImageURL] = React.useState('');
@@ -157,6 +159,11 @@ export default ({
     setForceRedisplay(!forceRedisplay);
   };
 
+  const handleChangeNameInput = (event) => {
+    setNameInput(event.target.value);
+    setForceRedisplay(!forceRedisplay);
+  };
+
   const noInput = () => {
     return (!textInput);
   };
@@ -166,6 +173,11 @@ export default ({
     let pRecipient = recipientName + ':';
     if (recipientID.startsWith('GRP//')) {
       pRecipient += 'group=' + recipientID.split('//')[1].replace('/', '~');
+    }
+    else if (newAccount) {
+      setNewAccount(false);
+      pRecipient += await handleAddAccount();
+      setRecipientID(pRecipient);
     }
     else {
       pRecipient += recipientID;
@@ -188,10 +200,104 @@ export default ({
         });
       });
     enqueueSnackbar(`Your ${isUrgent ? 'urgent' : ''} message is on the way to ${recipientName}`, { variant: 'success' });
+    onComplete();
+  };
+
+  function recordExists(recordId) {
+    if (!recordId) { return false; }
+    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
+    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
+  }
+
+  async function makeUniqueID(fName, lName, pAddress) {
+    if (!lName) {
+      if (!fName) { return (new Date().getTime().toString()) };
+      lName = fName.slice(1);
+    }
+    let namePart = fName.charAt(0).toLowerCase() + lName.toLowerCase().replace(/\W/g, '');
+    let queryExpression = {
+      KeyConditionExpression: 'client_id = :c AND begins_with(person_id, :p)',
+      ExpressionAttributeValues: { ':c': sender.client_id, ':p': namePart },
+      ExpressionAttributeNames: { '#n': 'name', '#f': 'first', '#l': 'last' },
+      TableName: "People",
+      IndexName: "client_id-index",
+      ProjectionExpression: "person_id, #n.#f, #n.#l, messaging"
+    };
+    var checkRecs = await dbClient
+      .query(queryExpression)
+      .promise()
+      .catch(error => {
+        console.log({ 'Bad query on People in getGroupMembers - caught error is': error });
+      });
+    let maxID;
+    if (recordExists(checkRecs)) {
+      let foundAt = checkRecs.Items.findIndex(rec => { 
+        let numberPart = rec.person_id.slice(namePart.length).trim();
+        if (!numberPart) { maxID = 0; }
+        else if (!isNaN(numberPart)) {  maxID = Math.max(Number(numberPart), maxID); }
+        return (Object.values(rec.messaging).includes(pAddress));
+      })
+      if (foundAt > -1) { return checkRecs.Items[foundAt].person_id; }
+    }
+    return namePart + (maxID ? (maxID + 1) : '');      // nothing found...
+  }
+
+  const handleAddAccount = async () => {
+    let fName = recipientName.split(' ')[0];
+    let lName = recipientName.slice(fName.length).trim();
+    let pParse = recipientID.split('=');
+    let pAddress = pParse[pParse.length - 1];
+    let isEmail = pAddress.includes('@');
+    let isPhone = !isNaN(pAddress);
+    let workingID = await makeUniqueID(fName, lName, pAddress);
+
+    let putPerson = {
+      person_id: workingID,
+      client_id: sender.client_id,
+      "name": {
+        first: fName,
+        last: lName,
+      },
+      messaging: {
+        email: (isEmail ? pAddress : null),
+        sms: (isPhone ? `+1${pAddress}` : null),
+        voice: (isPhone ? `+1${pAddress}` : null)
+      },
+      search_data: recipientName,
+      preferred_method: (isPhone ? 'sms' : 'email'),
+      requirePassword: false,
+      storePassword: true,
+      directory_option: 'normal',
+      directory_partner: 'na',
+      clients: {
+        id: sender.client_id,
+        groups: ['*none']
+      },
+      groups: ['*none'],
+      location: `Friend of ${sender.patient_display_name} (${sender.patient_id})`,
+    };
+    await dbClient
+      .put({
+        Item: putPerson,
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error updating People; error is:`, error);
+        workingID = null;
+      });
+    return workingID;
   };
 
   const onCheckEnter = async (event) => {
-    if (event.key === 'Enter') { await handleSave(); }
+    if ((event.key === 'Enter') && (textInput) && (!newAccount)) { await handleSave(); }
+  };
+
+  const onNameEnter = async (event) => {
+    if (((event.key === 'Enter') || (event.type === 'blur')) && (newAccount)) {
+      setRecipientName(event.target.value);
+      setForceRedisplay(!forceRedisplay);
+    }
   };
 
   const selectRecipient = () => {
@@ -232,8 +338,9 @@ export default ({
           }}
           onSelect={(selectedPerson) => {
             let [sRecipientName, sRecipientID] = selectedPerson.split(':');
-            setRecipientID(sRecipientID);
+            setNewAccount(sRecipientName === '*new');
             setRecipientName(makeName(sRecipientName));
+            setRecipientID(sRecipientID);
             setImageURL(null);
             setForceRedisplay(!forceRedisplay);
           }}
@@ -250,7 +357,7 @@ export default ({
             alignItems='flex-start'
           >
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {titleText || `Send a message to ${recipientName}`}
+              {titleText || `Send a message to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
             </DialogContentText>
             <Box>
               <Box
@@ -270,13 +377,33 @@ export default ({
                 justifyContent='center'
                 alignItems='flex-start'
               >
+                {newAccount &&
+                  <TextField
+                    classes={{ root: classes.idText }}
+                    id={`name-msg`}
+                    key={`name-msg`}
+                    fullWidth
+                    multiline
+                    helperText={`What name should AVA use for ${recipientID.split('=')[1].trim()}`}
+                    value={nameInput || ''}
+                    onChange={(event) => {
+                      handleChangeNameInput(event);
+                    }}
+                    onKeyPress={(event) => {
+                      onNameEnter(event);
+                    }}
+                    onBlur={(event) => {
+                      onNameEnter(event);
+                    }}
+                    autoComplete='off'
+                  />
+                }
                 <TextField
                   classes={{ root: classes.idText }}
                   id={`prompt-msg`}
                   key={`prompt-msg`}
                   fullWidth
                   multiline
-                  inputRef={input => input && input.focus()}
                   helperText={promptText}
                   value={textInput || ''}
                   onChange={(event) => {

@@ -135,7 +135,7 @@ export default ({
       return;
     }
     var filterNumbers = '' + filterInput.replace(/\D/g, '').substr(-10);    // last 10 digits
-    if (filterNumbers.length > 0) {    // this will be trested as a phone number
+    if (filterNumbers.length > 6) {    // this will be trested as a phone number
       setPersonFilter(filterNumbers);
       setRandomAddress(formatPhone(filterNumbers));
       return;
@@ -244,11 +244,11 @@ export default ({
               </ListItem>
             )
           ))}
-          {(rowsWritten === 0) &&
+          {(rowsWritten === 0) && (random_address) &&
             <ListItem
               key={'person-list_new'}
               onClick={() => {
-                onSelect(`AddName:AddID:AddAddress=${random_address}`);
+                onSelect(`*new:address=${random_address}`);
               }}
               button
             >
