@@ -211,7 +211,7 @@ export default ({
 
   async function makeUniqueID(fName, lName, pAddress) {
     if (!lName) {
-      if (!fName) { return (new Date().getTime().toString()) };
+      if (!fName) { return (new Date().getTime().toString()); };
       lName = fName.slice(1);
     }
     let namePart = fName.charAt(0).toLowerCase() + lName.toLowerCase().replace(/\W/g, '');
@@ -231,12 +231,12 @@ export default ({
       });
     let maxID;
     if (recordExists(checkRecs)) {
-      let foundAt = checkRecs.Items.findIndex(rec => { 
+      let foundAt = checkRecs.Items.findIndex(rec => {
         let numberPart = rec.person_id.slice(namePart.length).trim();
         if (!numberPart) { maxID = 0; }
-        else if (!isNaN(numberPart)) {  maxID = Math.max(Number(numberPart), maxID); }
+        else if (!isNaN(numberPart)) { maxID = Math.max(Number(numberPart), maxID); }
         return (Object.values(rec.messaging).includes(pAddress));
-      })
+      });
       if (foundAt > -1) { return checkRecs.Items[foundAt].person_id; }
     }
     return namePart + (maxID ? (maxID + 1) : '');      // nothing found...
@@ -317,11 +317,18 @@ export default ({
     if (!imageURL) {
       const imageBucket = 'theseus-medical-storage';
       const imageURI = `public/patients/${pPerson}.jpg`;
-      setImageURL(s3.getSignedUrl('getObject', {
-        Bucket: imageBucket,
-        Key: imageURI,
-        Expires: 3600
-      }));
+      try {
+        setImageURL(
+          s3.getSignedUrl('getObject', {
+            Bucket: imageBucket,
+            Key: imageURI,
+            Expires: 3600
+          })
+        )
+      }
+      catch (e) { 
+        console.log(`error getting S3 image is ${e}`);
+      }
     }
     return imageURL;
   };

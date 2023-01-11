@@ -80,12 +80,6 @@ export default ({ open, onClose, onSelect }) => {
     return returnArray;
   }
 
-  function recordExists(recordId) {
-    if (!recordId) { return false; }
-    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
-    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
-  }
-
   React.useEffect(() => {
     let getTargets = (     // get a list of people a user may send messages to: 
       async () => {
