@@ -251,7 +251,7 @@ export default ({ patient, picture, open, onClose }) => {
     async function initialize() {
       if (patient) {
         let localPersonRec = await getPersonRec(patient.person_id);
-        setPatientGroups(localPersonRec.groups)
+        setPatientGroups(localPersonRec.groups);
         if (localPersonRec.relationships) {
           localPersonRec.relationships.forEach(async (relationship, index) => {
             let result = await API.graphql(
@@ -526,7 +526,7 @@ export default ({ patient, picture, open, onClose }) => {
       })
       .promise()
       .catch(error => { console.log(`caught error updating People; error is:`, error); });
-    
+
     if (savedImageFile) {
       s3.copyObject({
         Bucket: 'theseus-medical-storage',
@@ -539,7 +539,7 @@ export default ({ patient, picture, open, onClose }) => {
         Key: savedImageKey
       }).promise();
     }
-    
+
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     console.log(updatePerson);
     let newFactData = {
@@ -559,7 +559,7 @@ export default ({ patient, picture, open, onClose }) => {
 
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `v23.1.6`,
+        'version': `v23.1.11`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'action': 'Updated Person record',

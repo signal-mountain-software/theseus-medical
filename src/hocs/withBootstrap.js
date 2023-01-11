@@ -305,7 +305,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 23.1.6${AVA_environment}`}
+              {`AVA version 23.1.11${AVA_environment}`}
             </Typography>
           </Box>
         </React.Fragment>
@@ -559,7 +559,7 @@ export default Component => props => {
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        else { 
+        else {
           await logAccessAttempt(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is ${JSON.stringify(error.message)}`);
         }
         console.log({ 'Bad get on Session - caught error is': error });
@@ -669,7 +669,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
-        'version': `v23.1.6`,
+        'version': `v23.1.11`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'signin_status': pMessage,
@@ -771,7 +771,7 @@ export default Component => props => {
       if (dbError) {
         eMessage = `No Internet connection.  Can't connect to the AVA database.`;
       }
-      else { 
+      else {
         eMessage = `No SessionV2 record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
       }
       await logAccessAttempt(pLaunchUser, '', false, eMessage);
