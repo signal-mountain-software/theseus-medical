@@ -49,6 +49,7 @@ export default ({ open, onClose, onSelect }) => {
 
 
   async function getGroupInfo(pClient, pGroupArray) {
+    if (pGroupArray.length === 0) { return []; }
     let batchGetRequest = {
       RequestItems: {
         'Groups': {
@@ -72,28 +73,61 @@ export default ({ open, onClose, onSelect }) => {
       });
     let returnArray = [];
     if (groupRecs && ('Responses' in groupRecs)) {
-      groupRecs.Responses.Groups.forEach(gRec => { 
-        returnArray.push(`${gRec.name}:GRP//${pClient}/${gRec.group_id}`)
+      groupRecs.Responses.Groups.forEach(gRec => {
+        returnArray.push(`${gRec.name}:GRP//${pClient}/${gRec.group_id}`);
       });
     }
     return returnArray;
   }
 
+  function recordExists(recordId) {
+    if (!recordId) { return false; }
+    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
+    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
+  }
+
   React.useEffect(() => {
-    let getTargets = (
+    let getTargets = (     // get a list of people a user may send messages to: 
       async () => {
         if (!message_targets || (message_targets.length === 0)) {
-          // get a list of people a user may send messages to: anyone in any group you are responsible for or are a member of
+
+          // if user is proxy for someone, get the proxied person's responsibilities... 
+          if (session.patient_id !== session.user_id) {
+            let sessionRec = await dbClient
+              .get({
+                Key: { session_id: session.patient_id },
+                TableName: "SessionsV2",
+                ProjectionExpression: "responsible_for, groups_managed"
+              })
+              .promise()
+              .catch(async (error) => {
+                console.log({ 'Bad get on Session - caught error is': error });
+              });
+            if (recordExists(sessionRec)) {
+              session.responsible_for = sessionRec.Item.responsible_for;
+              session.groups_managed = sessionRec.Item.groups_managed;
+            }
+          }
+
+          // for groups you are responsible for, you can message the group as a whole...
           let responsibleList = [];
-          let respArray = profile.groups || [];
+          let respArray = [];
           if (session.responsible_for) {
             if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
             else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
             else { respArray.push(session.responsible_for); }
           };
+          if (session.groups_managed) {
+            session.groups_managed.forEach(gM => {
+              respArray.push(gM.split('~')[1].trim());
+            });
+          }
+          responsibleList.push(...await getGroupInfo(profile.client_id, respArray));
+
+          // you can message any individual in a group that you are responsible for OR are a member of
+          respArray.push(...profile.groups);
           if (respArray.length > 0) {
-            responsibleList = await getPeopleList(profile.client_id, respArray);
-            responsibleList.push(...await getGroupInfo(profile.client_id, profile.groups));            
+            responsibleList.push(...await getPeopleList(profile.client_id, respArray));
             dispatch({ type: SET_MESSAGE_TARGETS, payload: responsibleList.sort() });
           }
         }
