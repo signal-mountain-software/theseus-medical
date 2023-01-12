@@ -1163,6 +1163,7 @@ export default ({
           pMessageList={
             values.map(v => { return (JSON.parse(v)); })
           }
+          pSession={session}
           onReset={onSave}
         />
       );

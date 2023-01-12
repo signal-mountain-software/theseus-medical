@@ -12,6 +12,8 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import MarkunreadMailboxOutlinedIcon from '@material-ui/icons/MarkunreadMailboxOutlined';
 import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
 
+import MakeMessage from './MakeMessage';
+
 import Button from '@material-ui/core/Button';
 
 import Dialog from '@material-ui/core/Dialog';
@@ -148,7 +150,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ pPerson, pClient, pMessageList, onReset }) => {
+export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
 
   const classes = useStyles();
 
@@ -502,14 +504,16 @@ export default ({ pPerson, pClient, pMessageList, onReset }) => {
             </List>
           </Paper>
           {promptForMessage &&
-            <AVATextInput
-              promptText={`What should your message to ${recipient.split(':')[0]} say?`}
-              buttonText='Send'
+            <MakeMessage
+              titleText={`Send a Message to ${recipient.split(':')[0]}`}
+              promptText={`What's the Message?`}
+              buttonText={'Send'}
+              sender={pSession}
+              pRecipientID={recipient.split(':')[1]}
+              pRecipientName={recipient.split(':')[0]}
               onCancel={() => { setPromptForMessage(false); }}
-              onSave={(messageText) => {
-                setPromptForMessage(false);
-                handleSendMessage(pPerson, messageText, recipient);
-              }}
+              onComplete={() => { setPromptForMessage(false); }}
+              allowCancel={true}
             />
           }
           {deletePending &&
