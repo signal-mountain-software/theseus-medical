@@ -30,7 +30,17 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ promptText, onCancel, onConfirm }) => {
+function makeLine(str) {
+  if (str.startsWith('[indent=')) {
+    let pieces = str.split(/[=\]]/);
+    if (!isNaN(pieces[1])) {
+      return ('-' + String.fromCharCode(9).repeat(Number(pieces[1])) + pieces[2]);
+    }
+  }
+  return str;
+}
+
+export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', onCancel, onConfirm }) => {
 
   let promptLines = [];
   if (Array.isArray(promptText)) { promptLines = promptText; }
@@ -55,28 +65,32 @@ export default ({ promptText, onCancel, onConfirm }) => {
           id='scroll-dialog-title'
           key={'promptConfirm' + index}
         >
-          {pLine}
+          {makeLine(pLine)}
         </Typography>
       ))}
-      <DialogActions style={{ justifyContent: 'center', marginTop: 10 }}>
-        <Button
+      <DialogActions style={{ justifyContent: 'center', marginTop: 20 }}>
+        {(cancelText !== '*none*') &&
+          <Button
           className={classes.reject}
           size='small'
           variant='contained'
           onClick={() => {
             onCancel();
           }}>
-          {'Cancel'}
-        </Button>
-        <Button
-          className={classes.greenButton}
-          size='small'
-          variant='contained'
-          onClick={() => {
-            onConfirm();
-          }}>
-          {'Confirm'}
-        </Button>
+          {cancelText}
+          </Button>
+        }
+        {(confirmText !== '*none*') &&
+          <Button
+            className={classes.greenButton}
+            size='small'
+            variant='contained'
+            onClick={() => {
+              onConfirm();
+            }}>
+            {confirmText}
+          </Button>
+        }
       </DialogActions>
     </Dialog>
   );

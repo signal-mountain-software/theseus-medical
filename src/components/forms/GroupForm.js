@@ -257,7 +257,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   var rowsWritten;
 
   const imageBucket = 'theseus-medical-storage';
-  const imageURI = 'public/patients/[person_id].jpg';
+  const imageURI = 'public/patients/';
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -533,12 +533,14 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   }
 
   function getImage(pPerson, pIndex) {
-    workingMemberList[pIndex].image =
-      s3.getSignedUrl('getObject', {
+    function getURL(pWho) {
+      return s3.getSignedUrl('getObject', {
         Bucket: imageBucket,
-        Key: imageURI.replace('[person_id]', pPerson),
+        Key: `${imageURI}${pWho}.jpg`,
         Expires: 3600
       });
+    }
+    workingMemberList[pIndex].image = getURL(pPerson);
     return workingMemberList[pIndex];
   }
 
@@ -701,7 +703,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               minWidth={isMobile ? 100 : 150}
                               maxWidth={isMobile ? 100 : 150}
                               alt=''
-                              src={this_item.image || getImage(this_item.person_id, index)}
+                              src={this_item.image ||  getImage(this_item.person_id, index)}
                             />
                           </Box>
                           {(pRole === 'admin' || pRole === 'responsible') &&

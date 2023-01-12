@@ -131,7 +131,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [cancelPending, setCancelPending] = React.useState(false);
-  const [confirmPending, setConfirmPending] = React.useState(false);
+  const [confirmStatus, setConfirmStatus] = React.useState('');
   const [confirmPrompt, setConfirmPrompt] = React.useState(false);
 
   const [checkedToSave, setCheckedToSave] = React.useState();
@@ -178,6 +178,10 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
   /*                             |                                          | Club Sandwich                                             */
   /* ~[checkbox=off]             | Stop rendering check boxes, render value only
   /* ~[checkbox=on]              | Begin rendering check boxes AND values
+  /* ~[display=off]              | Do not display anything until display=on is encountered
+  /* ~[display=on]               | Begin showing lines again
+  /* ~[required=on]              | Text fields between these tags must not be left blank
+  /* ~[required=off]             | Stop requiring entry in text fields
    
   /* prompt for response...
   /* ~other:<text>               | prompt for text response with <text>     | ~other:What is your name?                                */
@@ -187,6 +191,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
   let displayRowList = [];
   let checkbox = true;
   let ignore = false;
+  let required = false;
 
   async function getObservations(pText, pObsKey, pChecked) {
     let workDataRows = dataRows;
@@ -289,7 +294,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
   if (!initialLoadComplete) {
     for (let vIndex = 0; vIndex < listValues.length; vIndex++) {
       let instruction = listValues[vIndex].split(/[~:]+/);
-      if ((instruction[1]) && (instruction[1].charAt(0) === '[')) {
+      if (instruction[1] && (instruction[1].charAt(0) === '[')) {
         let [, oControl, oValue] = instruction[1].split(/[=[\]]+/);
         switch (oControl) {
           case 'checkbox': {
@@ -298,6 +303,10 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
           }
           case 'display': {
             ignore = (oValue.toLowerCase() === 'on');
+            break;
+          }
+          case 'required': {
+            required = (oValue.toLowerCase() === 'on');
             break;
           }
           default: { }
@@ -309,6 +318,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
         // CheckBox selection
         displayRowList.push({
           checkbox,
+          required,
           text: instruction[0],
           oKey: getKey(instruction[0]),
           desc: getDescription(instruction[0]),
@@ -319,7 +329,8 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
       if (instruction[2]) {
         // Special Instruction - input = date, time, or file...  anything else is plain text prompt
         displayRowList.push({
-          checkbox: (instruction[1] === 'withCheckBox'),
+          checkbox: (instruction[1].includes('withCheckBox')),
+          required: required || (instruction[1].includes('required')),
           text: instruction[2],
           oKey: getKey(instruction[2]),
           desc: getDescription(instruction[2]),
@@ -330,6 +341,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
       // Turns out, this is a header line in instruction[1]
       displayRowList.push({
         checkbox: false,
+        required: false,
         text: instruction[1],
         oKey: getKey(instruction[1]),
         desc: getDescription(instruction[1]),
@@ -438,32 +450,37 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
     return (isChecked(pObj) && !!dataRows && dataRows.hasOwnProperty(pObj.text));
   }
 
-  function makeConfirm(pDisplayRows, pChecked, textInput) {
+  function makeConfirm(pDisplayRows, pChecked, textInput = {'empty': true}) {
     let workChecked = [];
+    let errorsExist = false;
+    let errorMessage = ['Please correct these errors', '----'];
     let responseArray = [`Please confirm your selections`, '----'];
     pDisplayRows.forEach(r => {
+      if (r.required && (!textInput.hasOwnProperty(r.text) || textInput[r.text] === '')) {
+        errorsExist = true;
+        errorMessage.push(`You left "${r.text}" blank!`);
+      }
       if (r.checkbox || textInput.hasOwnProperty(r.text)) {
         let rText = '';
-        if (pChecked.includes(r.text) || textInput[r.text]) { rText = r.text; }
-        if (textInput[r.text]) { rText += (rText.length > 0 ? ': ' : '') + textInput[r.text]; }
+        if (pChecked.includes(r.text)) { rText = r.text; }
+        if (textInput.hasOwnProperty(r.text) && (textInput[r.text].length > 0)) { rText = textInput[r.text]; }
         if (rText) {
-          let linker = ' (';
-          if (dataRows.chosenQual[r.text]) {
-            for (let key in dataRows.chosenQual[r.text]) {
-              if (dataRows.chosenQual[r.text][key] && (dataRows.chosenQual[r.text][key].length > 0)) {
-                rText += linker + dataRows.chosenQual[r.text][key].join(', ');
-                linker = ', ';
-              }
-            }
-            if (linker === ', ') { rText += ')'; }
-          }
           if (pChecked.includes(r.text)) { workChecked.push(rText); }
           responseArray.push(rText);
+          if (dataRows.hasOwnProperty('chosenQual') && dataRows.chosenQual[r.text]) {
+            for (let key in dataRows.chosenQual[r.text]) {
+              if (dataRows.chosenQual[r.text][key] && (dataRows.chosenQual[r.text][key].length > 0)) {
+                dataRows.chosenQual[r.text][key].forEach(qRow => {
+                  responseArray.push(`[indent=1]${qRow}`)  
+                })
+              }
+            }
+          }
         }
       }
     });
     setCheckedToSave(workChecked);
-    return responseArray;
+    if (errorsExist) { return ['error', errorMessage]; } else { return ['confirm', responseArray]; };
   }
 
   return (
@@ -584,7 +601,7 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
                           <Box display='flex' flexDirection='row' justifyContent='flex-start'
                             alignItems='center' flexWrap='wrap' key={'qrOpt' + qR.title}
                           >
-                            {qR.option.map((opt, oX) => (
+                            {qR.option && qR.option.map((opt, oX) => (
                               <Box display='flex' flexDirection='row' justifyContent='flex-start'
                                 alignItems='center' key={'qrOpt2' + oX}
                                 onClick={() => {
@@ -613,6 +630,8 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
             cancelPending &&
             <AVAConfirm
               promptText={`Are you sure you'd like to exit?`}
+              cancelText={'No, go back'}
+              confirmText={'Yes, exit'}
               onCancel={() => {
                 setCancelPending(false);
               }}
@@ -623,11 +642,24 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
             </AVAConfirm>
           }
           {
-            confirmPending &&
+            (confirmStatus === 'confirm') &&
             <AVAConfirm
               promptText={confirmPrompt}
-              onCancel={() => { setConfirmPending(false); }}
-              onConfirm={() => { onSave(checkedToSave, textInput); }}
+              cancelText={'Go back'}
+              confirmText={'Save/Send'}
+              onCancel={() => { setConfirmStatus(''); }}
+                onConfirm={() => { onSave(checkedToSave, textInput, dataRows.chosenQual); }}
+            >
+            </AVAConfirm>
+          }
+          {
+            (confirmStatus === 'error') &&
+            <AVAConfirm
+              promptText={confirmPrompt}
+              cancelText={'Go back'}
+              confirmText={'*none*'}
+              onCancel={() => { setConfirmStatus(''); }}
+              onConfirm={() => { }}
             >
             </AVAConfirm>
           }
@@ -647,8 +679,9 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
                   <Button
                     className={classes.rowButtonDefault}
                     onClick={() => {
-                      setConfirmPrompt(makeConfirm(dataRows.displayRows, dataRows.checked, textInput));
-                      setConfirmPending(true);
+                      let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, textInput);
+                      setConfirmPrompt(response);
+                      setConfirmStatus(cStatus);
                     }}
                     startIcon={<CheckIcon size="small" />}
                   >

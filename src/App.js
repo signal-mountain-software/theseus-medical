@@ -1,5 +1,4 @@
 import React from 'react';
-import { useCookies } from 'react-cookie';
 
 import Box from '@material-ui/core/Box';
 
@@ -44,7 +43,6 @@ const menu = [
 
 const HOME = '/theseus';
 var hasError = false;
-let cookies;
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -54,15 +52,11 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    const [getCookies, setCookie] = useCookies(['AVAuser']);
-    cookies = getCookies;
     handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    const [getCookies, setCookie] = useCookies(['AVAuser']);
-    cookies = getCookies;
     handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
   }
 
@@ -82,7 +76,7 @@ class ErrorBoundary extends React.Component {
               mb={2}
             >
               <Typography variant='h5' >{`AVA Encountered an Error`}</Typography>
-              <Typography variant='caption' >{`version 22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+              <Typography variant='caption' >{`version 23.1.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
               <Button
                 aria-label='showActivities'
                 variant='contained'
@@ -116,26 +110,9 @@ const handleWriteError = async (parmMessage) => {
 
     });
 
-  let eUser = user.userName;
-  let ePerson = user.userName;
-  let cookie_user = 'no cookie';
-
-  if (cookies.AVAuser && cookies.AVAuser !== 'undefined') {
-    if (typeof (cookies.AVAuser) === 'string') {
-      let cObj = JSON.parse(cookies.AVAuser);
-      ePerson = cObj.user_id;
-      cookie_user = cObj.user_id;
-    }
-    else {
-      ePerson = cookies.AVAuser.user_id;
-      cookie_user = cookies.AVAuser.user_id;
-    }
-  }
-
   let sObj_user = 'no sessionObject';
   let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
   if (sessionObject.currentProfile?.person_id) {
-    ePerson = sessionObject.currentProfile.person_id;
     sObj_user = sessionObject.currentProfile.person_id;
   }
 
@@ -145,11 +122,10 @@ const handleWriteError = async (parmMessage) => {
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
     status: {
-      'version': '22.12.21',
+      'version': '23.1.11',
       'env': AVA_env,
       'time': errorTime.toString(),
       'cognito_user': user?.username,
-      'cookie_user': cookie_user,
       'sessObj_user': sObj_user
     },
     user_id: user?.username || 'no user logged',
@@ -168,7 +144,7 @@ const handleWriteError = async (parmMessage) => {
         patient_id: newFact.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: `error.*** Write to Fact failed; used graphQL *** ${parmMessage}`,
-        status: `Version = 22.12.21~${errorTime}`,
+        status: `Version = 23.1.11~${errorTime}`,
         session: {
           user_id: user?.username || 'no user logged',
           session_id: 'no session recorded',
@@ -184,7 +160,7 @@ const handleWriteError = async (parmMessage) => {
     user_id: newFact.person_id,
     activity_code: newFact.activity_key,
     activity_name: newFact.value,
-    AVA_version: `22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+    AVA_version: `23.1.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
   };
   await dbClient
     .put({

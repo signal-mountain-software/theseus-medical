@@ -354,6 +354,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           }
           break;
         }
+        case 'make_message': {
+          setFactIOClass(false);
+          break;
+        }
         case 'message': {
           if (fact.prompt) {
             eString = fact.prompt;
@@ -430,7 +434,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     let qT = {};
     setValue(defaultValue);
     // console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
-    if (fact.value_qualifiers && Array.isArray(fact.value_qualifiers) && (fact.value_qualifiers > 0)) {
+    if (fact.value_qualifiers && Array.isArray(fact.value_qualifiers) && (fact.value_qualifiers.length > 0)) {
       fact.value_qualifiers.forEach(vQual => {
         if (vQual && Object.keys(vQual).length > 0) {
           qT[vQual.value] = vQual;
@@ -480,6 +484,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     if (defaultValue
       && fact.type !== 'reservation'
       && fact.type !== 'play_video'
+      && fact.type !== 'make_message'
     ) {
       let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
       let defaultSelections;

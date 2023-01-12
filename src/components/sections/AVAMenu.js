@@ -663,19 +663,40 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       ) {
         setPendingFact(pFact);
         let foundText = [];
-        let valueArray = pFact.value.selected.map(selection => {
+        let valueArray = pFact.value.selected.map(selection => {    // this adds anything that was selected (checkbox)
+          // add qualifiers if applicable
+          let constructedQualifier = '';
+          if (pFact.value.hasOwnProperty('qualifiers') && (selection in pFact.value.qualifiers)) {
+            let qArray =
+              Object
+                .keys(pFact.value.qualifiers[selection])
+                .map(key => {
+                  return `${key}: ${pFact.value.qualifiers[selection][key].join(' and ')}`;
+                });
+            constructedQualifier = ` ( ${qArray.join('; ')} )`;
+          }
           if (pFact.value.freeText.hasOwnProperty(selection)) {
             let freeText = pFact.value.freeText[selection];
-            foundText.push(selection);
-            return `${selection} = ${freeText}`;
+            foundText.push(selection);    // we might have free text that is NOT associated with a check box, use foundText to prevent duplication
+            return `${selection} = ${freeText}${constructedQualifier}`;
           }
           else {
-            return selection;
+            return `${selection}${constructedQualifier}`;
           }
         });
         for (const key in pFact.value.freeText) {
           if (key !== '%filter%' && !foundText.includes(key)) {
-            valueArray.push(`${key} = ${pFact.value.freeText[key]}`);
+            let constructedQualifier = '';
+            if (pFact.value.hasOwnProperty('qualifiers') && (key in pFact.value.qualifiers)) {
+              let qArray =
+                Object
+                  .keys(pFact.value.qualifiers[key])
+                  .map(subkey => {
+                    return `${subkey}: ${pFact.value.qualifiers[key][subkey].join(' and ')}`;
+                  });
+              constructedQualifier = ` ( ${qArray.join('; ')} )`;
+            }
+            valueArray.push(`${key} = ${pFact.value.freeText[key]}${constructedQualifier}`);
           }
         }
 
@@ -716,13 +737,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
         // set the value that will be written into the Fact table
         pFact.value = factValueType + '.' + valueArray.join(' ~ ');
-
-        // add qualifiers if applicable
-        if (pFact.value.hasOwnProperty('qualifiers') && Object.keys(pFact.value.qualifiers).length > 0) {
-          pFact.qualifier = Object.keys(pFact.value.qualifiers).map(k => {
-            return `${k}:${pFact.value.qualifiers[k]}`;
-          });
-        }
 
         // write the Fact Table entry
         putFact(pFact, pFactName, pIndex);
@@ -822,7 +836,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       user_id: pUser,
       activity_code: pCode,
       activity_name: pName,
-      AVA_version: `22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+      AVA_version: `23.1.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
     };
     let workLog = activityLogRecords;
     workLog.push(activityLogRec);
@@ -876,7 +890,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     }
   };
 
-  const getActivityDetail = async (pActivity) => {
+  const getActivityDetail = async (pActivity, pDefault) => {
     let invokeFailed = false;
     let cClient = pClient;
     let cActivity = pActivity;
@@ -918,6 +932,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       if (activityResponse.status === 200) {
         if (cClient !== pClient) {
           activityResponse.body.activityData[0].client_id = cClient;
+        }
+        if (pDefault && (pDefault !== '') && !pDefault.includes('[')) {
+          activityResponse.body.activityData[0].default_value = pDefault;
         }
         setSelected(activityResponse.body.activityData[0]);
         return activityResponse.body.activityData[0];
@@ -1021,6 +1038,17 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
+  };
+
+  let pendingColor;
+  function setPending(pColor) {
+    pendingColor = pColor;
+    return pColor;
+  };
+
+  function clearPending(pColor) {
+    pendingColor = null;
+    return pColor;
   };
 
   let lastColor, lastOpen;
@@ -1226,7 +1254,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA vers 22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA vers 23.1.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   <Typography className={classes.popUpFooter} >{makeExpiration()}
                   </Typography>
                   <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
@@ -1259,7 +1287,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 22.12.21${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography variant='caption' >{`version 23.1.11${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -1333,7 +1361,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
                   <Box
                     display='flex'
-                    style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: '#d25958', textDecoration: 'none' }}
+                    style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: clearPending('#d25958'), textDecoration: 'none' }}
                     ml={2} mr={2}
                     justifyContent='center'
                     flexDirection='column'
@@ -1384,7 +1412,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                             display='flex'
                             style={{
                               borderRadius: '0px 0px 30px 30px',
-                              backgroundColor: lastColor,
+                              backgroundColor: clearPending(lastColor),
                               textDecoration: 'none'
                             }}
                             ml={2} mr={2}
@@ -1438,7 +1466,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                         ml={2} mr={2} mt={.2} mb={.2} key={this_row.activity_code + 'detail' + index} >
                         <Box
                           display='flex'
-                          style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                          style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: setPending(this_row.row_color), textDecoration: 'none' }}
                           p={2}
                           justifyContent='center'
                           flexDirection='column'
@@ -1478,7 +1506,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                                     setForceRedisplay(!forceRedisplay);
                                   }
                                   else {
-                                    await getActivityDetail(this_row.activity_code);
+                                    await getActivityDetail(this_row.activity_code, this_row.default_value);
                                     setShowNewFactDialog(index);
                                   }
                                 }
@@ -1543,7 +1571,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                         </Box>
                         <Collapse in={(rowOpen === index)} timeout="auto" unmountOnExit>
                           <Box
-                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: setPending(this_row.row_color), textDecoration: 'none' }}
                             display='flex'
                             flexDirection='row' paddingBottom={1} justifyContent='flex-start' alignItems='center'
                           >
@@ -1561,12 +1589,12 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   </React.Fragment>
                 )
               ))}
-              {rowIsOpen(mainMenu[mainMenu.length - 1]) &&
+              {(rowIsOpen(mainMenu[mainMenu.length - 1]) || pendingColor) &&
                 <Box
                   display='flex'
                   style={{
                     borderRadius: '0px 0px 30px 30px',
-                    backgroundColor: lastColor,
+                    backgroundColor: clearPending(pendingColor || lastColor),
                     textDecoration: 'none'
                   }}
                   ml={2} mr={2}

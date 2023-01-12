@@ -26,22 +26,16 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
-  formControlLbl: {
-    margin: 0,
-    paddingTop: 0,
-    height: theme.spacing(2.5),
-  },
   freeInput: {
-    marginLeft: '25px',
-    marginRight: 2,
-    marginBottom: '20px',
-    paddingBottom: '20px',
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
     paddingLeft: 0,
     paddingRight: 0,
+    paddingBottom: 0,
     width: '90%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
-    minHeight: theme.typography.fontSize * 2.8,
+    minHeight: theme.typography.fontSize * 1.8,
   },
   reject: {
     marginLeft: theme.spacing(1),
@@ -58,91 +52,43 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0,
     fontSize: '1.3rem',
   },
-  titleText: {
-    fontSize: '1.3rem',
-  },
-  dialogBox: {
-    paddingTop: theme.spacing(1),
-    paddingBottom: theme.spacing(1),
-    minWidth: '100%',
-  },
-  subDescriptionText: {
-    marginLeft: theme.spacing(3),
-    marginBottom: theme.spacing(1),
-    marginRight: theme.spacing(5),
-    fontSize: '0.8rem',
-  },
-
-  picture: {
-    width: theme.spacing(16),
-    height: theme.spacing(16),
-    [theme.breakpoints.down('xs')]: {
-      width: theme.spacing(8),
-      height: theme.spacing(8),
-    },
-  },
-  photoButton: {
-    alignSelf: 'center',
-    size: 'sm',
-    variant: 'outlined',
-    verticalAlign: 'middle',
-  },
-  defaultButton: {
-    alignSelf: 'end',
-    variant: 'outlined',
-    verticalAlign: 'end',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-  },
-  topButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.primary[theme.palette.type],
-  },
-  resetButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-    marginRight: 10,
-  },
-  infoButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.info[theme.palette.type],
-    marginRight: 10,
-    paddingRight: 10,
-    marginLeft: 10,
-    paddingLeft: 10,
-  },
-  radioText: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginLeft: 0,
-    paddingLeft: 0,
-    paddingRight: 10,
-  },
-  listItemAVA: {
-    fontSize: theme.typography.fontSize * 1.5,
-  },
   firstName: {
     marginLeft: theme.spacing(1),
   },
   lastName: {
     fontWeight: 'bold',
   },
+  groupName: {
+    fontWeight: 'bold',
+    color: 'red'
+  },
+  orSeparator: {
+    marginTop: theme.spacing(1),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+    fontSize: theme.typography.fontSize * 0.8,
+  },
   idText: {
     paddingTop: 6,
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: theme.spacing(1)
   },
-  radioButton: {
-    marginTop: 0,
-    marginRight: 0,
-    marginLeft: 0,
-    paddingLeft: 0,
-    paddingRight: 5,
-  },
 }));
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
+export default ({
+  prompt,
+  peopleList,
+  onCancel,
+  onSelect,
+  allowRandom
+}) => {
+
   const [person_filter, setPersonFilter] = React.useState('');
+  const [visible_filter, setVisibleFilter] = React.useState('');
+  const [random_address, setRandomAddress] = React.useState('');
   const [rowLimit, setRowLimit] = React.useState(20);
   const [maxY, setMaxY] = React.useState(0);
   const [previousY, setCurrentY] = React.useState(0);
@@ -166,31 +112,43 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
     }
   };
 
+  function formatPhone(match) {
+    let formatted = '';
+    if (match.length > 7) { formatted += match.slice(-10, -7) + ' '; }
+    if (match.length > 4) { formatted += match.slice(-7, -4) + '-'; }
+    if (match.length > 0) { formatted += match.slice(-4); }
+    return formatted;
+  }
+
   const handleChangePersonFilter = event => {
-    setPersonFilter(event.target.value.toLowerCase());
-    if (event.target.value.toLowerCase() === 'sign out') { onSignOut() }
+    setVisibleFilter(event.target.value);
+    if (!event.target.value) {
+      setPersonFilter(null);
+      setRandomAddress('');
+    }
+    let filterInput = event.target.value.trim();
+    if (filterInput.includes('@')) {      // e-Mail address
+      setPersonFilter(filterInput.toLowerCase());
+      setRandomAddress(filterInput);
+      return;
+    }
+    var filterNumbers = '' + filterInput.replace(/\D/g, '').substr(-10);    // last 10 digits
+    if (filterNumbers.length > 6) {    // this will be trested as a phone number
+      setPersonFilter(filterNumbers);
+      setRandomAddress(formatPhone(filterNumbers));
+      return;
+    }
+    setPersonFilter(filterInput.toLowerCase());
+    setRandomAddress('');
+    return;
   };
 
   function okToShow(pLine) {
     if (!pLine) { return false; }
+    else if (!person_filter) { return true; }
     else { return pLine.toLowerCase().includes(person_filter); }
   }
 
-  /*
-  function makeWholeName(pString) {
-    let pName = pString.split(':')[0];
-    let ans = pName.split(/[:,]/g);
-    switch (ans.length) {
-      case 3: { return `${ans[2].trim()} ${ans[0].trim()},${ans[1].trim()}`; }
-      case 2: {
-        if (ans[1].startsWith('group=')) { return ''; }
-        else { return `${ans[1].trim()} ${ans[0].trim()}`; }
-      }
-      default: { return ans[0].trim(); }
-    }
-  }
-  */
-  
   function makeFirstName(pString) {
     let pName = pString.split(':')[0];
     let ans = pName.split(/[:,]/g);
@@ -237,42 +195,67 @@ export default ({ prompt, peopleList, onCancel, onSelect, onSignOut }) => {
       </DialogContentText>
       <TextField
         id='Type a few letters to filter the list'
-        value={person_filter}
+        value={visible_filter}
         onChange={handleChangePersonFilter}
         className={classes.freeInput}
-        label='Type a few letters to filter the list'
-        variant={'standard'}
         autoComplete='off'
+        variant="standard"
       />
+      <Typography variant='h5' className={classes.orSeparator}>
+        {`You may filter the list below${!allowRandom ? '' : ', or enter a specific phone number or e-Mail address to send your message to'}`}
+      </Typography>
       <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
         <List component='nav'>
           <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
             {rowsWritten = 0}
           </Typography>
           {peopleList.map((listEntry, x) => (
-              ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
-                <ListItem
-                  key={'person-list_' + x }
-                  onClick={() => {
-                    onSelect(listEntry);
-                  }}
-                  button
+            ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
+              <ListItem
+                key={'person-list_' + x}
+                onClick={() => {
+                  onSelect(listEntry);
+                }}
+                button
               >
                 <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                   {rowsWritten++}
                 </Typography>
-                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                    <Typography variant='h5' className={classes.lastName}>{makeLastName(listEntry)}</Typography>
-                    <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
-                    {(x > 0) && (x < (peopleList.length - 1))
-                      && ((peopleList[x - 1].split(':')[0] === listEntry.split(':')[0])
-                        || (peopleList[x + 1].split(':')[0] === listEntry.split(':')[0])) &&
-                      <Typography variant='h5' className={classes.idText}>({listEntry.split(/[:]/)[1]})</Typography>
-                    }
-                  </Box>
-                </ListItem>
+                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                  {!listEntry.split(':')[1].startsWith('GRP//') ?
+                    <React.Fragment>
+                      <Typography variant='h5' className={classes.lastName}>{makeLastName(listEntry)}</Typography>
+                      <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
+                      {(x > 0) && (x < (peopleList.length - 1))
+                        && ((peopleList[x - 1].split(':')[0] === listEntry.split(':')[0])
+                          || (peopleList[x + 1].split(':')[0] === listEntry.split(':')[0])) &&
+                        <Typography variant='h5' className={classes.idText}>({listEntry.split(/[:]/)[1]})</Typography>
+                      }
+                    </React.Fragment>
+                    :
+                    <React.Fragment>
+                      <Typography variant='h5' className={classes.groupName}>{listEntry.split(':')[0]}</Typography>
+                      <Typography variant='h5' className={classes.idText}>(GROUP)</Typography>
+                    </React.Fragment>
+                  }
+                </Box>
+              </ListItem>
             )
           ))}
+          {(rowsWritten === 0) && (random_address) &&
+            <ListItem
+              key={'person-list_new'}
+              onClick={() => {
+                onSelect(`*new:address=${random_address}`);
+              }}
+              button
+            >
+              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                <Typography variant='h5' className={classes.lastName}>{'Someone new'}</Typography>
+                <Typography variant='h5' className={classes.idText}>({random_address})</Typography>
+              </Box>
+            </ListItem>
+          }
         </List>
       </Paper>
       <DialogActions style={{ justifyContent: 'center' }}>

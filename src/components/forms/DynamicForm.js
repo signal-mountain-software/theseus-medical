@@ -31,6 +31,7 @@ import Checkbox from '@material-ui/core/Checkbox';
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
+import MakeMessage from './MakeMessage';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -1162,7 +1163,25 @@ export default ({
           pMessageList={
             values.map(v => { return (JSON.parse(v)); })
           }
+          pSession={session}
           onReset={onSave}
+        />
+      );
+    case 'make_message':
+      let defaultValueObj;
+      if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
+      else { defaultValueObj = JSON.parse(defaultValue); }
+      return (
+        <MakeMessage
+          titleText={defaultValueObj.title}
+          promptText={defaultValueObj.prompt || `What's the Message?`}
+          buttonText={defaultValueObj.button || 'Send'}
+          sender={session}
+          pRecipientID={defaultValueObj.recipientID}
+          pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
+          onCancel={onClose}
+          onComplete={onSave}
+          allowCancel={true}
         />
       );
     case 'observation_form':
@@ -1173,9 +1192,10 @@ export default ({
           pClient={session.client_id}
           qualifiers={qualifierTable}
           listValues={values}
-          onSave={(oSelected, fText) => { 
+          onSave={(oSelected, fText, fQualifiers) => { 
             newFact.value.selected = oSelected; 
             newFact.value.freeText = fText;
+            newFact.value.qualifiers = fQualifiers;
             newFact.status = 'confirmed';
             setNewFact(newFact);
             onSave();
@@ -1258,6 +1278,7 @@ export default ({
     default:
       let checkBoxOn = true;
       let suppressDisplay = false;
+      let requiredInput = false;
       let workingRowCount = 0;
       return (
         <React.Fragment key={`selection-panel`}>
@@ -1282,6 +1303,10 @@ export default ({
                   /*                             | on;  text turns off, key2 turns off)
                   /* ~[checkbox=off]             | Stop rendering check boxes, render value only
                   /* ~[checkbox=on]              | Begin rendering check boxes AND values
+                  /* ~[display=off]              | Do not display anything until display=on is encountered
+                  /* ~[display=on]               | Begin showing lines again
+                  /* ~[required=on]              | Text fields between these tags must not be left blank
+                  /* ~[required=off]             | Stop requiring entry in text fields
 
                   /* prompt for response...
                   /* ~other:<text>               | prompt for text response with <text>     | ~other:What is your name?                                */
@@ -1322,6 +1347,9 @@ export default ({
                   else if (value === '~[display=on]') { suppressDisplay = false; return null; }
 
                   if (suppressDisplay) { return null; }
+
+                  if (value === '~[required=on]') { requiredInput = true; return null; }
+                  else if (value === '~[required=off]') { requiredInput = false; return null; }
 
                   let personID = '';
                   let specialHandling = false;
@@ -1444,7 +1472,8 @@ export default ({
                               variant={'standard'}
                               multiline
                               fullWidth
-                              autoComplete='off'
+                            autoComplete='off'
+                            required={requiredInput}
                               value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
                               onChange={onChangeFreeText}
                             />

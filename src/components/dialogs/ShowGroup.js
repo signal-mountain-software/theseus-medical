@@ -180,7 +180,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             setGroupRole(groupRec.admin_list.includes(patientSession.patient_id) ? 'responsible' : 'member');
           }
         }
-        setGroupRole(myRole);
+        else { setGroupRole(myRole); }
       }
       else {
         setGroupName('Directory Search');
@@ -380,14 +380,17 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   // **************************
 
   React.useEffect(() => {
-    if (pGroup_id) {
-      setShowGroupSelect(false);
-      getGroupMemberList(pGroup_id);
+    async function prepare() {
+      if (pGroup_id) {
+        setShowGroupSelect(false);
+        await getGroupMemberList(pGroup_id);
+      }
+      else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
+        setShowGroupSelect(true);
+        await getGroupsManagedObject(pSession.patient_id);
+      }
     }
-    else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
-      setShowGroupSelect(true);
-      getGroupsManagedObject(pSession.patient_id);
-    }
+    prepare();
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -414,8 +417,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
           </Typography>
         </Box>
         <DialogContent dividers={true} className={classes.dialogBox}>
-          {groupMemberList.length === 0 && groupID
-            ?
+          {groupMemberList.length === 0 && groupID &&
             <Box display='flex' marginBottom={5} flexDirection='column' justifyContent='center' alignItems='center'>
               <Typography className={classes.formControl} variant='h5' >
                 {progressMessage}
@@ -424,7 +426,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
                 <CircularProgress />
               </div>
             </Box>
-            :
+          }
+          {groupMemberList.length > 0 &&
             <GroupForm
               groupMemberList={groupMemberList}
               peopleList={peopleList}
