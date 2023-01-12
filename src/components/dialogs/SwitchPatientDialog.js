@@ -30,7 +30,7 @@ export default ({ open, roles, onClose, forceSwitch }) => {
       ExpressionAttributeNames: { '#n': 'name', '#f': 'first', '#l': 'last' },
       TableName: "People",
       IndexName: "client_id-index",
-      ProjectionExpression: "person_id, #n.#f, #n.#l, search_data"
+      ProjectionExpression: "person_id, #n.#f, #n.#l, groups, search_data"
     };
     var peopleRecs = await dbClient
       .query(queryExpression)
@@ -50,29 +50,29 @@ export default ({ open, roles, onClose, forceSwitch }) => {
   };
 
   React.useEffect(() => {
-    let getPatients = (
-      async () => {
-        if (!patients || (patients.length === 0)) {
-          // get a group of patients a user is responsible for
-          let responsibleList = [];
-          if (session.responsible_for) {
-            let respArray = [];
-            if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
-            else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-            else { respArray.push(session.responsible_for); }
-            if (respArray.length > 0) {
-              responsibleList = await getPeopleList(profile.client_id, respArray);
-              let myInfo = `${profile.name.last}, ${profile.name.first}:${profile.person_id}:${profile.search_data}`;
-              if (responsibleList && responsibleList.length > 0 && (responsibleList[0].split(':')[1] !== profile.person_id)) {
-                responsibleList.unshift(myInfo);
-              }
-              else { responsibleList = [myInfo]; }
-              dispatch({ type: SET_PATIENTS, payload: responsibleList });
+    async function getPatients() {
+      if (!patients || (patients.length === 0)) {
+        // get a group of patients a user is responsible for
+        let responsibleList = [];
+        if (session.responsible_for) {
+          let respArray = [];
+          if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
+          else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+          else { respArray.push(session.responsible_for); }
+          if (respArray.length > 0) {
+            responsibleList = await getPeopleList(profile.client_id, respArray);
+            let myInfo = `${profile.name.last}, ${profile.name.first}:${profile.person_id}:${profile.search_data}`;
+            if (!responsibleList || responsibleList.length === 0) {
+              responsibleList = [myInfo];
             }
-          };
-        }
+            else if (responsibleList[0].split(':')[1] !== profile.person_id) {
+              responsibleList.unshift(myInfo);
+            }
+            dispatch({ type: SET_PATIENTS, payload: responsibleList });
+          }
+        };
       }
-    );
+    };
     if (forceSwitch) { handleConfirmation(forceSwitch); }
     else { getPatients(); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
