@@ -27,7 +27,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ person, updateGroups, patientSession }) => {
+export default ({ person, updateGroups }) => {
  
   const classes = useStyles();
   const { state } = useSession();
@@ -72,9 +72,10 @@ export default ({ person, updateGroups, patientSession }) => {
 
       var returnObject = {};
       let foundGroups = [];
+      let sessionKey = state.session;
       // First, get Groups that this person explicitly manages (as per the SessionsV2 table)
-      if ('groups_managed' in patientSession) {
-        patientSession.groups_managed.forEach(group => {
+      if ('groups_managed' in sessionKey) {
+        sessionKey.groups_managed.forEach(group => {
           let [gID, gName] = group.split('~');
           returnObject[gName.trim()] = {
             group_id: gID.trim(),
@@ -86,15 +87,15 @@ export default ({ person, updateGroups, patientSession }) => {
 
       // If there are groups in the "responsible for" array, include those
       let respArray = [];
-      if ('responsible_for' in patientSession) {
-        if (Array.isArray(patientSession.responsible_for)) { respArray.push(...patientSession.responsible_for); }
-        else if (patientSession.responsible_for.startsWith('[')) { respArray = patientSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-        else { respArray.push(patientSession.responsible_for); }
+      if ('responsible_for' in sessionKey) {
+        if (Array.isArray(sessionKey.responsible_for)) { respArray.push(...sessionKey.responsible_for); }
+        else if (sessionKey.responsible_for.startsWith('[')) { respArray = sessionKey.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+        else { respArray.push(sessionKey.responsible_for); }
       }
       for (let g = 0; g < respArray.length; g++) {
         let group = respArray[g];
         if (!foundGroups.includes(group)) {
-          let checkGroup = await getGroupDetails(patientSession.client_id, group);
+          let checkGroup = await getGroupDetails(sessionKey.client_id, group);
           if (checkGroup.hasOwnProperty('name')) {
             returnObject[checkGroup.name.trim()] = {
               group_id: group.trim(),
@@ -110,7 +111,7 @@ export default ({ person, updateGroups, patientSession }) => {
         for (let g = 0; g < person.groups.length; g++) {
           let group = person.groups[g];
           if (!foundGroups.includes(group)) {
-            let checkGroup = await getGroupDetails(patientSession.client_id, group);
+            let checkGroup = await getGroupDetails(sessionKey.client_id, group);
             if (checkGroup.hasOwnProperty('name')) {
               returnObject[checkGroup.name.trim()] = {
                 group_id: group.trim(),
@@ -126,7 +127,7 @@ export default ({ person, updateGroups, patientSession }) => {
       let openGroups = await dbClient
         .scan({
           FilterExpression: 'client_id = :c and group_type = :o',
-          ExpressionAttributeValues: { ':c': patientSession.client_id, ':o': 'open' },
+          ExpressionAttributeValues: { ':c': sessionKey.client_id, ':o': 'open' },
           TableName: 'Groups',
         })
         .promise()
@@ -165,7 +166,7 @@ export default ({ person, updateGroups, patientSession }) => {
       setNotMyFirstTime(true);
     };
     
-    let executioner = async () => { await getAllGroups(patientSession.user_id); };
+    let executioner = async () => { await getAllGroups(state.session.user_id); };
     executioner();
     
   }, [notMyFirstTime, person, state.session.user_id]);
@@ -184,7 +185,7 @@ export default ({ person, updateGroups, patientSession }) => {
 
   return (
     <Section title='Groups' outlined>
-      <Typography className={classes.radioText}>{`Selecting from Groups available to ${patientSession.user_id}`}</Typography>
+      <Typography className={classes.radioText}>{`Selecting from Groups available to ${state.session.user_id}`}</Typography>
       {gNamesList && (gNamesList.length > 0) && gCodesList && (gCodesList.length > 0) && (renderCount > 0) && 
         <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
           <List className={classes.root}>

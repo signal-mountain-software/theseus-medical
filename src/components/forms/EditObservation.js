@@ -15,6 +15,14 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Button from '@material-ui/core/Button';
 
+const AWS = require('aws-sdk');
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 const useStyles = makeStyles(theme => ({
   containerBox: {
     marginTop: theme.spacing(3),
@@ -47,7 +55,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ observation, showDialog, handleClose, handleCancel }) => {
+export default async ({ observation, showDialog, handleClose, handleCancel }) => {
 
   const classes = useStyles();
 
@@ -56,6 +64,7 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
   const [observationCode, setObservationCode] = React.useState(observation.observation_code);
   const [observationKey, setObservationKey] = React.useState(observation.observation_key);
   const [changeDetected, setChangeDetected] = React.useState(false);
+  const [entryTypes, setEntryTypes] = React.useState([]);
   const observationClient = oCode[0];
   const observationDate = oCode.pop();
   let oD = observationDate.split('.');
@@ -77,8 +86,6 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
   };
 
   const { enqueueSnackbar } = useSnackbar();
-
-  const entryTypes = ['', 'header', 'message', 'entree', 'soft_entree', 'AL_lunch_entree', 'AL_dinner_entree', 'soup', 'salad', 'side', 'bread', 'dessert'];
 
   const onChangeType = event => {
     setObservationType(event.target.value);
@@ -132,75 +139,96 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
     return pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase();
   }
 
-  React.useEffect(() => {
-  }, [observation]);  // eslint-disable-line react-hooks/exhaustive-deps
+  async function getEntryTypes() {
+    if (!entryTypes || (entryTypes.length === 0)) {
+      let eTypeList = await dbClient
+        .get({
+          Key: { client_id: observationClient, custom_key: 'menu_types' },
+          TableName: "Customizations"
+        })
+        .promise()
+        .catch(error => {
+          console.log({ 'Bad get on Customizations - caught error is': error });
+        });
+      if (eTypeList.Count > 0) {
+        setEntryTypes(eTypeList.Item.customization_value);
+      }
+    }
+  };
 
+  React.useEffect(() => {
+  }, [observationClient]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Dialog open={showDialog} fullWidth className={classes.containerBox}>
-      <Box display='flex'
-        grow={1}
-        mb={0}
-        flexDirection='column'
-        justifyContent='center'
-        alignItems='flex-start'>
-        <DialogContentText className={classes.title} id='scroll-dialog-title'>
-          {editMode ? 'Change this Item' : 'Add a new Item'}
-        </DialogContentText>
-        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-          <Box
-            display='flex'
-            grow={1}
-            mb={0}
-            flexDirection='column'
-            justifyContent='center'
-            alignItems='flex-start'
-          >
-            <TextField
-              classes={{ root: classes.idText }}
-              id={'obs-type'}
-              select
-              defaultValue="" 
-              fullWidth
-              label={'Type'}
-              value={observationType || ''}
-              onChange={onChangeType}
+      {entryTypes && (entryTypes.length > 0) &&
+        <Box display='flex'
+          grow={1}
+          mb={0}
+          flexDirection='column'
+          justifyContent='center'
+          alignItems='flex-start'>
+          <DialogContentText className={classes.title} id='scroll-dialog-title'>
+            {editMode ? 'Change this Item' : 'Add a new Item'}
+          </DialogContentText>
+          <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+            <Box
+              display='flex'
+              grow={1}
+              mb={0}
+              flexDirection='column'
+              justifyContent='center'
+              alignItems='flex-start'
             >
-              {entryTypes.map((eType) => (
-                <MenuItem key={eType} value={eType}>
-                  {sentenceCase(eType).replace(/_/g, " ")}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              classes={{ root: classes.idText }}
-              id={'obs-code'}
-              label={'Item'}
-              fullWidth
-              value={observationCode}
-              onChange={onChangeCode}
-            />
-            <TextField
-              classes={{ root: classes.idText }}
-              id={'obs-key'}
-              label={'Recipe key'}
-              fullWidth
-              value={observationKey}
-              onChange={onChangeKey}
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions style={{ justifyContent: 'center' }}>
-          <Button className={classes.reject} size='small' variant='contained' onClick={handleCancel}>
-            Cancel
-          </Button>
-          {changeDetected &&
-            <Button variant='contained' color='primary' size='small' onClick={handleSave}>
-              Save
+              <TextField
+                classes={{ root: classes.idText }}
+                id={'obs-type'}
+                select
+                defaultValue=""
+                fullWidth
+                label={'Type'}
+                value={observationType || ''}
+                onChange={onChangeType}
+              >
+                {async () => {
+                  await getEntryTypes();
+                  entryTypes.map((eType) => (
+                    <MenuItem key={eType} value={eType}>
+                      {sentenceCase(eType).replace(/_/g, " ")}
+                    </MenuItem>
+                  ));
+                }}
+              </TextField>
+              <TextField
+                classes={{ root: classes.idText }}
+                id={'obs-code'}
+                label={'Item'}
+                fullWidth
+                value={observationCode}
+                onChange={onChangeCode}
+              />
+              <TextField
+                classes={{ root: classes.idText }}
+                id={'obs-key'}
+                label={'Recipe key'}
+                fullWidth
+                value={observationKey}
+                onChange={onChangeKey}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions style={{ justifyContent: 'center' }}>
+            <Button className={classes.reject} size='small' variant='contained' onClick={handleCancel}>
+              Cancel
             </Button>
-          }
-        </DialogActions>
-      </Box>
+            {changeDetected &&
+              <Button variant='contained' color='primary' size='small' onClick={handleSave}>
+                Save
+              </Button>
+            }
+          </DialogActions>
+        </Box>
+      }
     </Dialog>
   );
 };

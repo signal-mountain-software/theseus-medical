@@ -1141,7 +1141,6 @@ export default ({ patient, picture, open, onClose }) => {
         <ClientsSection
           person={patient}
           updateGroups={handleChangeGroups}
-          patientSession={patientSession}
         />
         <RelationshipSection person={patient} />
         <LinkedAccountsSection
