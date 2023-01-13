@@ -55,7 +55,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default async ({ observation, showDialog, handleClose, handleCancel }) => {
+export default ({ observation, showDialog, handleClose, handleCancel }) => {
 
   const classes = useStyles();
 
@@ -136,28 +136,30 @@ export default async ({ observation, showDialog, handleClose, handleCancel }) =>
   };
 
   function sentenceCase(pString) {
-    return pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase();
+    return pString.slice(0, 1).toUpperCase() + pString.slice(1);
   }
 
-  async function getEntryTypes() {
-    if (!entryTypes || (entryTypes.length === 0)) {
-      let eTypeList = await dbClient
-        .get({
-          Key: { client_id: observationClient, custom_key: 'menu_types' },
-          TableName: "Customizations"
-        })
-        .promise()
-        .catch(error => {
-          console.log({ 'Bad get on Customizations - caught error is': error });
-        });
-      if (eTypeList.Count > 0) {
-        setEntryTypes(eTypeList.Item.customization_value);
-      }
-    }
-  };
-
   React.useEffect(() => {
-  }, [observationClient]);  // eslint-disable-line react-hooks/exhaustive-deps
+    let getEntryTypes = (
+      async () => {
+        if (!entryTypes || (entryTypes.length === 0)) {
+          let eTypeList = await dbClient
+            .get({
+              Key: { client_id: observationClient, custom_key: 'menu_types' },
+              TableName: "Customizations"
+            })
+            .promise()
+            .catch(error => {
+              console.log({ 'Bad get on Customizations - caught error is': error });
+            });
+          if (eTypeList.Item) {
+            setEntryTypes(eTypeList.Item.customization_value);
+          }
+        }
+      }
+    );
+    getEntryTypes();
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Dialog open={showDialog} fullWidth className={classes.containerBox}>
@@ -190,14 +192,12 @@ export default async ({ observation, showDialog, handleClose, handleCancel }) =>
                 value={observationType || ''}
                 onChange={onChangeType}
               >
-                {async () => {
-                  await getEntryTypes();
-                  entryTypes.map((eType) => (
+                {entryTypes.map((eType) => (
                     <MenuItem key={eType} value={eType}>
                       {sentenceCase(eType).replace(/_/g, " ")}
                     </MenuItem>
-                  ));
-                }}
+                  ))
+                }
               </TextField>
               <TextField
                 classes={{ root: classes.idText }}
