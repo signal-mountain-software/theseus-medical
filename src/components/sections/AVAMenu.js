@@ -666,14 +666,16 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         let valueArray = pFact.value.selected.map(selection => {    // this adds anything that was selected (checkbox)
           // add qualifiers if applicable
           let constructedQualifier = '';
-          if (pFact.value.hasOwnProperty('qualifiers') && (selection in pFact.value.qualifiers)) {
-            let qArray =
-              Object
-                .keys(pFact.value.qualifiers[selection])
-                .map(key => {
-                  return `${key}: ${pFact.value.qualifiers[selection][key].join(' and ')}`;
-                });
-            constructedQualifier = ` ( ${qArray.join('; ')} )`;
+          if (pFact.value.qualifiers && (selection in pFact.value.qualifiers)) {
+            let qArray = [];
+            Object
+              .keys(pFact.value.qualifiers[selection])
+              .forEach(key => {
+                if (pFact.value.qualifiers[selection][key].length > 0) {
+                  qArray.push(`${key}: ${pFact.value.qualifiers[selection][key].join(' and ')}`);
+                }
+              });
+            if (qArray.length > 0) { constructedQualifier = ` ( ${qArray.join('; ')} )`; }
           }
           if (pFact.value.freeText.hasOwnProperty(selection)) {
             let freeText = pFact.value.freeText[selection];
@@ -687,14 +689,16 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         for (const key in pFact.value.freeText) {
           if (key !== '%filter%' && !foundText.includes(key)) {
             let constructedQualifier = '';
-            if (pFact.value.hasOwnProperty('qualifiers') && (key in pFact.value.qualifiers)) {
-              let qArray =
-                Object
-                  .keys(pFact.value.qualifiers[key])
-                  .map(subkey => {
+            if (pFact.value.qualifiers && (key in pFact.value.qualifiers)) {
+              let qArray = [];
+              Object
+                .keys(pFact.value.qualifiers[key])
+                .forEach(subkey => {
+                  if (pFact.value.qualifiers[key][subkey].length > 0) {
                     return `${subkey}: ${pFact.value.qualifiers[key][subkey].join(' and ')}`;
-                  });
-              constructedQualifier = ` ( ${qArray.join('; ')} )`;
+                  }
+                });
+              if (qArray.length > 0) { constructedQualifier = ` ( ${qArray.join('; ')} )`; }
             }
             valueArray.push(`${key} = ${pFact.value.freeText[key]}${constructedQualifier}`);
           }
