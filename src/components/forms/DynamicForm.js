@@ -1187,6 +1187,7 @@ export default ({
     case 'observation_form':
       return (
         <ObservationForm
+          factType={newFact.activity_key.split('.')[0]}
           factName={factName}
           defaultValue={defaultValue}
           pClient={session.client_id}
