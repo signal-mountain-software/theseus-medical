@@ -125,7 +125,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSave, onClose }) => {
+export default ({ factType, factName, defaultValue, pClient, qualifiers, listValues, onSave, onClose }) => {
 
   const classes = useStyles();
 
@@ -671,23 +671,26 @@ export default ({ factName, defaultValue, pClient, qualifiers, listValues, onSav
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
                     className={classes.rowButtonDefault}
-                    onClick={() => { setCancelPending(true); }}
+                    onClick={() => {
+                      ((factType === 'list') ? onClose() : setCancelPending(true));
+                    }}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Exit'}
                   </Button>
-                  <Button
-                    className={classes.rowButtonDefault}
-                    onClick={() => {
-                      let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, textInput);
-                      setConfirmPrompt(response);
-                      setConfirmStatus(cStatus);
-                    }}
-                    startIcon={<CheckIcon size="small" />}
-                  >
-                    {'Confirm/Send'}
-                  </Button>
-
+                  {(!factType || (factType !== 'list')) &&
+                    <Button
+                      className={classes.rowButtonDefault}
+                      onClick={() => {
+                        let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, textInput);
+                        setConfirmPrompt(response);
+                        setConfirmStatus(cStatus);
+                      }}
+                      startIcon={<CheckIcon size="small" />}
+                    >
+                      {'Confirm/Send'}
+                    </Button>
+                  }
                 </Box>
               </Box>
             </DialogActions>
