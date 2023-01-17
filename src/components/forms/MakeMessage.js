@@ -124,6 +124,8 @@ export default ({
   pRecipientName,
   onCancel,
   onComplete,
+  setUrgent = false,
+  setMethod,
   allowCancel = true
 }) => {
 
@@ -138,7 +140,8 @@ export default ({
   const [textInput, setTextInput] = React.useState('');
   const [nameInput, setNameInput] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
-  const [isUrgent, setIsUrgent] = React.useState(false);
+  const [isUrgent, setIsUrgent] = React.useState(setUrgent);
+  const [forceMethod, setForceMethod] = React.useState(setMethod);
   const [imageURL, setImageURL] = React.useState('');
 
   const lambda = new Lambda({
@@ -190,6 +193,7 @@ export default ({
       }
     };
     lambdaPayload.body.values += ' ~ Urgent = ' + (isUrgent ? 'urgent' : 'normal');
+    if (forceMethod) { lambdaPayload.body.method = forceMethod; }
     params.Payload = JSON.stringify(lambdaPayload);
     lambda
       .invoke(params)
@@ -299,11 +303,6 @@ export default ({
       setForceRedisplay(!forceRedisplay);
     }
   };
-
-  const selectRecipient = () => {
-    return (recipientID === '*select');
-  };
-
   function makeName(pName) {
     let ans = pName.split(',');
     switch (ans.length) {
@@ -337,7 +336,7 @@ export default ({
 
   return (
     <Dialog open={forceRedisplay || true} fullScreen className={classes.containerBox}>
-      {selectRecipient() &&
+      {(recipientID === '*select') &&
         <SendMessageDialog
           open={true}
           onClose={() => {
@@ -354,7 +353,7 @@ export default ({
         >
         </SendMessageDialog>
       }
-      {!selectRecipient() &&
+      {(recipientID !== '*select') &&
         <React.Fragment>
           <Box display='flex'
             grow={1}
@@ -364,7 +363,7 @@ export default ({
             alignItems='flex-start'
           >
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {titleText || `Send a message to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
+              {titleText || `Send a${(forceMethod === 'AVA') ? 'n AVA Alert' : ''} message to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
             </DialogContentText>
             <Box>
               <Box

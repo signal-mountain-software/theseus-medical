@@ -1180,7 +1180,7 @@ export default ({
           pRecipientID={defaultValueObj.recipientID}
           pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
           onCancel={onClose}
-          onComplete={onSave}
+          onComplete={onClose}
           allowCancel={true}
         />
       );

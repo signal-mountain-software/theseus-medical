@@ -40,7 +40,7 @@ import GroupAddIcon from '@material-ui/icons/GroupAdd';
 import PatientDialog from '../dialogs/PatientDialog';
 import PersonFilter from '../forms/PersonFilter';
 import AVAConfirm from './AVAConfirm';
-import AVATextInput from '../forms/AVATextInput';
+import MakeMessage from './MakeMessage';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -703,7 +703,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               minWidth={isMobile ? 100 : 150}
                               maxWidth={isMobile ? 100 : 150}
                               alt=''
-                              src={this_item.image ||  getImage(this_item.person_id, index)}
+                              src={this_item.image || getImage(this_item.person_id, index)}
                             />
                           </Box>
                           {(pRole === 'admin' || pRole === 'responsible') &&
@@ -804,14 +804,21 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             </PersonFilter>
           }
           {promptForMessage &&
-            <AVATextInput
-              promptText={`What should your ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : (!messageType ? 'AVA' : messageType))} message to ${recipient.split(':')[0]} say?`}
-              buttonText='Send'
-              onCancel={() => { setPromptForMessage(false); }}
-              onSave={(messageText) => {
-                setPromptForMessage(false);
-                handleSendMessage(messageText, recipient, messageType);
+            <MakeMessage
+              titleText={(messageType.includes('URGENT')) ? 'AVA will attempt to voice call all phones' : null}
+              promptText={`What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`}
+              buttonText={'Send'}
+              sender={{
+                "client_id": pClient,
+                "patient_id": pPatient,
+                "patient_display_name": pPatientName
               }}
+              pRecipientID={recipient.split(':')[1]}
+              pRecipientName={recipient.split(':')[0]}
+              onCancel={() => { setPromptForMessage(false); }}
+              onComplete={() => { setPromptForMessage(false); }}
+              setMethod={(messageType === 'AVA') ? 'AVA' : (messageType.includes('URGENT') ? 'voice' : null)}
+              allowCancel={true}
             />
           }
           {deletePending &&
@@ -828,7 +835,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             >
             </AVAConfirm>
           }
-
           {!showSuperSize &&    // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
@@ -943,7 +949,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       className={classes.rowButtonRed}
                       startIcon={<PhoneInTalkIcon size='small' />}
                     >
-                      {`Urgent ${isMobile ? 'Msg' : 'Message'}`}
+                      {`Call ${isMobile ? 'All' : 'Everyone'}`}
                     </Button>
                     <Button
                       onClick={() => {
