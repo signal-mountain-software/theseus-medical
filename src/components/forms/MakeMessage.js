@@ -126,7 +126,8 @@ export default ({
   onComplete,
   setUrgent = false,
   setMethod,
-  allowCancel = true
+  allowCancel = true,
+  thread_id
 }) => {
 
   const classes = useStyles();
@@ -194,6 +195,7 @@ export default ({
     };
     lambdaPayload.body.values += ' ~ Urgent = ' + (isUrgent ? 'urgent' : 'normal');
     if (forceMethod) { lambdaPayload.body.method = forceMethod; }
+    if (thread_id) { lambdaPayload.body.thread_id = thread_id; }
     params.Payload = JSON.stringify(lambdaPayload);
     lambda
       .invoke(params)

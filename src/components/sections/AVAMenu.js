@@ -13,7 +13,7 @@ import PatientDialog from '../dialogs/PatientDialog';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import AVAConfirm from '../forms/AVAConfirm';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
-import AVATextInput from '../forms/AVATextInput';
+import MakeMessage from '../forms/MakeMessage';
 
 import List from '@material-ui/core/List';
 import Box from '@material-ui/core/Box';
@@ -422,40 +422,16 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       let now = new Date().getTime();
       console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
       let mRecs = await dbClient
-        .query({
-          KeyConditionExpression: 'sender_id = :p and posted_time > :t',
-          FilterExpression: 'common_key = :msr and recipient_address <> :s and delete_flag <> :true',
-          ExpressionAttributeValues: {
-            ':p': pPerson,
-            ':t': now - (10 * oneMinute),
-            ':msr': 'message_status_record',
-            ':s': 'self',
-            ':true': true
-          },
-          TableName: "Messages",
-          IndexName: 'sender_id-index',
-          ScanIndexForward: false,
-          Limit: 10
-        })
-        .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-          }
-          console.log({ 'Error reading Messages': error });
-        });
-      if (!recordExists(mRecs)) {
-        mRecs = await dbClient
           .query({
-            KeyConditionExpression: 'recipient_id = :p and posted_time > :t',
+            KeyConditionExpression: 'deliver_to = :p and created_time > :t',
             FilterExpression: 'delete_flag <> :true',
             ExpressionAttributeValues: {
               ':p': pPerson,
-              ':t': now - (24 * oneHour),
+              ':t': (now - (24 * oneHour)).toString(),
               ':true': true
             },
-            TableName: "Messages",
-            IndexName: 'recipient_id-index',
+            TableName: "TheseusMessages",
+            IndexName: 'deliver_to-index',
             ScanIndexForward: false,
             Limit: 10
           })
@@ -469,14 +445,12 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         if (recordExists(mRecs)) {
           // handle a received message
           let msg = mRecs.Items[0];
-          let httpAt = msg.message_content.indexOf('http');
-          if (httpAt > -1) {
-            let lastSentenceAt = msg.message_content.lastIndexOf('.', httpAt);
-            msg.message_content = msg.message_content.substring(0, lastSentenceAt + 1);
+          let language = msg.language;
+          let msgText = '';
+          if (!msg.content.current[language].text.startsWith('Message from') && (msg.sent_from !== pPerson)) {
+            msgText = `From ${msg.author.author_name}`;
           }
-          if (!msg.message_content.startsWith('Message from') && (msg.sender_id !== pPerson)) {
-            msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
-          }
+          msgText += msg.content.current[language].text;
           let foundMessage = `${msg.posted_time}$~~$${new Date(Number(msg.posted_time)).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
@@ -484,28 +458,18 @@ export default ({ pPerson, patient, pClient, onReset }) => {
             minute: '2-digit',
             hour12: true
           })
-            } - ${msg.message_content}$~~$${msg.message_id}$~~$to$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
-          setMessageReplyRecipient(`${msg.sender_name}:${msg.response_target || msg.sender_id}`);
+            } - ${msgText}$~~$${msg.composite_key}$~~$to$~~$${msg.author.author_name}:${msg.author.author_id}`;
+          setMessageReplyRecipient(`${msg.author.author_name}:${msg.author.author_id}`);
           setMessageText(foundMessage);
           return foundMessage;
         }
-      }
-      else {
-        // handle a sent message
-        let msg = mRecs.Items[0];
-        let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$from$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
-        setMessageText(foundMessage);
-        return foundMessage;
-      }
-      setMessageText(null);
-      setForceRedisplay(!forceRedisplay);
-      return null;
     }
-    catch (e) {
-      setMessageText(null);
-      setForceRedisplay(!forceRedisplay);
-      return null;
+    catch (error) {
+      console.error(`Error at Last message check is`, error);
     }
+    setMessageText(null);
+    setForceRedisplay(!forceRedisplay);
+    return null;
   };
 
   async function putS3Object(pMediaData, pType) {
@@ -781,32 +745,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       response();
     }
   }, [pPerson]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSendMessage = async (pPatient, pMessage, pRecipient = null) => {
-    // program expects pRecipient in the form <display name>:<id>
-    lambda
-      .invoke({
-        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine',
-        InvocationType: 'RequestResponse',
-        LogType: 'Tail',
-        Payload: JSON.stringify({
-          "body": {
-            "client": pClient,
-            "author": pPatient,
-            "values": pRecipient + ' ~ MessageText = ' + pMessage
-          }
-        })
-      })
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
-    enqueueSnackbar(`Sent "${pMessage}" to ${pRecipient.split(':')[0]}`, {
-      variant: 'success'
-    });
-  };
 
   const accessLog = async (pUser, pPwd, pMessage) => {
     var payload =
@@ -1707,17 +1645,24 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           </AVAConfirm>
         }
         {promptForMessage &&
-          <AVATextInput
+          <MakeMessage
+            titleText={`Reply to ${messageReplyRecipient.split(':')[0]}`}
             promptText={`What should your reply to ${messageReplyRecipient.split(':')[0]} say?`}
-            buttonText='Send'
-            onCancel={() => { setPromptForMessage(false); }}
-            onSave={(messageText) => {
-              setPromptForMessage(false);
-              handleSendMessage(pPerson, messageText, messageReplyRecipient);
+            buttonText={'Send'}
+            sender={{
+              "client_id": pClient,
+              "patient_id": session.patient_id || patient.person_id,
+              "patient_display_name": `${patient.name.first} ${patient.name.last}`
             }}
+            pRecipientID={messageReplyRecipient.split(':')[1]}
+            pRecipientName={messageReplyRecipient.split(':')[0]}
+            onCancel={() => { setPromptForMessage(false); }}
+            onComplete={() => { setPromptForMessage(false); }}
+          allowCancel={true}
+          thread_id={messageText.split('$~~$')[2].split('~')[0].slice(2)}
           />
         }
       </React.Fragment >
     </Dialog >
   );
-};;
+};

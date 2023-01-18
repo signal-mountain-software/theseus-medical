@@ -30,7 +30,6 @@ import TextField from '@material-ui/core/TextField';
 import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
 import AVAConfirm from './AVAConfirm';
-import AVATextInput from '../forms/AVATextInput';
 import SendMessageDialog from '../dialogs/SendMessageDialog';
 
 const useStyles = makeStyles(theme => ({
@@ -315,31 +314,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
       }
     }
     return [];
-  };
-
-  const handleSendMessage = async (pPatient, pMessage, pRecipient = null) => {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-    let nqMessage = '';
-    nqMessage = `Sent "${pMessage}" to ${pRecipient.split(':')[0]}`;
-    let lambdaPayload = {
-      "body": {
-        "client": pClient,
-        "author": pPatient,
-        "values": pRecipient + ' ~ MessageText = ' + pMessage
-      }
-    };
-    params.Payload = JSON.stringify(lambdaPayload);
-    lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
-    enqueueSnackbar(nqMessage, {
-      variant: 'success'
-    });
   };
 
   const onScroll = event => {

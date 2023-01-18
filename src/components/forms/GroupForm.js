@@ -430,46 +430,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     });
   };
 
-  const handleSendMessage = async (pMessage, pRecipient = null, pMessageType) => {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-    let nqMessage = '';
-    if (!pRecipient) {
-      pRecipient = pGroupName + ':group=' + pClient + '~' + pGroup;
-      nqMessage = `Sent "${pMessage}" to everyone in ${pGroupName}`;
-      if (pMessageType.toLowerCase() === 'urgent group') { nqMessage += ` as an URGENT (phone call preferred) message!`; }
-    }
-    else if (pMessageType !== 'AVA') {
-      nqMessage = `Sent "${pMessage}" ${pMessageType === 'time_based' ? '' : (pMessageType === 'sms' ? 'via text' : ('via ' + pMessageType))} to ${pRecipient.split(':')[0]}`;
-    }
-    else {
-      nqMessage = `Posted "${pMessage}" as an AVA alert for ${pRecipient.split(':')[0]}`;
-    }
-    if (pRecipient.includes('Administrator')) {
-      pMessage = 'Message for ' + pRecipient.split(':')[0] + ' is: ' + pMessage;
-    }
-    let lambdaPayload = {
-      "body": {
-        "client": pClient,
-        "author": pPatient,
-        "values": pRecipient + ' ~ MessageText = ' + pMessage
-      }
-    };
-    if (pMessageType.toLowerCase() === 'urgent group') { lambdaPayload.body.method = 'urgent'; }
-    else if (pMessageType === 'AVA') { lambdaPayload.body.method = 'AVA'; }
-    params.Payload = JSON.stringify(lambdaPayload);
-    lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
-    enqueueSnackbar(nqMessage, {
-      variant: 'success'
-    });
-  };
-
   const handlePatientEdit = async (pPerson) => {
     let invokeFailed = false;
 
