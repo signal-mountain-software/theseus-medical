@@ -149,6 +149,19 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
+const AWS = require('aws-sdk');
+const s3 = new AWS.S3({
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
 
   const classes = useStyles();
@@ -195,7 +208,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
   };
 
   function makeReadableTime(pJavaDate) {
-    let dDate = new Date(pJavaDate);
+    let dDate = new Date(Number(pJavaDate));
     return dDate.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
@@ -208,8 +221,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
 
   function makeSubject(pContent) {
     if (pContent) {
+      return pContent.slice(0, 1).toUpperCase() + pContent.slice(1);
+      /*
       let lContent = pContent.toLowerCase().trim().split(/[^a-zA-Z0-9 ']+/);
       return (lContent[0] || lContent[1]).split(/[ ]+/g).map(w => { return (w.charAt(0).toUpperCase() + w.substring(1)); }).join(' ');
+      */
     }
     else { return 'AVA Message'; }
   }
@@ -227,22 +243,25 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
     setRowLimit(scrollValue);
   };
 
-  const handleRemoveMessage = async (pMessageID, pIndex) => {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:MessageMaintenance';
-    params.Payload = JSON.stringify({
-      action: "mark_deleted",
-      clientId: pClient,
-      request: {
-        "message_id": pMessageID,
-      }
-    });
-    await lambda
-      .invoke(params)
+  const handleRemoveMessage = async (pMessage_id, pIndex) => {
+    await dbClient
+      .update({
+        Key: {
+          thread_id: pMessage_id.split('~')[0].slice(2),
+          composite_key: pMessage_id
+        },
+        UpdateExpression: 'set delete_flag = :t',
+        ExpressionAttributeValues: {
+          ':t': true
+        },
+        TableName: "TheseusMessages",
+      })
       .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while deleting that item.  Error is ${err.message}`, {
-          variant: 'error'
-        });
+      .catch(error => {
+        enqueueSnackbar(`AVA couldn't delete that message.  Error is ${error}`,
+          { variant: 'error', persist: true }
+        );
+        return;
       });
     let tempMessageList = messageList;
     tempMessageList.splice(pIndex, 1);
@@ -346,6 +365,114 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
     }
   }
 
+
+  React.useEffect(() => {
+    async function initialize() {
+      let messageArray = [];
+      // Get messages to me
+      let mRecs = await dbClient
+        .query({
+          KeyConditionExpression: 'deliver_to = :p',
+          FilterExpression: 'delete_flag <> :true',
+          ExpressionAttributeValues: {
+            ':p': pPerson,
+            ':true': true
+          },
+          TableName: "TheseusMessages",
+          IndexName: 'deliver_to-index',
+          ScanIndexForward: false,
+          Limit: 20
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          }
+          console.log({ 'Error reading Messages': error });
+        });
+      if (mRecs && mRecs.hasOwnProperty('Items')) { 
+        mRecs.Items.forEach(m => { 
+          let language = m.language || 'EN-US';
+          let this_message = {
+            inOut: 'in',
+            delete_flag: m.delete_flag,
+            person_id: m.deliver_to,
+            patient_name: m.author.author_name,
+            sender_name: m.author.author_name,
+            sender_id: m.author.author_id,
+            message_id: m.composite_key,
+            posted_time: m.created_time,
+            deliver_time: m.created_time,
+            common_key: m.thread_id,
+            message_content: m.content.current[language].text,
+            subject: m.subject_line,
+            message_text: m.content.current[language].text
+          };
+          if (m.recipient_list.hasOwnProperty('name')) {
+            this_message.toLine = 'To: ' + (`${m.recipient_list.name.first} ${m.recipient_list.name.last}`).trim();
+          }
+          else { 
+            let oKey = Object.keys(m.recipient_list)[0];
+            this_message.toLine = 'To: ' + (`${m.recipient_list[oKey].name.first} ${m.recipient_list[oKey].name.last}`).trim();
+          }
+          messageArray.push(this_message);
+        })
+      }
+      // Get messages From me
+      mRecs = await dbClient
+        .query({
+          KeyConditionExpression: 'sent_from = :p',
+          FilterExpression: 'delete_flag <> :true',
+          ExpressionAttributeValues: {
+            ':p': pPerson,
+            ':true': true
+          },
+          TableName: "TheseusMessages",
+          IndexName: 'sent_from-index',
+          ScanIndexForward: false,
+          Limit: 20
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          }
+          console.log({ 'Error reading Messages': error });
+        });
+      if (mRecs && mRecs.hasOwnProperty('Items')) {
+        mRecs.Items.forEach(m => {
+          let language = m.language || 'EN-US';
+          let this_message = {
+            inOut: 'out',
+            delete_flag: m.delete_flag,
+            person_id: m.deliver_to,
+            patient_name: m.author.author_name,
+            sender_name: m.author.author_name,
+            sender_id: m.author.author_id,
+            message_id: m.composite_key,
+            posted_time: m.created_time,
+            deliver_time: m.created_time,
+            common_key: m.thread_id,
+            message_content: m.content.current[language].text,
+            subject: m.subject_line,
+            message_text: m.content.current[language].text
+          };
+          if (m.recipient_list.hasOwnProperty('name')) {
+            this_message.toLine = 'To: ' + (`${m.recipient_list.name.first} ${m.recipient_list.name.last}`).trim();
+          }
+          else {
+            let oKey = Object.keys(m.recipient_list)[0];
+            this_message.toLine = 'To: ' + (`${m.recipient_list[oKey].name.first} ${m.recipient_list[oKey].name.last}`).trim();
+          }
+          messageArray.push(this_message);
+        });
+      }
+      setMessageList(messageArray);
+    }
+    initialize();
+  }, [pPerson, pClient]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+
   // ******************
 
   return (
@@ -396,7 +523,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
                         <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                           {(inOut_mode === 'in') &&
                             <Box display='flex' flexDirection='column'>
-                              <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.message_content || this_item.subject || this_item.message_text)}</Typography>
+                              <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.subject || this_item.message_text)}</Typography>
                               <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
                               <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
                               {open[index] &&

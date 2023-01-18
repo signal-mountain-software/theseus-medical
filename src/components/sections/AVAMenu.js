@@ -448,7 +448,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         if (recordExists(mRecs)) {
           // handle a received message
           let msg = mRecs.Items[0];
-          let language = msg.language;
+          let language = msg.language || 'EN-US';
           let msgText = '';
           if (!msg.content.current[language].text.startsWith('Message from') && (msg.sent_from !== pPerson)) {
             msgText = `From ${msg.author.author_name}`;
