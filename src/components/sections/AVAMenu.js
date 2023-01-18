@@ -400,12 +400,15 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   const deleteMessage = async (pMessage_id) => {
     await dbClient
       .update({
-        Key: { message_id: pMessage_id },
+        Key: {
+          thread_id: pMessage_id.split('~')[0].slice(2),
+          composite_key: pMessage_id
+        },
         UpdateExpression: 'set delete_flag = :t',
         ExpressionAttributeValues: {
           ':t': true
         },
-        TableName: "Messages",
+        TableName: "TheseusMessages",
       })
       .promise()
       .catch(error => {
