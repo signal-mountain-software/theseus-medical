@@ -274,34 +274,112 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
   };
 
   async function getMessageResults(pCommonKey) {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:MessageMaintenance';
-    params.Payload = JSON.stringify({
-      action: "send_results",
-      clientId: pClient,
-      request: {
-        "common_key": pCommonKey,
-        "person_id": pPerson
-      }
-    });
-    let invokeFailed = false;
-    const fResp = await lambda
-      .invoke(params)
+    let returnArray = [];
+    let mRecs = await dbClient
+      .query({
+        KeyConditionExpression: 'thread_id = :k AND begins_with(composite_key, :c)',
+        FilterExpression: 'record_type = :t',
+        ExpressionAttributeValues: {
+          ':c': pCommonKey,
+          ':k': pCommonKey.split('~')[0].slice(2),
+          ':t': 'delivery'
+        },
+        TableName: "TheseusMessages",
+        ScanIndexForward: false,
+      })
       .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let returnData = JSON.parse(fResp.Payload);
-      if (returnData.status === 200) {
-        if (returnData.body.length > 0) {
-          return ['~~~', 'Results:', ...returnData.body];
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-      }
+        console.log({ 'Error reading Messages': error });
+      });
+    if (mRecs && mRecs.hasOwnProperty('Items')) {
+      // let timeZones = ['UTC', 'UTC-1', 'UTC-2', 'UTC-3', 'America/New_York', 'America/New_York', 'America/Chicago'];
+      // let timeZone = timeZones[-1 * (authorRec?.time_offset || -5)] || 'America/New_York';
+      let timeZone = 'America/New_York';
+      const oneMinute = 1000 * 60;
+      const oneHour = 60 * oneMinute;
+      let currentTime = new Date().getTime();
+      let Time24HoursAgo = currentTime - (24 * oneHour);
+      let Time7DaysAgo = currentTime - (7 * 24 * oneHour);
+      mRecs.Items.forEach(mR => {
+        let mTime = mR.posted_time;
+        let mInfo = '';
+        let mLine = `Sent to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
+        switch (mR.deliver_method) {
+          case 'sms': {
+            mLine += ' via text message';
+            break;
+          }
+          case 'voice':
+          case 'office': {
+            mLine += ' via phone call';
+            break;
+          }
+          case 'email': {
+            mLine += ' via e-Mail';
+            break;
+          }
+          case 'hold': {
+            mLine += " held for later delivery per recipient's instructions";
+            break;
+          }
+          default: { mLine += ` via ${mR.deliver_method}`; }
+        }
+        if (mR.results) {
+          let mRLast = mR.results[0];
+          mTime = mRLast.posted_time;
+          switch (mRLast.result) {
+            case 'reply': {
+              mLine += '.  Reply received';
+              mInfo = ` Reply is "${mRLast.update_contents.replace(':', ' -')}"`;
+              break;
+            }
+            case 'submitted': {
+              break;
+            }
+            case 'replyReceived': {
+              mLine += '.  Reply received';
+              break;
+            }
+            case 'delivered': {
+              mLine += '.  Delivered';
+              break;
+            }
+            case 'open': {
+              mLine += '.  Opened';
+              break;
+            }
+            default: {
+              mLine += `. ${mRLast.result}`;
+            }
+          }
+        }
+
+        let mDateCheck = new Date(mTime);
+        let mDate = '';
+        if (mTime > Time24HoursAgo) {   // date within the last 24 hours?  Use Time only
+          if ((mDateCheck.getHours() > new Date(currentTime).getHours())) {
+            mDate = ' yesterday';
+          }
+        }
+        else if (mTime > Time7DaysAgo) {  // date within the last 7 days?  Use Day of week ("Tue", "Sun", etc)
+          let mWord = 'on';
+          if ((mDateCheck.getDay() % 6 !== 0) && (mDateCheck.getDay() > new Date().getDay())) {
+            mWord = 'last';
+          }
+          mDate = ` ${mWord} ${mDateCheck.toLocaleString([], { timeZone: timeZone, weekday: 'short' })}`;
+        }
+        else {
+          mDate = ` on ${mDateCheck.toLocaleString([], { timeZone: timeZone, month: 'short', day: 'numeric' })}`;
+        }
+        mLine += `${mDate} at ${mDateCheck.toLocaleString([], { timeZone: timeZone, hour: 'numeric', minute: '2-digit' })}`;
+        mLine += mInfo;
+        returnArray.push(mLine);
+      });
+      return ['~~~', 'Results:', ...returnArray];
     }
-    return [];
   };
 
   async function getReceiptDetails(pCommonKey) {
@@ -390,8 +468,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
           }
           console.log({ 'Error reading Messages': error });
         });
-      if (mRecs && mRecs.hasOwnProperty('Items')) { 
-        mRecs.Items.forEach(m => { 
+      if (mRecs && mRecs.hasOwnProperty('Items')) {
+        mRecs.Items.forEach(m => {
           let language = m.language || 'EN-US';
           let this_message = {
             inOut: 'in',
@@ -403,7 +481,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
             message_id: m.composite_key,
             posted_time: m.created_time,
             deliver_time: m.created_time,
-            common_key: m.thread_id,
+            common_key: m.composite_key,
             message_content: m.content.current[language].text,
             subject: m.subject_line,
             message_text: m.content.current[language].text
@@ -411,20 +489,21 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
           if (m.recipient_list.hasOwnProperty('name')) {
             this_message.toLine = 'To: ' + (`${m.recipient_list.name.first} ${m.recipient_list.name.last}`).trim();
           }
-          else { 
+          else {
             let oKey = Object.keys(m.recipient_list)[0];
             this_message.toLine = 'To: ' + (`${m.recipient_list[oKey].name.first} ${m.recipient_list[oKey].name.last}`).trim();
           }
           messageArray.push(this_message);
-        })
+        });
       }
       // Get messages From me
       mRecs = await dbClient
         .query({
           KeyConditionExpression: 'sent_from = :p',
-          FilterExpression: 'delete_flag <> :true',
+          FilterExpression: 'delete_flag <> :true AND record_type = :t',
           ExpressionAttributeValues: {
             ':p': pPerson,
+            ':t': 'message',
             ':true': true
           },
           TableName: "TheseusMessages",
@@ -452,17 +531,17 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
             message_id: m.composite_key,
             posted_time: m.created_time,
             deliver_time: m.created_time,
-            common_key: m.thread_id,
+            common_key: m.composite_key,
             message_content: m.content.current[language].text,
             subject: m.subject_line,
             message_text: m.content.current[language].text
           };
           if (m.recipient_list.hasOwnProperty('name')) {
-            this_message.toLine = 'To: ' + (`${m.recipient_list.name.first} ${m.recipient_list.name.last}`).trim();
+            this_message.toLine = (`${m.recipient_list.name.first} ${m.recipient_list.name.last}`).trim();
           }
           else {
             let oKey = Object.keys(m.recipient_list)[0];
-            this_message.toLine = 'To: ' + (`${m.recipient_list[oKey].name.first} ${m.recipient_list[oKey].name.last}`).trim();
+            this_message.toLine = (`${m.recipient_list[oKey].name.first} ${m.recipient_list[oKey].name.last}`).trim();
           }
           messageArray.push(this_message);
         });
@@ -526,26 +605,23 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
                               <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.subject || this_item.message_text)}</Typography>
                               <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
                               <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
-                              {open[index] &&
-                                this_item.message_content.replace('http', '\n\rhttp').split(/[\n\r]+/).map((mLine, mIndex) => (
-                                  ((mLine.startsWith('http')) ?
-                                    <a
-                                      href={mLine.split(/\s+/g)[0]}
-                                      target='_blank'
-                                      rel='noopener noreferrer'
-                                      style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                      <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
-                                    </a>
-                                    :
-                                    <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                                ))
-                              }
+                              {this_item.message_content.replace('http', '\n\rhttp').split(/[\n\r]+/).map((mLine, mIndex) => (
+                                ((mLine.startsWith('http')) ?
+                                  <a
+                                    href={mLine.split(/\s+/g)[0]}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                    <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
+                                  </a>
+                                  :
+                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
+                              ))}
                               {open[index] &&
                                 messageResults.map((mLine, mIndex) => (
                                   <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
                                 )
                               }
-
                             </Box>
                           }
                           {(inOut_mode === 'out') &&
@@ -553,11 +629,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
                               <Typography variant='h5' className={classes.lastName} >{this_item.subject || makeSubject(this_item.message_text)}</Typography>
                               <Typography variant='h5' className={classes.firstName}>{`to: ${this_item.toLine}`}</Typography>
                               <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.deliver_time)}</Typography>
-                              {open[index] &&
-                                this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
-                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                                )
-                              }
+                              {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
+                                <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
+                              )}
                               {open[index] &&
                                 messageResults.map((mLine, mIndex) => (
                                   <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
