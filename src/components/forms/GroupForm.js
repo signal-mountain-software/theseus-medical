@@ -475,14 +475,16 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   }
 
   function okToShow(pItem) {
-    if ((person_filter.length > 0) && !filteredPerson(pItem.name, pItem.location, pItem.messaging, pItem)) { return false; }
+    if ((person_filter.length > 0) && !filteredPerson(pItem.name || '', pItem.location || '', pItem.messaging || {}, pItem || {})) {
+      return false;
+    }
     if (pGroup.toLowerCase() === '*all') { return true; }
     if (['responsible', 'admin'].includes(pRole)) { return true; }
     if (pItem.directory_option !== 'exclude') { return true; };
     return false;
   }
 
-  function filteredPerson(pName = { last: '*$*' }, pLoc = '*na*', pMessaging = { sms: '*$*' }, pPerson) {
+  function filteredPerson(pName, pLoc, pMessaging, pPerson) {
     if (singleFilterDigit) {
       return (pName.last.toLowerCase().startsWith(person_filter_lower.trim()) || pLoc.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
     }
@@ -501,6 +503,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       });
     }
     workingMemberList[pIndex].image = getURL(pPerson);
+    console.log(`getImage called for ${pPerson}`);
     return workingMemberList[pIndex];
   }
 
