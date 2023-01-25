@@ -453,7 +453,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           if (!msg.content.current[language].text.startsWith('Message from') && (msg.sent_from !== pPerson)) {
             msgText = `From ${msg.author.author_name}`;
           }
-          msgText += msg.content.current[language].text;
+          msgText += msg.content.current[language].text;    //
           let foundMessage = `${msg.created_time}$~~$${new Date(Number(msg.created_time)).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
