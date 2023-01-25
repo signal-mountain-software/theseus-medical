@@ -1190,6 +1190,7 @@ export default ({
           factType={newFact.activity_key.split('.')[0]}
           factName={factName}
           defaultValue={defaultValue}
+          prompt={message}
           pClient={session.client_id}
           qualifiers={qualifierTable}
           listValues={values}

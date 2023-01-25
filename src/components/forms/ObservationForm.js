@@ -125,7 +125,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ factType, factName, defaultValue, pClient, qualifiers, listValues, onSave, onClose }) => {
+export default ({ factType, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
   const classes = useStyles();
 
@@ -500,7 +500,7 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
             <Typography
               className={classes.subTitle}
             >
-              {`Please select from these options`}
+              {prompt || `Please select from these options`}
             </Typography>
           </Box>
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
