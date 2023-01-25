@@ -454,7 +454,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
             msgText = `From ${msg.author.author_name}`;
           }
           msgText += msg.content.current[language].text;
-          let foundMessage = `${msg.posted_time}$~~$${new Date(Number(msg.posted_time)).toLocaleDateString('en-US', {
+          let foundMessage = `${msg.created_time}$~~$${new Date(Number(msg.created_time)).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
             hour: 'numeric',
