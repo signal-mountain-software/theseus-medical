@@ -905,6 +905,9 @@ export default ({ patient, picture, open, onClose }) => {
                         </RadioGroup>
                       </FormControl>
                     }
+                    {localData.preferred_method !== 'time_based' &&
+                      <Typography className={classes.radioText}>Urgent messages will re-try this method every 30 minutes for 2 hours</Typography>
+                    }
 
                     <Typography className={classes.idText1}>
                       {`My userID is ${patient?.person_id}`}
