@@ -365,7 +365,7 @@ export default ({
             alignItems='flex-start'
           >
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {titleText || `Send a${(forceMethod === 'AVA') ? 'n AVA Alert' : ''} message to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
+              {titleText || `Send a${(forceMethod === 'AVA') ? 'n AVA Alert' : ''} ${thread_id ? 'reply' : 'message'} to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
             </DialogContentText>
             <Box>
               <Box

@@ -48,6 +48,14 @@ const useStyles = makeStyles(theme => ({
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
   },
+  imageArea: {
+    minWidth: '100px',
+    maxWidth: '100px',
+    minHeight: '100px',
+    maxHeight: '100px',
+    marginBottom: theme.spacing(1),
+    marginRight: theme.spacing(1),
+  },
   title: {
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
@@ -183,14 +191,19 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
   const [confirmIndex, setConfirmIndex] = React.useState('');
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [recipient, setRecipient] = React.useState();
+  const [recipientIndex, setRecipientIndex] = React.useState(-1);
   const [open, setOpen] = React.useState([]);
 
   const [inOut_mode, setinOut] = React.useState('in');
+  const [logoURL, setLogoURL] = React.useState('');
+  var localLogoURL;
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const [previousY, setCurrentY] = React.useState(0);
   const scrollValue = 20;
   var rowsWritten;
+
+  const [imageObj, setImageObj] = React.useState({});
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -229,6 +242,70 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
     }
     else { return 'AVA Message'; }
   }
+
+  async function getImage(pPerson) {
+    if (imageObj.hasOwnProperty(pPerson)) { return imageObj[pPerson]; }
+    const imageBucket = 'theseus-medical-storage';
+    const imageURI = `public/patients/${pPerson}.jpg`;
+    let oData;
+    try {
+      await s3.getObject({
+        Bucket: imageBucket,
+        Key: imageURI,
+      }, function (error, data) {
+        if (data) { oData = data; };
+      })
+        .promise();
+      if (!oData || (oData.ContentLength === 0)) {
+        imageObj[pPerson] = logoURL || localLogoURL;
+        return logoURL || localLogoURL;
+      };
+      let gotImage =
+        s3.getSignedUrl('getObject', {
+          Bucket: imageBucket,
+          Key: imageURI,
+          Expires: 3600
+        });
+      imageObj[pPerson] = gotImage;
+      return gotImage;
+    }
+    catch (e) {
+      console.log(`error getting S3 image is ${e}`);
+      imageObj[pPerson] = logoURL || localLogoURL;
+      return logoURL || localLogoURL;
+    }
+  };
+
+  async function getDefaultImage() {
+    const imageBucket = 'ava-icons';
+    const imageURI = 'AVA Logo.png';
+    let oData;
+    try {
+      await s3.getObject({
+        Bucket: imageBucket,
+        Key: imageURI,
+      }, function (error, data) {
+        if (data) { oData = data; };
+      })
+        .promise();
+      if (!oData || (oData.ContentLength === 0)) {
+        return;
+      };
+      let gotImage =
+        s3.getSignedUrl('getObject', {
+          Bucket: imageBucket,
+          Key: imageURI,
+          Expires: 3600
+        });
+      setLogoURL(gotImage);
+      localLogoURL = gotImage;
+      return;
+    }
+    catch (e) {
+      console.log(`error getting S3 image is ${e}`);
+      return;
+    }
+  };
 
   const handleChangeMessageFilter = event => {
     if (event.target.value.length === 0) {
@@ -272,6 +349,18 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
     setForceRedisplay(!forceRedisplay);
     return tempMessageList;
   };
+
+  async function getPerson(parmPerson) {
+    let person = await dbClient
+      .get({
+        Key: { person_id: parmPerson },
+        TableName: "People"
+      })
+      .promise()
+      .catch(error => { console.log(`***fact 332e- caught error in getPerson; error is: ${error}`); });
+    if (person.Item) { return person.Item; }
+    else { return false; }
+  }
 
   async function getMessageResults(pCommonKey) {
     let returnArray = [];
@@ -446,6 +535,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
 
   React.useEffect(() => {
     async function initialize() {
+      await getDefaultImage();
       let messageArray = [];
       // Get messages to me
       let mRecs = await dbClient
@@ -469,8 +559,16 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
           console.log({ 'Error reading Messages': error });
         });
       if (mRecs && mRecs.hasOwnProperty('Items')) {
-        mRecs.Items.forEach(m => {
+        for (let x = 0; x < mRecs.Items.length; x++) {
+          let m = mRecs.Items[x];
           let language = m.language || 'EN-US';
+          let this_image = await getImage(m.author.author_id);
+          if (m.author.author_name === 'AVA notifications') {
+            let sRec = await getPerson(m.author.author_id);
+            if (sRec && sRec.name) {
+              m.author.author_name = `${sRec.name.first} ${sRec.name.last}`;
+            }
+          }
           let this_message = {
             inOut: 'in',
             delete_flag: m.delete_flag,
@@ -478,23 +576,18 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
             patient_name: m.author.author_name,
             sender_name: m.author.author_name,
             sender_id: m.author.author_id,
+            sender_image: this_image,
             message_id: m.composite_key,
             posted_time: m.created_time,
             deliver_time: m.created_time,
             common_key: m.composite_key,
             message_content: m.content.current[language].text,
             subject: m.subject_line,
-            message_text: m.content.current[language].text
+            message_text: m.content.current[language].text,
+            thread_id: m.thread_id
           };
-          if (m.recipient_list.hasOwnProperty('name')) {
-            this_message.toLine = 'To: ' + (`${m.recipient_list.name.first} ${m.recipient_list.name.last}`).trim();
-          }
-          else {
-            let oKey = Object.keys(m.recipient_list)[0];
-            this_message.toLine = 'To: ' + (`${m.recipient_list[oKey].name.first} ${m.recipient_list[oKey].name.last}`).trim();
-          }
           messageArray.push(this_message);
-        });
+        };
       }
       // Get messages From me
       mRecs = await dbClient
@@ -519,7 +612,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
           console.log({ 'Error reading Messages': error });
         });
       if (mRecs && mRecs.hasOwnProperty('Items')) {
-        mRecs.Items.forEach(m => {
+        for (let x = 0; x < mRecs.Items.length; x++) {
+          let m = mRecs.Items[x];
           let language = m.language || 'EN-US';
           let this_message = {
             inOut: 'out',
@@ -536,15 +630,18 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
             subject: m.subject_line,
             message_text: m.content.current[language].text
           };
-          if (m.recipient_list.hasOwnProperty('name')) {
-            this_message.toLine = (`${m.recipient_list.name.first} ${m.recipient_list.name.last}`).trim();
+          let rArray = Object.keys(m.recipient_list);
+          if (rArray.length === 1) {
+            this_message.sender_image = await getImage(m.recipient_list[rArray[0]].id);
+            this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
           }
           else {
-            let oKey = Object.keys(m.recipient_list)[0];
-            this_message.toLine = (`${m.recipient_list[oKey].name.first} ${m.recipient_list[oKey].name.last}`).trim();
+            this_message.sender_image = logoURL || localLogoURL;
+            this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
+            this_message.toLine += ` and ${rArray.length - 1} others`;
           }
           messageArray.push(this_message);
-        });
+        };
       }
       setMessageList(messageArray);
     }
@@ -602,13 +699,24 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
                         <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                           {(inOut_mode === 'in') &&
                             <Box display='flex' flexDirection='column'>
-                              <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.subject || this_item.message_text)}</Typography>
-                              <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
-                              <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
+                              <Box display='flex' flexDirection='row'>
+                                <Box
+                                  className={classes.imageArea}
+                                  component="img"
+                                  alt={''}
+                                  src={this_item.sender_image}
+                                />
+                                <Box display='flex' flexDirection='column'>
+                                  <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.subject || this_item.message_text)}</Typography>
+                                  <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
+                                  <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
+                                </Box>
+                              </Box>
                               {this_item.message_content.replace('http', '\n\rhttp').split(/[\n\r]+/).map((mLine, mIndex) => (
                                 ((mLine.startsWith('http')) ?
                                   <a
                                     href={mLine.split(/\s+/g)[0]}
+                                    key={`prefLine-${mIndex}-href`}
                                     target='_blank'
                                     rel='noopener noreferrer'
                                     style={{ color: 'inherit', textDecoration: 'underline' }}>
@@ -626,9 +734,19 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
                           }
                           {(inOut_mode === 'out') &&
                             <Box display='flex' flexDirection='column'>
-                              <Typography variant='h5' className={classes.lastName} >{this_item.subject || makeSubject(this_item.message_text)}</Typography>
-                              <Typography variant='h5' className={classes.firstName}>{`to: ${this_item.toLine}`}</Typography>
-                              <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.deliver_time)}</Typography>
+                              <Box display='flex' flexDirection='row'>
+                                <Box
+                                  className={classes.imageArea}
+                                  component="img"
+                                  alt={''}
+                                  src={this_item.sender_image}
+                                />
+                                <Box display='flex' flexDirection='column'>
+                                  <Typography variant='h5' className={classes.lastName} >{this_item.subject || makeSubject(this_item.message_text)}</Typography>
+                                  <Typography variant='h5' className={classes.firstName}>{`to: ${this_item.toLine}`}</Typography>
+                                  <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.deliver_time)}</Typography>
+                                </Box>
+                              </Box>
                               {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
                                 <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
                               )}
@@ -660,7 +778,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
                               <Button
                                 onClick={() => {
                                   setPromptForMessage(true);
-                                  setRecipient(`${this_item.patient_name || this_item.sender_name}:` + this_item.patient_id);
+                                  setRecipient(`${this_item.sender_name}:${this_item.sender_id}`);
+                                  setRecipientIndex(index);
                                 }}
                                 className={classes.rowButtonGreen}
                                 startIcon={<SendIcon fontSize="small" />}
@@ -678,9 +797,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
               ))}
             </List>
           </Paper>
-          {promptForMessage &&
+          {
+            promptForMessage &&
             <MakeMessage
-              titleText={`Send a Message to ${recipient.split(':')[0]}`}
+              titleText={`Send a Reply to ${recipient.split(':')[0]}`}
               promptText={`What's the Message?`}
               buttonText={'Send'}
               sender={pSession}
@@ -689,9 +809,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
               onCancel={() => { setPromptForMessage(false); }}
               onComplete={() => { setPromptForMessage(false); }}
               allowCancel={true}
+              thread_id={messageList[recipientIndex].thread_id}
             />
           }
-          {deletePending &&
+          {
+            deletePending &&
             <AVAConfirm
               promptText={confirmMessage}
               onCancel={() => {
@@ -704,7 +826,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
             >
             </AVAConfirm>
           }
-          {showAddPrompt &&
+          {
+            showAddPrompt &&
             <SendMessageDialog
               open={true}
               onClose={() => {
@@ -753,7 +876,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
               </Box>
             </DialogActions>
           }
-        </React.Fragment>
+        </React.Fragment >
       }
     </Dialog >
   );
