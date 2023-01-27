@@ -425,47 +425,47 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       let now = new Date().getTime();
       console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
       let mRecs = await dbClient
-          .query({
-            KeyConditionExpression: 'deliver_to = :p and created_time > :t',
-            FilterExpression: 'delete_flag <> :true',
-            ExpressionAttributeValues: {
-              ':p': pPerson,
-              ':t': (now - (24 * oneHour)).toString(),
-              ':true': true
-            },
-            TableName: "TheseusMessages",
-            IndexName: 'deliver_to-index',
-            ScanIndexForward: false,
-            Limit: 10
-          })
-          .promise()
-          .catch(error => {
-            if (error.code === 'NetworkingError') {
-              enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-            }
-            console.log({ 'Error reading Messages': error });
-          });
-        if (recordExists(mRecs)) {
-          // handle a received message
-          let msg = mRecs.Items[0];
-          let language = msg.language || 'EN-US';
-          let msgText = '';
-          if (!msg.content.current[language].text.startsWith('Message from') && (msg.sent_from !== pPerson)) {
-            msgText = `From ${msg.author.author_name} - `;
+        .query({
+          KeyConditionExpression: 'deliver_to = :p and created_time > :t',
+          FilterExpression: 'delete_flag <> :true',
+          ExpressionAttributeValues: {
+            ':p': pPerson,
+            ':t': (now - (24 * oneHour)).toString(),
+            ':true': true
+          },
+          TableName: "TheseusMessages",
+          IndexName: 'deliver_to-index',
+          ScanIndexForward: false,
+          Limit: 10
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
           }
-          msgText += msg.content.current[language].text;
-          let foundMessage = `${msg.created_time}$~~$${new Date(Number(msg.created_time)).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-          })
-            } - ${msgText}$~~$${msg.composite_key}$~~$to$~~$${msg.author.author_name}:${msg.author.author_id}`;
-          setMessageReplyRecipient(`${msg.author.author_name}:${msg.author.author_id}`);
-          setMessageText(foundMessage);
-          return foundMessage;
+          console.log({ 'Error reading Messages': error });
+        });
+      if (recordExists(mRecs)) {
+        // handle a received message
+        let msg = mRecs.Items[0];
+        let language = msg.language || 'EN-US';
+        let msgText = '';
+        if (!msg.content.current[language].text.startsWith('Message from') && (msg.sent_from !== pPerson)) {
+          msgText = `From ${msg.author.author_name} - `;
         }
+        msgText += msg.content.current[language].text;
+        let foundMessage = `${msg.created_time}$~~$${new Date(Number(msg.created_time)).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        })
+          } - ${msgText}$~~$${msg.composite_key}$~~$to$~~$${msg.author.author_name}:${msg.author.author_id}`;
+        setMessageReplyRecipient(`${msg.author.author_name}:${msg.author.author_id}`);
+        setMessageText(foundMessage);
+        return foundMessage;
+      }
     }
     catch (error) {
       console.error(`Error at Last message check is`, error);
@@ -781,7 +781,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       user_id: pUser,
       activity_code: pCode,
       activity_name: pName,
-      AVA_version: `23.1.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+      AVA_version: `23.1.28${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
     };
     let workLog = activityLogRecords;
     workLog.push(activityLogRec);
@@ -1199,7 +1199,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA vers 23.1.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA vers 23.1.28${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   <Typography className={classes.popUpFooter} >{makeExpiration()}
                   </Typography>
                   <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
@@ -1232,7 +1232,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 23.1.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography variant='caption' >{`version 23.1.28${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -1661,8 +1661,8 @@ export default ({ pPerson, patient, pClient, onReset }) => {
             pRecipientName={messageReplyRecipient.split(':')[0]}
             onCancel={() => { setPromptForMessage(false); }}
             onComplete={() => { setPromptForMessage(false); }}
-          allowCancel={true}
-          thread_id={messageText.split('$~~$')[2].split('~')[0].slice(2)}
+            allowCancel={true}
+            thread_id={messageText.split('$~~$')[2].split('~')[0].slice(2)}
           />
         }
       </React.Fragment >

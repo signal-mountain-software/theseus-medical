@@ -23,7 +23,7 @@ export default () => {
     return (
         <Box mt={3}>
             <Typography align='center'>
-                {`Loading AVA version 23.1.18${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+                {`Loading AVA version 23.1.28${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
             </Typography>
         </Box>
     );
