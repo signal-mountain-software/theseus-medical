@@ -15,6 +15,7 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 
 import AVAConfirm from './AVAConfirm';
+import AVAUtilities from '../../util/AVAUtilities';
 
 const useStyles = makeStyles(theme => ({
   textLine: {
@@ -125,7 +126,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ factType, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
+export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
   const classes = useStyles();
 
@@ -138,11 +139,9 @@ export default ({ factType, factName, defaultValue, prompt, pClient, qualifiers,
 
   const [textInput, setTextInput] = React.useState();
   const [initialLoadComplete, setLoadComplete] = React.useState();
-  // const [displayRows, setDisplayRows] = React.useState();
-
   const [dataRows, setDataRows] = React.useState();
-  // const [checked, setChecked] = React.useState();
-  // const [chosenQual, setChosenQual] = React.useState();
+
+  const factType = fact.activity_key.split('.')[0];
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -302,7 +301,7 @@ export default ({ factType, factName, defaultValue, prompt, pClient, qualifiers,
             break;
           }
           case 'display': {
-            ignore = (oValue.toLowerCase() === 'on');
+            ignore = (oValue.toLowerCase() === 'off');
             break;
           }
           case 'required': {
@@ -362,38 +361,12 @@ export default ({ factType, factName, defaultValue, prompt, pClient, qualifiers,
     setForceRedisplay(!forceRedisplay);
   };
 
-  const handleDateExit = (event, this_item) => {
-    let goodDate = new Date(event.target.value);
-    if (isNaN(goodDate)) {
-      let tNext = event.target.value.trim().toLowerCase().startsWith('next');
-      if (tNext) {
-        let dayWord = event.target.value.split(' ')[1].trim();
-        event.target.value = dayWord;
-      }
-      let tDate = event.target.value.substr(0, 3).toLowerCase();
-      let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
-      goodDate = new Date(Date.now());
-      if (dOfw > -1) {
-        if ((goodDate.getDay() > dOfw) && tNext) {
-          tNext = false;
-        }
-        goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + (tNext ? 7 : 0));
-      }
-      else if (tDate === 'tom') {
-        goodDate.setDate(goodDate.getDate() + 1);
-      }
-      else if (tDate !== 'tod') {
-        goodDate = new Date(event.target.value);
-      }
-    }
-    let current = new Date(Date.now());
-    current.setHours(0, 0, 0, 0);
-    if (goodDate < current) {
-      let yyyy = current.getFullYear();
-      goodDate.setFullYear(yyyy);
-      if (goodDate < current) { goodDate.setFullYear(yyyy + 1); }
-    };
-    textInput[this_item.text] = goodDate.toDateString();
+  const handleDateExit = async (event, this_item) => {
+    let [readableDate, returnDate, returnDateStamp, returnDateYMD] = AVAUtilities('makeRelativeDate', event.target.value);
+    textInput[this_item.text] = readableDate;
+    textInput[this_item.text + '-stamped'] = returnDateStamp;
+    textInput[this_item.text + '-date'] = returnDate;
+    textInput[this_item.text + '-ymd'] = returnDateYMD;
     setTextInput(textInput);
   };
 
@@ -450,7 +423,7 @@ export default ({ factType, factName, defaultValue, prompt, pClient, qualifiers,
     return (isChecked(pObj) && !!dataRows && dataRows.hasOwnProperty(pObj.text));
   }
 
-  function makeConfirm(pDisplayRows, pChecked, textInput = {'empty': true}) {
+  function makeConfirm(pDisplayRows, pChecked, textInput = { 'empty': true }) {
     let workChecked = [];
     let errorsExist = false;
     let errorMessage = ['Please correct these errors', '----'];
@@ -471,8 +444,8 @@ export default ({ factType, factName, defaultValue, prompt, pClient, qualifiers,
             for (let key in dataRows.chosenQual[r.text]) {
               if (dataRows.chosenQual[r.text][key] && (dataRows.chosenQual[r.text][key].length > 0)) {
                 dataRows.chosenQual[r.text][key].forEach(qRow => {
-                  responseArray.push(`[indent=1]${qRow}`)  
-                })
+                  responseArray.push(`[indent=1]${qRow}`);
+                });
               }
             }
           }
@@ -648,7 +621,21 @@ export default ({ factType, factName, defaultValue, prompt, pClient, qualifiers,
               cancelText={'Go back'}
               confirmText={'Save/Send'}
               onCancel={() => { setConfirmStatus(''); }}
-                onConfirm={() => { onSave(checkedToSave, textInput, dataRows.chosenQual); }}
+              onConfirm={() => {
+                if (factType === 'service') {
+                  AVAUtilities('putServiceRequest',
+                    {
+                      client: pClient,
+                      author: fact.patient_id,
+                      requestType: fact.value.freeText.requestType,
+                      onBehalfOf: textInput[fact.value.freeText.onBehalfOf] || fact.patient_id,
+                      foreignKey: textInput[fact.value.freeText.foreignKey] || fact.value.freeText.foreignKey || '*tbd*',
+                      request: { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual }
+                    }
+                  );
+                }
+                onSave(checkedToSave, textInput, dataRows.chosenQual);
+              }}
             >
             </AVAConfirm>
           }

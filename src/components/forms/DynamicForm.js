@@ -1187,7 +1187,7 @@ export default ({
     case 'observation_form':
       return (
         <ObservationForm
-          factType={newFact.activity_key.split('.')[0]}
+          fact={newFact}
           factName={factName}
           defaultValue={defaultValue}
           prompt={message}
