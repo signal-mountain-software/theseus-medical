@@ -260,6 +260,13 @@ export default function () {
         return (!pString ? '' : pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase());
     }
 
+    function titleCase(pString) {
+        let words = pString.split(/\W+/);
+        let returnString = '';
+        words.forEach(w => { returnString += sentenceCase(w) + ' '; });
+        return returnString.trim();
+    }
+
     function formatDateTime(pType = 'rel', pInput) {
         let targetDateStamp, targetDate;
 
@@ -328,7 +335,7 @@ export default function () {
         let targetDateYMD = targetDate.getFullYear()
             + '.' + (targetDate.getMonth() + 101).toString().slice(1)
             + '.' + (targetDate.getDate() + 100).toString().slice(1);
-        return [sentenceCase(mDate), targetDate, targetDateStamp, targetDateYMD];
+        return [titleCase(mDate), targetDate, targetDateStamp, targetDateYMD];
 
         function addDays(pDate, pDays) {
             const copy = pDate;
@@ -377,7 +384,7 @@ export default function () {
                         }
                         else {
                             variant = requestedDofWeek - currentDofWeek;
-                            if (variant === 0) { variant = 7; }
+                            if (variant <= 0) { variant += 7; }
                         }
                         return addDays(currentDate, variant);
                     }
