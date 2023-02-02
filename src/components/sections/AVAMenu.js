@@ -1176,7 +1176,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   setLoading('Checking messages');
                   setForceRedisplay(!forceRedisplay);
                   await getMessage(session.patient_id);
-                  setLoading('Refreshing your AVA menu');
+                  setLoading('Restarting AVA');
                   setForceRedisplay(!forceRedisplay);
                   await updateAVA(sectionOpen, mainMenu);
                   await buildMenu();
@@ -1191,7 +1191,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   key={'vRowRefresh'}
                 >
                   <AutorenewIcon />
-                  <Typography className={classes.popUpMenuRow} >{'Refresh'}</Typography>
+                  <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
                 </Box>
               </MenuItem>
               <MenuItem>
