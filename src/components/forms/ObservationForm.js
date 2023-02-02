@@ -1,5 +1,6 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
+import { Auth } from '@aws-amplify/auth';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import TextField from '@material-ui/core/TextField';
@@ -13,6 +14,16 @@ import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
+
+import ExitToAppIcon from '@material-ui/icons/ExitToApp';
+import HomeIcon from '@material-ui/icons/Home';
+import AutorenewIcon from '@material-ui/icons/Autorenew';
+
+import Avatar from '@material-ui/core/Avatar';
+import Menu from '@material-ui/core/Menu';
+import MenuList from '@material-ui/core/MenuList';
+import MenuItem from '@material-ui/core/MenuItem';
+
 
 import AVAConfirm from './AVAConfirm';
 import AVAUtilities from '../../util/AVAUtilities';
@@ -45,6 +56,29 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 50,
   },
+  messageArea: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+  },
+  profileArea: {
+    alignItems: 'center'
+  },
+  popUpMenu: {
+    marginRight: theme.spacing(3),
+    paddingRight: 2,
+  },
+  popUpMenuRow: {
+    marginLeft: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  popUpFooter: {
+    fontSize: theme.typography.fontSize * 0.8,
+  },
+
   qualText: {
     fontSize: theme.typography.fontSize * 1.0,
     marginLeft: 0,
@@ -98,7 +132,7 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.8
   },
   title: {
-    marginTop: theme.spacing(3),
+    marginTop: theme.spacing(2),
     marginRight: theme.spacing(2),
     marginLeft: theme.spacing(2),
     marginBottom: 0,
@@ -141,7 +175,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const [initialLoadComplete, setLoadComplete] = React.useState();
   const [dataRows, setDataRows] = React.useState();
 
+  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
+  const [anchorEl, setAnchorEl] = React.useState(null);
+
   const factType = fact.activity_key.split('.')[0];
+
+  const handleClick = async (event) => {
+    setAnchorEl(event.currentTarget);
+  };
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -464,17 +505,77 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     >
       {!!dataRows && dataRows.hasOwnProperty('displayRows') && dataRows.displayRows.length > 0 &&
         <React.Fragment>
-          <Box display='flex' flexDirection='column' key={'titlesection'}>
-            <Typography
-              className={classes.title}
-            >
-              {factName}
-            </Typography>
-            <Typography
-              className={classes.subTitle}
-            >
-              {prompt || `Please select from these options`}
-            </Typography>
+          {/* Header with Avatar, Message, and VertMenu */}
+          <Box
+            display='flex' flexDirection='row'
+            className={classes.messageArea}
+            key={'topBox'}
+          >
+            <Box display='flex' flexDirection='column' key={'titlesection'}>
+              <Typography
+                className={classes.title}
+              >
+                {factName}
+              </Typography>
+              <Typography
+                className={classes.subTitle}
+              >
+                {prompt || `Please select from these options`}
+              </Typography>
+            </Box>
+            <Box
+              paddingRight={2}
+              marginTop={1}
+              aria-controls='hidden-menu'
+              aria-haspopup='true'
+              onClick={(event) => {
+                handleClick(event);
+                setPopupMenuOpen(true);
+              }}>
+              <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
+            </Box>
+            <Menu
+              id='hidden-menu'
+              anchorEl={anchorEl}
+              open={popupMenuOpen}
+              onClose={() => { setPopupMenuOpen(false); }}
+              keepMounted>
+              <MenuList className={classes.popUpMenu}>
+                <MenuItem
+                  onClick={() => {
+                    onClose();
+                  }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowHome'}
+                  >
+                    <HomeIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Go to AVA Menu'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    let jumpTo = window.location.origin;
+                    window.location.replace(jumpTo);
+                  }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowRefresh'}
+                  >
+                    <AutorenewIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem>
+                  <Box
+                    display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                    key={'vRowRefresh'}
+                  >
+                    <Typography className={classes.popUpFooter} >{`AVA vers 23.1.28${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  </Box>
+                </MenuItem>
+              </MenuList>
+            </Menu>
           </Box>
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
