@@ -369,12 +369,15 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   };
 
   const handleAbort = async () => {
+    onClose();
+    /*  Eliminate possible death spiral...
     if (pGroup_id) { onClose(); }
     else {
       setChanges(false);
       setShowGroupSelect(true);
       await getGroupsManagedObject(pSession.patient_id)
     }
+    */
   };
 
   // **************************
