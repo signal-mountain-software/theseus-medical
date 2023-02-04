@@ -2,6 +2,8 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
+import { makeDate, makeNumber, recordExists, sentenceCase } from '../../util/AVAUtilities';
+
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -732,7 +734,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         setLoading('Getting your Information');
         setForceRedisplay(!forceRedisplay);
         getImage(session.patient_id || patient.person_id);
-        makeName(session.patient_display_name || patient.name.first || pPerson);
+        makeGreetingName(session.patient_display_name || patient.name.first || pPerson);
         makeGreeting();
         setLoading('Getting recent messages');
         setForceRedisplay(!forceRedisplay);
@@ -881,12 +883,117 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         if (pDefault && (pDefault !== '') && !pDefault.includes('[')) {
           activityResponse.body.activityData[0].default_value = pDefault;
         }
+        if (activityResponse.body.activityData[0].type === 'request_dashboard') {
+          activityResponse.body.activityData[0].seed_data = await buildDataForRequestDashboard();
+        }
         setSelected(activityResponse.body.activityData[0]);
         return activityResponse.body.activityData[0];
       }
     };
     return [];
   };
+
+  const buildDataForRequestDashboard = async () => {
+
+    const requestNames = {
+      maint: 'Maintenance Request',
+      meal: 'Meal Order',
+      guest_room: 'Guest Room Reservation Request',
+      trans: 'Transportation Request',
+      breakfast: 'Breakfast Order'
+    };
+    
+    let qList = await getRequests_byPerson(session.patient_id, null);
+    return qList.map(i => {
+      i.formatted_type = requestNames[i.request_type] || `${sentenceCase(i.request_type)} request`;
+      if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
+      [i.display_date,] = makeDate(i.request_date, 'rel');
+      if (makeNumber(i.last_update) > makeNumber(i.request_date)) {
+        [i.update_date,] = makeDate(i.last_update, 'rel');
+      }
+      if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
+        i.formatted_request = formatRequest(i, i.original_request);
+      }
+      else {
+        i.formatted_request = [
+          ['detail', i.original_request || 'No information available']
+        ];
+      }
+      i.checked = false;
+      i.open = false;
+      return i;
+    });
+
+    function formatRequest(i, req) {
+      let returnMessage = [];
+      if (!('textInput' in req)) { req.textInput = {}; }
+      if (!('qualifiers' in req)) { req.qualifiers = []; }
+      if (!('selections' in req)) { req.selections = []; }
+      returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
+      req.selections.forEach(s => {
+        let dLine = s;
+        if (s in req.textInput) {
+          dLine += ` - ${req.textInput[s]}`;
+          delete req.textInput[s];
+        }
+        returnMessage.push(['detail', dLine]);
+        if (s in req.qualifiers) {
+          for (let q in req.qualifiers[s]) {
+            let qLast = req.qualifiers[s][q].length - 1;
+            if (qLast >= 0) {
+              let qLine = `${q} -`;
+              req.qualifiers[s][q].forEach((qV, qX) => {
+                qLine += ` ${qV}`;
+                if ((qX < qLast) && (qLast > 1)) { qLine += ','; }  // array longer than 2
+                if (qX === (qLast - 1)) { qLine += ' and'; }  // next to last entry in array
+              });
+              returnMessage.push(['qual', qLine]);
+            }
+          }
+        }
+      });   // done with all selections; is there any text left?
+      for (let k in req.textInput) {
+        if (['-stamped', '-date', '-ymd'].some(w => { return k.includes(w); })) { continue; }
+        if (typeof req.textInput[k] === 'string') {
+          if (req.textInput[k] !== i.on_behalf_of) {
+            let kLow = k.toLowerCase().trim();
+            if (['description', 'summary', 'details'].some(w => { return kLow.includes(w); })) {
+              returnMessage.shift(['text', req.textInput[k]]);
+            }
+            else {
+              returnMessage.push(['text', `${k} - ${req.textInput[k]}`]);
+            }
+          }
+        }
+      };
+      return returnMessage;
+    }
+
+    async function getRequests_byPerson(rP, rT) {
+      let qQ = {
+        TableName: 'ServiceRequests',
+        IndexName: 'requestor-type-index',
+        KeyConditionExpression: 'requestor = :rP',
+        ExpressionAttributeValues: { ':rP': rP }
+      };
+      if (rT) {
+        qQ.KeyConditionExpression += ' and request_type = :rT';
+        qQ.ExpressionAttributeValues[':rT'] = rT;
+      }
+      let qR = await dbClient
+        .query(qQ)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            console.log(`Security Violation or no Internet Connection`);
+          }
+          console.log({ 'Error reading ServiceRequests by Person': error });
+        });
+      if (recordExists(qR)) { return qR.Items; }
+      else { return []; }
+    }
+
+  }
 
   const getActivityHistory = async (pActivity) => {
     let invokeFailed = false;
@@ -943,13 +1050,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     }));
   }
 
-  function recordExists(recordId) {
-    if (!recordId) { return false; }
-    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
-    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
-  }
-
-  function makeName(pString) {
+  function makeGreetingName(pString) {
     let response = pString.split(':')[0].trim().split(/[\s]+/)[0];
     setGreetingName(response);
     return response;

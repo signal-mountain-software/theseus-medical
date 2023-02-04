@@ -14,6 +14,7 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import ObservationForm from '../forms/ObservationForm';
+import RequestDashboard from '../dialogs/RequestDashboard';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
@@ -258,6 +259,7 @@ export default ({
   setMessage,
   setStatusMessage,
   observationKey,
+  seedData,
   onError,
   onSave,
   onClose,
@@ -1202,6 +1204,15 @@ export default ({
             setNewFact(newFact);
             onSave();
           }}
+          onClose={onClose}
+        />
+      );
+    case 'request_dashboard':
+      return (
+        <RequestDashboard
+          session={session}
+          filter={{ person_id: session.patient_id }}
+          seedData={seedData}
           onClose={onClose}
         />
       );
