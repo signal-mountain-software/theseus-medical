@@ -902,7 +902,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       trans: 'Transportation Request',
       breakfast: 'Breakfast Order'
     };
-    
+
     let qList = await getRequests_byPerson(session.patient_id, null);
     return qList.map(i => {
       i.formatted_type = requestNames[i.request_type] || `${sentenceCase(i.request_type)} request`;
@@ -989,11 +989,16 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           }
           console.log({ 'Error reading ServiceRequests by Person': error });
         });
-      if (recordExists(qR)) { return qR.Items; }
+      if (recordExists(qR)) {
+        return qR.Items.sort((a, b) => {
+          if (a.last_update > b.last_update) { return -1; }
+          if (a.last_update < b.last_update) { return 1; }
+        });
+      }
       else { return []; }
     }
 
-  }
+  };
 
   const getActivityHistory = async (pActivity) => {
     let invokeFailed = false;

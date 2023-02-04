@@ -26,7 +26,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 
 
 import AVAConfirm from './AVAConfirm';
-import AVAUtilities from '../../util/AVAUtilities';
+import { putServiceRequest, makeDate } from '../../util/AVAUtilities';
 
 const useStyles = makeStyles(theme => ({
   textLine: {
@@ -403,7 +403,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   const handleDateExit = async (event, this_item) => {
-    let [readableDate, returnDate, returnDateStamp, returnDateYMD] = AVAUtilities('makeRelativeDate', event.target.value);
+    let [readableDate, returnDate, returnDateStamp, returnDateYMD] = makeDate(event.target.value, 'rel');
     textInput[this_item.text] = readableDate;
     textInput[this_item.text + '-stamped'] = returnDateStamp;
     textInput[this_item.text + '-date'] = returnDate;
@@ -722,9 +722,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               cancelText={'Go back'}
               confirmText={'Save/Send'}
               onCancel={() => { setConfirmStatus(''); }}
-              onConfirm={() => {
+              onConfirm={async () => {
                 if (factType === 'service') {
-                  AVAUtilities('putServiceRequest',
+                  await putServiceRequest(
                     {
                       client: pClient,
                       author: fact.patient_id,
@@ -732,8 +732,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       onBehalfOf: textInput[fact.value.freeText.onBehalfOf] || fact.patient_id,
                       foreignKey: textInput[fact.value.freeText.foreignKey] || fact.value.freeText.foreignKey || '*tbd*',
                       request: { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual }
-                    }
-                  );
+                    })
                 }
                 onSave(checkedToSave, textInput, dataRows.chosenQual);
               }}
