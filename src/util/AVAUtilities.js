@@ -9,78 +9,12 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
     secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default function () {
-
-    let argumentArray = [...arguments];
-    let functionToCall = argumentArray[0];
-    argumentArray.shift();
-
-    switch (functionToCall) {
-        case 'putServiceRequest': {
-            const goFunction = async () => {
-                returnArray = await putServiceRequest(...argumentArray);
-            };
-            let returnArray = [];
-            goFunction();
-            return returnArray;
-        }
-        case 'makeRelativeDate': {
-            return makeDate(argumentArray[0], 'rel');
-        }
-        case 'makeAbsoluteDate': {
-            return makeDate(argumentArray[0], 'abs');
-        }
-        case 'recordExists': {
-            return recordExists(...argumentArray);
-        }
-        default: {
-            return null;
-        }
-    }
-}
-
-// Functions
-
-/*
- async function getGroupMembership(pPerson, pClient = null) {
-    let batchGetRequest = {
-        RequestItems: {
-            'Groups': {
-                Keys: []
-            }
-        }
-    };
-    // requestor.groups was unexpectedly found to have duplicate entries in one instance
-    // When that happened, this batchGetRequest would fail and no menu was rendered at all
-    [...new Set(pGroupList)].forEach(g => {
-        if (g.includes('//')) { [gClient, gGroup] = g.split('//'); }
-        else { gClient = (pClient || masterClient); gGroup = g; }
-        batchGetRequest.RequestItems.Groups.Keys.push(
-            {
-                client_id: gClient,
-                group_id: gGroup
-            }
-        );
-    });
-    let groupRecs = await dbClient
-        .batchGet(batchGetRequest)
-        .promise()
-        .catch(error => {
-            clt({ 'Bad get on Groups - caught error is': error });
-        });
-    if (groupRecs && ('Responses' in groupRecs)) {
-        return groupRecs.Responses.Groups;
-    }
-    else { return []; }
-}
-*/
 
 export function recordExists(recordId) {
     if (!recordId) { return false; }
     if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
     else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
 }
-
 
 export function addDays(pDate, pDays) {
     const copy = pDate;
@@ -138,53 +72,7 @@ export async function getPerson(pPerson, pElement = '*all') {
             return peopleRec.Item;
         }
     }
-
 };
-
-export async function putServiceRequest(body) {
-
-    /* request is an object with...
-            body: {
-                client: <string> (required),
-                author: <user ID> (required)
-                requestType: <string> (required)
-                [requestDate: <timestamp>] (optional - defaults to currentTime),
-                [onBehalfOf: <string>] (optional - defaults to author's name)
-                request: <object> (required)
-        };
-    */
-
-    let now = new Date().getTime();
-    if (!body.requestDate) { body.requestDate = now; };
-    body.$Date = body.requestDate.toString();
-    let serviceRequestRec = {
-        "client_id": body.client,
-        "request_id": `${body.author}~${body.$Date}`,
-        "requestor": body.author,
-        "on_behalf_of": body.onBehalfOf || getPerson(body.author, 'name'),
-        "request_type": body.requestType,
-        "request_date": body.requestDate,
-        "original_request": body.request,
-        "local_key": body.localKey || `${body.$Date.substr(2, 4)}-${body.$Date.substr(6, 4)}`,
-        "foreign_key": body.foreignKey || '*tbd*',
-        "last_update": now,
-        "last_status": 'Submitted',
-        "last_note": null
-    };
-    cl({ 'adding ServiceRequestRec as': serviceRequestRec });
-    let goodWrite = true;
-    await dbClient
-        .put({
-            Item: serviceRequestRec,
-            TableName: "ServiceRequests"
-        })
-        .promise()
-        .catch(error => {
-            clt({ 'Bad put to ServiceRequests - caught error is': error });
-            goodWrite = false;
-        });
-    return (goodWrite ? `${sentenceCase(body.requestType)} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added');
-}
 
 export async function getPersonDetails(pPerson) {
     // get the Person's name and contact information
@@ -250,6 +138,7 @@ export function sentenceCase(pString) {
 }
 
 export function titleCase(pString) {
+    if (!pString) { return ''; }
     let words = pString.split(/\s+/);
     let returnString = '';
     words.forEach(w => {
@@ -301,76 +190,101 @@ export function makeNumber(pNum) {
     }
 };
 
-export function makeDate(pInput, pType = 'rel') {
+export function makeDate(pInput) {
+    if (!pInput) {
+        return {
+            'relative': '',
+            'absolute': '',
+            'date': null,
+            'timestamp': 0,
+            'ymd': '2099.01.01'
+        };
+    }
     let targetDateStamp, targetDate;
     if (pInput instanceof Date) {
         targetDateStamp = pInput.getTime();
         targetDate = pInput;
     }
-    else if ((typeof pInput) !== 'string') {
-        targetDate = new Date(pInput);
-        targetDateStamp = targetDate.getTime();
-    }
     else {
-        targetDate = buildDate(pInput);
-        targetDateStamp = targetDate.getTime();
+        if ((typeof pInput) !== 'string') { targetDate = new Date(pInput); }
+        else { targetDate = buildDate(pInput); }
+        if (targetDate instanceof Date) {
+            targetDateStamp = targetDate.getTime();
+        }
+        else {
+            return {
+                'relative': `${pInput} is not a valid date`,
+                'absolute': `${pInput} is not a valid date`,
+                'date': null,
+                'timestamp': 0,
+                'ymd': '2099.01.01'
+            };
+        }
     }
     let currentDate = new Date();
     let mDate = null;
-    if (!pType.toLowerCase().startsWith('abs')) {
-        let hours = 60 * 60 * 1000;
-        let midnight = currentDate.setHours(0, 0, 0, 0);
+    let relDate, absDate;
+    // Make relative date
+    let hours = 60 * 60 * 1000;
+    let midnight = currentDate.setHours(0, 0, 0, 0);
 
-        if (targetDateStamp < midnight) {
-            if (targetDateStamp > (midnight - (24 * hours))) {
-                mDate = 'yesterday';
-            }
-            else if (targetDateStamp > (midnight - (7 * 24 * hours))) {
-                let mWord = '';
-                if (targetDate.getDay() < 6) {
-                    mWord = 'last ';
-                }
-                mDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
-            }
+    if (targetDateStamp < midnight) {
+        if (targetDateStamp > (midnight - (24 * hours))) {
+            relDate = 'yesterday';
         }
-        else if (targetDateStamp >= (midnight + (24 * hours))) {
-            if (targetDateStamp < (midnight + (48 * hours))) {
-                mDate = 'tomorrow';
+        else if (targetDateStamp > (midnight - (7 * 24 * hours))) {
+            let mWord = '';
+            if (targetDate.getDay() < 6) {
+                mWord = 'last ';
             }
-            else if (targetDateStamp < (midnight + (8 * 24 * hours))) {
-                let mWord = '';
-                if (targetDate.getDay() <= currentDate.getDay()) {
-                    mWord = 'next ';
-                }
-                mDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
+            relDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
+        }
+    }
+    else if (targetDateStamp >= (midnight + (24 * hours))) {
+        if (targetDateStamp < (midnight + (48 * hours))) {
+            relDate = 'tomorrow';
+        }
+        else if (targetDateStamp < (midnight + (8 * 24 * hours))) {
+            let mWord = '';
+            if (targetDate.getDay() <= currentDate.getDay()) {
+                mWord = 'next ';
             }
+            relDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
+        }
+    }
+    else {
+        let hour = targetDate.getHours();
+        if (hour < 12) { relDate = "this morning"; }
+        else if (hour < 17) { relDate = "this afternoon"; }
+        else (relDate = "this evening");
+    }
+    // Make absolute date
+    absDate = `${targetDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
+    if (!relDate) { relDate = absDate; }
+    if (targetDate.getFullYear() !== currentDate.getFullYear()) {
+        if (targetDate.getMonth() > 3 || currentDate.getMonth() < 9) {
+            targetDate.setFullYear(currentDate.getFullYear());
         }
         else {
-            let hour = targetDate.getHours();
-            if (hour < 12) { mDate = "this morning"; }
-            else if (hour < 17) { mDate = "this afternoon"; }
-            else (mDate = "this evening");
+            targetDate.setFullYear(currentDate.getFullYear() + 1);
         }
-    }
-    if (!mDate) {
-        mDate = `${targetDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
-        if (targetDate.getFullYear() !== currentDate.getFullYear()) {
-            if (targetDate.getMonth() > 3 || currentDate.getMonth() < 9) {
-                targetDate.setFullYear(currentDate.getFullYear());
-            }
-            else { 
-                targetDate.setFullYear(currentDate.getFullYear() + 1);
-            }
-            mDate += ` ${targetDate.getFullYear()}`;
-        }
+        absDate += ` ${targetDate.getFullYear()}`;
     }
     if ((targetDate.getHours() > 0) && (targetDate.getMinutes() > 0)) {
-        mDate += ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
+        let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
+        absDate += tOfDay;
+        relDate += tOfDay;
     }
     let targetDateYMD = targetDate.getFullYear()
         + '.' + (targetDate.getMonth() + 101).toString().slice(1)
         + '.' + (targetDate.getDate() + 100).toString().slice(1);
-    return [titleCase(mDate), targetDate, targetDateStamp, targetDateYMD];
+    return {
+        'relative': titleCase(relDate),
+        'absolute': titleCase(absDate),
+        'date': targetDate,
+        'timestamp': targetDateStamp,
+        'ymd': targetDateYMD
+    };
 
     function addDays(pDate, pDays) {
         const copy = pDate;
@@ -381,7 +295,7 @@ export function makeDate(pInput, pType = 'rel') {
     function buildDate(pString) {
         if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }
         let goodDate = new Date(pString);
-        console.log({ 'in buildDate': pString, 'goodDate': goodDate.toLocaleString(), 'bad': isNaN(goodDate) });
+        cl({ 'in buildDate': pString, 'goodDate': goodDate.toLocaleString(), 'bad': isNaN(goodDate) });
         if (isNaN(goodDate)) {
             let currentDate = new Date();
             currentDate.setHours(0, 0, 0, 0);

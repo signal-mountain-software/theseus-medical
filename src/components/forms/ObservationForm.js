@@ -26,7 +26,8 @@ import MenuItem from '@material-ui/core/MenuItem';
 
 
 import AVAConfirm from './AVAConfirm';
-import { putServiceRequest, makeDate } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVAUtilities';
+import { putServiceRequest } from '../../util/AVAServiceRequest';
 
 const useStyles = makeStyles(theme => ({
   textLine: {
@@ -403,11 +404,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   const handleDateExit = async (event, this_item) => {
-    let [readableDate, returnDate, returnDateStamp, returnDateYMD] = makeDate(event.target.value, 'rel');
-    textInput[this_item.text] = readableDate;
-    textInput[this_item.text + '-stamped'] = returnDateStamp;
-    textInput[this_item.text + '-date'] = returnDate;
-    textInput[this_item.text + '-ymd'] = returnDateYMD;
+    let AVAdate = makeDate(event.target.value);
+    textInput[this_item.text] = AVAdate.absolute;
     setTextInput(textInput);
   };
 

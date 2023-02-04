@@ -905,22 +905,25 @@ export default ({ pPerson, patient, pClient, onReset }) => {
 
     let qList = await getRequests_byPerson(session.patient_id, null);
     return qList.map(i => {
-      i.formatted_type = requestNames[i.request_type] || `${sentenceCase(i.request_type)} request`;
+      i.workData = {};
+      i.workData.formatted_type = requestNames[i.request_type] || `${sentenceCase(i.request_type)} request`;
       if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
-      [i.display_date,] = makeDate(i.request_date, 'rel');
+      let AVArequestDate = makeDate(i.request_date);
+      i.workData.display_date = AVArequestDate.relative;
       if (makeNumber(i.last_update) > makeNumber(i.request_date)) {
-        [i.update_date,] = makeDate(i.last_update, 'rel');
+        let AVAupdateDate = makeDate(i.last_update);
+        i.workData.update_date = AVAupdateDate.relative;
       }
       if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
-        i.formatted_request = formatRequest(i, i.original_request);
+        i.workData.formatted_request = formatRequest(i, i.original_request);
       }
       else {
-        i.formatted_request = [
+        i.workData.formatted_request = [
           ['detail', i.original_request || 'No information available']
         ];
       }
-      i.checked = false;
-      i.open = false;
+      i.workData.checked = false;
+      i.workData.open = false;
       return i;
     });
 
