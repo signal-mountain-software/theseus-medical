@@ -1,9 +1,6 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
-import { Auth } from '@aws-amplify/auth';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import TextField from '@material-ui/core/TextField';
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -16,10 +13,7 @@ import Paper from '@material-ui/core/Paper';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 import EditIcon from '@material-ui/icons/Edit';
-import DeleteIcon from '@material-ui/icons/Delete';
-import PrintIcon from '@material-ui/icons/Print';
 import SendIcon from '@material-ui/icons/Send';
-import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
@@ -31,8 +25,10 @@ import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
-import { makeDate, makeName, makeNumber, recordExists } from '../../util/AVAUtilities';
+import { getPerson, makeDate } from '../../util/AVAUtilities';
+import { updateServiceRequest } from '../../util/AVAServiceRequest';
 import MakeMessage from '../forms/MakeMessage';
+import AVATextInput from '../forms/AVATextInput';
 
 const requestNames = {
   maint: 'Maintenance Request',
@@ -213,7 +209,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ session, filter = {}, seedData, onClose }) => {
+export default ({ session, filter = {}, defaultValue, seedData, onClose }) => {
 
   /* 
     filter: {
@@ -239,6 +235,7 @@ export default ({ session, filter = {}, seedData, onClose }) => {
   const [dataRows, setDataRows] = React.useState(seedData);
 
   const [promptForMessage, setPromptForMessage] = React.useState(false);
+  const [promptForUpdate, setPromptForUpdate] = React.useState(false);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
@@ -247,13 +244,13 @@ export default ({ session, filter = {}, seedData, onClose }) => {
   //**  Functions
 
   function toggleCheck(pI) {
-    dataRows[pI].checked = !dataRows[pI].checked;
+    dataRows[pI].workData.checked = !dataRows[pI].workData.checked;
     setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
   }
 
   function toggleOpen(pI) {
-    dataRows[pI].open = !dataRows[pI].open;
+    dataRows[pI].workData.open = !dataRows[pI].workData.open;
     setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
   }
@@ -261,11 +258,11 @@ export default ({ session, filter = {}, seedData, onClose }) => {
   function createMessageText() {
     let mData = {};
     let mCount = 0;
-    let pM = 'With regard to';
+    let pM = '';
     dataRows.forEach(r => {
-      if (r.checked) {
+      if (r.workData.checked) {
         if (!(r.request_type in mData)) { mData[r.request_type] = []; }
-        mData[r.request_type].push(r.display_date);
+        mData[r.request_type].push(r.workData.display_date);
         mCount++;
       }
     });
@@ -274,7 +271,7 @@ export default ({ session, filter = {}, seedData, onClose }) => {
     let linkWord = '';
     for (let t in mData) {
       let mL = mData[t].length - 1;
-      pM += `${linkWord} my ${requestNames[t] || 'request'}`;
+      pM += `${linkWord} ${requestNames[t] || 'request'}`;
       if (mL > 0) { pM += 's'; }
       pM += ' from';
       for (let x = 0; x <= mL; x++) {
@@ -285,361 +282,54 @@ export default ({ session, filter = {}, seedData, onClose }) => {
       };
       linkWord = ', and';
     }
-    return pM + '... ';
+    return pM.trim();
+  }
+
+  async function handleUpdates([newStatus, checked, newNote]) {
+    let historyLine = '';
+    if (newStatus) { historyLine += `Status changed to "${newStatus}"`; }
+    else if (checked === 'checked') { historyLine += 'Status changed to "Complete"'; }
+    if (newNote) {
+      if (historyLine) { historyLine += ' and '; }
+      historyLine += `Note that said "${newNote.trim()}" added`;
+    }
+    let thisPerson = await getPerson(session.patient_id, 'name');
+    historyLine += ` by ${thisPerson}`;
+    if (session.patient_id !== session.user_id) { historyLine += ` (proxy=${session.user_id})`; }
+    let AVAdate = makeDate(new Date());
+    historyLine += ` on ${AVAdate.absolute}`;
+    let updateRows = [];
+    dataRows.forEach(r => {
+      if (r.workData.checked) {
+        if (newStatus && (newStatus !== '')) { r.last_status = newStatus; }
+        else if (checked === 'checked') { r.last_status = 'Complete'; }
+        r.last_update = AVAdate.timestamp;
+        r.workData.update_date = AVAdate.relative;
+        if (newNote) { r.last_note = newNote; }
+        if (('history' in r) && Array.isArray(r.history)) {
+          r.history.shift(historyLine);
+        }
+        else { r.history = [historyLine]; }
+        updateRows.push(r);
+      }
+    });
+    updateServiceRequest(updateRows.map(u => {
+      let w = Object.assign({}, u);
+      delete w.workData;
+      return w;
+    }));
+    setDataRows(dataRows.sort((a, b) => {
+      if (a.last_update > b.last_update) { return -1; }
+      if (a.last_update < b.last_update) { return 1; }
+    }));
+    setForceRedisplay(!forceRedisplay);
   }
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
 
-
-  // ** Under review
-  /*
-  async function getRequest(qP_in) {
-    let qP_defaults = {
-      'TableName': 'ServiceRequests',
-    };
-    let qP_keys = {
-      'client_id': ['<pK>', 'foreign_key-index', 'local_key-index', 'last_status-index'],
-      'request_id': '<pK>',
-      'foreign_key': 'foreign_key-index',
-      'on_behalf_of': 'ServiceRequestsByPerson',
-      'local_key': 'local_key-index',
-      'last_status': 'last_status-index',
-      'requestor': 'requestor-type-index',
-      'request_type': 'requestor-type-index'
-    };
-    let qP = {};
-    Object.keys(qP_defaults).forEach(d => {
-      if ((d in qP_in)) { qP[d] = qP_in[d]; }
-      else {
-        qP[d] = qP_defaults[d];
-        delete qP_in[d];
-      }
-    });
-    let keyCondition, filterExpression, expressionAttributes, indexName;
-    Object.keys(qP_in).forEach(n => {
-      if ((n in qP_keys)) { if (indexName && qP[d] = qP_in[d]; }
-      else {
-        qP[d] = qP_defaults[d];
-        delete qP_in[d];
-      }
-    });
-    {
-      KeyConditionExpression: 'thread_id = :k AND begins_with(composite_key, :c)',
-        FilterExpression: 'record_type = :t',
-          ExpressionAttributeValues: {
-        ':c': pCommonKey,
-          ':k': pCommonKey.split('~')[0].slice(2),
-            ':t': 'delivery';
-      },
- 
- 
-    }
-    let ioIn = await dbClient
-      .query(qP)
-      .promise()
-      .catch(error => {
-        if (error.code === 'NetworkingError') {
-          return [{ 'error': `No Internet connection or Security Violation` }];
-        }
-        return [{ error }];
-      });
-    if (mRecs && mRecs.hasOwnProperty('Items')) {
-    }
- 
-  }
- 
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
- 
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
- 
-  if (!initialLoadComplete && defaultValue) {
-    let defaultObj = {};
-    let inputDefaults = defaultValue.split('~');
-    inputDefaults.forEach(i => {
-      let [key, value] = i.split('=');
-      defaultObj[key] = value;
-    });
-    setTextInput(defaultObj);
-  }
- 
- 
-  let displayRowList = [];
-  let checkbox = true;
-  let ignore = false;
-  let required = false;
- 
-  async function getObservations(pText, pObsKey, pChecked) {
-    let workDataRows = dataRows;
-    workDataRows.checked = pChecked;
-    if (dataRows.hasOwnProperty(pText)) {
-      setDataRows(workDataRows);
-      setForceRedisplay(!forceRedisplay);
-      return;
-    }
-    params.Payload = JSON.stringify({
-      action: "get_observation_items",
-      clientId: pClient,
-      request: {
-        "observation_key": pObsKey
-      }
-    });
-    let invokeFailed = false;
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(() => {
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let oRecs = JSON.parse(fResp.Payload);
-      if (oRecs.status === 200) {
-        if (oRecs.body.options) {
-          workDataRows[pText] = oRecs.body.options.display_value;
-          let workChosenQ = {};
-          if (workDataRows.hasOwnProperty('chosenQual')) {
-            workChosenQ = workDataRows.chosenQual;
-          }
-          if (!workChosenQ.hasOwnProperty(pText)) {
-            workChosenQ[pText] = {};
-            oRecs.body.options.display_value.forEach(v => {
-              if (v.default) {
-                if (Array.isArray(v.default)) { workChosenQ[pText][v.title] = v.default; }
-                else { workChosenQ[pText][v.title] = [v.default]; }
-              }
-              else { workChosenQ[pText][v.title] = []; }
-            });
-          }
-          workDataRows.chosenQual = workChosenQ;
-        }
-      }
-    };
-    setDataRows(workDataRows);
-    setForceRedisplay(!forceRedisplay);
-  }
- 
-  function handleQualChecked(pOrderOption, pQualifier, pQualChoice) {
-    let qRule = dataRows[pOrderOption].find(r => { return (r.title === pQualifier); });
-    let workChosenQ = dataRows.chosenQual;
-    if (!workChosenQ) {
-      workChosenQ[pOrderOption] = {};
-    }
-    if (!workChosenQ[pOrderOption]) {
-      workChosenQ[pOrderOption][pQualifier] = {};
-    }
-    if (!workChosenQ[pOrderOption][pQualifier] || (workChosenQ[pOrderOption][pQualifier].length === 0)) {
-      workChosenQ[pOrderOption][pQualifier] = [pQualChoice];
-    }
-    else {
-      let x = workChosenQ[pOrderOption][pQualifier].indexOf(pQualChoice);
-      let workArray = workChosenQ[pOrderOption][pQualifier];
-      if (x === -1) {
-        if (workArray.length >= (qRule.max_allowed || 99)) { workArray.pop(); }
-        workArray.push(pQualChoice);
-      }
-      else {
-        if (workArray.length > (qRule.min_required || 0)) {
-          workArray.splice(x, 1);
-        }
-      }
-      workChosenQ[pOrderOption][pQualifier] = workArray;
-    }
-    // Checking Rules
-    dataRows.chosenQual = workChosenQ;
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
-  }
- 
-  function getKey(pText) {
-    if (qualifiers.hasOwnProperty(pText) && qualifiers[pText].qualifiers) {
-      let qKey = qualifiers[pText].qualifiers.find(q => { return (q.startsWith('~~key=')); });
-      if (qKey) { return qKey.substr(6); }
-    }
-    return null;
-  }
- 
-  function getDescription(pText) {
-    if (qualifiers.hasOwnProperty(pText)) {
-      return qualifiers[pText].description;
-    }
-    else {
-      return null;
-    }
-  }
- 
-  if (!initialLoadComplete) {
-    for (let vIndex = 0; vIndex < listValues.length; vIndex++) {
-      let instruction = listValues[vIndex].split(/[~:]+/);
-      if (instruction[1] && (instruction[1].charAt(0) === '[')) {
-        let [, oControl, oValue] = instruction[1].split(/[=[\]]+/);
-        switch (oControl) {
-          case 'checkbox': {
-            checkbox = (oValue.toLowerCase() === 'on');
-            break;
-          }
-          case 'display': {
-            ignore = (oValue.toLowerCase() === 'off');
-            break;
-          }
-          case 'required': {
-            required = (oValue.toLowerCase() === 'on');
-            break;
-          }
-          default: { }
-        }
-        continue;
-      }
-      if (ignore) { continue; }
-      if (instruction[0]) {
-        // CheckBox selection
-        displayRowList.push({
-          checkbox,
-          required,
-          text: instruction[0],
-          oKey: getKey(instruction[0]),
-          desc: getDescription(instruction[0]),
-          input: false
-        });
-        continue;
-      }
-      if (instruction[2]) {
-        // Special Instruction - input = date, time, or file...  anything else is plain text prompt
-        displayRowList.push({
-          checkbox: (instruction[1].includes('withCheckBox')),
-          required: required || (instruction[1].includes('required')),
-          text: instruction[2],
-          oKey: getKey(instruction[2]),
-          desc: getDescription(instruction[2]),
-          input: instruction[1]
-        });
-        continue;
-      }
-      // Turns out, this is a header line in instruction[1]
-      displayRowList.push({
-        checkbox: false,
-        required: false,
-        text: instruction[1],
-        oKey: getKey(instruction[1]),
-        desc: getDescription(instruction[1]),
-        input: false,
-        header: true
-      });
-    }
-    setLoadComplete(true);
-    setDataRows({ displayRows: displayRowList, dataRows: {}, checked: [] });
-  }
- 
-  const onCheckEnter = (event, this_item) => {
-    if (event.key === 'Enter' || event.type === 'blur') {
-      if (this_item.input === 'date') { handleDateExit(event, this_item); }
-      else if (this_item.input === 'time') { handleTimeExit(event, this_item); }
-      else { handleTextExit(event, this_item); }
-    }
-    setForceRedisplay(!forceRedisplay);
-  };
- 
-  const handleDateExit = async (event, this_item) => {
-    let [readableDate, returnDate, returnDateStamp, returnDateYMD] = AVAUtilities('makeRelativeDate', event.target.value);
-    textInput[this_item.text] = readableDate;
-    textInput[this_item.text + '-stamped'] = returnDateStamp;
-    textInput[this_item.text + '-date'] = returnDate;
-    textInput[this_item.text + '-ymd'] = returnDateYMD;
-    setTextInput(textInput);
-  };
- 
-  const handleTimeExit = (event, this_item) => {
-    let ampm = null;
-    if (event.target.value.includes('p')) { ampm = 'pm'; }
-    else if (event.target.value.includes('a')) { ampm = 'am'; };
-    let [hh$, mm$] = event.target.value.split(':');
-    let hh = Number(hh$.replace(/\D+/g, ''));
-    let mm = 0;
-    if (hh > 100) {
-      if (!mm$) { mm = hh % 100; }
-      hh = Math.floor(hh / 100);
-    }
-    if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
-    if (mm > 59) {
-      let hAdd = Math.floor(mm / 60);
-      mm -= (hAdd * 60);
-      hh += hAdd;
-    }
-    if (hh >= 23) {
-      hh = hh % 24;
-    }
-    if (hh >= 12) {
-      hh -= 12;
-      ampm = 'pm';
-    }
-    if (hh === 0) {
-      hh = 12;
-      ampm = 'pm';
-    }
-    if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
-    textInput[this_item.text] = `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
-    setTextInput(textInput);
-  };
- 
-  const handleTextExit = (event, this_item) => {
-    textInput[this_item.text] = event.target.value;
-    setTextInput(textInput);
-  };
- 
-  function isQChecked(pObj, pQualName, pChoice) {
-    return (dataRows.hasOwnProperty('chosenQual')
-      && dataRows.chosenQual[pObj.text]
-      && dataRows.chosenQual[pObj.text].hasOwnProperty(pQualName.title)
-      && dataRows.chosenQual[pObj.text][pQualName.title].includes(pChoice));
-  }
- 
-  function showQualifier(pObj) {
-    return (isChecked(pObj) && !!dataRows && dataRows.hasOwnProperty(pObj.text));
-  }
- 
-  function makeConfirm(pDisplayRows, pChecked, textInput = { 'empty': true }) {
-    let workChecked = [];
-    let errorsExist = false;
-    let errorMessage = ['Please correct these errors', '----'];
-    let responseArray = [`Please confirm your selections`, '----'];
-    pDisplayRows.forEach(r => {
-      if (r.required && (!textInput.hasOwnProperty(r.text) || textInput[r.text] === '')) {
-        errorsExist = true;
-        errorMessage.push(`You left "${r.text}" blank!`);
-      }
-      if (r.checkbox || textInput.hasOwnProperty(r.text)) {
-        let rText = '';
-        if (pChecked.includes(r.text)) { rText = r.text; }
-        if (textInput.hasOwnProperty(r.text) && (textInput[r.text].length > 0)) { rText = textInput[r.text]; }
-        if (rText) {
-          if (pChecked.includes(r.text)) { workChecked.push(rText); }
-          responseArray.push(rText);
-          if (dataRows.hasOwnProperty('chosenQual') && dataRows.chosenQual[r.text]) {
-            for (let key in dataRows.chosenQual[r.text]) {
-              if (dataRows.chosenQual[r.text][key] && (dataRows.chosenQual[r.text][key].length > 0)) {
-                dataRows.chosenQual[r.text][key].forEach(qRow => {
-                  responseArray.push(`[indent=1]${qRow}`);
-                });
-              }
-            }
-          }
-        }
-      }
-    });
-    setCheckedToSave(workChecked);
-    if (errorsExist) { return ['error', errorMessage]; } else { return ['confirm', responseArray]; };
-  }
- 
-  */
+  // ******************
 
   return (
     <Dialog
@@ -724,13 +414,13 @@ export default ({ session, filter = {}, seedData, onClose }) => {
                 key={'row' + this_index}
                 className={classes.listItem}
                 justifyContent='flex-start'
-                padding={this_item.open ? 2 : 0}
-                border={this_item.open ? 1 : 0}
+                padding={this_item.workData.open ? 2 : 0}
+                border={this_item.workData.open ? 1 : 0}
                 alignItems='center'
               >
                 <Checkbox
                   edge='start'
-                  checked={this_item.checked}
+                  checked={this_item.workData.checked}
                   disableRipple
                   key={'checkbox' + this_index}
                   onClick={() => { toggleCheck(this_index); }}
@@ -754,25 +444,24 @@ export default ({ session, filter = {}, seedData, onClose }) => {
                     alignItems='start'
                   >
                     {!filter.request_type &&
-                      <Typography className={classes.typeLine}>{this_item.formatted_type}</Typography>
+                      <Typography className={classes.typeLine}>{this_item.workData.formatted_type}</Typography>
                     }
-                    {!filter.request_date &&
-                      <Typography className={classes.textLine}>{this_item.display_date}</Typography>
+                    {this_item.workData.update_date ?
+                      <Typography className={classes.textLine}>{`Updated ${this_item.workData.update_date} (Sent ${this_item.workData.display_date})`}</Typography>
+                    :
+                      <Typography className={classes.textLine}>{`Sent ${this_item.workData.display_date}`}</Typography>
                     }
                     <Typography className={classes.textLine}>{this_item.last_status}</Typography>
-                    {this_item.update_date &&
-                      <Typography className={classes.textLine}>{this_item.update_date}</Typography>
-                    }
-                    {this_item.open &&
+                    {this_item.workData.open &&
                       <React.Fragment>
                         <Typography className={classes.drowhead}>Details</Typography>
-                        {this_item.formatted_request.map(dRow => (
+                        {this_item.workData.formatted_request.map(dRow => (
                           <Typography className={(`drow${dRow[0]}` in classes) ? classes[`drow${dRow[0]}`] : classes.drowdetail}>{dRow[1]}</Typography>
-                      ))}
+                        ))}
                       </React.Fragment>
                     }
                   </Box>
-                  {(this_item.open) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  {(this_item.workData.open) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 </Box>
               </Box>
             ))}
@@ -799,6 +488,18 @@ export default ({ session, filter = {}, seedData, onClose }) => {
           seedText={promptForMessage}
         />
       }
+      {promptForUpdate &&
+        <AVATextInput
+          titleText={createMessageText()}
+        promptText={['New Status', '[checkbox]Mark as Complete?', 'Notes']}
+          buttonText='Update'
+          onCancel={() => { setPromptForUpdate(false); }}
+          onSave={async (requestUpdates) => {
+            setPromptForUpdate(false);
+            await handleUpdates(requestUpdates);
+          }}
+        />
+      }
       { /* Command Area */}
       {
         <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
@@ -816,7 +517,7 @@ export default ({ session, filter = {}, seedData, onClose }) => {
               <Button
                 className={classes.rowButtonDefault}
                 onClick={() => {
-
+                  setPromptForUpdate(true);
                 }}
                 startIcon={<EditIcon size="small" />}
               >
@@ -826,9 +527,9 @@ export default ({ session, filter = {}, seedData, onClose }) => {
                 <Button
                   className={classes.rowButtonDefault}
                   onClick={() => {
-                    setPromptForMessage(createMessageText());
+                    setPromptForMessage('With regard to ' + createMessageText() + ': ');
                   }}
-                  startIcon={<EditIcon size="small" />}
+                  startIcon={<SendIcon size="small" />}
                 >
                   {'Send Follow-up'}
                 </Button>
