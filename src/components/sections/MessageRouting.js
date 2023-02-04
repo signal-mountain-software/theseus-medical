@@ -246,7 +246,6 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
   let waitTime;
   let escalationData;
   let keyWords;
-  let keyWordData;
 
   let l = person.time_based_rules?.length || 0;
   if (l === 0) {
@@ -300,15 +299,6 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
 
   const handleChangeMethod = tableRow => event => {
     person.time_based_rules[tableRow].method = event.target.value;
-    setRuleRows(person.time_based_rules);
-    setViewVersion(viewVersion + 1);
-    updateSetChange();
-  };
-
-  const handleChangeKeyWordType = tableRow => event => {
-    person.time_based_rules[tableRow].keyWordType = event.target.value;
-    person.time_based_rules[tableRow].keyWordData = '';
-    if (event.target.value === 'altID') { getLinkedAccounts(); }
     setRuleRows(person.time_based_rules);
     setViewVersion(viewVersion + 1);
     updateSetChange();
