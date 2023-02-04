@@ -398,7 +398,7 @@ export default ({ session, filter = {}, defaultValue, seedData, onClose }) => {
                 display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                 key={'vRowRefresh'}
               >
-                <Typography className={classes.popUpFooter} >{`AVA vers 23.1.28${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography className={classes.popUpFooter} >{`AVA vers 23.2.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
               </Box>
             </MenuItem>
           </MenuList>
@@ -448,7 +448,7 @@ export default ({ session, filter = {}, defaultValue, seedData, onClose }) => {
                     }
                     {this_item.workData.update_date ?
                       <Typography className={classes.textLine}>{`Updated ${this_item.workData.update_date} (Sent ${this_item.workData.display_date})`}</Typography>
-                    :
+                      :
                       <Typography className={classes.textLine}>{`Sent ${this_item.workData.display_date}`}</Typography>
                     }
                     <Typography className={classes.textLine}>{this_item.last_status}</Typography>
@@ -491,7 +491,7 @@ export default ({ session, filter = {}, defaultValue, seedData, onClose }) => {
       {promptForUpdate &&
         <AVATextInput
           titleText={createMessageText()}
-        promptText={['New Status', '[checkbox]Mark as Complete?', 'Notes']}
+          promptText={['New Status', '[checkbox]Mark as Complete?', 'Notes']}
           buttonText='Update'
           onCancel={() => { setPromptForUpdate(false); }}
           onSave={async (requestUpdates) => {

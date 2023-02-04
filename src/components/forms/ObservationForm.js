@@ -569,7 +569,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'vRowRefresh'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers 23.1.28${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers 23.2.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   </Box>
                 </MenuItem>
               </MenuList>
@@ -730,7 +730,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       onBehalfOf: textInput[fact.value.freeText.onBehalfOf] || fact.patient_id,
                       foreignKey: textInput[fact.value.freeText.foreignKey] || fact.value.freeText.foreignKey || '*tbd*',
                       request: { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual }
-                    })
+                    });
                 }
                 onSave(checkedToSave, textInput, dataRows.chosenQual);
               }}
