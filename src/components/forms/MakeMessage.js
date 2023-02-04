@@ -127,7 +127,8 @@ export default ({
   setUrgent = false,
   setMethod,
   allowCancel = true,
-  thread_id
+  thread_id,
+  seedText
 }) => {
 
   const classes = useStyles();
@@ -138,7 +139,7 @@ export default ({
   const [recipientName, setRecipientName] = React.useState(pRecipientName);
   const [newAccount, setNewAccount] = React.useState(false);
 
-  const [textInput, setTextInput] = React.useState('');
+  const [textInput, setTextInput] = React.useState(seedText);
   const [nameInput, setNameInput] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [isUrgent, setIsUrgent] = React.useState(setUrgent);
