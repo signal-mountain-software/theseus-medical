@@ -569,7 +569,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             setMessage={setMessage}
             setStatusMessage={setStatusMessage}
             observationKey={fact.observation_key}
-            seedData={fact.seed_data}
             onError={disableSave}
             onSave={handleSave}
             onClose={handleClose}
