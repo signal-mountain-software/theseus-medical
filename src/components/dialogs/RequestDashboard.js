@@ -1,186 +1,62 @@
 import React from 'react';
-import makeStyles from '@material-ui/core/styles/makeStyles';
+import { getImage, getPerson, makeDate, makeNumber, sentenceCase } from '../../util/AVAUtilities';
+import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
+import { getMessages } from '../../util/AVAMessages';
+import AVAConfirm from '../forms/AVAConfirm';
+import AVATextInput from '../forms/AVATextInput';
 
+import List from '@material-ui/core/List';
+
+import CloseIcon from '@material-ui/icons/HighlightOff';
+import EditIcon from '@material-ui/icons/Edit';
+
+import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import Typography from '@material-ui/core/Typography';
-import Button from '@material-ui/core/Button';
-import List from '@material-ui/core/List';
+import DialogContentText from '@material-ui/core/DialogContentText';
+
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
+import Typography from '@material-ui/core/Typography';
+import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import CloseIcon from '@material-ui/icons/HighlightOff';
-import CheckIcon from '@material-ui/icons/Check';
-import EditIcon from '@material-ui/icons/Edit';
+import TextField from '@material-ui/core/TextField';
+
+import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
-import HomeIcon from '@material-ui/icons/Home';
-import AutorenewIcon from '@material-ui/icons/Autorenew';
-import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import ExpandLessIcon from '@material-ui/icons/ExpandLess';
-
-
-import Avatar from '@material-ui/core/Avatar';
-import Menu from '@material-ui/core/Menu';
-import MenuList from '@material-ui/core/MenuList';
-import MenuItem from '@material-ui/core/MenuItem';
-
-import { getPerson, makeDate } from '../../util/AVAUtilities';
-import { updateServiceRequest } from '../../util/AVAServiceRequest';
-import MakeMessage from '../forms/MakeMessage';
-import AVATextInput from '../forms/AVATextInput';
-
-const requestNames = {
-  maint: 'Maintenance Request',
-  meal: 'Meal Order',
-  guest_room: 'Guest Room Reservation Request',
-  trans: 'Transportation Request',
-  breakfast: 'Breakfast Order'
-};
+import SendMessageDialog from '../dialogs/SendMessageDialog';
 
 const useStyles = makeStyles(theme => ({
-  typeLine: {
-    fontSize: theme.typography.fontSize * 1.5,
-    flexGrow: 0,
-    marginBottom: 0,
-    fontWeight: 'bold'
-  },
-  textLine: {
-    fontSize: theme.typography.fontSize * 1,
-    flexGrow: 0,
-    marginBottom: 0
-  },
-  statusLine: {
-    fontSize: theme.typography.fontSize * 0.8,
-    flexGrow: 0,
-    marginBottom: 0
-  },
-  headerLine: {
-    marginTop: theme.spacing(3.5),
-    marginBottom: theme.spacing(1.0),
-    fontSize: theme.typography.fontSize * 1.5,
-    fontWeight: 'bold'
-  },
-  radioText: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginLeft: 0,
-    marginBottom: 0,
-    marginTop: 0,
-    paddingLeft: 0,
-    paddingRight: 50,
-  },
-  descText: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginLeft: theme.spacing(3),
-    marginBottom: 10,
-    marginTop: 0,
-    paddingLeft: 0,
-    paddingRight: 50,
-  },
-  messageArea: {
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-  },
-  profileArea: {
-    alignItems: 'center'
-  },
-  popUpMenu: {
-    marginRight: theme.spacing(3),
-    paddingRight: 2,
-  },
-  popUpMenuRow: {
-    marginLeft: theme.spacing(1),
-    fontSize: theme.typography.fontSize * 1.0,
-  },
-  popUpFooter: {
-    fontSize: theme.typography.fontSize * 0.8,
-  },
-  drowhead: {
-    display: 'flex',
-    marginTop: 10,
-    fontSize: theme.typography.fontSize * 1.0,
-    width: '100%',
-    justifyContent: 'center',
-    fontWeight: 'bold'
-  },
-  drowdetail: {
-    fontSize: theme.typography.fontSize * 0.8,
-    justifyContent: 'flex-start',
-  },
-  drowqual: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginLeft: 10,
-    justifyContent: 'flex-start',
-  },
-  qualText: {
-    fontSize: theme.typography.fontSize * 1.0,
-    marginLeft: 0,
-    marginBottom: 0,
-    marginTop: 10,
-    paddingLeft: 0,
-    paddingRight: 50,
-    fontWeight: 'bold'
-  },
-  radioButton: {
-    marginTop: 0,
-    marginRight: 0,
-    marginLeft: 0,
-    paddingLeft: 0,
-    paddingRight: 1,
-  },
-  freeInput: {
-    marginLeft: 20,
-    paddingLeft: 0,
-    paddingRight: 0,
-    flexGrow: 2,
-    fontSize: theme.typography.fontSize * 1.3,
-  },
-  confirm: {
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-  },
-  inputRow: {
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-  },
-  listItem: {
-    marginTop: theme.spacing(1.5),
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(1),
-  },
   page: {
     height: 950,
+    maxWidth: 1000
   },
-  qualOption: {
-    marginTop: 0,
-    marginLeft: theme.spacing(3),
-    marginRight: theme.spacing(2),
-    marginBottom: 0,
-    fontSize: theme.typography.fontSize * 0.8
+  freeInput: {
+    marginLeft: '25px',
+    marginRight: 2,
+    marginBottom: theme.spacing(2),
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingBottom: theme.spacing(1),
+    width: '60%',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
   },
-  qualItem: {
-    marginTop: 0,
-    marginLeft: theme.spacing(3),
-    marginRight: theme.spacing(2),
-    marginBottom: 0,
-    fontSize: theme.typography.fontSize * 0.8
+  imageArea: {
+    minWidth: '100px',
+    maxWidth: '100px',
+    minHeight: '100px',
+    maxHeight: '100px',
+    marginBottom: theme.spacing(1),
+    marginRight: theme.spacing(1),
   },
   title: {
-    marginTop: theme.spacing(2),
-    marginRight: theme.spacing(2),
+    marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
     marginBottom: 0,
-    fontSize: theme.typography.fontSize * 1.5,
-    fontWeight: 'bold',
-  },
-  subTitle: {
-    marginRight: theme.spacing(2),
-    marginBottom: theme.spacing(0.5),
-    marginLeft: theme.spacing(2),
-    fontSize: theme.typography.fontSize * 1.2
+    fontSize: '1.3rem',
   },
   buttonArea: {
     maxWidth: 1000,
@@ -188,30 +64,109 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
   },
+  rowButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'contained',
+    size: 'small'
+  },
   rowButtonDefault: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
     variant: 'outlined',
     textTransform: 'none',
     size: 'small',
+    // color: theme.palette.primary[theme.palette.type],
+  },
+  rowButtonRed: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    color: theme.palette.reject[theme.palette.type],
+  },
+  rowButtonGreen: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.confirm[theme.palette.type],
+  },
+  rowButtonBlue: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    textTransform: 'none',
+    size: 'small',
+    // color: theme.palette.info[theme.palette.type],
+  },
+  listItem: {
+    justifyContent: 'space-between',
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(1),
+  },
+  noDisplay: {
+    display: 'none',
+    visibility: 'hidden'
+  },
+  makeIconStyle: {
+    marginRight: theme.spacing(1),
+  },
+  locationLine: {
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  preferenceLine: {
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  mrowhead: {
+    marginTop: 10,
+    fontSize: theme.typography.fontSize * 1.2,
+    fontWeight: 'bold'
+  },
+  mrowdetail: {
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  mrowqual: {
+    fontSize: theme.typography.fontSize * 1.0,
+    marginLeft: 10,
+  },
+  techInfoLine: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: theme.spacing(2),
+  },
+  techInfoLine2: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: theme.spacing(4),
+  },
+  reject: {
+    backgroundColor: theme.palette.reject[theme.palette.type],
+  },
+  confirm: {
+    backgroundColor: 'green',
+  },
+  firstName: {
+    fontSize: theme.typography.fontSize * 1.4,
+    marginRight: theme.spacing(1),
+  },
+  timeLine: {
+    fontSize: theme.typography.fontSize * 1.4,
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1.5),
+  },
+  lastName: {
+    fontWeight: 'bold',
+    fontSize: theme.typography.fontSize * 1.8,
+    marginRight: theme.spacing(1),
   }
 }));
 
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
+export default ({ session, filter = {}, onClose }) => {
 
-export default ({ session, filter = {}, defaultValue, seedData, onClose }) => {
-
-  /* 
+  /*
     filter: {
       person_id - only show this person
       request_type - (optional) only show requests of this type
@@ -223,37 +178,39 @@ export default ({ session, filter = {}, defaultValue, seedData, onClose }) => {
 
   const classes = useStyles();
 
+  const [dataRows, setDataRows] = React.useState();
+
+  const [request_filter, setRequestFilter] = React.useState('');
+  const [request_filter_lower, setRequestFilterLower] = React.useState('');
+  const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  const [cancelPending, setCancelPending] = React.useState(false);
-  const [confirmStatus, setConfirmStatus] = React.useState('');
-  const [confirmPrompt, setConfirmPrompt] = React.useState(false);
 
-  const [checkedToSave, setCheckedToSave] = React.useState();
+  const [showAddPrompt, setShowAddPrompt] = React.useState(false);
+  const [deletePending, setDeletePending] = React.useState(false);
+  const showDeleted = false;
+  const [confirmMessage, setConfirmMessage] = React.useState('');
+  const [confirmID, setConfirmID] = React.useState('');
+  const [confirmIndex, setConfirmIndex] = React.useState('');
 
-  const [textInput, setTextInput] = React.useState();
-  const [initialLoadComplete, setLoadComplete] = React.useState();
-  const [dataRows, setDataRows] = React.useState(seedData);
-
-  const [promptForMessage, setPromptForMessage] = React.useState(false);
   const [promptForUpdate, setPromptForUpdate] = React.useState(false);
-  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
-  const [anchorEl, setAnchorEl] = React.useState(null);
 
-  //**  Initialize
+  const [rowLimit, setRowLimit] = React.useState(20);
+  const [previousY, setCurrentY] = React.useState(0);
+  const scrollValue = 20;
+  var rowsWritten;
 
-  //**  Functions
+  const requestNames = {
+    maint: 'Maintenance Request',
+    meal: 'Meal Order',
+    guest_room: 'Guest Room Reservation Request',
+    trans: 'Transportation Request',
+    breakfast: 'Breakfast Order'
+  };
 
-  function toggleCheck(pI) {
-    dataRows[pI].workData.checked = !dataRows[pI].workData.checked;
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
-  }
-
-  function toggleOpen(pI) {
-    dataRows[pI].workData.open = !dataRows[pI].workData.open;
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
-  }
+  const statusWords = {
+    delivery: 'Delivered',
+    open: 'Opened'
+  };
 
   function createMessageText() {
     let mData = {};
@@ -299,7 +256,8 @@ export default ({ session, filter = {}, defaultValue, seedData, onClose }) => {
     let AVAdate = makeDate(new Date());
     historyLine += ` on ${AVAdate.absolute}`;
     let updateRows = [];
-    dataRows.forEach(r => {
+    for (let x = 0; x < dataRows.length; x++) {
+      let r = dataRows[x];
       if (r.workData.checked) {
         if (newStatus && (newStatus !== '')) { r.last_status = newStatus; }
         else if (checked === 'checked') { r.last_status = 'Complete'; }
@@ -307,246 +265,397 @@ export default ({ session, filter = {}, defaultValue, seedData, onClose }) => {
         r.workData.update_date = AVAdate.relative;
         if (newNote) { r.last_note = newNote; }
         if (('history' in r) && Array.isArray(r.history)) {
-          r.history.shift(historyLine);
+          r.history.unshift(historyLine);
         }
         else { r.history = [historyLine]; }
         updateRows.push(r);
+        dataRows[x] = await buildRequestDetails(r);
       }
-    });
+    };
     updateServiceRequest(updateRows.map(u => {
       let w = Object.assign({}, u);
       delete w.workData;
       return w;
     }));
-    setDataRows(dataRows.sort((a, b) => {
+    dataRows.sort((a, b) => {
       if (a.last_update > b.last_update) { return -1; }
       if (a.last_update < b.last_update) { return 1; }
-    }));
+      return 0;
+    });
+    setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
   }
 
-  const handleClick = async (event) => {
-    setAnchorEl(event.currentTarget);
+  const handleChangeRequestFilter = event => {
+    if (event.target.value.length === 0) {
+      setRequestFilter(null);
+      setRequestFilterLower(null);
+    }
+    else {
+      setRequestFilter(event.target.value);
+      setRequestFilterLower(event.target.value.toLowerCase());
+      setSingleFilterDigit(event.target.value.length === 1);
+    }
+    setRowLimit(scrollValue);
   };
+
+  const handleRemoveMessage = async (pMessage_id, pIndex) => {
+    // will mark request as cancelled as send appropriate messages 
+  };
+
+  const onScroll = event => {
+    if (rowLimit < dataRows.length) {
+      let currentY = window.scrollY;
+      if (currentY - (previousY + 50)) {
+        setCurrentY(currentY);
+        setRowLimit(rowLimit + scrollValue);
+        setForceRedisplay(!forceRedisplay);
+      }
+    }
+  };
+
+  function toggleCheck(pI) {
+    dataRows[pI].workData.checked = !dataRows[pI].workData.checked;
+    setDataRows(dataRows);
+    setForceRedisplay(!forceRedisplay);
+  }
+
+  async function toggleOpen(pI) {
+    dataRows[pI].workData.open = !dataRows[pI].workData.open;
+    if (!dataRows[pI].workData.messageRecs) {
+      dataRows[pI].workData.messageRecs = await prepareMessages(dataRows[pI].request_id);
+    }
+    setDataRows(dataRows);
+    setForceRedisplay(!forceRedisplay);
+  }
+
+  async function prepareMessages(thread) {
+    let qR = await getMessages({ 'thread_id': thread });
+    let mRow = [];
+    let workingKey = '';
+    qR.forEach(r => {
+      switch (r.record_type) {
+        case 'message': {
+          mRow.push({
+            'sort': `${r.composite_key}.000`,
+            'body': ['head', `Message ${makeDate(r.created_time).relative}`]
+          });
+          mRow.push({
+            'sort': `${r.composite_key}.001`,
+            'body': ['detail', 'Sent to:']
+          });
+          mRow.push({
+            'sort': `${r.composite_key}~Z999.000`,
+            'body': ['detail', 'Message said:']
+          });
+          r.content.current['EN-US'].text.split('\r\n').forEach((m, mX) => {
+            mRow.push({
+              'sort': `${r.composite_key}~Z999.${mX + 100}`,
+              'body': ['qual', m]
+            });
+          });
+          workingKey = r.composite_key;
+          break;
+        }
+        case 'delivery': {
+          let nameOut = (`${r.recipient_list.name.first} ${r.recipient_list.name.last}`).trim();
+          let postedWord = makeDate(r.results[0].posted_time).relative;
+          mRow.push({
+            'sort': `${workingKey}.${r.recipient_list.name.last}/${r.recipient_list.name.first}`,
+            'body': ['qual', `${nameOut} - ${statusWords[r.results[0].result] || r.results[0].result} ${postedWord}`]
+          });
+          break;
+        };
+        default: { }
+      }
+    });
+    mRow.sort((a, b) => {
+      if (a.sort > b.sort) { return 1; }
+      if (a.sort < b.sort) { return -1; }
+      return 0;
+    });
+    return mRow.map(r => { return r.body; });
+  };
+
+  function filteredRequest(pRec) {
+    if (singleFilterDigit) { return true; }
+    else {
+      return (`${pRec.workData.search_data} ${pRec.workData.formatted_type}`).toLowerCase().includes(request_filter_lower);
+    }
+  }
+
+  const buildDashboard = async () => {
+
+    let qList = await getServiceRequests({ 'person': session.patient_id });
+    for (let x = 0; x < qList.length; x++) {
+      qList[x] = await buildRequestDetails(qList[x]);
+    }
+    setDataRows(qList);
+  };
+
+  async function buildRequestDetails(i) {
+    i.workData = {};
+    i.workData.formatted_type = requestNames[i.request_type] || `${sentenceCase(i.request_type)} request`;
+    if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
+    let AVArequestDate = makeDate(i.request_date);
+    i.workData.display_date = AVArequestDate.relative;
+    i.workData.requestor_name = await getPerson(i.requestor, 'name');
+    i.workData.requestor_image = await getImage(i.requestor);
+    i.workData.formatted_request = [];
+    if (makeNumber(i.last_update) > makeNumber(i.request_date)) {
+      let AVAupdateDate = makeDate(i.last_update);
+      i.workData.update_date = AVAupdateDate.relative;
+      i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
+    }
+    i.workData.formatted_request.push(['head', `Current status: ${sentenceCase(i.last_status)}`]);
+    i.workData.formatted_request.push(['head', 'Details']);
+    if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
+      let [fReq, fSearch] = formatRequest(i, i.original_request);
+      i.workData.formatted_request.push(...fReq);
+      i.workData.search_data = fSearch;
+    }
+    else {
+      i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
+      i.workData.search_data = i.original_request;
+    }
+    i.workData.checked = false;
+    i.workData.open = false;
+    return i;
+  }
+
+  function formatRequest(i, req) {
+    let returnMessage = [];
+    let returnSearch = '';
+    if (!('textInput' in req)) { req.textInput = {}; }
+    if (!('qualifiers' in req)) { req.qualifiers = []; }
+    if (!('selections' in req)) { req.selections = []; }
+    returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
+    req.selections.forEach(s => {
+      let dLine = s;
+      if (s in req.textInput) {
+        dLine += ` - ${req.textInput[s]}`;
+        delete req.textInput[s];
+      }
+      returnMessage.push(['detail', dLine]);
+      returnSearch += ` ${dLine}}`;
+      if (s in req.qualifiers) {
+        for (let q in req.qualifiers[s]) {
+          let qLast = req.qualifiers[s][q].length - 1;
+          if (qLast >= 0) {
+            let qLine = `${q} -`;
+            // eslint-disable-next-line
+            req.qualifiers[s][q].forEach((qV, qX) => {
+              qLine += ` ${qV}`;
+              returnSearch += ` ${qV}`;
+              if ((qX < qLast) && (qLast > 1)) { qLine += ','; }  // array longer than 2
+              if (qX === (qLast - 1)) { qLine += ' and'; }  // next to last entry in array
+            });
+            returnMessage.push(['qual', qLine]);
+          }
+        }
+      }
+    });   // done with all selections; is there any text left?
+    for (let k in req.textInput) {
+      if (['-stamped', '-date', '-ymd'].some(w => { return k.includes(w); })) { continue; }
+      if (typeof req.textInput[k] === 'string') {
+        if (req.textInput[k] !== i.on_behalf_of) {
+          let kLow = k.toLowerCase().trim();
+          returnSearch += ` ${req.textInput[k]}`;
+          if (['description', 'summary', 'details'].some(w => { return kLow.includes(w); })) {
+            returnMessage.unshift(['text', req.textInput[k]]);
+          }
+          else {
+            returnMessage.push(['text', `${k} - ${req.textInput[k]}`]);
+          }
+        }
+      }
+    };
+    return [returnMessage, returnSearch];
+  }
+
+  React.useEffect(() => {
+    async function initialize() {
+      await buildDashboard();
+    }
+    initialize();
+  }, [session]);  // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // ******************
 
   return (
     <Dialog
       open={true || forceRedisplay}
+      onScroll={onScroll}
       p={2}
       fullScreen
     >
-      {/* Header with Title and Popup Menu */}
-      <Box
-        display='flex' flexDirection='row'
-        className={classes.messageArea}
-        key={'topBox'}
-      >
-        <Box display='flex' flexDirection='column' key={'titlesection'}>
-          <Typography
+      {dataRows && dataRows.length > 0 &&
+        <React.Fragment>
+          <DialogContentText
             className={classes.title}
+            id='scroll-dialog-title'
           >
-            {`Requests for ${session.patient_display_name}`}
-          </Typography>
-        </Box>
-        <Box
-          paddingRight={2}
-          marginTop={1}
-          aria-controls='hidden-menu'
-          aria-haspopup='true'
-          onClick={(event) => {
-            handleClick(event);
-            setPopupMenuOpen(true);
-          }}>
-          <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
-        </Box>
-        <Menu
-          id='hidden-menu'
-          anchorEl={anchorEl}
-          open={popupMenuOpen}
-          onClose={() => { setPopupMenuOpen(false); }}
-          keepMounted>
-          <MenuList className={classes.popUpMenu}>
-            <MenuItem
-              onClick={() => {
-                onClose();
-              }}>
-              <Box
-                display='flex' flexDirection='row' alignItems={'center'}
-                key={'vRowHome'}
-              >
-                <HomeIcon />
-                <Typography className={classes.popUpMenuRow} >{'Go to AVA Menu'}</Typography>
-              </Box>
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                let jumpTo = window.location.origin;
-                window.location.replace(jumpTo);
-              }}>
-              <Box
-                display='flex' flexDirection='row' alignItems={'center'}
-                key={'vRowRefresh'}
-              >
-                <AutorenewIcon />
-                <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
-              </Box>
-            </MenuItem>
-            <MenuItem>
-              <Box
-                display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
-                key={'vRowRefresh'}
-              >
-                <Typography className={classes.popUpFooter} >{`AVA vers 23.2.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-              </Box>
-            </MenuItem>
-          </MenuList>
-        </Menu>
-      </Box>
-      {dataRows &&
-        <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
-          <List  >
-            {dataRows.map((this_item, this_index) => (
-              <Box
-                display='flex'
-                flexDirection='row'
-                key={'row' + this_index}
-                className={classes.listItem}
-                justifyContent='flex-start'
-                padding={this_item.workData.open ? 2 : 0}
-                border={this_item.workData.open ? 1 : 0}
-                alignItems='center'
-              >
-                <Checkbox
-                  edge='start'
-                  checked={this_item.workData.checked}
-                  disableRipple
-                  key={'checkbox' + this_index}
-                  onClick={() => { toggleCheck(this_index); }}
-                />
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  flexGrow={1}
-                  key={'h2row' + this_index}
-                  className={classes.inputRow}
-                  justifyContent='space-between'
-                  alignItems='center'
-                  onClick={() => { toggleOpen(this_index); }}
-                >
-                  <Box
-                    display='flex'
-                    flexDirection='column'
-                    key={'hcol' + this_index}
-                    className={classes.inputRow}
-                    justifyContent='flex-start'
-                    alignItems='start'
+            Recent Requests
+          </DialogContentText>
+          <TextField
+            id='List Filter'
+            value={request_filter}
+            onChange={handleChangeRequestFilter}
+            className={classes.freeInput}
+            label={'Filter/Search'}
+            variant={'standard'}
+            autoComplete='off'
+          />
+          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+            <List  >
+              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                {rowsWritten = 0}
+              </Typography>
+              {dataRows.map((this_item, index) => (
+                ((rowsWritten <= rowLimit)
+                  && (!request_filter || filteredRequest(this_item, request_filter))
+                  && (!this_item.workData.delete_flag || showDeleted) &&
+                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
+                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                      {rowsWritten++}
+                    </Typography>
+                    <Box display='flex' flexDirection='column'>
+                      <Box
+                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                        key={this_item.message_id + 'r' + index}
+                        className={classes.listItem}
+                      >
+                        <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                          <Box display='flex' flexDirection='column'>
+                            <Box display='flex' flexDirection='row'>
+                              <Box
+                                className={classes.imageArea}
+                                component="img"
+                                alt={''}
+                                src={this_item.workData.requestor_image}
+                              />
+                              <Box display='flex' flexDirection='column'>
+                                <Typography variant='h5' className={classes.lastName} >{sentenceCase(this_item.workData.formatted_type)}</Typography>
+                                <Typography variant='h5' className={classes.firstName}>{`requested by: ${this_item.workData.requestor_name}`}</Typography>
+                                <Typography variant='h5' className={classes.timeLine}>{this_item.workData.display_date}</Typography>
+                              </Box>
+                            </Box>
+                            {this_item && this_item.workData && this_item.workData.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                              <Typography
+                                key={`prefLine-${mIndex}`}
+                                className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                              >
+                                {mLine[1]}
+                              </Typography>
+                            ))}
+                            {this_item.workData.open &&
+                              this_item.workData.messageRecs.map((mLine, dX) => (
+                                <Typography
+                                  key={('mrow_out' + dX)}
+                                  className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                >
+                                  {mLine[1]}
+                                </Typography>
+                              ))
+                            }
+                          </Box>
+                        </Box>
+                        <Checkbox
+                          edge='start'
+                          checked={this_item.workData.checked}
+                          disableRipple
+                          key={'checkbox' + index}
+                          onClick={() => { toggleCheck(index); }}
+                        />
+                        <DeleteIcon
+                          onClick={() => {
+                            setConfirmMessage(`Cancel this request`);
+                            setConfirmID(this_item.message_id);
+                            setConfirmIndex(index);
+                            setDeletePending(true);
+                            setForceRedisplay(false);
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  </Paper>
+                )
+              ))}
+            </List>
+          </Paper>
+          {
+            deletePending &&
+            <AVAConfirm
+              promptText={confirmMessage}
+              onCancel={() => {
+                setDeletePending(false);
+              }}
+              onConfirm={() => {
+                handleRemoveMessage(confirmID, confirmIndex);
+                setDeletePending(false);
+              }}
+            >
+            </AVAConfirm>
+          }
+          {
+            showAddPrompt &&
+            <SendMessageDialog
+              open={true}
+              onClose={() => {
+                setShowAddPrompt(false);
+              }}
+              onSelect={(selectedPerson) => {
+              }}
+            >
+            </SendMessageDialog>
+          }
+          {promptForUpdate &&
+            <AVATextInput
+              titleText={createMessageText()}
+              promptText={['New Status', '[checkbox]Mark as Complete?', 'Notes']}
+              buttonText='Update'
+              onCancel={() => { setPromptForUpdate(false); }}
+              onSave={async (requestUpdates) => {
+                setPromptForUpdate(false);
+                await handleUpdates(requestUpdates);
+              }}
+            />
+          }
+          { // Command Area
+            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+              <Box display='flex' flexDirection='column'>
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                  <Button
+                    className={classes.rowButtonGreen}
+                    onClick={onClose}
+                    startIcon={<CloseIcon size="small" />}
                   >
-                    {!filter.request_type &&
-                      <Typography className={classes.typeLine}>{this_item.workData.formatted_type}</Typography>
-                    }
-                    {this_item.workData.update_date ?
-                      <Typography className={classes.textLine}>{`Updated ${this_item.workData.update_date} (Sent ${this_item.workData.display_date})`}</Typography>
-                      :
-                      <Typography className={classes.textLine}>{`Sent ${this_item.workData.display_date}`}</Typography>
-                    }
-                    <Typography className={classes.textLine}>{this_item.last_status}</Typography>
-                    {this_item.workData.open &&
-                      <React.Fragment>
-                        <Typography className={classes.drowhead}>Details</Typography>
-                        {this_item.workData.formatted_request.map(dRow => (
-                          <Typography className={(`drow${dRow[0]}` in classes) ? classes[`drow${dRow[0]}`] : classes.drowdetail}>{dRow[1]}</Typography>
-                        ))}
-                      </React.Fragment>
-                    }
-                  </Box>
-                  {(this_item.workData.open) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    {'Close'}
+                  </Button>
+                  <Button
+                    className={classes.rowButtonDefault}
+                    onClick={() => {
+                      setPromptForUpdate(true);
+                    }}
+                    startIcon={<EditIcon size="small" />}
+                  >
+                    {'Update Status'}
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      setShowAddPrompt(true);
+                    }}
+                    className={classes.rowButtonGreen}
+                    startIcon={<SendIcon size='small' />}
+                  >
+                    {`New Request`}
+                  </Button>
                 </Box>
               </Box>
-            ))}
-          </List>
-        </Paper>
-      }
-      { /* Prompts */}
-      {promptForMessage &&
-        <MakeMessage
-          titleText={'Follow-up'}
-          promptText={`What should your message say?`}
-          buttonText={'Send'}
-          sender={{
-            "client_id": session.client_id,
-            "patient_id": session.patient_id,
-            "patient_display_name": session.patient_display_name
-          }}
-          pRecipientID={'*select'}
-          pRecipientName={''}
-          onCancel={() => { setPromptForMessage(false); }}
-          onComplete={() => { setPromptForMessage(false); }}
-          setMethod={null}
-          allowCancel={true}
-          seedText={promptForMessage}
-        />
-      }
-      {promptForUpdate &&
-        <AVATextInput
-          titleText={createMessageText()}
-          promptText={['New Status', '[checkbox]Mark as Complete?', 'Notes']}
-          buttonText='Update'
-          onCancel={() => { setPromptForUpdate(false); }}
-          onSave={async (requestUpdates) => {
-            setPromptForUpdate(false);
-            await handleUpdates(requestUpdates);
-          }}
-        />
-      }
-      { /* Command Area */}
-      {
-        <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-          <Box display='flex' flexDirection='column'>
-            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-              <Button
-                className={classes.rowButtonDefault}
-                onClick={() => {
-                  onClose();
-                }}
-                startIcon={<CloseIcon size="small" />}
-              >
-                {'Exit'}
-              </Button>
-              <Button
-                className={classes.rowButtonDefault}
-                onClick={() => {
-                  setPromptForUpdate(true);
-                }}
-                startIcon={<EditIcon size="small" />}
-              >
-                {'Update Status'}
-              </Button>
-              {(filter.person_id || session.patient_id) &&
-                <Button
-                  className={classes.rowButtonDefault}
-                  onClick={() => {
-                    setPromptForMessage('With regard to ' + createMessageText() + ': ');
-                  }}
-                  startIcon={<SendIcon size="small" />}
-                >
-                  {'Send Follow-up'}
-                </Button>
-              }
-              {(false) &&
-                <Button
-                  className={classes.rowButtonDefault}
-                  onClick={() => {
-                  }}
-                  startIcon={<CheckIcon size="small" />}
-                >
-                  {'Confirm/Send'}
-                </Button>
-              }
-            </Box>
-          </Box>
-        </DialogActions>
+            </DialogActions>
+          }
+        </React.Fragment >
       }
     </Dialog >
   );
