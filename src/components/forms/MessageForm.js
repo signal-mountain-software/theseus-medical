@@ -267,6 +267,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
           Expires: 3600
         });
       imageObj[pPerson] = gotImage;
+      setImageObj(imageObj);
       return gotImage;
     }
     catch (e) {

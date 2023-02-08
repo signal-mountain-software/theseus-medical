@@ -259,7 +259,6 @@ export default ({
   setMessage,
   setStatusMessage,
   observationKey,
-  seedData,
   onError,
   onSave,
   onClose,
@@ -1196,7 +1195,8 @@ export default ({
           pClient={session.client_id}
           qualifiers={qualifierTable}
           listValues={values}
-          onSave={(oSelected, fText, fQualifiers) => { 
+          onSave={(requestNumber, oSelected, fText, fQualifiers) => { 
+            newFact.commonKey = requestNumber; 
             newFact.value.selected = oSelected; 
             newFact.value.freeText = fText;
             newFact.value.qualifiers = fQualifiers;
@@ -1212,7 +1212,6 @@ export default ({
         <RequestDashboard
           session={session}
           filter={{ person_id: session.patient_id }}
-          seedData={seedData}
           onClose={onClose}
         />
       );

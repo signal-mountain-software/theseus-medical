@@ -311,13 +311,6 @@ export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationTyp
     updateSetChange();
   };
 
-  const handleChangeKeyWordData = tableRow => event => {
-    person.time_based_rules[tableRow].keyWordData = event.target.value;
-    setRuleRows(person.time_based_rules);
-    setViewVersion(viewVersion + 1);
-    updateSetChange();
-  };
-
   const onChangeFromTime = tableRow => event => {
     person.time_based_rules[tableRow].time_from = event;
     setRuleRows(person.time_based_rules);

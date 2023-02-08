@@ -144,6 +144,7 @@ export default ({
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [isUrgent, setIsUrgent] = React.useState(setUrgent);
   const [forceMethod, setForceMethod] = React.useState(setMethod);
+  setForceMethod(setMethod);
   const [imageURL, setImageURL] = React.useState('');
 
   const lambda = new Lambda({

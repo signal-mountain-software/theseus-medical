@@ -1,13 +1,19 @@
 const AWS = require('aws-sdk');
 
-const AVAIcon = 'https://ava-icons.s3.amazonaws.com/AVA+Logo.png';
-
 const dbClient = new AWS.DynamoDB.DocumentClient({
     apiVersion: '2012-08-10',
     region: "us-east-1",
     accessKeyId: process.env.REACT_APP_AVA_ID,
     secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
+
+const s3 = new AWS.S3({
+    accessKeyId: process.env.REACT_APP_AVA_ID,
+    secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
+let imageObj = {};
+let peopleObj = {};
 
 
 export function recordExists(recordId) {
@@ -54,23 +60,24 @@ export function clt() {
     };
 };
 
-export async function getPerson(pPerson, pElement = '*all') {
-    let peopleRec = await dbClient
-        .get({
-            Key: { person_id: pPerson },
-            TableName: "People"
-        })
-        .promise()
-        .catch(error => {
-            console.log({ 'Bad get on People - caught error is': error });
-        });
-    if (!recordExists(peopleRec)) { return null; }
+export async function getPerson(pPerson, pElement = '*all', override = false) {
+    if (!peopleObj.hasOwnProperty(pPerson) || override) {
+        let peopleRec = await dbClient
+            .get({
+                Key: { person_id: pPerson },
+                TableName: "People"
+            })
+            .promise()
+            .catch(error => {
+                console.log({ 'Bad get on People - caught error is': error });
+            });
+        if (!recordExists(peopleRec)) { return null; }
+        peopleObj[pPerson] = peopleRec.Item;
+    }
     switch (pElement.toLowerCase()) {
-        case '*all': { return peopleRec.Item; }
-        case 'name': { return makeName(peopleRec.Item); }
-        default: {
-            return peopleRec.Item;
-        }
+        case '*all': { return peopleObj[pPerson]; }
+        case 'name': { return makeName(peopleObj[pPerson]); }
+        default: { return peopleObj[pPerson]; }
     }
 };
 
@@ -94,7 +101,6 @@ export async function getPersonDetails(pPerson) {
         var cleaned = ('' + personRec.Item.messaging.voice).replace(/\D/g, '');
         var match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         if (match) {
-            var intlCode = (match[1] ? '+1 ' : '');
             personRec.Item.home = [match[2], '-', match[3], '-', match[4]].join('');
             personRec.Item.search_data += ' ' + personRec.Item.messaging.voice;
         }
@@ -104,7 +110,6 @@ export async function getPersonDetails(pPerson) {
         cleaned = ('' + personRec.Item.messaging.sms).replace(/\D/g, '');
         match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         if (match) {
-            intlCode = (match[1] ? '+1 ' : '');
             personRec.Item.cell = [match[2], '-', match[3], '-', match[4]].join('');
             personRec.Item.search_data += ' ' + personRec.Item.messaging.sms;
         }
@@ -113,7 +118,6 @@ export async function getPersonDetails(pPerson) {
         cleaned = ('' + personRec.Item.messaging.office).replace(/\D/g, '');
         match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
         if (match) {
-            intlCode = (match[1] ? '+1 ' : '');
             personRec.Item.office = [match[2], '-', match[3], '-', match[4]].join('');
             personRec.Item.search_data += ' ' + personRec.Item.messaging.office;
         }
@@ -149,17 +153,19 @@ export function titleCase(pString) {
     return returnString.trim();
 }
 
-// end
-
 export function makeName(pRec) {
     if (!pRec) { return 'N/A'; }
-    else if (typeof pRec !== 'object') { return getPerson(pRec, 'name'); }
+    else if (typeof pRec !== 'object') {
+        let fetchPRec = async (pID) => await getPerson(pID);
+        return AVAname(fetchPRec(pRec));
+    }
     else if ('Item' in pRec) { return AVAname(pRec.Item); }
     else if ('Items' in pRec) { return pRec.Items.map(p => AVAname(p)); }
     else { return AVAname(pRec); }
 
     function AVAname(pRec) {
-        if ('name' in pRec) {
+        if (!pRec) {return 'No name' }
+        else if ('name' in pRec) {
             return (`${pRec.name.first || ''} ${pRec.name.last || ''}`).trim();
         }
         else if ('displayName' in pRec) { return pRec.displayName; }
@@ -222,7 +228,6 @@ export function makeDate(pInput) {
         }
     }
     let currentDate = new Date();
-    let mDate = null;
     let relDate, absDate;
     // Make relative date
     let hours = 60 * 60 * 1000;
@@ -234,7 +239,7 @@ export function makeDate(pInput) {
         }
         else if (targetDateStamp > (midnight - (7 * 24 * hours))) {
             let mWord = '';
-            if (targetDate.getDay() < 6) {
+            if ((currentDate.getTime() - targetDateStamp) > (4 * 24 * hours)) {
                 mWord = 'last ';
             }
             relDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
@@ -295,7 +300,7 @@ export function makeDate(pInput) {
     function buildDate(pString) {
         if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }
         let goodDate = new Date(pString);
-        cl({ 'in buildDate': pString, 'goodDate': goodDate.toLocaleString(), 'bad': isNaN(goodDate) });
+        clt({ 'in buildDate': pString, 'goodDate': goodDate.toLocaleString(), 'bad': isNaN(goodDate) });
         if (isNaN(goodDate)) {
             let currentDate = new Date();
             currentDate.setHours(0, 0, 0, 0);
@@ -345,3 +350,69 @@ export function makeDate(pInput) {
         else { return goodDate; }
     }
 };
+
+export async function getImage(pPerson, override = false) {
+    if (imageObj.hasOwnProperty(pPerson) && !override) { return imageObj[pPerson]; }
+    const imageBucket = 'theseus-medical-storage';
+    const imageURI = `public/patients/${pPerson}.jpg`;
+    let oData;
+    try {
+        await s3.getObject({
+            Bucket: imageBucket,
+            Key: imageURI,
+        }, function (error, data) {
+            if (data) { oData = data; };
+        })
+            .promise();
+        if (!oData || (oData.ContentLength === 0)) {
+            if (!('AVA Logo' in imageObj)) { getIcon('AVA Logo'); }
+            imageObj[pPerson] = imageObj['AVA Logo'];
+            return imageObj['AVA Logo'];
+        };
+        let gotImage =
+            s3.getSignedUrl('getObject', {
+                Bucket: imageBucket,
+                Key: imageURI,
+                Expires: 3600
+            });
+        imageObj[pPerson] = gotImage;
+        return gotImage;
+    }
+    catch (e) {
+        console.log(`error getting S3 image is ${e}`);
+        if (!('AVA Logo' in imageObj)) { getIcon('AVA Logo'); }
+        imageObj[pPerson] = imageObj['AVA Logo'];
+        return imageObj['AVA Logo'];
+    }
+};
+
+export async function getIcon(pIcon) {
+    const imageBucket = 'ava-icons';
+    const imageURI = `${pIcon}.png`;
+    let oData;
+    try {
+        await s3.getObject({
+            Bucket: imageBucket,
+            Key: imageURI,
+        }, function (error, data) {
+            if (data) { oData = data; };
+        })
+            .promise();
+        if (!oData || (oData.ContentLength === 0)) {
+            return;
+        };
+        let gotImage =
+            s3.getSignedUrl('getObject', {
+                Bucket: imageBucket,
+                Key: imageURI,
+                Expires: 3600
+            });
+        imageObj[pIcon] = gotImage;
+        return gotImage;
+    }
+    catch (e) {
+        console.log(`error getting S3 image is ${e}`);
+        return;
+    }
+};
+

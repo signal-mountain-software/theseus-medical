@@ -1,6 +1,5 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
-import { Auth } from '@aws-amplify/auth';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import TextField from '@material-ui/core/TextField';
@@ -15,7 +14,6 @@ import Paper from '@material-ui/core/Paper';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 
-import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 
@@ -721,8 +719,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               confirmText={'Save/Send'}
               onCancel={() => { setConfirmStatus(''); }}
               onConfirm={async () => {
+                let rObj;
                 if (factType === 'service') {
-                  await putServiceRequest(
+                  rObj = await putServiceRequest(
                     {
                       client: pClient,
                       author: fact.patient_id,
@@ -732,7 +731,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       request: { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual }
                     });
                 }
-                onSave(checkedToSave, textInput, dataRows.chosenQual);
+                onSave(rObj.request_id, checkedToSave, textInput, dataRows.chosenQual);
               }}
             >
             </AVAConfirm>

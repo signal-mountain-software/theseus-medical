@@ -86,9 +86,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const classes = useStyles();
 
-  const [changes, setChanges] = React.useState(false);
-  if (changes) { }
-
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
   if (isMobile) { }
 
