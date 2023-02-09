@@ -300,7 +300,6 @@ export function makeDate(pInput) {
     function buildDate(pString) {
         if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }
         let goodDate = new Date(pString);
-        clt({ 'in buildDate': pString, 'goodDate': goodDate.toLocaleString(), 'bad': isNaN(goodDate) });
         if (isNaN(goodDate)) {
             let currentDate = new Date();
             currentDate.setHours(0, 0, 0, 0);
