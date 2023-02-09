@@ -20,7 +20,7 @@ export function putServiceRequest_nonAsync(body) {
 }
 
 export async function getServiceRequests(body) { 
-  let rP = body.person_id || body.person;
+  let rP = body.person_id || body.person || body.filter.person_id || body.filter.person;
   let rT = body.request_type || body.filter.request_type;
   let qQ = { TableName: 'ServiceRequests' }
   if (rP) {
