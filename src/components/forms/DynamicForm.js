@@ -1208,10 +1208,14 @@ export default ({
         />
       );
     case 'request_dashboard':
+      let filter = { person_id: session.patient_id };
+      if (newFact?.value?.freeText?.requestType) { 
+        filter = { request_type: newFact.value.freeText.requestType }
+      }
       return (
         <RequestDashboard
           session={session}
-          filter={{ person_id: session.patient_id }}
+          filter={filter}
           onClose={onClose}
         />
       );

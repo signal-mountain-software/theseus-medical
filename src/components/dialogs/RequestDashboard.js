@@ -385,8 +385,16 @@ export default ({ session, filter = {}, onClose }) => {
   }
 
   const buildDashboard = async () => {
-
-    let qList = await getServiceRequests({ 'person': session.patient_id });
+    let qList = [];
+    if (filter) {
+      qList = await getServiceRequests({
+        'client_id': session.client_id,
+        filter
+      });
+    }
+    else {
+      qList = await getServiceRequests({ 'person': session.patient_id });
+    }
     for (let x = 0; x < qList.length; x++) {
       qList[x] = await buildRequestDetails(qList[x]);
     }

@@ -20,18 +20,24 @@ export function putServiceRequest_nonAsync(body) {
 }
 
 export async function getServiceRequests(body) { 
-  let rP = body.person;
-  let rT = body.request_type
-  let qQ = {
-    TableName: 'ServiceRequests',
-    IndexName: 'requestor-type-index',
-    KeyConditionExpression: 'requestor = :rP',
-    ExpressionAttributeValues: { ':rP': rP }
-  };
-  if (rT) {
-    qQ.KeyConditionExpression += ' and request_type = :rT';
-    qQ.ExpressionAttributeValues[':rT'] = rT;
+  let rP = body.person_id || body.person;
+  let rT = body.request_type || body.filter.request_type;
+  let qQ = { TableName: 'ServiceRequests' }
+  if (rP) {
+    qQ.IndexName = 'requestor-type-index';
+    qQ.KeyConditionExpression = 'requestor = :rP';
+    qQ.ExpressionAttributeValues = { ':rP': rP };
+    if (rT) {
+      qQ.KeyConditionExpression += ' and request_type = :rT';
+      qQ.ExpressionAttributeValues[':rT'] = rT;
+    }
   }
+  else if (rT) {
+    qQ.IndexName = 'request_type-index';
+    qQ.KeyConditionExpression = 'client_id = :c and request_type = :rT';
+    qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rT': rT };
+  }
+  
   let qR = await dbClient
     .query(qQ)
     .promise()
