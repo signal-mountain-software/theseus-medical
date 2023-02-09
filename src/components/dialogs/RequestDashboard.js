@@ -14,7 +14,6 @@ import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContentText from '@material-ui/core/DialogContentText';
 
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
@@ -26,6 +25,14 @@ import TextField from '@material-ui/core/TextField';
 import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
 import SendMessageDialog from '../dialogs/SendMessageDialog';
+
+import HomeIcon from '@material-ui/icons/Home';
+import AutorenewIcon from '@material-ui/icons/Autorenew';
+
+import Avatar from '@material-ui/core/Avatar';
+import Menu from '@material-ui/core/Menu';
+import MenuList from '@material-ui/core/MenuList';
+import MenuItem from '@material-ui/core/MenuItem';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -39,7 +46,7 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 0,
     paddingBottom: theme.spacing(1),
-    width: '60%',
+    width: '90%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
   },
@@ -50,13 +57,6 @@ const useStyles = makeStyles(theme => ({
     maxHeight: '100px',
     marginBottom: theme.spacing(1),
     marginRight: theme.spacing(1),
-  },
-  title: {
-    marginTop: theme.spacing(3),
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    marginBottom: 0,
-    fontSize: '1.3rem',
   },
   buttonArea: {
     maxWidth: 1000,
@@ -161,7 +161,40 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 'bold',
     fontSize: theme.typography.fontSize * 1.8,
     marginRight: theme.spacing(1),
-  }
+  },
+  messageArea: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(0),
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+  },
+  title: {
+    marginTop: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginLeft: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: theme.typography.fontSize * 1.5,
+    fontWeight: 'bold',
+  },
+  subTitle: {
+    marginRight: theme.spacing(2),
+    marginBottom: theme.spacing(0.5),
+    marginLeft: theme.spacing(2),
+    fontSize: theme.typography.fontSize * 1.2
+  },
+  popUpMenu: {
+    marginRight: theme.spacing(3),
+    paddingRight: 2,
+  },
+  popUpMenuRow: {
+    marginLeft: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  popUpFooter: {
+    fontSize: theme.typography.fontSize * 0.8,
+  },
 }));
 
 export default ({ session, filter = {}, onClose }) => {
@@ -194,10 +227,17 @@ export default ({ session, filter = {}, onClose }) => {
 
   const [promptForUpdate, setPromptForUpdate] = React.useState(false);
 
+  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
+  const [anchorEl, setAnchorEl] = React.useState(null);
+
   const [rowLimit, setRowLimit] = React.useState(20);
   const [previousY, setCurrentY] = React.useState(0);
   const scrollValue = 20;
   var rowsWritten;
+
+  const handleClick = async (event) => {
+    setAnchorEl(event.currentTarget);
+  };
 
   const requestNames = {
     maint: 'Maintenance Request',
@@ -500,12 +540,75 @@ export default ({ session, filter = {}, onClose }) => {
     >
       {dataRows && dataRows.length > 0 &&
         <React.Fragment>
-          <DialogContentText
-            className={classes.title}
-            id='scroll-dialog-title'
+          {/* Header with Avatar, Message, and VertMenu */}
+          <Box
+            display='flex' flexDirection='row'
+            className={classes.messageArea}
+            key={'topBox'}
           >
-            Recent Requests
-          </DialogContentText>
+            <Box display='flex' flexDirection='column' key={'titlesection'}>
+              <Typography
+                className={classes.title}
+              >
+                Recent Requests
+              </Typography>
+            </Box>
+            <Box
+              paddingRight={2}
+              marginTop={1}
+              aria-controls='hidden-menu'
+              aria-haspopup='true'
+              onClick={(event) => {
+                handleClick(event);
+                setPopupMenuOpen(true);
+              }}>
+              <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
+            </Box>
+            <Menu
+              id='hidden-menu'
+              anchorEl={anchorEl}
+              open={popupMenuOpen}
+              onClose={() => { setPopupMenuOpen(false); }}
+              keepMounted>
+              <MenuList className={classes.popUpMenu}>
+                <MenuItem
+                  onClick={() => {
+                    onClose();
+                  }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowHome'}
+                  >
+                    <HomeIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Go to AVA Menu'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    let jumpTo = window.location.origin;
+                    window.location.replace(jumpTo);
+                  }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowRefresh'}
+                  >
+                    <AutorenewIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem>
+                  <Box
+                    display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                    key={'vRowRefresh'}
+                  >
+                    <Typography className={classes.popUpFooter} >{`AVA vers 23.2.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
+                  </Box>
+                </MenuItem>
+              </MenuList>
+            </Menu>
+          </Box>
           <TextField
             id='List Filter'
             value={request_filter}

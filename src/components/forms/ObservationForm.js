@@ -568,6 +568,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     key={'vRowRefresh'}
                   >
                     <Typography className={classes.popUpFooter} >{`AVA vers 23.2.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`User ${fact.session.user_id}${fact.patient_id !== fact.session.user_id ? (' (' + fact.patient_id + ')') : ''}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`Function: ObservationForm`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`Activity: ${fact.activity_key}`}</Typography>
                   </Box>
                 </MenuItem>
               </MenuList>
