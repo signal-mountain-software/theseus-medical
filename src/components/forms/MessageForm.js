@@ -810,7 +810,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
               onCancel={() => { setPromptForMessage(false); }}
               onComplete={() => { setPromptForMessage(false); }}
               allowCancel={true}
-              thread_id={messageList[recipientIndex].thread_id}
+              thread_id={(recipientIndex >= 0) ? messageList[recipientIndex].thread_id : ''}
             />
           }
           {

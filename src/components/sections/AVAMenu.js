@@ -2,7 +2,7 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists } from '../../util/AVAUtilities';
+import { recordExists, makeDate } from '../../util/AVAUtilities';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -250,7 +250,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [mainMenu, setMainMenu] = React.useState([]);
-  const [messageText, setMessageText] = React.useState('');
+  const [messageRec, setMessageRec] = React.useState('');
   const [imageURL, setImageURL] = React.useState('');
   const [greetingName, setGreetingName] = React.useState('');
   const [greetingWords, setGreetingWords] = React.useState('');
@@ -399,18 +399,18 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     putActivityLog();
   };
 
-  const deleteMessage = async (pMessage_id) => {
+  const deleteMessage = async (pThread_id, pComposite_key) => {
     await dbClient
       .update({
         Key: {
-          thread_id: pMessage_id.split('~')[0].slice(2),
-          composite_key: pMessage_id
+          thread_id: pThread_id,
+          composite_key: pComposite_key
         },
         UpdateExpression: 'set delete_flag = :t',
         ExpressionAttributeValues: {
           ':t': true
         },
-        TableName: "TheseusMessages",
+        TableName: 'TheseusMessages'
       })
       .promise()
       .catch(error => {
@@ -456,23 +456,17 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           msgText = `From ${msg.author.author_name} - `;
         }
         msgText += msg.content.current[language].text;
-        let foundMessage = `${msg.created_time}$~~$${new Date(Number(msg.created_time)).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        })
-          } - ${msgText}$~~$${msg.composite_key}$~~$to$~~$${msg.author.author_name}:${msg.author.author_id}`;
+        
+        msg.display_text = `${makeDate(msg.created_time).relative} - ${msgText}`;
         setMessageReplyRecipient(`${msg.author.author_name}:${msg.author.author_id}`);
-        setMessageText(foundMessage);
-        return foundMessage;
+        setMessageRec(msg);
+        return msg;
       }
     }
     catch (error) {
       console.error(`Error at Last message check is`, error);
     }
-    setMessageText(null);
+    setMessageRec(null);
     setForceRedisplay(!forceRedisplay);
     return null;
   };
@@ -1249,7 +1243,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         }
 
         {/* Message */}
-        {!loading && messageText &&
+        {!loading && messageRec &&
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'loadingBox'}
@@ -1260,7 +1254,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
               key={'msgButtonBox'}
             >
               <Typography key={'message'} variant='subtitle2' className={classes.boldCenter}>
-                {messageText.split('$~~$')[1]}
+                {messageRec.display_text}
               </Typography>
             </Box>
             <Box
@@ -1269,17 +1263,17 @@ export default ({ pPerson, patient, pClient, onReset }) => {
               <Button
                 onClick={async () => {
                   // mTime,mContent,mID,mType,mSenderName:respondTo
-                  await deleteMessage(messageText.split('$~~$')[2]);
-                  setMessageText(null);
+                  await deleteMessage(messageRec.thread_id, messageRec.composite_key);
+                  setMessageRec(null);
                   await getMessage(session.patient_id);
                   setForceRedisplay(!forceRedisplay);
                 }}
                 className={classes.rowButtonRed}
                 startIcon={<DeleteIcon size='small' />}
               >
-                {(messageText.split('$~~$')[3] !== 'to') ? 'Hide' : 'Delete'}
+                {(messageRec.deliver_to !== session.patient_id) ? 'Hide' : 'Delete'}
               </Button>
-              {(messageText.split('$~~$')[3] === 'to') &&
+              {(messageRec.deliver_to === session.patient_id) &&
                 <Button
                   onClick={async () => {
                     setPromptForMessage(true);
@@ -1659,7 +1653,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
             onCancel={() => { setPromptForMessage(false); }}
             onComplete={() => { setPromptForMessage(false); }}
             allowCancel={true}
-            thread_id={messageText.split('$~~$')[2].split('~')[0].slice(2)}
+            thread_id={messageRec.thread_id || null}
           />
         }
       </React.Fragment >

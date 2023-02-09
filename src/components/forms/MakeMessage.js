@@ -139,12 +139,11 @@ export default ({
   const [recipientName, setRecipientName] = React.useState(pRecipientName);
   const [newAccount, setNewAccount] = React.useState(false);
 
-  const [textInput, setTextInput] = React.useState(seedText);
+  const [textInput, setTextInput] = React.useState(seedText || '');
   const [nameInput, setNameInput] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [isUrgent, setIsUrgent] = React.useState(setUrgent);
-  const [forceMethod, setForceMethod] = React.useState(setMethod);
-  setForceMethod(setMethod);
+  const [forceMethod, ] = React.useState(setMethod);
   const [imageURL, setImageURL] = React.useState('');
 
   const lambda = new Lambda({
@@ -327,9 +326,9 @@ export default ({
             Key: imageURI,
             Expires: 3600
           })
-        )
+        );
       }
-      catch (e) { 
+      catch (e) {
         console.log(`error getting S3 image is ${e}`);
       }
     }
@@ -369,14 +368,12 @@ export default ({
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
               {titleText || `Send a${(forceMethod === 'AVA') ? 'n AVA Alert' : ''} ${thread_id ? 'reply' : 'message'} to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
             </DialogContentText>
-            <Box>
-              <Box
-                className={classes.imageArea}
-                component="img"
-                alt=''
-                src={getImage(recipientID)}
-              />
-            </Box>
+            <Box
+              className={classes.imageArea}
+              component="img"
+              alt=''
+              src={getImage(recipientID)}
+            />
             <DialogContent className={classes.contentBox}>
               <Box
                 display='flex'
