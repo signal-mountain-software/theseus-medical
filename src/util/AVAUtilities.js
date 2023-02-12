@@ -199,6 +199,7 @@ export function makeNumber(pNum) {
 export function makeDate(pInput) {
     if (!pInput) {
         return {
+            'error': true,
             'relative': '',
             'absolute': '',
             'date': null,
@@ -220,6 +221,7 @@ export function makeDate(pInput) {
         }
         else {
             return {
+                'error': true,
                 'relative': `${pInput} is not a valid date`,
                 'absolute': `${pInput} is not a valid date`,
                 'date': null,
@@ -287,6 +289,7 @@ export function makeDate(pInput) {
         + '.' + (targetDate.getDate() + 100).toString().slice(1);
     let regEx = /\.0/g
     return {
+        'error': false,
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
         'date': targetDate,
