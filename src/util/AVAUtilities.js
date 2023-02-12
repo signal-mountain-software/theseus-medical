@@ -203,7 +203,8 @@ export function makeDate(pInput) {
             'absolute': '',
             'date': null,
             'timestamp': 0,
-            'ymd': '2099.01.01'
+            'ymd': '2099.01.01',
+            'obs': '2099.1.1',
         };
     }
     let targetDateStamp, targetDate;
@@ -223,7 +224,8 @@ export function makeDate(pInput) {
                 'absolute': `${pInput} is not a valid date`,
                 'date': null,
                 'timestamp': 0,
-                'ymd': '2099.01.01'
+                'ymd': '2099.01.01',
+                'obs': '2099.1.1',
             };
         }
     }
@@ -283,12 +285,14 @@ export function makeDate(pInput) {
     let targetDateYMD = targetDate.getFullYear()
         + '.' + (targetDate.getMonth() + 101).toString().slice(1)
         + '.' + (targetDate.getDate() + 100).toString().slice(1);
+    let regEx = /\.0/g
     return {
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
         'date': targetDate,
         'timestamp': targetDateStamp,
-        'ymd': targetDateYMD
+        'ymd': targetDateYMD,
+        'obs': targetDateYMD.replace(regEx, '.')
     };
 
     function addDays(pDate, pDays) {
@@ -303,12 +307,18 @@ export function makeDate(pInput) {
         if (isNaN(goodDate)) {
             let currentDate = new Date();
             currentDate.setHours(0, 0, 0, 0);
+            let [words, days$] = pString.split(/[-+]/);
+            let daysToAdd = 0;
+            if (days$) {
+                daysToAdd = parseInt(days$.trim(), 10) * (pString.includes('-') ? -1 : 1);
+                pString = words.trim();
+            }
             let tDate = pString.trim().substr(0, 3).toLowerCase();
             if (tDate === 'tom') {
-                return addDays(currentDate, 1);
+                return addDays(currentDate, (1 + daysToAdd));
             }
             else if (tDate === 'tod') {
-                return currentDate;
+                return addDays(currentDate, daysToAdd);
             }
             else {
                 // the pString doesn't translate to a date on its own
@@ -339,7 +349,7 @@ export function makeDate(pInput) {
                         variant = requestedDofWeek - currentDofWeek;
                         if (variant <= 0) { variant += 7; }
                     }
-                    return addDays(currentDate, variant);
+                    return addDays(currentDate, (variant + daysToAdd));
                 }
                 else {
                     return null;
