@@ -1,5 +1,5 @@
 import React from 'react';
-import { getImage, getPerson, makeDate, makeNumber, sentenceCase } from '../../util/AVAUtilities';
+import { getImage, getPerson, makeDate, makeNumber, sentenceCase, titleCase } from '../../util/AVAUtilities';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';
@@ -443,7 +443,7 @@ export default ({ session, filter = {}, onClose }) => {
 
   async function buildRequestDetails(i) {
     i.workData = {};
-    i.workData.formatted_type = requestNames[i.request_type] || `${sentenceCase(i.request_type)} request`;
+    i.workData.formatted_type = requestNames[i.request_type] || `${titleCase(i.request_type)}`;
     if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
     let AVArequestDate = makeDate(i.request_date);
     i.workData.display_date = AVArequestDate.relative;
@@ -647,7 +647,7 @@ export default ({ session, filter = {}, onClose }) => {
                                 src={this_item.workData.requestor_image}
                               />
                               <Box display='flex' flexDirection='column'>
-                                <Typography variant='h5' className={classes.lastName} >{sentenceCase(this_item.workData.formatted_type)}</Typography>
+                                <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
                                 <Typography variant='h5' className={classes.firstName}>{`requested by: ${this_item.workData.requestor_name}`}</Typography>
                                 <Typography variant='h5' className={classes.timeLine}>{this_item.workData.display_date}</Typography>
                               </Box>
