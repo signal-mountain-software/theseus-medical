@@ -2,7 +2,8 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, makeDate } from '../../util/AVAUtilities';
+import { recordExists, makeDate, cl, resolveVariables } from '../../util/AVAUtilities';
+import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -237,7 +238,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ pPerson, patient, pClient, onReset }) => {
+export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const classes = useStyles();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
@@ -337,7 +338,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       }
     }
 
-    let wholeMenu = await MakeAVAMenu(patient, pClient, (beQuiet ? screenQuiet : screenStatus));
+    let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus));
 
     if (wholeMenu.length > 0) {
       setMainMenu(wholeMenu);
@@ -832,20 +833,21 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     }
   };
 
-  const getActivityDetail = async (pActivity, pDefault) => {
+  const getActivityDetail = async (pActRec) => {
+    let resolvedActivity = await makeObservationList(pActRec.activity_rec, session);
+    resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
+    resolvedActivity.activityRec.default_value = await resolveVariables(pActRec.default_value, session);
+    setSelected(resolvedActivity.activityRec);
+    return resolvedActivity;
+    /*
     let invokeFailed = false;
-    let cClient = pClient;
-    let cActivity = pActivity;
-    if (pActivity.includes('//')) {
-      [cClient, cActivity] = pActivity.split('//');
-    }
     var payload =
     {
       'test': false,
       'body': {
-        "clientId": cClient,
+        "clientId": resolvedActivity.activityRec.client_id,
         "personId": pPerson,
-        "activityType": `$$${cActivity}`,
+        "activityType": `$$${resolvedActivity.activityRec.activity_code}`,
         "limit": 100,
         "fact_data": false,
         "historyOnly": false,
@@ -872,22 +874,26 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     if (!invokeFailed) {
       let activityResponse = JSON.parse(fResp.Payload);
       if (activityResponse.status === 200) {
-        if (cClient !== pClient) {
+          /*
+        if (cClient !== defaultClient) {
           activityResponse.body.activityData[0].client_id = cClient;
         }
+      
         if (pDefault && (pDefault !== '') && !pDefault.includes('[')) {
           activityResponse.body.activityData[0].default_value = pDefault;
         }
+        else { activityResponse.body.activityData[0].default_value = resolvedDefault; }
         setSelected(activityResponse.body.activityData[0]);
         return activityResponse.body.activityData[0];
       }
     };
     return [];
+   */
   };
 
   const getActivityHistory = async (pActivity) => {
     let invokeFailed = false;
-    let cClient = pClient;
+    let cClient = defaultClient;
     let cActivity = pActivity;
     if (pActivity.includes('//')) {
       [cClient, cActivity] = pActivity.split('//');
@@ -1428,7 +1434,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                                 activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
                                 if (!toggleClick && (this_row.row_type !== 'document')) {
                                   if (this_row.subMenu_data) {
-                                    let subMenu = await MakeAVAMenu(patient, pClient, screenQuiet, this_row.subMenu_data);
+                                    let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
                                     delete mainMenu[index].subMenu_data;
                                     mainMenu.push(...subMenu);
                                     setMainMenu(mainMenu);
@@ -1442,7 +1448,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                                     setForceRedisplay(!forceRedisplay);
                                   }
                                   else {
-                                    await getActivityDetail(this_row.activity_code, this_row.default_value);
+                                    await getActivityDetail(this_row);
                                     setShowNewFactDialog(index);
                                   }
                                 }
@@ -1574,7 +1580,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           <PatientDialog
             patient={{
               "person_id": `*NEW~${new Date().getTime()}`,
-              "client_id": pClient,
+              "client_id": defaultClient,
               "groups": [],
               "name": {
                 "first": 'New',
@@ -1583,7 +1589,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
               "clients": [
                 {
                   "groups": [],
-                  "id": pClient
+                  "id": defaultClient
                 }
               ],
             }}
@@ -1644,7 +1650,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
             promptText={`What should your reply to ${messageReplyRecipient.split(':')[0]} say?`}
             buttonText={'Send'}
             sender={{
-              "client_id": pClient,
+              "client_id": defaultClient,
               "patient_id": session.patient_id || patient.person_id,
               "patient_display_name": `${patient.name.first} ${patient.name.last}`
             }}

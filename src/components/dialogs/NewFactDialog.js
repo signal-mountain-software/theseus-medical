@@ -430,21 +430,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     catch (e) {
       console.error(e);
     }
-  
-    let qT = {};
-    setValue(defaultValue);
-    // console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
-    if (fact.value_qualifiers && Array.isArray(fact.value_qualifiers) && (fact.value_qualifiers.length > 0)) {
-      fact.value_qualifiers.forEach(vQual => {
-        if (vQual && Object.keys(vQual).length > 0) {
-          qT[vQual.value] = vQual;
-          if (vQual.associated_activity) {
-            associationsTable[vQual.value] = vQual.associated_activity;
-          }
-        }
-      });
-    }
-    setQualifierTable(qT);
+    setQualifierTable(fact.value_qualifiers);
     setAssociationsTable(associationsTable);
 
     var mF = '';
@@ -458,10 +444,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         v++;
       } while (v < vL && !mF);
     }
-    //setMessageField(mF);
-
-
-
     setQualChecked({});
 
     let nF = {
@@ -546,9 +528,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         ? <DialogContentText className={classes.warningText}>{message}</DialogContentText>
         : <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
       }
-      {statusMessage ? (
+      {statusMessage &&
         <DialogContentText className={classes.subDescriptionText}>{statusMessage}</DialogContentText>
-      ) : null}
+      }
       <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
         {fact ? (
           <DynamicForm
