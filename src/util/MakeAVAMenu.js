@@ -1,5 +1,6 @@
-const AWS = require('aws-sdk');
+import { resolveVariables, stringToColor, cl, clt, recordExists } from '../util/AVAUtilities';
 
+const AWS = require('aws-sdk');
 const AVAIcon = 'https://ava-icons.s3.amazonaws.com/AVA+Logo.png';
 
 const dbClient = new AWS.DynamoDB.DocumentClient({
@@ -197,7 +198,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
                     section_icon: sectionDetails[this_section].icon,
                     row_color: sectionDetails[this_section].color,
                     activity_code: `event.${iKey}`,
-                    activity_name: reconcile(iKey),
+                    activity_name: await resolveVariables(iKey),
                     row_type: 'event',
                     default_value: null,
                     parent_menu: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
@@ -387,7 +388,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     else {
       pSort = `${pSectionSort}-${numberOfRows}`;
     }
+    activityRec.code = activityRec.activity_code;
     return {
+      activity_rec: activityRec,
+      code: activityRec.activity_code,
       menu_name: pMenu,
       sort_key: pSort,
       section_name: (!favorite && activityRec.section_name) || pSectionName,
@@ -395,7 +399,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       section_icon: pSectionIcon,
       row_color: pSectionColor,
       activity_code: activityRec.activity_code,
-      activity_name: reconcile(activityRec.name),
+      activity_name: await resolveVariables(activityRec.name),
       row_type: activityRec.type,
       default_value: activityRec.validation?.default_value || null,
       parent_menu: pParent,
@@ -497,120 +501,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       return groupRecs.Responses.Groups;
     }
     else { return []; }
-  }
-
-  function reconcile(pString) {
-    if (!pString || !pString.includes('[')) { return pString; };
-    // ({ 'reconciling': pString });
-    let nameArray = pString.split(/\[|\]/g);
-    let betweenTheBrackets = nameArray[1];
-    if (betweenTheBrackets.includes('~')) {
-      // handle [morning~1200~afternoon], reconciling the respone as per the hhmm
-      let [earlyPart, timeTrigger$, latePart] = betweenTheBrackets.split('~');
-      let timeTrigger = parseInt(timeTrigger$.trim(), 10);
-      let timeNow = new Date();
-      let timeNowHHMM = ((timeNow.getHours() - 4) * 100) + timeNow.getMinutes();
-      if (timeNowHHMM > timeTrigger) { nameArray[1] = latePart; }
-      else { nameArray[1] = earlyPart; }
-      return nameArray.join('');
-    }
-    betweenTheBrackets = betweenTheBrackets.toLowerCase();
-    if (betweenTheBrackets === 'name') {
-      nameArray[1] = `${requestor.name.first} ${requestor.name.last} `;
-      return nameArray.join('');
-    }
-    else if (betweenTheBrackets === 'location') {
-      nameArray[1] = requestor.location;
-      return nameArray.join('');
-    }
-    else {
-      let keyDate;
-      let today = new Date();
-      let todayDayOfWeek = today.getDay();
-      if (betweenTheBrackets.startsWith('today+')) {
-        keyDate = addDays(today, parseInt(betweenTheBrackets.split('+')[1], 10));
-      }
-      else if (betweenTheBrackets.startsWith('sunday')) {
-        let nextSunday = addDays(today, ((7 - todayDayOfWeek) % 7));
-        keyDate = addDays(nextSunday, ((betweenTheBrackets.includes('-') ? -1 : 1) * parseInt(betweenTheBrackets.split('+')[1], 10)));
-      }
-      else {
-        if (betweenTheBrackets.startsWith('next ')) {
-          today = addDays(today, 1);
-          todayDayOfWeek = today.getDay();
-          betweenTheBrackets = betweenTheBrackets.substring(5).trim();
-        };
-        switch (betweenTheBrackets) {
-          case 'today':
-            { keyDate = today; break; }
-          case 'tomorrow':
-            { keyDate = addDays(today, 1); break; }
-          case 'sunday':
-            { keyDate = addDays(today, ((7 - todayDayOfWeek) % 7)); break; }
-          case 'monday':
-            { keyDate = addDays(today, ((8 - todayDayOfWeek) % 7)); break; }
-          case 'tuesday':
-            { keyDate = addDays(today, ((9 - todayDayOfWeek) % 7)); break; }
-          case 'wednesday':
-            { keyDate = addDays(today, ((10 - todayDayOfWeek) % 7)); break; }
-          case 'thursday':
-            { keyDate = addDays(today, ((11 - todayDayOfWeek) % 7)); break; }
-          case 'friday':
-            { keyDate = addDays(today, ((12 - todayDayOfWeek) % 7)); break; }
-          case 'saturday':
-            { keyDate = addDays(today, ((13 - todayDayOfWeek) % 7)); break; }
-          default:
-            { break; }
-        }
-      }
-      if (keyDate) {
-        nameArray[1] = `${keyDate.getMonth() + 1}/${keyDate.getDate()}`;
-        return nameArray.join('');
-      }
-    }
-    return pString;
-  }
-
-  function addDays(pDate, pDays) {
-    const copy = pDate;
-    copy.setDate(pDate.getDate() + pDays);
-    return copy;
-  }
-
-  function stringToColor(string) {
-    let hash = 0;
-    let i;
-    /* eslint-disable no-bitwise */
-    for (i = 0; i < string.length; i += 1) {
-      hash = string.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    let color = '#';
-    for (i = 0; i < 3; i += 1) {
-      const value = (hash >> (i * 8)) & 0xff;
-      color += `00${value.toString(16)}`.substr(-2);
-    }
-    /* eslint-enable no-bitwise */
-    return color;
-  }
-
-  function cl() {
-    for (let v = 0; v < arguments.length; v++) {
-      let value = arguments[v];
-      if (typeof (value) === 'object') { console.log(JSON.stringify(value)); }
-      else { console.log(value); }
-    }
-  };
-
-  function clt() {
-    for (let v = 0; v < arguments.length; v++) {
-      let value = arguments[v];
-      if (typeof (value) === 'object') { console.log(JSON.stringify(value)); }
-      else { console.log({ value }); }
-    };
-  };
-
-  function recordExists(recordId) {
-    return (recordId != null && (recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items")));
   }
 
 };    // end
