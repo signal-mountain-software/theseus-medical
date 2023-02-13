@@ -387,7 +387,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         input: false,
         header: true
       });
-    }
+    };
     setLoadComplete(true);
     setDataRows({ displayRows: displayRowList, dataRows: {}, checked: [] });
   }
@@ -723,7 +723,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               onCancel={() => { setConfirmStatus(''); }}
               onConfirm={async () => {
                 let rObj;
-                if (factType === 'service') {
+                if (factType !== 'list') {
                   rObj = await putServiceRequest(
                     {
                       client: pClient,
@@ -734,7 +734,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       request: { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual }
                     });
                 }
-                onSave(rObj.request_id, checkedToSave, textInput, dataRows.chosenQual);
+                onSave((rObj ? rObj.request_id : ''), checkedToSave, textInput, dataRows.chosenQual);
               }}
             >
             </AVAConfirm>
