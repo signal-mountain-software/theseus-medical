@@ -246,17 +246,17 @@ export function makeDate(pInput) {
   }
 
   function buildDate(pString) {
+    let [words, days$] = pString.split(/[-+]/);
+    let daysToAdd = 0;
+    if (days$) {
+      daysToAdd = parseInt(days$.trim(), 10) * (pString.includes('-') ? -1 : 1);
+      pString = words.trim();
+    }
     if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }
     let goodDate = new Date(pString);
     if (isNaN(goodDate)) {
       let currentDate = new Date();
       currentDate.setHours(0, 0, 0, 0);
-      let [words, days$] = pString.split(/[-+]/);
-      let daysToAdd = 0;
-      if (days$) {
-        daysToAdd = parseInt(days$.trim(), 10) * (pString.includes('-') ? -1 : 1);
-        pString = words.trim();
-      }
       let tDate = pString.trim().substr(0, 3).toLowerCase();
       if (tDate === 'tom') {
         return addDays(currentDate, (1 + daysToAdd));
