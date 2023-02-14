@@ -15,6 +15,7 @@ import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import ObservationForm from '../forms/ObservationForm';
 import RequestDashboard from '../dialogs/RequestDashboard';
+import CalendarDashboard from '../dialogs/CalendarDashboard';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
@@ -1207,10 +1208,10 @@ export default ({
           onClose={onClose}
         />
       );
-    case 'request_dashboard':
+    case 'request_dashboard': {
       let filter = { person_id: session.patient_id };
-      if (newFact?.value?.freeText?.requestType) { 
-        filter = { request_type: newFact.value.freeText.requestType }
+      if (newFact?.value?.freeText?.requestType) {
+        filter = { request_type: newFact.value.freeText.requestType };
       }
       return (
         <RequestDashboard
@@ -1219,6 +1220,20 @@ export default ({
           onClose={onClose}
         />
       );
+    }
+    case 'calendar_dashboard': {
+      let filter = { person_id: session.patient_id };
+      if (newFact?.value?.freeText?.requestType) {
+        filter = { request_type: newFact.value.freeText.requestType };
+      }
+      return (
+        <CalendarDashboard
+          session={session}
+          filter={filter}
+          onClose={onClose}
+        />
+      );
+    }
     case 'new_event':
       return (
         <NewCalendarEvent

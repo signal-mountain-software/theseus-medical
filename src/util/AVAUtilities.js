@@ -136,7 +136,29 @@ export function makeDate(pInput) {
     targetDate = pInput;
   }
   else {
-    if ((typeof pInput) !== 'string') { targetDate = new Date(pInput); }
+    if ((typeof pInput) === 'number') {
+      //      101 -     1231 mm dd in logical year (see makedate)
+      //    10101 -   123199 mm dd yy
+      //   200101 -   991231 yy mm dd
+      //  1010001 - 12312999 mm dd yyyy
+      // 20200101 - 29991231 yyyy mm dd
+      if (pInput <= 1231) { 
+        targetDate = buildDate(`${Math.floor(pInput / 100)}/${pInput % 100}`)
+      }
+      else if (pInput <= 123199) {
+        targetDate = buildDate(`${Math.floor(pInput / 10000)}/${Math.floor((pInput % 10000) / 100)}/20${pInput % 100}`);
+      }
+      else if (pInput <= 991231) {
+        targetDate = buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/20${Math.floor(pInput / 10000)}`);
+      }
+      else if (pInput <= 12312999) {
+        targetDate = buildDate(`${Math.floor(pInput / 1000000)}/${Math.floor((pInput % 1000000) / 10000)}/${pInput % 10000}`);
+      }
+      else {
+        targetDate = buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/${Math.floor(pInput / 10000)}`);
+      }
+    }
+    else if ((typeof pInput) !== 'string') { targetDate = new Date(pInput); }
     else { targetDate = buildDate(pInput); }
     if (targetDate instanceof Date) {
       targetDateStamp = targetDate.getTime();
@@ -193,13 +215,8 @@ export function makeDate(pInput) {
   absDate = `${targetDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
   if (!relDate) { relDate = absDate; }
   if (targetDate.getFullYear() !== currentDate.getFullYear()) {
-    if (targetDate.getMonth() > 3 || currentDate.getMonth() < 9) {
-      targetDate.setFullYear(currentDate.getFullYear());
-    }
-    else {
-      targetDate.setFullYear(currentDate.getFullYear() + 1);
-    }
     absDate += ` ${targetDate.getFullYear()}`;
+    if (daysDiff(targetDate, new Date()) > 21) { relDate += ` ${targetDate.getFullYear()}`; }
   }
   if ((targetDate.getHours() > 0) && (targetDate.getMinutes() > 0)) {
     let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
@@ -281,9 +298,28 @@ export function makeDate(pInput) {
         }
       }
     }
-    else { return goodDate; }
+    else {
+      // the date passed in was a good date
+      // if the year is more than 20 years from now, assume that no year was passed in
+      // Adjust the year to be the year that makes the month and day closest to now
+      let today = new Date();
+      let thisYear = today.getFullYear();
+      let resolvedYear = goodDate.getFullYear();
+      if (Math.abs(resolvedYear - thisYear) < 20) { return goodDate; }
+      goodDate.setFullYear(thisYear);
+      if (daysDiff(today, goodDate) <= 120) { return goodDate; }
+      let resolvedMonth = goodDate.getMonth();
+      if (resolvedMonth > 9) { goodDate.setFullYear(thisYear - 1); }
+      else if (resolvedMonth < 3) { goodDate.setFullYear(thisYear + 1); }
+      return goodDate;
+    }
   }
 };
+
+export function daysDiff(d1, d2) { 
+  let one_day = 1000 * 60 * 60 * 24;
+  return Math.abs(Math.floor((d2.getTime() - d1.getTime()) / one_day));
+}
 
 export async function getImage(pPerson, override = false) {
   if (imageObj.hasOwnProperty(pPerson) && !override) { return imageObj[pPerson]; }
@@ -353,7 +389,6 @@ export async function getIcon(pIcon) {
 export function isPromise(p) {
   return p && Object.prototype.toString.call(p) === "[object Promise]";
 }
-
 
 export async function resolveVariables(pKey, pSession) {
   if (!pKey) { return ''; }
@@ -464,3 +499,40 @@ export async function getPerson(pID, pElement = '*all', override = false) {
     default: { return profile; }
   }
 };
+
+export function makeTime(pTime) {
+  let inTime;
+  let ampm, hh, hh$, mm$;
+  if (typeof (pTime) === 'string') {
+    inTime = pTime;
+    if (inTime.includes('p')) { ampm = 'pm'; }
+    else if (inTime.includes('a')) { ampm = 'am'; };
+    [hh$, mm$] = inTime.split(':');
+    hh = Number(hh$.replace(/\D+/g, ''));
+  }
+  else { hh = pTime; }
+  let mm = 0;
+  if (hh > 100) {
+    if (!mm$) { mm = hh % 100; }
+    hh = Math.floor(hh / 100);
+  }
+  if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
+  if (mm > 59) {
+    let hAdd = Math.floor(mm / 60);
+    mm -= (hAdd * 60);
+    hh += hAdd;
+  }
+  if (hh >= 23) {
+    hh = hh % 24;
+  }
+  if (hh >= 12) {
+    hh -= 12;
+    ampm = 'pm';
+  }
+  if (hh === 0) {
+    hh = 12;
+    ampm = 'pm';
+  }
+  if (!ampm) { ampm = ((hh >= 0) && (hh < 12)) ? 'am' : 'pm'; }
+  return `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
+}
