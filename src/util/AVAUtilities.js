@@ -399,6 +399,10 @@ export async function resolveVariables(pKey, pSession) {
     if (!rest) { return front; }
     let [middle, back] = rest.split(/](.*)/);
     if (middle) {
+      // if there is a middle, but no front or back, this is an ARRAY...
+      if (!front && !back) {
+        return middle.split(",");
+      }
       let [instruction, dType] = middle.split(':');
       instruction = instruction.toLowerCase();
       switch (instruction) {

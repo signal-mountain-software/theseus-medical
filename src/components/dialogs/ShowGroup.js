@@ -174,7 +174,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             setGroupRole('responsible');
           }
           else {
-            setGroupRole(groupRec.admin_list.includes(patientSession.patient_id) ? 'responsible' : 'member');
+            setGroupRole(groupRec?.admin_list?.includes(patientSession.patient_id) ? 'responsible' : 'member');
           }
         }
         else { setGroupRole(myRole); }

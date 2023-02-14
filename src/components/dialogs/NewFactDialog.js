@@ -463,17 +463,22 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       },
     };
 
+    let defaultSelections = [];
     if (defaultValue
       && fact.type !== 'reservation'
       && fact.type !== 'play_video'
       && fact.type !== 'make_message'
     ) {
-      let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
-      let defaultSelections;
-      if (!dValues) {
-        defaultSelections = [dBase];
-      } else {
-        defaultSelections = dValues.split(/\s~|~\s/g);
+      if (Array.isArray(defaultValue)) {
+        if (defaultValue[0].includes('.')) {
+          let [, dValues] = defaultValue[0].split(/\.(.*)/);
+          defaultValue[0] = dValues;
+        }
+        defaultSelections = defaultValue;
+      }
+      else {
+        if (defaultValue.includes('.')) { defaultValue = defaultValue.split(/\.(.*)/)[1]; }
+        defaultSelections = defaultValue.split(/\s~|~\s/g);
       }
       if (defaultSelections.length > 0) {
         setValue(defaultSelections[0].trim()); /* this line handles numeric & text defaults */

@@ -198,8 +198,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   if (!initialLoadComplete && defaultValue) {
     let defaultObj = {};
-    let inputDefaults = defaultValue.split('~');
-    inputDefaults.forEach(i => {
+    (Array.isArray(defaultValue) ? [...defaultValue] : [defaultValue]).forEach(i => {
       let [key, value] = i.split('=');
       defaultObj[key] = value;
     });
