@@ -142,8 +142,9 @@ export function makeDate(pInput) {
       //   200101 -   991231 yy mm dd
       //  1010001 - 12312999 mm dd yyyy
       // 20200101 - 29991231 yyyy mm dd
-      if (pInput <= 1231) { 
-        targetDate = buildDate(`${Math.floor(pInput / 100)}/${pInput % 100}`)
+      //          > 29991231 java timestamp
+      if (pInput <= 1231) {
+        targetDate = buildDate(`${Math.floor(pInput / 100)}/${pInput % 100}`);
       }
       else if (pInput <= 123199) {
         targetDate = buildDate(`${Math.floor(pInput / 10000)}/${Math.floor((pInput % 10000) / 100)}/20${pInput % 100}`);
@@ -154,9 +155,10 @@ export function makeDate(pInput) {
       else if (pInput <= 12312999) {
         targetDate = buildDate(`${Math.floor(pInput / 1000000)}/${Math.floor((pInput % 1000000) / 10000)}/${pInput % 10000}`);
       }
-      else {
+      else if (pInput <= 29991231) {
         targetDate = buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/${Math.floor(pInput / 10000)}`);
       }
+      else { targetDate = new Date(pInput); }
     }
     else if ((typeof pInput) !== 'string') { targetDate = new Date(pInput); }
     else { targetDate = buildDate(pInput); }
@@ -284,8 +286,7 @@ export function makeDate(pInput) {
         if (requestedDofWeek > -1) {
           if (tLast) { variant = (0 - currentDofWeek) - (7 - requestedDofWeek); }
           else if (tNext) {
-            if (requestedDofWeek === 0) { requestedDofWeek = 7; }
-            variant = (7 - currentDofWeek) + requestedDofWeek;
+            variant = (7 + requestedDofWeek - currentDofWeek);
           }
           else {
             variant = requestedDofWeek - currentDofWeek;
