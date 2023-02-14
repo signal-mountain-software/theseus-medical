@@ -430,6 +430,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     catch (e) {
       console.error(e);
     }
+    setValue(defaultValue);
     setQualifierTable(fact.value_qualifiers);
     setAssociationsTable(associationsTable);
 
