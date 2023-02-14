@@ -306,7 +306,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     let nowTime = new Date().getTime();
     setLastActive(nowTime);
     localLastActive = nowTime;
-    console.log(`Refreshed at ${new Date().toLocaleString()}.`);
+    cl(`Refreshed at ${new Date().toLocaleString()}.`);
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
     let menuRec = await dbClient
@@ -319,7 +319,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        console.log(`caught error getting People record; error is:`, error);
+        cl(`caught error getting People record; error is:`, error);
       });
     if (recordExists(menuRec) && ('AVA_section_open' in menuRec.Item)) {
       setSectionOpen(menuRec.Item.AVA_section_open);
@@ -383,7 +383,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         })
         .promise()
         .catch(error => {
-          console.log(`AVA couldn't update your Menu settings.  Error is ${error}`);
+          cl(`AVA couldn't update your Menu settings.  Error is ${error}`);
         });
       dbClient
         .update({
@@ -395,7 +395,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           TableName: "SessionsV2",
         })
         .promise()
-        .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+        .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
     putActivityLog();
   };
@@ -426,7 +426,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     makeGreeting();
     try {
       let now = new Date().getTime();
-      console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
+      cl(`Last message check set to ${new Date(now).toLocaleString()}`);
       let mRecs = await dbClient
         .query({
           KeyConditionExpression: 'deliver_to = :p and created_time > :t',
@@ -446,7 +446,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           if (error.code === 'NetworkingError') {
             enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
           }
-          console.log({ 'Error reading Messages': error });
+          cl({ 'Error reading Messages': error });
         });
       if (recordExists(mRecs)) {
         // handle a received message
@@ -517,7 +517,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        console.log(`caught error getting People record; error is:`, error);
+        cl(`caught error getting People record; error is:`, error);
       });
     if (recordExists(personRec)) {
       // add or remove from the favoriteList as appropriate
@@ -767,7 +767,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       .invoke(params)
       .promise()
       .catch(err => {
-        console.log('Access log call failed.  Error is', JSON.stringify(err));
+        cl('Access log call failed.  Error is', JSON.stringify(err));
       });
   };
 
@@ -799,7 +799,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         })
         .promise()
         .catch(error => {
-          console.log(`Bad put to ActivityLog - caught error is: ${error}`);
+          cl(`Bad put to ActivityLog - caught error is: ${error}`);
         });
       setActivityLogRecords([]);
     }
@@ -868,7 +868,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         if (err.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        console.log('Call for Activity details failed.  Error is', JSON.stringify(err));
+        cl('Call for Activity details failed.  Error is', JSON.stringify(err));
         invokeFailed = true;
       });
     if (!invokeFailed) {
@@ -925,7 +925,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         if (err.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        console.log('Call for Activity details failed.  Error is', JSON.stringify(err));
+        cl('Call for Activity details failed.  Error is', JSON.stringify(err));
         invokeFailed = true;
       });
     if (!invokeFailed) {
@@ -1019,7 +1019,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         <IdleTimer
           timeout={msBeforeSleeping}   // every "n" minutes
           onIdle={async () => {
-            console.log(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
+            cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
             await getMessage(session.patient_id);
             setGreetingWords('Welcome back');
             await updateAVA(sectionOpen, mainMenu);
