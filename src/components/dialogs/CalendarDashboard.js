@@ -429,8 +429,8 @@ export default ({ session, filter = {}, onClose }) => {
   const buildDashboard = async () => {
     let qList = [];
     qList = await getCalendarEntries({
-        'person': session.patient_id
-      });
+      'person': session.patient_id
+    });
     for (let x = 0; x < qList.length; x++) {
       qList[x] = await buildCalendarDetails(qList[x]);
     }
@@ -454,7 +454,7 @@ export default ({ session, filter = {}, onClose }) => {
     i.workData.requestor_name = i.slotData.name;
     i.workData.requestor_image = await getImage(i.slotData.owner);
     i.workData.formatted_request = [];
-    if (i.occData.signup_type === 'time') { 
+    if (i.occData.signup_type === 'time') {
       i.workData.formatted_request.push(['head', `Sign-up time: ${makeTime(i.slotData.id)}`]);
     }
     i.workData.formatted_request.push(['head', 'Details']);
@@ -463,57 +463,57 @@ export default ({ session, filter = {}, onClose }) => {
     i.workData.open = false;
     return i;
   }
-/*
-  function formatRequest(i, req) {
-    let returnMessage = [];
-    let returnSearch = '';
-    if (!('textInput' in req)) { req.textInput = {}; }
-    if (!('qualifiers' in req)) { req.qualifiers = []; }
-    if (!('selections' in req)) { req.selections = []; }
-    returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
-    req.selections.forEach(s => {
-      let dLine = s;
-      if (s in req.textInput) {
-        dLine += ` - ${req.textInput[s]}`;
-        delete req.textInput[s];
-      }
-      returnMessage.push(['detail', dLine]);
-      returnSearch += ` ${dLine}}`;
-      if (s in req.qualifiers) {
-        for (let q in req.qualifiers[s]) {
-          let qLast = req.qualifiers[s][q].length - 1;
-          if (qLast >= 0) {
-            let qLine = `${q} -`;
-            // eslint-disable-next-line
-            req.qualifiers[s][q].forEach((qV, qX) => {
-              qLine += ` ${qV}`;
-              returnSearch += ` ${qV}`;
-              if ((qX < qLast) && (qLast > 1)) { qLine += ','; }  // array longer than 2
-              if (qX === (qLast - 1)) { qLine += ' and'; }  // next to last entry in array
-            });
-            returnMessage.push(['qual', qLine]);
+  /*
+    function formatRequest(i, req) {
+      let returnMessage = [];
+      let returnSearch = '';
+      if (!('textInput' in req)) { req.textInput = {}; }
+      if (!('qualifiers' in req)) { req.qualifiers = []; }
+      if (!('selections' in req)) { req.selections = []; }
+      returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
+      req.selections.forEach(s => {
+        let dLine = s;
+        if (s in req.textInput) {
+          dLine += ` - ${req.textInput[s]}`;
+          delete req.textInput[s];
+        }
+        returnMessage.push(['detail', dLine]);
+        returnSearch += ` ${dLine}}`;
+        if (s in req.qualifiers) {
+          for (let q in req.qualifiers[s]) {
+            let qLast = req.qualifiers[s][q].length - 1;
+            if (qLast >= 0) {
+              let qLine = `${q} -`;
+              // eslint-disable-next-line
+              req.qualifiers[s][q].forEach((qV, qX) => {
+                qLine += ` ${qV}`;
+                returnSearch += ` ${qV}`;
+                if ((qX < qLast) && (qLast > 1)) { qLine += ','; }  // array longer than 2
+                if (qX === (qLast - 1)) { qLine += ' and'; }  // next to last entry in array
+              });
+              returnMessage.push(['qual', qLine]);
+            }
           }
         }
-      }
-    });   // done with all selections; is there any text left?
-    for (let k in req.textInput) {
-      if (['-stamped', '-date', '-ymd'].some(w => { return k.includes(w); })) { continue; }
-      if (typeof req.textInput[k] === 'string') {
-        if (req.textInput[k] !== i.on_behalf_of) {
-          let kLow = k.toLowerCase().trim();
-          returnSearch += ` ${req.textInput[k]}`;
-          if (['description', 'summary', 'details'].some(w => { return kLow.includes(w); })) {
-            returnMessage.unshift(['text', req.textInput[k]]);
-          }
-          else {
-            returnMessage.push(['text', `${k} - ${req.textInput[k]}`]);
+      });   // done with all selections; is there any text left?
+      for (let k in req.textInput) {
+        if (['-stamped', '-date', '-ymd'].some(w => { return k.includes(w); })) { continue; }
+        if (typeof req.textInput[k] === 'string') {
+          if (req.textInput[k] !== i.on_behalf_of) {
+            let kLow = k.toLowerCase().trim();
+            returnSearch += ` ${req.textInput[k]}`;
+            if (['description', 'summary', 'details'].some(w => { return kLow.includes(w); })) {
+              returnMessage.unshift(['text', req.textInput[k]]);
+            }
+            else {
+              returnMessage.push(['text', `${k} - ${req.textInput[k]}`]);
+            }
           }
         }
-      }
-    };
-    return [returnMessage, returnSearch];
-  }
-*/
+      };
+      return [returnMessage, returnSearch];
+    }
+  */
   React.useEffect(() => {
     async function initialize() {
       await buildDashboard();
@@ -594,7 +594,7 @@ export default ({ session, filter = {}, onClose }) => {
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'vRowRefresh'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers 23.2.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers 23.2.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
                   </Box>

@@ -603,7 +603,7 @@ export default ({ session, filter = {}, onClose }) => {
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'vRowRefresh'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers 23.2.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers 23.2.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
                   </Box>

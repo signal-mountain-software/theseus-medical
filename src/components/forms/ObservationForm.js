@@ -1,7 +1,7 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { makeDate } from '../../util/AVADateTime';
-import { putServiceRequest } from '../../util/AVAServiceRequest'
+import { putServiceRequest } from '../../util/AVAServiceRequest';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -567,7 +567,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'vRowRefresh'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers 23.2.6${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers 23.2.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`User ${fact.session.user_id}${fact.patient_id !== fact.session.user_id ? (' (' + fact.patient_id + ')') : ''}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Function: ObservationForm`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Activity: ${fact.activity_key}`}</Typography>
