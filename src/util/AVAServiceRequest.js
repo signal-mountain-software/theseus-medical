@@ -1,4 +1,5 @@
-import { clt, cl, getPerson, recordExists } from './AVAUtilities';
+import { clt, cl, recordExists } from '../util/AVAUtilities';
+import { getPerson } from '../util/AVAPeople';
 
 const AWS = require('aws-sdk');
 const dbClient = new AWS.DynamoDB.DocumentClient({

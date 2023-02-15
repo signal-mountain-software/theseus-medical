@@ -1,5 +1,7 @@
 import React from 'react';
-import { getImage, getPerson, makeDate, makeNumber, sentenceCase, titleCase } from '../../util/AVAUtilities';
+import { makeNumber, sentenceCase, titleCase } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
+import { getImage, getPerson } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';

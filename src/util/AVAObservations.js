@@ -1,5 +1,5 @@
 import { isMemberOf } from './AVAGroups';
-import { cl, clt, recordExists, resolveVariables } from './AVAUtilities';
+import { cl, recordExists, resolveVariables } from './AVAUtilities';
 
 const AWS = require('aws-sdk');
 const dbClient = new AWS.DynamoDB.DocumentClient({
@@ -32,19 +32,17 @@ export async function makeObservationList(pObs, pSession) {
     activityRec = await getActivity(assignedClient, pObs);
   }
   else { activityRec = Object.assign({}, pObs); }
-  if (activityRec && ('validation' in activityRec) && ('values' in activityRec.validation)) {
+  if (activityRec?.validation?.values) {
     let listLength = activityRec.validation.values.length;
     for (let v = 0; v < listLength; v++) {
       let this_entry = activityRec.validation.values[v];
       if (!this_entry.startsWith('~')) { returnList.push(this_entry); }
       else {
-        // deconstruct this_entry as ~<oType>.<oKey>=<oTag>  
+        // deconstruct this_entry as ~<oType>.<oKey>  
         // ex. ~includeobservations.todaysdinner gives 
         //     oType = includeobservations and 
         //     oKey = todaysdinner
-        let oParts = this_entry.split('.');
-        let oType = oParts.shift().slice(1);
-        let [oKey, oTag] = oParts.join('.').split('=');
+        let [oType, oKey] = this_entry.slice(1).split(/\.(.*)/);
         switch (true) {
           case (oType === 'includeObservations'): {
             let [cList, cQual] = await getObservations(assignedClient, oKey);
@@ -78,7 +76,6 @@ export async function makeObservationList(pObs, pSession) {
   };
 
   async function getObservations(pClient, pKey) {
-    cl('in getObservations', { pClient, pKey });
     pKey = await resolveVariables(pKey, pSession);
     var observations;
     var valueList = [];

@@ -131,7 +131,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   // From DynamicForm
   //const [lastQualifier, setLastQualifier] = React.useState('');
-  const [value, setValue] = React.useState('');
+  const [value, setExecutionDefaultValue] = React.useState('');
   //const [nums, setNums] = React.useState(['', '']);
   //const [mOut, setMOut] = React.useState(message || 'enter something here');
 
@@ -430,7 +430,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     catch (e) {
       console.error(e);
     }
-    setValue(defaultValue);
+    setExecutionDefaultValue(defaultValue);
     setQualifierTable(fact.value_qualifiers);
     setAssociationsTable(associationsTable);
 
@@ -475,16 +475,15 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           let [, dValues] = defaultValue[0].split(/\.(.*)/);
           defaultValue[0] = dValues;
         }
+        setExecutionDefaultValue(defaultValue);     
         defaultSelections = defaultValue;
       }
       else {
         if (defaultValue.includes('.')) { defaultValue = defaultValue.split(/\.(.*)/)[1]; }
         defaultSelections = defaultValue.split(/\s~|~\s/g);
+        setExecutionDefaultValue(defaultSelections[0].trim());     
       }
       if (defaultSelections.length > 0) {
-        setValue(defaultSelections[0].trim()); /* this line handles numeric & text defaults */
-        //setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
-        /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
           //  let [value, freeText] = nfValue.trim().split(/\s~|~\s/);
           let [value, freeText] = nfValue.trim().split("=");
@@ -494,11 +493,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             nF.value.freeText[value] = freeText;
             if (value === mF) {
               setMessage(freeText);
-            } else {
-              if (value === '%filter%') {
-                //setFilterText(freeText);
-              }
-            }
+            } 
           } else {
             nF.value.selected.push(value);
           }

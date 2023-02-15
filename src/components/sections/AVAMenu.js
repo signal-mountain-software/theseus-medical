@@ -2,7 +2,8 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, makeDate, cl, resolveVariables } from '../../util/AVAUtilities';
+import { recordExists, cl, resolveVariables } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
