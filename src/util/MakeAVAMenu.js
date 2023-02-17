@@ -92,7 +92,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
 
     // Get Favorites from the People record
     // ({ '** FAVORITES **': (requestor.favorite_activities || 'no favorite activities') });
-    screenStatus('Loading Favorites');
     sectionSort = '**2';
     sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} favorites`;
     sectionColor = '#6bb44b';
@@ -101,6 +100,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     if (requestor.hasOwnProperty('favorite_activities')) {
       aL = requestor.favorite_activities.length;
       for (let a = 0; a < aL; a++) {
+        screenStatus('Loading Favorites', ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = requestor.favorite_activities[a];
         let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Favorite');
         if (this_row) { returnArray.push(this_row); }
@@ -113,24 +113,26 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     // Also add anything that you've used 3 or more times recently
     // Get Recent history
     // ({ '** HISTORY **': (activityHistory || 'no history found') });
-    screenStatus('Checking History');
     if (!('favorite_blocked' in requestor)) { requestor.favorite_blocked = []; }
     sectionSort = '**2a';
     sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} frequently used`;
     sectionColor = '#4bb491';
     sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-star-half-empty-50.png';
     activityHistory = await getActivityLog(pPerson);
+    let hL = Object.keys(activityHistory).length;
+    let h = 0;
     for (const hActivity in activityHistory) {
+      h++;
       if ((activityHistory[hActivity].length > 4) &&
         !(requestor.favorite_activities.includes(hActivity)) &&
         !(requestor.favorite_blocked.includes(hActivity))) {
+        screenStatus('Frequently Used', ((h / hL) * 100), ((hL / 40) + .75));
         let this_row = await addRow(hActivity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'History');
         if (this_row) { returnArray.push(this_row); }
       }
     }
 
     // ({ '** PRIORITIES **': (requestor.priority_activities || 'no priority activities') });
-    screenStatus('Checking for Priority Items');
     if (requestor.hasOwnProperty('priority_activities')) {
       sectionSort = '**2b';
       sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} priorities`;
@@ -138,6 +140,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-idea-sharing-64.png';
       let aL = requestor.priority_activities.length;
       for (let a = 0; a < aL; a++) {
+        screenStatus('Priority Items', ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = requestor.priority_activities[a];
         let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Priorities');
         if (this_row) { returnArray.push(this_row); }
@@ -159,11 +162,11 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       sectionName = `Common activities for the ${this_group.name}${!this_group.name.includes('roup') ? ' group' : ''}`;
       sectionColor = stringToColor(sectionName);
       sectionIcon = AVAIcon;
-      screenStatus(`Common activities for ${this_group.name}`);
       // (`Checking group ${this_group.group_id} (${this_group.name}): ${(this_group.common_activities || 'no common activities')}`);
       if (!this_group.hasOwnProperty('common_activities')) { continue; }
       let aL = this_group.common_activities.length;
       for (let a = 0; a < aL; a++) {
+        screenStatus(`Common activities for ${this_group.name}`, ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = this_group.common_activities[a];
         if (!allowDuplicates && duplicateCheck.includes(this_activity)) {   // this_activity is already loaded
           continue;

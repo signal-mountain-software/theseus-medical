@@ -43,6 +43,7 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import CircularProgress from '@material-ui/core/CircularProgress';
+import LinearProgress from '@material-ui/core/LinearProgress';
 import DeleteIcon from '@material-ui/icons/DeleteOutlineRounded';
 import ReplyIcon from '@material-ui/icons/ReplyOutlined';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
@@ -53,6 +54,13 @@ const useStyles = makeStyles(theme => ({
   page: {
     height: 950,
     maxWidth: 1000
+  },
+  progressBar: {
+    marginBottom: theme.spacing(3),
+    backgroundColor: '#a3a0a0',
+    color: '#000000',
+    transition: 'none',
+    height: '5px'
   },
   freeInput: {
     marginLeft: '25px',
@@ -277,6 +285,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [messageReplyRecipient, setMessageReplyRecipient] = React.useState('');
 
   const [loading, setLoading] = React.useState('Initializing');
+  const [progress, setProgress] = React.useState(100);
+  const [pWidth, setPWidth] = React.useState(60);
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [activityLogRecords, setActivityLogRecords] = React.useState([]);
@@ -496,8 +506,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return;
   };
 
-  const screenStatus = (statusMessage) => {
+  const screenStatus = (statusMessage, progressPct, progressWidth) => {
     setLoading(statusMessage);
+    setProgress(progressPct);
+    setPWidth(progressWidth * 100);
     setForceRedisplay(!forceRedisplay);
   };
 
@@ -1244,6 +1256,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   <Typography>{loading}</Typography>
                 }
               </Box>
+              <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress}/>
               <CircularProgress />
             </React.Fragment>
           </Box>
