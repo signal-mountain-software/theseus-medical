@@ -11,6 +11,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
 });
 
 let profile, session;
+let groupObj = {};
 let loadedGroupObj = {};
 let loadedPerson = null;
 
@@ -60,14 +61,11 @@ export async function getGroupsBelongTo(person_id) {
   for (let g = 0; g < respArray.length; g++) {
     let group = respArray[g].trim();
     if (!(group in returnObject)) {
-      let checkGroup = await getGroup(group);
-      if (checkGroup.hasOwnProperty('name')) {
-        returnObject[group] = {
-          group_name: checkGroup.name,
-          group_id: group,
-          role: 'responsible'
-        };
-      }
+      returnObject[group] = {
+        group_name: (groupObj[group] ? groupObj[group].name : null),
+        group_id: group,
+        role: 'responsible'
+      };
     }
   };
   // Next, get any other Groups that this person belongs to
@@ -77,14 +75,11 @@ export async function getGroupsBelongTo(person_id) {
   for (let g = 0; g < profile.groups.length; g++) {
     let group = profile.groups[g];
     if (!(group in returnObject)) {
-      let checkGroup = await getGroup(group);
-      if (checkGroup.hasOwnProperty('name')) {
-        returnObject[group] = {
-          group_name: checkGroup.name,
-          group_id: group,
-          role: 'member'
-        };
-      }
+      returnObject[group] = {
+        group_name: (groupObj[group] ? groupObj[group].name : null),
+        group_id: group,
+        role: 'member'
+      };
     }
   };
   loadedPerson = person_id;
@@ -94,14 +89,14 @@ export async function getGroupsBelongTo(person_id) {
 
 export async function getGroup(pGroup_id) {
   let groupRec = await dbClient
-  .get({
-    Key: { client_id: session.client_id, group_id: pGroup_id },
-    TableName: "Groups"
-  })
-  .promise()
+    .get({
+      Key: { client_id: session.client_id, group_id: pGroup_id },
+      TableName: "Groups"
+    })
+    .promise()
     .catch(error => { cl({ 'Error reading Groups': error }); });
-if (recordExists(groupRec)) {
-  return groupRec.Item;
-}
-return {};
+  if (recordExists(groupRec)) {
+    return groupRec.Item;
+  }
+  return {};
 };

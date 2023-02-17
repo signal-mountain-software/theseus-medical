@@ -58,10 +58,9 @@ export async function makeObservationList(pObs, pSession) {
           }
           case (oType.startsWith('includeIfGroup=')): {
             // ~includeIfGroup=AVT_soft_entree:~includeObservations.soft_entree_[wednesday]"
-            let [, checkGroup, useThis] = oType.split(/[=:]/g);
-            cl({ checkGroup });
-            if (await isMemberOf(pSession.patient_id, checkGroup)) {
-              activityRec.validation.values[v] = useThis;
+            let [, checkGroup] = oType.split(/[=|:]/g);
+            if (await isMemberOf(pSession.patient_id, checkGroup) && oKey) {
+              activityRec.validation.values[v] = oKey;
               v--;
             }
             break;
