@@ -332,11 +332,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   if (!initialLoadComplete) {
     for (let vIndex = 0; vIndex < listValues.length; vIndex++) {
+      // All rows are evaluated as follows "<instruction[0]>~<instruction[1]>:<instruction[2]>"
+      // OR... "<instruction[0]>~~<instruction[1]>" (instruction[0] expected to be null/blank in thsi case)
       let instruction = listValues[vIndex].split(/[~:]+/);
+
+      // This checks for rows in the form "~[<oControl>=<oValue on/off>]"
       if (instruction[1] && (instruction[1].charAt(0) === '[')) {
         let [, oControl, oValue] = instruction[1].split(/[=[\]]+/);
         switch (oControl) {
-          case 'checkbox': {
+          case 'checkbox': {    // checkbox default state is true; this allows you to toggle it off/on
             checkbox = (oValue.toLowerCase() === 'on');
             break;
           }
@@ -352,9 +356,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         continue;
       }
+
       if (ignore) { continue; }
+
+      // This handles any row without a leading "~"
       if (instruction[0]) {
-        // CheckBox selection
         displayRowList.push({
           checkbox,
           required,
@@ -365,8 +371,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         });
         continue;
       }
+
+      // Dropping through to here means that instruction[0] was null/blank
+      //    (ie. there was nothing before the first "~"; the row started with "~")
+      // This handles rows in the form "~<instruction[1]>:<instruction[2]>", for example
+      //     "~lambda:<instruction[2]>"
       if (instruction[2]) {
-        // Special Instruction - input = date, time, or file...  anything else is plain text prompt
         displayRowList.push({
           checkbox: (instruction[1].includes('withCheckBox')),
           required: required || (instruction[1].includes('required')),
@@ -377,6 +387,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         });
         continue;
       }
+
+      // Dropping through to here means that instruction[2] was also null/blank
+      //      so the row looked like "~<instruction[1]>" or "~~<instruction[1]>"
       // Turns out, this is a header line in instruction[1]
       displayRowList.push({
         checkbox: false,
