@@ -1086,15 +1086,19 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </Box>
           </Box>
           <Box
-            paddingRight={2}
+            component="img"
+            ml={isMobile ? 2 : 5}
             aria-controls='hidden-menu'
             aria-haspopup='true'
+            minWidth={isMobile ? 50 : 55}
+            maxWidth={isMobile ? 50 : 55}
             onClick={(event) => {
               handleClick(event);
               setPopupMenuOpen(true);
-            }}>
-            <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
-          </Box>
+            }}
+            alt=''
+            src={'https://ava-icons.s3.amazonaws.com/AVA_Icon_2023.png'}
+          />
           <Menu
             id='hidden-menu'
             anchorEl={anchorEl}
@@ -1232,7 +1236,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               minWidth={isMobile ? 150 : 175}
               maxWidth={isMobile ? 150 : 175}
               alt=''
-              src={session?.client_logo || 'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+              src={session?.client_logo || 'https://ava-icons.s3.amazonaws.com/AVA_Icon_2023.png'}
             />
             <React.Fragment>
               <Box
