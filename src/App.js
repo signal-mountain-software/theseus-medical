@@ -100,9 +100,6 @@ class ErrorBoundary extends React.Component {
 
 const handleWriteError = async (parmMessage) => {
   let AVA_env = window.location.href.split('//')[1].slice(0, 1).toLocaleUpperCase();
-  if (AVA_env === 'L') {
-    alert(parmMessage);
-  }
   const user = await Auth
     .currentAuthenticatedUser()
     .catch(e => {

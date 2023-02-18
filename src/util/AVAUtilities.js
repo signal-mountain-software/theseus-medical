@@ -38,7 +38,9 @@ export function stringToColor(string) {
 export function cl() {
   for (let v = 0; v < arguments.length; v++) {
     let value = arguments[v];
-    if (typeof (value) === 'object') { console.log(JSON.stringify(value)); }
+    if ((typeof (value) === 'object') && (value.constructor.name === 'Object')) {
+      console.log(JSON.stringify(value));
+    }
     else { console.log(value); }
   }
 };
