@@ -232,10 +232,11 @@ export default ({ session, filter = {}, onClose }) => {
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
-  const [rowLimit, setRowLimit] = React.useState(20);
-  const [previousY, setCurrentY] = React.useState(0);
-  const scrollValue = 20;
+  const [rowLimit, setRowLimit] = React.useState(5);
+
+  const scrollValue = 5;
   var rowsWritten;
+  const [scrollTime, setScrollTime] = React.useState(0);
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
@@ -319,11 +320,6 @@ export default ({ session, filter = {}, onClose }) => {
       delete w.workData;
       return w;
     }));
-    dataRows.sort((a, b) => {
-      if (a.last_update > b.last_update) { return -1; }
-      if (a.last_update < b.last_update) { return 1; }
-      return 0;
-    });
     setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
   }
@@ -338,22 +334,10 @@ export default ({ session, filter = {}, onClose }) => {
       setRequestFilterLower(event.target.value.toLowerCase());
       setSingleFilterDigit(event.target.value.length === 1);
     }
-    setRowLimit(scrollValue);
   };
 
   const handleRemoveMessage = async (pMessage_id, pIndex) => {
     // will mark request as cancelled as send appropriate messages 
-  };
-
-  const onScroll = event => {
-    if (rowLimit < dataRows.length) {
-      let currentY = window.scrollY;
-      if (currentY - (previousY + 50)) {
-        setCurrentY(currentY);
-        setRowLimit(rowLimit + scrollValue);
-        setForceRedisplay(!forceRedisplay);
-      }
-    }
   };
 
   function toggleCheck(pI) {
@@ -437,10 +421,18 @@ export default ({ session, filter = {}, onClose }) => {
     else {
       qList = await getServiceRequests({ 'person': session.patient_id });
     }
-    for (let x = 0; x < qList.length; x++) {
+    let limit = Math.min(rowLimit * 3, qList.length);
+    for (let x = 0; x < limit; x++) {
       qList[x] = await buildRequestDetails(qList[x]);
     }
     setDataRows(qList);
+    for (let x = limit; x < qList.length; x++) {
+      buildRequestDetails(qList[x])
+        .then(data => {
+          qList[x] = data;
+          setDataRows(qList);
+        });
+    }
   };
 
   async function buildRequestDetails(i) {
@@ -536,7 +528,6 @@ export default ({ session, filter = {}, onClose }) => {
   return (
     <Dialog
       open={true || forceRedisplay}
-      onScroll={onScroll}
       p={2}
       fullScreen
     >
@@ -620,13 +611,27 @@ export default ({ session, filter = {}, onClose }) => {
             variant={'standard'}
             autoComplete='off'
           />
-          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+          <Paper
+            onScroll={() => {
+              var now = new Date().getTime();
+              if (((now - scrollTime) > 1000)) {
+                setScrollTime(now);
+                setRowLimit(rowLimit + scrollValue);
+                setForceRedisplay(!forceRedisplay);
+              }
+            }}
+            component={Box}
+            className={classes.page}
+            variant='outlined'
+            overflow='auto'
+            square
+          >
             <List  >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsWritten = 0}
               </Typography>
               {dataRows.map((this_item, index) => (
-                ((rowsWritten <= rowLimit)
+                ((rowsWritten <= rowLimit) && this_item.workData
                   && (!request_filter || filteredRequest(this_item, request_filter))
                   && (!this_item.workData.delete_flag || showDeleted) &&
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
@@ -676,7 +681,7 @@ export default ({ session, filter = {}, onClose }) => {
                         </Box>
                         <Checkbox
                           edge='start'
-                          checked={this_item.workData.checked}
+                          checked={this_item.workData.checked || false}
                           disableRipple
                           key={'checkbox' + index}
                           onClick={() => { toggleCheck(index); }}
