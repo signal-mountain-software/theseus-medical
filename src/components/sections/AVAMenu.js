@@ -1088,6 +1088,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           <Box
             component="img"
             ml={isMobile ? 2 : 5}
+            mr={2}
             aria-controls='hidden-menu'
             aria-haspopup='true'
             minWidth={isMobile ? 50 : 55}
