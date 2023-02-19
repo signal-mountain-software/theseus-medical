@@ -21,8 +21,9 @@ export function putServiceRequest_nonAsync(body) {
 }
 
 export async function getServiceRequests(body) { 
-  let rP = body.person_id || body.person || body.filter.person_id || body.filter.person;
-  let rT = body.request_type || body.filter.request_type;
+  if (body.filter) { Object.assign(body, body.filter); };
+  let rP = body.person_id || body.person;
+  let rT = body.request_type;
   let qQ = { TableName: 'ServiceRequests' }
   if (rP) {
     qQ.IndexName = 'requestor-type-index';
@@ -50,8 +51,10 @@ export async function getServiceRequests(body) {
     });
   if (recordExists(qR)) {
     return qR.Items.sort((a, b) => {
-      if (a.last_update > b.last_update) { return -1; }
-      if (a.last_update < b.last_update) { return 1; }
+      a.sort = a.request_date || Number(a.request_id.split(/~/g).pop());
+      b.sort = b.request_date || Number(b.request_id.split(/~/g).pop());
+      if (a.sort > b.sort) { return -1; }
+      if (a.sort < b.sort) { return 1; }
       return 0;
     });
   }

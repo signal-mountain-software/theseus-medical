@@ -412,27 +412,27 @@ export default ({ session, filter = {}, onClose }) => {
 
   const buildDashboard = async () => {
     let qList = [];
-    if (filter) {
-      qList = await getServiceRequests({
-        'client_id': session.client_id,
-        filter
-      });
-    }
-    else {
-      qList = await getServiceRequests({ 'person': session.patient_id });
-    }
-    let limit = Math.min(rowLimit * 3, qList.length);
+    if (filter) { filter.client_id = session.client_id; }
+    else { filter = { 'person': session.patient_id }; }
+    filter.limit = rowLimit * 3;
+    qList = await getServiceRequests(filter);
+    let limit = Math.min(filter.limit, qList.length);
     for (let x = 0; x < limit; x++) {
       qList[x] = await buildRequestDetails(qList[x]);
     }
     setDataRows(qList);
-    for (let x = limit; x < qList.length; x++) {
-      buildRequestDetails(qList[x])
-        .then(data => {
-          qList[x] = data;
-          setDataRows(qList);
-        });
-    }
+    delete filter.limit;
+    getServiceRequests(filter)
+      .then(result => {
+        let finalLimit = result.length;
+        for (let x = limit; x < finalLimit; x++) {
+          buildRequestDetails(result[x])
+            .then(data => {
+              qList[x] = data;
+              setDataRows(qList);
+            });
+        }
+      });
   };
 
   async function buildRequestDetails(i) {
@@ -555,7 +555,7 @@ export default ({ session, filter = {}, onClose }) => {
                 handleClick(event);
                 setPopupMenuOpen(true);
               }}>
-              <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
+              <Avatar src={process.env.REACT_APP_AVA_LOGO} />
             </Box>
             <Menu
               id='hidden-menu'

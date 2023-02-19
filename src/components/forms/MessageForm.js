@@ -1,6 +1,7 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
+import { getImage, getPerson } from '../../util/AVAPeople';
 
 import List from '@material-ui/core/List';
 
@@ -158,10 +159,6 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 const dbClient = new AWS.DynamoDB.DocumentClient({
   apiVersion: '2012-08-10',
@@ -195,15 +192,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
   const [open, setOpen] = React.useState([]);
 
   const [inOut_mode, setinOut] = React.useState('in');
-  const [logoURL, setLogoURL] = React.useState('');
-  var localLogoURL;
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const [previousY, setCurrentY] = React.useState(0);
   const scrollValue = 20;
   var rowsWritten;
-
-  const [imageObj, setImageObj] = React.useState({});
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -242,71 +235,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
     }
     else { return 'AVA Message'; }
   }
-
-  async function getImage(pPerson) {
-    if (imageObj.hasOwnProperty(pPerson)) { return imageObj[pPerson]; }
-    const imageBucket = 'theseus-medical-storage';
-    const imageURI = `public/patients/${pPerson}.jpg`;
-    let oData;
-    try {
-      await s3.getObject({
-        Bucket: imageBucket,
-        Key: imageURI,
-      }, function (error, data) {
-        if (data) { oData = data; };
-      })
-        .promise();
-      if (!oData || (oData.ContentLength === 0)) {
-        imageObj[pPerson] = logoURL || localLogoURL;
-        return logoURL || localLogoURL;
-      };
-      let gotImage =
-        s3.getSignedUrl('getObject', {
-          Bucket: imageBucket,
-          Key: imageURI,
-          Expires: 3600
-        });
-      imageObj[pPerson] = gotImage;
-      setImageObj(imageObj);
-      return gotImage;
-    }
-    catch (e) {
-      console.log(`error getting S3 image is ${e}`);
-      imageObj[pPerson] = logoURL || localLogoURL;
-      return logoURL || localLogoURL;
-    }
-  };
-
-  async function getDefaultImage() {
-    const imageBucket = 'ava-icons';
-    const imageURI = 'AVA Logo.png';
-    let oData;
-    try {
-      await s3.getObject({
-        Bucket: imageBucket,
-        Key: imageURI,
-      }, function (error, data) {
-        if (data) { oData = data; };
-      })
-        .promise();
-      if (!oData || (oData.ContentLength === 0)) {
-        return;
-      };
-      let gotImage =
-        s3.getSignedUrl('getObject', {
-          Bucket: imageBucket,
-          Key: imageURI,
-          Expires: 3600
-        });
-      setLogoURL(gotImage);
-      localLogoURL = gotImage;
-      return;
-    }
-    catch (e) {
-      console.log(`error getting S3 image is ${e}`);
-      return;
-    }
-  };
 
   const handleChangeMessageFilter = event => {
     if (event.target.value.length === 0) {
@@ -350,18 +278,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
     setForceRedisplay(!forceRedisplay);
     return tempMessageList;
   };
-
-  async function getPerson(parmPerson) {
-    let person = await dbClient
-      .get({
-        Key: { person_id: parmPerson },
-        TableName: "People"
-      })
-      .promise()
-      .catch(error => { console.log(`***fact 332e- caught error in getPerson; error is: ${error}`); });
-    if (person.Item) { return person.Item; }
-    else { return false; }
-  }
 
   async function getMessageResults(pCommonKey) {
     let returnArray = [];
@@ -536,7 +452,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
 
   React.useEffect(() => {
     async function initialize() {
-      await getDefaultImage();
       let messageArray = [];
       // Get messages to me
       let mRecs = await dbClient
@@ -637,7 +552,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
             this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
           }
           else {
-            this_message.sender_image = logoURL || localLogoURL;
+            this_message.sender_image = await getImage('AVA Logo');
             this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
             this_message.toLine += ` and ${rArray.length - 1} others`;
           }

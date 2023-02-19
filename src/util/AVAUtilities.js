@@ -104,7 +104,7 @@ export async function getIcon(pIcon) {
   }
   catch (e) {
     console.log(`error getting S3 image is ${e}`);
-    return;
+    return null;
   }
 };
 
