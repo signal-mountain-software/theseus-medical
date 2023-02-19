@@ -58,15 +58,16 @@ export async function getImage(pPerson, override = false) {
     const imageURI = `public/patients/${pPerson}.jpg`;
     let oData;
     try {
-        await s3.getObject({
-            Bucket: imageBucket,
-            Key: imageURI,
-        }, function (error, data) {
-            if (data) { oData = data; };
-        })
+        await s3
+            .getObject({
+                Bucket: imageBucket,
+                Key: imageURI,
+            }, function (error, data) {
+                if (data) { oData = data; };
+            })
             .promise();
         if (!oData || (oData.ContentLength === 0)) {
-            if (!('AVA Logo' in imageObj)) { getIcon('AVA Logo'); }
+            if (!('AVA Logo' in imageObj)) { imageObj['AVA Logo'] = await getIcon('AVA Logo'); }
             imageObj[pPerson] = imageObj['AVA Logo'];
             return imageObj['AVA Logo'];
         };
@@ -80,8 +81,10 @@ export async function getImage(pPerson, override = false) {
         return gotImage;
     }
     catch (e) {
-        console.log(`error getting S3 image is ${e}`);
-        if (!('AVA Logo' in imageObj)) { getIcon('AVA Logo'); }
+        cl(`error getting S3 image is ${e}`);
+        if (!('AVA Logo' in imageObj)) {
+            imageObj['AVA Logo'] = await getIcon('AVA Logo');
+        }
         imageObj[pPerson] = imageObj['AVA Logo'];
         return imageObj['AVA Logo'];
     }
