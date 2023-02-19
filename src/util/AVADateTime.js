@@ -113,7 +113,7 @@ export function makeDate(pInput) {
         absDate += ` ${targetDate.getFullYear()}`;
         if (daysDiff(targetDate, new Date()) > 21) { relDate += ` ${targetDate.getFullYear()}`; }
     }
-    if ((targetDate.getHours() > 0) && (targetDate.getMinutes() > 0)) {
+    if ((targetDate.getHours() > 0) || (targetDate.getMinutes() > 0)) {
         let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
         absDate += tOfDay;
         relDate += tOfDay;
