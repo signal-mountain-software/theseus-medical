@@ -1098,7 +1098,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               setPopupMenuOpen(true);
             }}
             alt=''
-            src={'https://ava-icons.s3.amazonaws.com/AVA_Icon_2023.png'}
+            src={process.env.REACT_APP_AVA_LOGO}
           />
           <Menu
             id='hidden-menu'
@@ -1237,7 +1237,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               minWidth={isMobile ? 150 : 175}
               maxWidth={isMobile ? 150 : 175}
               alt=''
-              src={session?.client_logo || 'https://ava-icons.s3.amazonaws.com/AVA_Icon_2023.png'}
+              src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
             />
             <React.Fragment>
               <Box
@@ -1261,7 +1261,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   <Typography>{loading}</Typography>
                 }
               </Box>
-              <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress}/>
+              <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
               <CircularProgress />
             </React.Fragment>
           </Box>

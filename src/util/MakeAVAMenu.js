@@ -1,7 +1,7 @@
 import { resolveVariables, stringToColor, cl, clt, recordExists } from '../util/AVAUtilities';
 
 const AWS = require('aws-sdk');
-const AVAIcon = 'https://ava-icons.s3.amazonaws.com/AVA+Logo.png';
+const AVAIcon = process.env.REACT_APP_AVA_LOGO;
 
 const dbClient = new AWS.DynamoDB.DocumentClient({
   apiVersion: '2012-08-10',

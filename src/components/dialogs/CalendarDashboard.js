@@ -555,7 +555,7 @@ export default ({ session, filter = {}, onClose }) => {
                 handleClick(event);
                 setPopupMenuOpen(true);
               }}>
-              <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
+              <Avatar src={process.env.REACT_APP_AVA_LOGO} />
             </Box>
             <Menu
               id='hidden-menu'

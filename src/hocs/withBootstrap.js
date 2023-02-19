@@ -300,7 +300,7 @@ export default Component => props => {
             >
               <CardMedia
                 component="img"
-                image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                image={process.env.REACT_APP_AVA_LOGO}
                 alt='AVA'
               />
             </Card>
