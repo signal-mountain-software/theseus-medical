@@ -559,7 +559,7 @@ export default ({ patient, picture, open, onClose }) => {
 
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `vREACT_APP_AVA_VERSION`,
+        'version': `v${process.env.REACT_APP_AVA_VERSION}`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'action': 'Updated Person record',
@@ -608,7 +608,7 @@ export default ({ patient, picture, open, onClose }) => {
         TableName: "SessionsV2",
       })
       .promise()
-      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+      .catch(error => { console.log(`caught error updating SessionsV2; error is: `, error); });
 
     enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
     patient.name.first = localData.firstName;
@@ -709,7 +709,7 @@ export default ({ patient, picture, open, onClose }) => {
     savedTmp.push(pTmp);
     setSavedTmp(savedTmp);
     return pFile.Key;
-  }
+  };
 
   const handleChangeSearch = event => {
     localData.searchTerm = event.target.value;

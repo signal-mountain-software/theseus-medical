@@ -305,7 +305,7 @@ export default Component => props => {
               />
             </Card>
             <Typography align='center'>
-              {`AVA version REACT_APP_AVA_VERSION${AVA_environment}`}
+              {`AVA version ${process.env.REACT_APP_AVA_VERSION}${AVA_environment}`}
             </Typography>
           </Box>
         </React.Fragment>
@@ -669,7 +669,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
-        'version': `vREACT_APP_AVA_VERSION`,
+        'version': `v${process.env.REACT_APP_AVA_VERSION}`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'signin_status': pMessage,
