@@ -349,14 +349,19 @@ export default Component => props => {
               setMessageList([]);
             }}
             onSave={async (enteredUserID) => {
-              setMessageList([]);
-              closeSnackbar();
-              enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
-              let cookieValues = getCookie();
-              let result = await tryUser(enteredUserID.toLowerCase(), cookieValues.client, 'entered');
-              if ((result === 'invalid') && (enteredUserID.toLowerCase() !== enteredUserID)) {
-                enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
-                await tryUser(enteredUserID, cookieValues.client, 'entered');
+              if (!enteredUserID) {
+                enqueueSnackbar(`You must enter a User ID or Name`, { variant: 'info' });
+              }
+              else {
+                setMessageList([]);
+                closeSnackbar();
+                enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
+                let cookieValues = getCookie();
+                let result = await tryUser(enteredUserID.toLowerCase(), cookieValues.client, 'entered');
+                if ((result === 'invalid') && (enteredUserID.toLowerCase() !== enteredUserID)) {
+                  enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
+                  await tryUser(enteredUserID, cookieValues.client, 'entered');
+                }
               }
               setDoneTrying(true);
             }}
