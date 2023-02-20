@@ -76,7 +76,7 @@ class ErrorBoundary extends React.Component {
               mb={2}
             >
               <Typography variant='h5' >{`AVA Encountered an Error`}</Typography>
-              <Typography variant='caption' >{`version 23.2.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+              <Typography variant='caption' >{`version REACT_APP_AVA_VERSION${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
               <Button
                 aria-label='showActivities'
                 variant='contained'
@@ -119,7 +119,7 @@ const handleWriteError = async (parmMessage) => {
     activity_key: '***ERROR_CAUGHT***',
     value: `error.${parmMessage}`,
     status: {
-      'version': '23.2.15',
+      'version': 'REACT_APP_AVA_VERSION',
       'env': AVA_env,
       'time': errorTime.toString(),
       'cognito_user': user?.username,
@@ -141,7 +141,7 @@ const handleWriteError = async (parmMessage) => {
         patient_id: newFact.person_id,
         activity_key: '***ERROR_CAUGHT***',
         value: `error.*** Write to Fact failed; used graphQL *** ${parmMessage}`,
-        status: `Version = 23.2.15~${errorTime}`,
+        status: `Version = REACT_APP_AVA_VERSION~${errorTime}`,
         session: {
           user_id: user?.username || 'no user logged',
           session_id: 'no session recorded',
@@ -157,7 +157,7 @@ const handleWriteError = async (parmMessage) => {
     user_id: newFact.person_id,
     activity_code: newFact.activity_key,
     activity_name: newFact.value,
-    AVA_version: `23.2.15${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+    AVA_version: `REACT_APP_AVA_VERSION${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
   };
   await dbClient
     .put({
