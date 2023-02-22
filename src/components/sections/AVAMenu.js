@@ -852,56 +852,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     resolvedActivity.activityRec.default_value = await resolveVariables(pActRec.default_value, session);
     setSelected(resolvedActivity.activityRec);
     return resolvedActivity;
-    /*
-    let invokeFailed = false;
-    var payload =
-    {
-      'test': false,
-      'body': {
-        "clientId": resolvedActivity.activityRec.client_id,
-        "personId": pPerson,
-        "activityType": `$$${resolvedActivity.activityRec.activity_code}`,
-        "limit": 100,
-        "fact_data": false,
-        "historyOnly": false,
-        "use_short_date": true,
-        "kiosk_mode": false
-      }
-    };
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:thesesus-activityList',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
-    let fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        if (err.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-        }
-        cl('Call for Activity details failed.  Error is', JSON.stringify(err));
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let activityResponse = JSON.parse(fResp.Payload);
-      if (activityResponse.status === 200) {
-          /*
-        if (cClient !== defaultClient) {
-          activityResponse.body.activityData[0].client_id = cClient;
-        }
-      
-        if (pDefault && (pDefault !== '') && !pDefault.includes('[')) {
-          activityResponse.body.activityData[0].default_value = pDefault;
-        }
-        else { activityResponse.body.activityData[0].default_value = resolvedDefault; }
-        setSelected(activityResponse.body.activityData[0]);
-        return activityResponse.body.activityData[0];
-      }
-    };
-    return [];
-   */
   };
 
   const getActivityHistory = async (pActivity) => {

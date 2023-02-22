@@ -74,13 +74,13 @@ export function makeDate(pInput) {
     let relDate, absDate;
     // Make relative date
     let hours = 60 * 60 * 1000;
-    let midnight = currentDate.setHours(0, 0, 0, 0);
+    let beginningOfCurrentDay = currentDate.setHours(0, 0, 0, 0);
 
-    if (targetDateStamp < midnight) {
-        if (targetDateStamp > (midnight - (24 * hours))) {
+    if (targetDateStamp < beginningOfCurrentDay) {
+        if (targetDateStamp > (beginningOfCurrentDay - (24 * hours))) {
             relDate = 'yesterday';
         }
-        else if (targetDateStamp > (midnight - (7 * 24 * hours))) {
+        else if (targetDateStamp > (beginningOfCurrentDay - (7 * 24 * hours))) {
             let mWord = '';
             if ((currentDate.getTime() - targetDateStamp) > (4 * 24 * hours)) {
                 mWord = 'last ';
@@ -88,11 +88,11 @@ export function makeDate(pInput) {
             relDate = `${mWord}${targetDate.toLocaleString([], { weekday: 'long' })}`;
         }
     }
-    else if (targetDateStamp >= (midnight + (24 * hours))) {
-        if (targetDateStamp < (midnight + (48 * hours))) {
+    else if (targetDateStamp >= (beginningOfCurrentDay + (24 * hours))) {
+        if (targetDateStamp < (beginningOfCurrentDay + (48 * hours))) {
             relDate = 'tomorrow';
         }
-        else if (targetDateStamp < (midnight + (8 * 24 * hours))) {
+        else if (targetDateStamp < (beginningOfCurrentDay + (8 * 24 * hours))) {
             let mWord = '';
             if (targetDate.getDay() <= currentDate.getDay()) {
                 mWord = 'next ';
@@ -102,7 +102,8 @@ export function makeDate(pInput) {
     }
     else {
         let hour = targetDate.getHours();
-        if (hour < 12) { relDate = "this morning"; }
+        if ((hour + targetDate.getMinutes()) === 0) { relDate = "today"; }
+        else if (hour < 12) { relDate = "this morning"; }
         else if (hour < 17) { relDate = "this afternoon"; }
         else (relDate = "this evening");
     }

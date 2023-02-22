@@ -108,6 +108,7 @@ export async function getPerson(pID, pElement = '*all', override = false) {
             var match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
             if (match) {
                 personRec.Item.home = [match[2], '-', match[3], '-', match[4]].join('');
+                personRec.Item.voice = [match[2], '-', match[3], '-', match[4]].join('');
                 personRec.Item.search_data += ' ' + personRec.Item.messaging.voice;
             }
         }
@@ -117,6 +118,7 @@ export async function getPerson(pID, pElement = '*all', override = false) {
             match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
             if (match) {
                 personRec.Item.cell = [match[2], '-', match[3], '-', match[4]].join('');
+                personRec.Item.sms = [match[2], '-', match[3], '-', match[4]].join('');
                 personRec.Item.search_data += ' ' + personRec.Item.messaging.sms;
             }
         }
