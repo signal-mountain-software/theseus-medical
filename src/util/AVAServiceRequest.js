@@ -1,5 +1,6 @@
 import { clt, cl, recordExists } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
+import { prepareMessage, sendMessages } from '../util/AVAMessages';
 
 const AWS = require('aws-sdk');
 const dbClient = new AWS.DynamoDB.DocumentClient({
@@ -20,11 +21,11 @@ export function putServiceRequest_nonAsync(body) {
   return returnArray;
 }
 
-export async function getServiceRequests(body) { 
+export async function getServiceRequests(body) {
   if (body.filter) { Object.assign(body, body.filter); };
   let rP = body.person_id || body.person;
   let rT = body.request_type;
-  let qQ = { TableName: 'ServiceRequests' }
+  let qQ = { TableName: 'ServiceRequests' };
   if (rP) {
     qQ.IndexName = 'requestor-type-index';
     qQ.KeyConditionExpression = 'requestor = :rP';
@@ -39,7 +40,7 @@ export async function getServiceRequests(body) {
     qQ.KeyConditionExpression = 'client_id = :c and request_type = :rT';
     qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rT': rT };
   }
-  
+
   let qR = await dbClient
     .query(qQ)
     .promise()
@@ -74,16 +75,16 @@ export async function putServiceRequest(body) {
   */
   let now = new Date().getTime();
   if (!body.requestDate) { body.requestDate = now; };
-  body.$Date = body.requestDate.toString();
+  body.requestID = `${body.author}~${body.requestDate}`;
   let serviceRequestRec = {
     "client_id": body.client,
-    "request_id": `${body.author}~${body.$Date}`,
+    "request_id": body.requestID,
     "requestor": body.author,
     "on_behalf_of": body.onBehalfOf || getPerson(body.author, 'name'),
     "request_type": body.requestType,
     "request_date": body.requestDate,
     "original_request": body.request,
-    "local_key": body.localKey || `${body.$Date.substr(2, 4)}-${body.$Date.substr(6, 4)}`,
+    "local_key": body.localKey || body.requestID,
     "foreign_key": body.foreignKey || '*tbd*',
     "last_update": now,
     "last_status": 'Submitted',
@@ -101,6 +102,10 @@ export async function putServiceRequest(body) {
       clt({ 'Bad put to ServiceRequests - caught error is': error });
       goodWrite = false;
     });
+  if (body.messaging) {
+    let preparedMessages = await prepareMessage(body);
+    sendMessages(preparedMessages);
+  }
   return {
     'request_id': serviceRequestRec.request_id,
     'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')

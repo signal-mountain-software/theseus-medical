@@ -464,6 +464,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       },
     };
 
+    if ('messaging' in fact) { nF.messaging = fact.messaging; }
+
     let defaultSelections = [];
     if (defaultValue
       && fact.type !== 'reservation'

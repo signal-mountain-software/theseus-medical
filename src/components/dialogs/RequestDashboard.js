@@ -349,13 +349,13 @@ export default ({ session, filter = {}, onClose }) => {
   async function toggleOpen(pI) {
     dataRows[pI].workData.open = !dataRows[pI].workData.open;
     if (!dataRows[pI].workData.messageRecs) {
-      dataRows[pI].workData.messageRecs = await prepareMessages(dataRows[pI].request_id);
+      dataRows[pI].workData.messageRecs = await prepareMessage(dataRows[pI].request_id);
     }
     setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
   }
 
-  async function prepareMessages(thread) {
+  async function prepareMessage(thread) {
     let qR = await getMessages({ 'thread_id': thread });
     let mRow = [];
     let workingKey = '';

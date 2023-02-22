@@ -1,6 +1,7 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { makeDate } from '../../util/AVADateTime';
+import { makeName } from '../../util/AVAPeople';
 import { putServiceRequest } from '../../util/AVAServiceRequest';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -737,14 +738,31 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               onConfirm={async () => {
                 let rObj;
                 if (factType !== 'list') {
+                  let oBo = await makeName(fact.patient_id);
+                  if (fact.value.freeText && ('onBehalfOf' in fact.value.freeText)) {
+                    oBo = textInput[fact.value.freeText.onBehalfOf];
+                    delete textInput[fact.value.freeText.onBehalfOf];
+                  }
+                  let requestObj = { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual };
+                  let messageObj = {};
+                  if ('messaging' in fact) { 
+                    messageObj.messaging = Object.assign(requestObj, fact.messaging);
+                    messageObj.messaging.activityName = factName;
+                  }
+                  let foreign_key = fact.value.freeText.foreignKey || '*tbd';
+                  if (textInput[fact.value.freeText.foreignKey]) { 
+                    let fKDate = makeDate(textInput[fact.value.freeText.foreignKey]);
+                    if (!fKDate.error) { foreign_key = fKDate.ymd; }
+                  } 
                   rObj = await putServiceRequest(
                     {
                       client: pClient,
                       author: fact.patient_id,
                       requestType: fact.value.freeText.requestType,
-                      onBehalfOf: textInput[fact.value.freeText.onBehalfOf] || fact.patient_id,
-                      foreignKey: textInput[fact.value.freeText.foreignKey] || fact.value.freeText.foreignKey || '*tbd*',
-                      request: { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual }
+                      onBehalfOf: oBo,
+                      foreignKey: foreign_key,
+                      request: requestObj,
+                      messaging: fact.messaging
                     });
                 }
                 onSave((rObj ? rObj.request_id : ''), checkedToSave, textInput, dataRows.chosenQual);

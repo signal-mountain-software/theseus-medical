@@ -19,6 +19,21 @@ export function recordExists(recordId) {
   else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
 }
 
+export function listFromArray(inArray) { 
+  if (!Array.isArray(inArray)) { return inArray }
+  let makeList$ = '';
+  let link = '';
+  let nextToLast = inArray.length - 2;
+  let threeOrMore = (inArray.length > 2);
+  inArray.forEach((s, x) => {
+    makeList$ += link + s;
+    if (threeOrMore) { link = ', '; }
+    if (x === nextToLast) (link += 'and ');
+
+  });
+  return makeList$;
+}
+
 export function stringToColor(string) {
   let hash = 0;
   let i;
@@ -112,6 +127,21 @@ export function isPromise(p) {
   return p && Object.prototype.toString.call(p) === "[object Promise]";
 }
 
+export function uuid(pLen) {
+  let key = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
+  if (!pLen || (pLen < 6)) { pLen = 6; }
+  var d = new Date().getTime();
+  let ans = [];
+  for (let a = 0; a < pLen; a++) {
+    var r = Math.random() * 16; //random number between 0 and 16
+    if (d <= 0) { d = new Date().getTime(); }
+    r = (d + r) % 16 | 0;
+    d = Math.floor(d / 16);
+    ans.push(key[r]);
+  }
+  return ans.join('');
+}
+
 export async function resolveVariables(pKey, pSession) {
   if (!pKey) { return ''; }
   // look for brackets in the key and deal with what's between them
@@ -121,9 +151,7 @@ export async function resolveVariables(pKey, pSession) {
     let [middle, back] = rest.split(/](.*)/);
     if (middle) {
       // if there is a middle, but no front or back, this is an ARRAY...
-      if (!front && !back) {
-        return middle.split(",");
-      }
+      if (!front && !back) { return middle.split(","); }
       let [instruction, dType] = middle.split(':');
       instruction = instruction.toLowerCase();
       switch (instruction) {

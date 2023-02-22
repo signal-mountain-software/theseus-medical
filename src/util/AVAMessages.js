@@ -1,11 +1,14 @@
-import { clt, recordExists } from './AVAUtilities';
+import { clt, cl, recordExists, uuid, listFromArray, sentenceCase } from './AVAUtilities';
+import { getPerson, makeName } from './AVAPeople';
+import { makeDate } from './AVADateTime';
 
 const AWS = require('aws-sdk');
+
 const dbClient = new AWS.DynamoDB.DocumentClient({
-    apiVersion: '2012-08-10',
-    region: "us-east-1",
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
 // Functions
@@ -22,127 +25,328 @@ export function putMessage_nonAsync(body) {
 */
 
 export async function getMessages(body) {
-    let qT = body.thread_id || body.thread;
-    let qQ = {
-        TableName: 'TheseusMessages',
-        KeyConditionExpression: 'thread_id = :t',
-        ExpressionAttributeValues: { ':t': qT }
-    };
-    let qR = await dbClient
-        .query(qQ)
-        .promise()
-        .catch(error => {
-            if (error.code === 'NetworkingError') {
-                clt(`Security Violation or no Internet Connection`);
-            }
-            clt({ 'Error reading TheseusMessages': error });
-        });
-    if (recordExists(qR)) {
-        return qR.Items;
-    }
-    else { return []; }
+  let qT = body.thread_id || body.thread;
+  let qQ = {
+    TableName: 'TheseusMessages',
+    KeyConditionExpression: 'thread_id = :t',
+    ExpressionAttributeValues: { ':t': qT }
+  };
+  let qR = await dbClient
+    .query(qQ)
+    .promise()
+    .catch(error => {
+      if (error.code === 'NetworkingError') {
+        clt(`Security Violation or no Internet Connection`);
+      }
+      clt({ 'Error reading TheseusMessages': error });
+    });
+  if (recordExists(qR)) {
+    return qR.Items;
+  }
+  else { return []; }
 }
 
-/*
-export async function putServiceRequest(body) {
-    // request is an object with...
-    //        body: {
-    //            client: <string> (required),
-    //            author: <user ID> (required)
-    //            requestType: <string> (required)
-    //            [requestDate: <timestamp>] (optional - defaults to currentTime),
-    //            [onBehalfOf: <string>] (optional - defaults to author's name)
-    //            request: <object> (required)
-    //    };
-    //
-    let now = new Date().getTime();
-    if (!body.requestDate) { body.requestDate = now; };
-    body.$Date = body.requestDate.toString();
-    let serviceRequestRec = {
-        "client_id": body.client,
-        "request_id": `${body.author}~${body.$Date}`,
-        "requestor": body.author,
-        "on_behalf_of": body.onBehalfOf || getPerson(body.author, 'name'),
-        "request_type": body.requestType,
-        "request_date": body.requestDate,
-        "original_request": body.request,
-        "local_key": body.localKey || `${body.$Date.substr(2, 4)}-${body.$Date.substr(6, 4)}`,
-        "foreign_key": body.foreignKey || '*tbd*',
-        "last_update": now,
-        "last_status": 'Submitted',
-        "last_note": null
-    };
-    cl({ 'adding ServiceRequestRec as': serviceRequestRec });
-    let goodWrite = true;
-    await dbClient
-        .put({
-            Item: serviceRequestRec,
-            TableName: "ServiceRequests"
-        })
-        .promise()
-        .catch(error => {
-            clt({ 'Bad put to ServiceRequests - caught error is': error });
-            goodWrite = false;
-        });
-    return {
-        'request_id': serviceRequestRec.request_id,
-        'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
-    };
-}
+export async function prepareMessage(body) {
+  body = Object.assign(body, body.messaging);
+  body = Object.assign(body, body.request);
+  cl({ 'in prepare messages': body });
+  let results = {};
+  if (Array.isArray(body.recipientList)) { results.recipientList = [...body.recipientList]; }
+  else { results.recipientList = [body.recipientList]; }
+  results.client = body.client;
+  results.author = body.author;
+  results.preferred_method = body.method;
+  if (!('format' in body)) { body.format = { 'type': 'factForm' }; }
+  if ('subject' in body.format) { results.subject = body.format.subject; }
+  if ('method' in body.format) { results.preferred_method = body.format.method; }
+  switch (body.format.type) {
+    case 'mealOrder':
+    case 'factForm': {
+      [results.htmlText, results.messageText] = await formatFactSummary(body, body.format.type);
+      break;
+    }
+    case 'plainText':
+    default: {
+      results.messageText = await resolveMessageVariables(body.format.text);
+      results.htmlText = results.messageText;
+    }
+  }
+  if ('test' in body) { processRules(body); }
+  return results;
 
-export async function updateServiceRequest(body) {
-    // body is a single, or an array of, service request records
-    let unProcessed = [];
-    if (Array.isArray(body)) {
-        body.forEach(r => {
-            unProcessed.push({
-                "PutRequest": {
-                    "Item": r
-                }
-            });
-        });
-    }
-    else {
-        unProcessed[0] = {
-            "PutRequest": {
-                "Item": body
-            }
-        };
-    }
-    let initialCount = unProcessed.length;
-    let finalCount = 0;
-    let retryNeeded;
-    let retryCount = 0;
-    do {
-        retryNeeded = false;
-        let writeResponse = await dbClient
-            .batchWrite({
-                RequestItems: {
-                    'ServiceRequests': unProcessed
-                }
-            })
-            .promise()
-            .catch(error => {
-                clt({ 'Bad batch write on ServiceRequests - caught error is': error });
-            });
-        let returnArray = [];
-        if (writeResponse
-            && ('UnprocessedItems' in writeResponse)
-            && (Object.keys(writeResponse.UnprocessedItems)).length > 0) {
-            unProcessed = [...writeResponse.UnprocessedItems];
-            finalCount = unProcessed.length;
-            retryNeeded = true;
-            retryCount++;
+  /**************************/
+
+  async function resolveMessageVariables(inString) {
+    // extract first variable
+    let workString = inString;
+    while (workString.includes('<')) {
+      let [front, rest] = workString.split(/<(.*)/);
+      let [variable, back] = rest.split(/>(.*)/);
+      switch (variable) {
+        case 'client': {
+          workString = `${front}${body.client}${back}`;
+          break;
         }
-    } while (retryNeeded && (retryCount < 5));
-    let returnMessage = '';
-    if (finalCount === 0) { returnMessage = `Successfully updated ${initialCount} Request record${(initialCount > 1) ? 's' : ''}`; }
-    else if (finalCount < initialCount) {
-        let processedCount = initialCount - finalCount;
-        returnMessage = `Updated ${processedCount} of ${initialCount} Request records`;
+        case 'author': {
+          workString = `${front}${await makeName(body.author)}${back}`;
+          break;
+        }
+        case 'person':
+        case 'patient':
+        case 'name': {
+          workString = `${front}${body.onBehalfOf || await makeName(body.author)}${back}`;
+          break;
+        }
+        case 'activityName':
+        case 'activity': {
+          workString = `${front}${body.activityName}${back}`;
+          break;
+        }
+        case 'location': {
+          let pMe = await getPerson(body.author);
+          workString = `${front}${pMe.location}${back}`;
+          break;
+        }
+        case 'user': { workString = `${front}${body.author}${back}`; break; }
+        case 'selections': {
+          workString = `${front}${listFromArray(body.selections)}${back}`;
+          break;
+        }
+        default: {
+          if (variable.startsWith('value')) { variable = variable.split(':')[1]; }
+          workString = `${front}${body.textInput[variable]}${back}`;
+        }
+      }
     }
-    else { returnMessage = `Failed to update Request record${(initialCount > 1) ? 's' : ''}`; }
-    return returnMessage;
+    return workString;
+  };
+
+  async function processRules() {
+    for (let b = 0; b < body.test.length; b++) {
+      let t = body.test[b];
+      let thenArray = [];
+      if ((body.selections && body.selections.includes(t.check) && !t.test)
+        || ((t.check in body.textInput) && (body.textInput[t.check].toLowerCase().includes(t.test.toLowerCase())))) {
+        if ('then' in t) {
+          if (!Array.isArray(t.then)) { thenArray = [t.then]; }
+          else { thenArray = t.then; }
+        }
+      }
+      else {
+        if ('else' in t) {
+          if (!Array.isArray(t.else)) { thenArray = [t.else]; }
+          else { thenArray = t.else; }
+        }
+      }
+      for (let i = 0; i < thenArray.length; i++) {
+        let rule = thenArray[i];
+        switch (rule.instruction) {
+          case 'add_recipients': {
+            if (Array.isArray(rule.value)) { results.recipientList.push(...rule.value); }
+            else { results.recipientList.push(rule.value); }
+            break;
+          }
+          case 'replace_recipients': {
+            if (Array.isArray(rule.value)) { results.recipientList = [...rule.value]; }
+            else { results.recipientList = [rule.value]; }
+            break;
+          }
+          case 'urgency': {
+            results.urgent = rule.value;
+            break;
+          }
+          case 'override_method': {
+            results.preferred_method = rule.value;
+            break;
+          }
+          case 'add_message': {
+            results.messageText += await resolveMessageVariables(rule.value);
+            break;
+          }
+          default: { }
+        }
+      }
+    }
+  };
+
 }
 
-*/
+async function formatFactSummary(body, summaryType) {
+
+  let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">`
+    + body.activityName
+    + '</span></h1>';
+  let rawMessage = `${body.activityName}\n\r`;
+
+  // Person
+  let pRec = await getPerson(body.author);
+
+  let pName = body.onBehalfOf || await makeName(body.author);
+  htmlMessage += `<h2 style = "color: black;" >${pName}`;
+  rawMessage += `${pName}\n`;
+
+  if (pRec.location) {
+    htmlMessage += `<br />${pRec.location}`;
+    rawMessage += `${pRec.location}\n`;
+  }
+  htmlMessage += `</h2>`;
+
+  const pTime = makeDate(new Date().getTime()).absolute + ' by ' + await makeName(body.author);
+  htmlMessage += `<p style = "color: black;">created:&nbsp;<strong>${pTime}</strong>`;
+  rawMessage += `${pTime}\n\r`;
+
+  for (let cTyp in pRec.messaging) {
+    if ((cTyp in pRec) && (pRec[cTyp].trim() !== '')) {
+      let cLab;
+      switch (cTyp) {
+        case 'sms': { cLab = 'cell'; break; }
+        case 'voice': { cLab = 'home'; break; }
+        case 'email': { cLab = 'e-Mail'; break; }
+        default: { cLab = cTyp; }
+      }
+      htmlMessage += `<br />${cLab}:&nbsp;<strong>${pRec[cTyp]}</strong>&nbsp;&nbsp;${(cTyp === pRec.preferred_method) ? '(pref)' : ''}`;
+    }
+  }
+
+  htmlMessage += '</p>';
+  rawMessage += '\n\r';
+
+  let renderCheckBox = '';
+  if (summaryType === 'mealOrder') {
+    let pTag = '<h2 style = "color: black;" >';
+    let pXTag = '';
+    for (let x = 0; x < body.selections.length; x++) {
+      let aVal = body.selections[x];
+      if (['Dinner', 'Lunch', 'Pick-up', 'Deliver (+$5)', 'Deliver ($5)'].includes(aVal.trim())) {
+        htmlMessage += pTag + aVal.trim();
+        rawMessage += aVal + "\r\n";
+        pXTag = '</h2>';
+        pTag = '&nbsp;/&nbsp;';
+        body.selections.splice(x, 1);
+        x--;
+      }
+    };
+    htmlMessage += `${pXTag}<h2 style = "color: black;" >Order filled by:&nbsp;_______________________</h2>`;
+    rawMessage += '\r\n\nOrder filled by: ________________________\r\n\n';
+    renderCheckBox = '&#8414;&nbsp;&nbsp;&nbsp;';
+  }
+
+  let htmlSpace = '0px';
+  let spaceBetweenLines = 25;
+  if (body.selections.length > 7) { spaceBetweenLines = 125 / (body.selections.length - 2); }
+
+  htmlMessage += `<h2 style="color: black;">Details</h2><dl style="padding-left: 40px;">`;
+
+  body.selections.forEach((aVal) => {
+    let sVal = sentenceCase(aVal.trim());
+    htmlMessage += `<dt style="padding-top:${htmlSpace}; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[aVal] || ''}</dt>`;
+    rawMessage += `${sVal}\n${body.textInput[aVal] || ''}\n\r`;
+    delete body.textInput[aVal];
+    /* Check for qualifiers */
+    if ((body.qualifiers) && (body.qualifiers.hasOwnProperty(aVal))) {
+      for (let qual in body.qualifiers[aVal]) {
+        let tOut = listFromArray(body.qualifiers[aVal][qual]);
+        htmlMessage += `<dd>${sentenceCase(qual)}:&nbsp${tOut}</dd>`;
+        rawMessage += `${sentenceCase(qual)}: ${tOut}\n\r`;
+      }
+    }
+    htmlSpace = `${spaceBetweenLines}px`;
+  });
+  if (Object.keys(body.textInput).length > 0) {
+    for (let topic in body.textInput) {
+      let sVal = sentenceCase(topic.trim());
+      htmlMessage += `<dt style="padding-top:${htmlSpace}; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[topic]}</dt>`;
+      rawMessage += `${sVal}\n${body.textInput[topic]}\n\r`;
+      htmlSpace = `${spaceBetweenLines}px`;
+    }
+  }
+
+  // Finish
+  htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
+  htmlMessage += `<div>AVA reference:&nbsp;${body.requestID}</div>`;
+  htmlMessage += `<div>***** END *****</div></p>`;
+  rawMessage += `AVA reference: ${body.requestID}\n***** END *****`;
+
+  return [htmlMessage, rawMessage];
+}
+
+export async function sendMessages(body) {
+  /*  Expect body as an object or array of objects with the following structure
+          client: <client_id>,
+          author: <from person_id>
+          testMode: <boolean> (if true, everything will happen EXCEPT the message will not be put in the PostOffice - and therefore not sent)
+          messageText: <text> (if present, messageTextthis will override any messageText in the values attribute)
+          htmlMessageText: <text>
+          recipientList: <person_id or array of person_id's list can include "GRP//<group_id>" as well>
+          subject: <subject>
+          preffered_method: <attempt to force this method>
+          thread_id: <if present, add this message to the indicated thread; otherwise, create a new thread>    
+  */
+  cl({ 'in send messages': body });
+  let results = [];
+  let postTime = new Date().getTime();
+  let toSend = [];
+  let mCount = 0;
+  if (Array.isArray(body)) {
+    toSend = body;
+    mCount = body.length;
+  }
+  else {
+    toSend = [body];
+    mCount = 1;
+  }
+  for (let m = 0; m < mCount; m++) {
+    let env = toSend[m];
+    if (!('thread_id' in env)) { env.thread_id = `${postTime}.${uuid(6)}`; }
+    // clean up recipientList before proceeding
+    if (!('recipientList' in env)) {  // skip this, no recipients
+      results.push(`failed - no recipients specified`);
+      continue;
+    }
+    var PostOfficeRec = {
+      Item: {
+        'client_id': env.client,
+        'message_id': `${postTime}~AVAMessages`,
+        'deliver_time': postTime,
+        'patient_id': env.author,
+        'from': env.author,
+        'message_text': env.messageText,
+        'html_message_text': env.htmlText,
+        'preferred_method': env.preferred_method,
+        'subject': env.subject
+      },
+      TableName: "PostOffice"
+    };
+    if (env.testMode) { PostOfficeRec.TableName = "TestPostOffice"; };
+    if (!('subject' in PostOfficeRec.Item)) {
+      PostOfficeRec.Item["subject"] = `Message from ${await makeName(env.author)}`;
+    }
+    let to = [];
+    let ind = [];
+    if (Array.isArray(env.recipientList)) { to = env.recipientList; }
+    else to = [env.recipientList];
+    for (let r = 0; r < to.length; r++) {
+      if (to[r].startsWith('GRP//')) {
+        let gCode = to[r].split('//')[1];
+        PostOfficeRec.Item["recipient_base"] = 'group';
+        PostOfficeRec.Item["recipient_key"] = gCode;
+        await dbClient
+          .put(PostOfficeRec)
+          .promise()
+          .catch(error => { console.log(`Message Engine caught error at 268 adding a Message; error is ${error}`); });
+        results.push(`sent to group ${gCode}`);
+      }
+      else { ind.push(to[r]); }
+    }
+    if (ind.length > 0) {
+      PostOfficeRec.Item["recipient_base"] = 'list';
+      PostOfficeRec.Item["recipient_key"] = ind;
+      await dbClient
+        .put(PostOfficeRec)
+        .promise()
+        .catch(error => { cl(`Error writing to Post Office; error is ${error}`); });
+      results.push(`sent ${ind.length} message${(ind.length > 1) ? 's' : ''}. To: ${ind.join(', ')}`);
+    }
+  }
+  return results;
+}
