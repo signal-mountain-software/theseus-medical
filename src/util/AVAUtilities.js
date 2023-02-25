@@ -123,6 +123,82 @@ export async function getIcon(pIcon) {
   }
 };
 
+export async function getObject(pObjIn, pTyp) {
+  let imageBucket, imageURI;
+  let [pObj, fExt] = pObjIn.split(/\.(.*)/);
+  switch (pTyp) {
+    case 'icon': {
+      imageBucket = 'ava-icons';
+      imageURI = `${pObj}.${fExt || 'png'}`;
+      break;
+    }
+    case 'image': {
+      imageBucket = 'theseus-medical-storage';
+      imageURI = `public/patients/${pObj}.${fExt || 'jpg'}`;
+      break;
+    }
+    default: {
+      imageBucket = 'theseus-medical-storage';
+      imageURI = pObjIn;
+      }
+  }
+  try {
+    await s3.headObject({
+      Bucket: imageBucket,
+      Key: imageURI,
+    }, function (error, data) {
+      if (error && error.statusCode !== 403) { 
+        return null
+        }
+      }
+    )
+      .promise();
+    let gotObject =
+      s3.getSignedUrl('getObject', {
+        Bucket: imageBucket,
+        Key: imageURI,
+        Expires: 3600
+      });
+    if (gotObject) { return gotObject; }
+  }
+  catch (error) {
+    cl({'error getting object': { pObjIn, pTyp, imageBucket, imageURI, pObj, fExt, error }});
+    return null;
+  }
+};
+
+export async function updateACL(pObjIn, pTyp) {
+  let imageBucket, imageURI;
+  let [pObj, fExt] = pObjIn.split(/\.(.*)/);
+  switch (pTyp) {
+    case 'icon': {
+      imageBucket = 'ava-icons';
+      imageURI = `${pObj}.${fExt || 'png'}`;
+      break;
+    }
+    case 'image': {
+      imageBucket = 'theseus-medical-storage';
+      imageURI = `public/patients/${pObj}.${fExt || 'jpg'}`;
+      break;
+    }
+    default: {
+      imageBucket = 'theseus-medical-storage';
+      imageURI = pObjIn;
+    }
+  }
+  await s3
+    .putObjectAcl({
+      Bucket: imageBucket,
+      Key: imageURI,
+      ACL: 'public-read-write',
+    })
+    .promise()
+    .catch(err => {
+      cl(`ACL for ${imageURI} not updated in ${imageBucket}.  Error is ${err}`)
+    });
+};
+
+
 export function isPromise(p) {
   return p && Object.prototype.toString.call(p) === "[object Promise]";
 }

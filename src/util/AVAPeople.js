@@ -1,4 +1,4 @@
-import { getIcon, isPromise, cl, recordExists } from '../util/AVAUtilities';
+import { isPromise, cl, recordExists } from '../util/AVAUtilities';
 
 const AWS = require('aws-sdk');
 
@@ -9,14 +9,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
     secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-const s3 = new AWS.S3({
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
-let imageObj = {};
 let profile, session;
-
 
 export async function makeName(pRec) {
     if (!pRec) { return 'N/A'; }
@@ -52,42 +45,8 @@ export async function makeName(pRec) {
     }
 };
 
-export async function getImage(pPerson, override = false) {
-    if (imageObj.hasOwnProperty(pPerson) && !override) { return imageObj[pPerson]; }
-    const imageBucket = 'theseus-medical-storage';
-    const imageURI = `public/patients/${pPerson}.jpg`;
-    let oData;
-    try {
-        await s3
-            .getObject({
-                Bucket: imageBucket,
-                Key: imageURI,
-            }, function (error, data) {
-                if (data) { oData = data; };
-            })
-            .promise();
-        if (!oData || (oData.ContentLength === 0)) {
-            if (!('AVA Logo' in imageObj)) { imageObj['AVA Logo'] = await getIcon('AVA Logo'); }
-            imageObj[pPerson] = imageObj['AVA Logo'];
-            return imageObj['AVA Logo'];
-        };
-        let gotImage =
-            s3.getSignedUrl('getObject', {
-                Bucket: imageBucket,
-                Key: imageURI,
-                Expires: 3600
-            });
-        imageObj[pPerson] = gotImage;
-        return gotImage;
-    }
-    catch (e) {
-        cl(`error getting S3 image is ${e}`);
-        if (!('AVA Logo' in imageObj)) {
-            imageObj['AVA Logo'] = await getIcon('AVA Logo');
-        }
-        imageObj[pPerson] = imageObj['AVA Logo'];
-        return imageObj['AVA Logo'];
-    }
+export function getImage(pPerson) {
+    return `https://d3sds9ybtm36gy.cloudfront.net/${pPerson}.jpg`;
 };
 
 export async function getPerson(pID, pElement = '*all', override = false) {

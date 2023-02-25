@@ -14,6 +14,7 @@ import GroupForm from '../forms/GroupForm';
 import GroupFilter from '../forms/GroupFilter';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
+import { recordExists } from '../../util/AVAUtilities';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -128,7 +129,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
         });
     }
     else {
-      let foundPeople = {};
       let groupRec;
       let gaL = groupArray.length;
       peopleRecs.Items = [];
@@ -150,12 +150,13 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
           .catch(error => {
             console.log({ 'Bad scan on People in getGroupMembers - caught error is': error });
           });
-        if (('Items' in gPeopleRecs) && (gPeopleRecs.Items.length > 0)) {
+        if (recordExists(gPeopleRecs)) {
           gPeopleRecs.Items.forEach(i => { 
-            if (!(i.person_id in foundPeople)) {
+            if (i.directory_option !== 'exclude') {
               if (gaL > 1) { i.member_of = pGName; }
+              if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
+              if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
               peopleRecs.Items.push(i);
-              foundPeople[i.person_id] = pGName;
             }
           })
         }

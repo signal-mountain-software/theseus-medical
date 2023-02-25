@@ -1,6 +1,8 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
+import { getImage } from '../../util/AVAPeople';
+import { cl } from '../../util/AVAUtilities';
 
 import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
@@ -216,12 +218,6 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
 export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, isMobile, onReset }) => {
 
   const classes = useStyles();
@@ -230,6 +226,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [person_filter, setPersonFilter] = React.useState(' ');
   const [person_filter_lower, setPersonFilterLower] = React.useState(' ');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
+  const [filtering, setFiltering] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -251,13 +248,11 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   const [overrideRole, setOverrideRole] = React.useState();
 
-  const [rowLimit, setRowLimit] = React.useState(20);
+  const [rowLimit, setRowLimit] = React.useState(5);
   const [previousY, setCurrentY] = React.useState(0);
-  const scrollValue = 20;
+  const scrollValue = 5;
   var rowsWritten;
-
-  const imageBucket = 'theseus-medical-storage';
-  const imageURI = 'public/patients/';
+  let filterTimeOut;
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -274,18 +269,26 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     Payload: ''
   };
 
-  const handleChangePersonFilter = event => {
-    if (event.target.value.length === 0) {
-      setPersonFilter(' ');
-      setPersonFilterLower(' ');
-      setSingleFilterDigit(false);
-    }
-    else {
-      setPersonFilter(event.target.value);
-      setPersonFilterLower(event.target.value.toLowerCase());
-      setSingleFilterDigit(event.target.value.length === 1);
-    }
-    setRowLimit(scrollValue);
+  const handleChangePersonFilter = vCheck => {
+    clearTimeout(filterTimeOut);
+    cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
+    filterTimeOut = setTimeout(() => {
+      cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
+      if (vCheck.length === 0) {
+        setPersonFilter('');
+        setPersonFilterLower('');
+        setSingleFilterDigit(false);
+        setFiltering(false);
+      }
+      else {
+        setPersonFilter(vCheck);
+        setPersonFilterLower(vCheck.toLowerCase());
+        setSingleFilterDigit(vCheck.length === 1);
+        setFiltering(true);
+      }
+      setRowLimit(scrollValue);
+    }, 500)
+    
   };
 
   const prepareSwitch = async (pUser, pSwitchTo, pSwitchName) => {
@@ -474,37 +477,27 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     else { return pPhone; }
   }
 
-  function okToShow(pItem) {
-    if ((person_filter.length > 0) && !filteredPerson(pItem.name || '', pItem.location || '', pItem.messaging || {}, pItem || {})) {
+  function okToShow(pPerson) {
+    try {
+      if (singleFilterDigit) {
+        return (pPerson.name.last.toLowerCase().startsWith(person_filter_lower.trim()) || pPerson.location.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
+      }
+      else {
+        let searchString = [...Object.values(pPerson.name), pPerson.search_data, pPerson.location, ...Object.values(pPerson.messaging)].join(' ');
+        return searchString.toLowerCase().includes(person_filter_lower.trim());
+      }
+    }
+    catch (error) {
+      cl({
+        'Error in okToShow': {
+          'error': error,
+          singleFilterDigit,
+          person_filter,
+          pPerson
+        }
+      });
       return false;
     }
-    if (pGroup.toLowerCase() === '*all') { return true; }
-    if (['responsible', 'admin'].includes(pRole)) { return true; }
-    if (pItem.directory_option !== 'exclude') { return true; };
-    return false;
-  }
-
-  function filteredPerson(pName, pLoc, pMessaging, pPerson) {
-    if (singleFilterDigit) {
-      return (pName.last.toLowerCase().startsWith(person_filter_lower.trim()) || pLoc.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
-    }
-    else {
-      let searchString = [...Object.values(pName), pPerson.search_data, pLoc, ...Object.values(pMessaging)].join(' ');
-      return searchString.toLowerCase().includes(person_filter_lower.trim());
-    }
-  }
-
-  function getImage(pPerson, pIndex) {
-    function getURL(pWho) {
-      return s3.getSignedUrl('getObject', {
-        Bucket: imageBucket,
-        Key: `${imageURI}${pWho}.jpg`,
-        Expires: 3600
-      });
-    }
-    workingMemberList[pIndex].image = getURL(pPerson);
-    console.log(`getImage called for ${pPerson}`);
-    return workingMemberList[pIndex];
   }
 
   function makeContactLines(pMessaging, pPreference, pPerson) {
@@ -573,8 +566,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               </DialogContentText>
               <TextField
                 id='List Filter'
-                value={person_filter}
-                onChange={handleChangePersonFilter}
+                onChange={event => (handleChangePersonFilter(event.target.value))}
                 className={classes.freeInput}
                 label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
                 variant={'standard'}
@@ -588,7 +580,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 {rowsWritten = 0}
               </Typography>
               {workingMemberList.map((this_item, index) => (
-                ((rowsWritten <= rowLimit) && okToShow(this_item) &&
+                ((rowsWritten <= rowLimit) && (!filtering || okToShow(this_item)) &&
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsWritten++}
@@ -666,7 +658,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               minWidth={isMobile ? 100 : 150}
                               maxWidth={isMobile ? 100 : 150}
                               alt=''
-                              src={this_item.image || getImage(this_item.person_id, index)}
+                              src={getImage(this_item.person_id)}
                             />
                           </Box>
                           {(pRole === 'admin' || pRole === 'responsible') &&

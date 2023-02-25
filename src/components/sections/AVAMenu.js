@@ -4,6 +4,7 @@ import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
 import { recordExists, cl, resolveVariables } from '../../util/AVAUtilities';
 import { makeTime } from '../../util/AVADateTime';
+import { getImage } from '../../util/AVAPeople';
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -248,7 +249,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [mainMenu, setMainMenu] = React.useState([]);
-  const [imageURL, setImageURL] = React.useState('');
   const [greetingName, setGreetingName] = React.useState('');
   const [greetingWords, setGreetingWords] = React.useState('');
   const [confirmMessage, setConfirmMessage] = React.useState('');
@@ -286,9 +286,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   let nowTime = new Date().getTime();
   let localLastActive = nowTime;
-
-  const imageBucket = 'theseus-medical-storage';
-  const imageURI = 'public/patients/[person_id].jpg';
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
@@ -648,7 +645,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       async () => {
         setLoading('Getting your Information');
         setForceRedisplay(!forceRedisplay);
-        getImage(session.patient_id || patient.person_id);
         makeGreetingName(session.patient_display_name || patient.name.first || pPerson);
         makeGreeting();
         setLoading('Building your AVA menu');
@@ -805,14 +801,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return [];
   };
 
-  function getImage(pPerson) {
-    setImageURL(s3.getSignedUrl('getObject', {
-      Bucket: imageBucket,
-      Key: imageURI.replace('[person_id]', pPerson),
-      Expires: 3600
-    }));
-  }
-
   function makeGreetingName(pString) {
     let response = pString.split(':')[0].trim().split(/[\s]+/)[0];
     setGreetingName(response);
@@ -913,7 +901,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 </Typography>
               }
               placement='bottom-start'>
-              <Avatar src={imageURL} alt={greetingName} />
+              <Avatar src={getImage(session.patient_id)} alt={greetingName} />
             </Tooltip>
             <Box
               flexGrow={1}
