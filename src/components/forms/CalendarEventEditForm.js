@@ -1,6 +1,8 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
+import { makeTime } from '../../util/AVADateTime';
+
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import List from '@material-ui/core/List';
@@ -333,7 +335,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     let request = {};
     let eventParts = pEventCode.split('#');
 
-    let slotIDNumber = makeTimeValue(pSlotToAdd);
+    let slotIDNumber = makeTime(pSlotToAdd).hhmm;
     let slotIDString = slotIDNumber.toString();
     eventParts[2] = (slotIDString.length < 4 ? '0' : '') + slotIDString;
     request.minutesAfterMidnight = (Math.floor(slotIDNumber / 100) * 60) + (slotIDNumber % 100);
@@ -497,45 +499,6 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     setOpen(workingOpen);
     setForceRedisplay(!forceRedisplay);
   };
-
-  function makeTimeValue(pTime) {
-    let ampm = null;
-    if (pTime.includes('p')) { ampm = 'pm'; }
-    else if (pTime.includes('a')) { ampm = 'am'; };
-    let [hh$, mm$] = pTime.split(':');
-    let hh = Number(hh$.replace(/\D+/g, ''));
-    let mm = 0;
-    if (hh > 100) {
-      if (!mm$) { mm = hh % 100; }
-      hh = Math.floor(hh / 100);
-    }
-    if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
-    if (mm > 59) {
-      let hAdd = Math.floor(mm / 60);
-      mm -= (hAdd * 60);
-      hh += hAdd;
-    }
-    if (hh >= 23) {
-      hh = hh % 24;
-    }
-    if (hh >= 12) {
-      hh -= 12;
-      ampm = 'pm';
-    }
-    if (hh === 0) {
-      hh = 12;
-      ampm = 'pm';
-    }
-    if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
-    let returnTime = 0;   // numeric 24 hour clock version of time as hhmm
-    if (ampm === 'pm') {
-      returnTime = (hh < 12 ? ((hh + 12) * 100) : 1200) + mm;
-    }
-    else {
-      returnTime = ((hh < 12 ? (hh * 100) : 0) + mm);
-    }
-    return returnTime;
-  }
 
   function makeReadableName(pName) {
     let [pPrimary, pFirst] = pName.split(',');

@@ -455,7 +455,7 @@ export default ({ session, filter = {}, onClose }) => {
     i.workData.requestor_image = await getImage(i.slotData.owner);
     i.workData.formatted_request = [];
     if (i.occData.signup_type === 'time') {
-      i.workData.formatted_request.push(['head', `Sign-up time: ${makeTime(i.slotData.id)}`]);
+      i.workData.formatted_request.push(['head', `Sign-up time: ${makeTime(i.slotData.id).time}`]);
     }
     i.workData.formatted_request.push(['head', 'Details']);
     i.workData.formatted_request.push(['detail', `Location: ${titleCase(i.occData.location)}`]);

@@ -211,6 +211,10 @@ async function formatFactSummary(body, summaryType) {
   htmlMessage += '</p>';
   rawMessage += '\n\r';
 
+  let htmlSpace = '-20px';
+  let spaceBetweenLines = 25;
+  if (body.selections.length > 7) { spaceBetweenLines = 125 / (body.selections.length - 2); }
+
   let renderCheckBox = '';
   if (summaryType === 'mealOrder') {
     let pTag = '<h2 style = "color: black;" >';
@@ -229,17 +233,30 @@ async function formatFactSummary(body, summaryType) {
     htmlMessage += `${pXTag}<h2 style = "color: black;" >Order filled by:&nbsp;_______________________</h2>`;
     rawMessage += '\r\n\nOrder filled by: ________________________\r\n\n';
     renderCheckBox = '&#8414;&nbsp;&nbsp;&nbsp;';
+    htmlMessage += `<h2 style="color: black;">Order Details</h2><dl style="padding-left: 40px;">`;
+  }
+  else {
+    if (Object.keys(body.textInput).length > 0) {
+      for (let topic in body.textInput) {
+        if (!body.selections.includes(topic)) {
+          let sVal = sentenceCase(topic.trim());
+          rawMessage += `${sVal}\n${body.textInput[topic]}\n\r`;
+          htmlMessage += `<h2><span style="color: black;">${sVal}</span></h2>`;
+          htmlMessage += `<div style="padding-left: 40px; margin-top: ${htmlSpace}; font-size: 1.2em;"><strong>${body.textInput[topic]}</strong></div>`;
+          rawMessage += `${sVal}\n${body.textInput[topic]}\r\n\n`;
+          delete body.textInput[topic];
+        }
+      }
+    }
+    if (body.selections.length > 0) {
+      htmlMessage += `<h2 style="color: black;">Options Selected</h2><dl style="padding-left: 40px;">`;
+    }
   }
 
-  let htmlSpace = '0px';
-  let spaceBetweenLines = 25;
-  if (body.selections.length > 7) { spaceBetweenLines = 125 / (body.selections.length - 2); }
-
-  htmlMessage += `<h2 style="color: black;">Details</h2><dl style="padding-left: 40px;">`;
-
+  htmlSpace = '0px';
   body.selections.forEach((aVal) => {
     let sVal = sentenceCase(aVal.trim());
-    htmlMessage += `<dt style="padding-top:${htmlSpace}; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[aVal] || ''}</dt>`;
+    htmlMessage += `<dt style="margin-top: ${htmlSpace}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[aVal] || ''}</dt>`;
     rawMessage += `${sVal}\n${body.textInput[aVal] || ''}\n\r`;
     delete body.textInput[aVal];
     /* Check for qualifiers */
@@ -252,11 +269,12 @@ async function formatFactSummary(body, summaryType) {
     }
     htmlSpace = `${spaceBetweenLines}px`;
   });
+  
   if (Object.keys(body.textInput).length > 0) {
     for (let topic in body.textInput) {
       let sVal = sentenceCase(topic.trim());
-      htmlMessage += `<dt style="padding-top:${htmlSpace}; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[topic]}</dt>`;
-      rawMessage += `${sVal}\n${body.textInput[topic]}\n\r`;
+      htmlMessage += `<dt style="padding-top:${htmlSpace}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[topic]}</dt>`;
+      rawMessage += `${sVal}\n${body.textInput[topic]}\r\n`;
       htmlSpace = `${spaceBetweenLines}px`;
     }
   }

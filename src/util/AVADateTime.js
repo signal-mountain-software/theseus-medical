@@ -205,39 +205,57 @@ export function makeDate(pInput) {
     }
 };
 
+export function isDate(pIn) {
+    return (pIn instanceof Date);
+}
+
 export function makeTime(pTime) {
     let inTime;
     let ampm, hh, hh$, mm$;
-    if (typeof (pTime) === 'string') {
-        inTime = pTime;
-        if (inTime.includes('p')) { ampm = 'pm'; }
-        else if (inTime.includes('a')) { ampm = 'am'; };
-        [hh$, mm$] = inTime.split(':');
-        hh = Number(hh$.replace(/\D+/g, ''));
-    }
-    else { hh = pTime; }
     let mm = 0;
-    if (hh > 100) {
-        if (!mm$) { mm = hh % 100; }
-        hh = Math.floor(hh / 100);
+    if (isDate(pTime)) {
+        hh = pTime.getHours();
+        mm = pTime.getMinutes();
     }
-    if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
-    if (mm > 59) {
-        let hAdd = Math.floor(mm / 60);
-        mm -= (hAdd * 60);
-        hh += hAdd;
-    }
-    if (hh >= 23) {
-        hh = hh % 24;
-    }
-    if (hh >= 12) {
-        hh -= 12;
-        ampm = 'pm';
-    }
-    if (hh === 0) {
-        hh = 12;
-        ampm = 'pm';
+    else {
+        if (typeof (pTime) === 'string') {
+            inTime = pTime;
+            if (inTime.includes('p')) { ampm = 'pm'; }
+            else if (inTime.includes('a')) { ampm = 'am'; };
+            [hh$, mm$] = inTime.split(':');
+            hh = Number(hh$.replace(/\D+/g, ''));
+        }
+        else { hh = pTime; }
+        if (hh > 100) {
+            if (!mm$) { mm = hh % 100; }
+            hh = Math.floor(hh / 100);
+        }
+        if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
+        if (mm > 59) {
+            let hAdd = Math.floor(mm / 60);
+            mm -= (hAdd * 60);
+            hh += hAdd;
+        }
+        if (hh >= 23) {
+            hh = hh % 24;
+        }
+        if (hh >= 12) {
+            hh -= 12;
+            ampm = 'pm';
+        }
+        if (hh === 0) {
+            hh = 12;
+            ampm = 'pm';
+        }
     }
     if (!ampm) { ampm = ((hh >= 0) && (hh < 12)) ? 'am' : 'pm'; }
-    return `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
+    let dayPart;
+    if (hh < 12) { dayPart = "morning"; }
+    else if (hh < 17) { dayPart = "afternoon"; }
+    else (dayPart = "evening");
+    return {
+        'time': `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`,
+        'hhmm': `${hh}${mm}`,
+        'dayPart': dayPart
+    };
 }

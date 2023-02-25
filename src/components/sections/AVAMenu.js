@@ -3,7 +3,7 @@ import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
 import { recordExists, cl, resolveVariables } from '../../util/AVAUtilities';
-import { makeDate } from '../../util/AVADateTime';
+import { makeTime } from '../../util/AVADateTime';
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -17,7 +17,6 @@ import PatientDialog from '../dialogs/PatientDialog';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import AVAConfirm from '../forms/AVAConfirm';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
-import MakeMessage from '../forms/MakeMessage';
 
 import List from '@material-ui/core/List';
 import Box from '@material-ui/core/Box';
@@ -26,7 +25,6 @@ import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import IconButton from '@material-ui/core/IconButton';
 import Dialog from '@material-ui/core/Dialog';
-import Button from '@material-ui/core/Button';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -44,8 +42,6 @@ import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import LinearProgress from '@material-ui/core/LinearProgress';
-import DeleteIcon from '@material-ui/icons/DeleteOutlineRounded';
-import ReplyIcon from '@material-ui/icons/ReplyOutlined';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 
 import Tooltip from '@material-ui/core/Tooltip';
@@ -113,14 +109,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
     marginBottom: 0,
     fontSize: theme.typography.fontSize * 1.5,
-  },
-  messageScroll: {
-    maxHeight: 100,
-    marginTop: 1,
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: 0,
-    fontSize: '0.8rem',
   },
   buttonArea: {
     justifyContent: 'center',
@@ -260,7 +248,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [mainMenu, setMainMenu] = React.useState([]);
-  const [messageRec, setMessageRec] = React.useState('');
   const [imageURL, setImageURL] = React.useState('');
   const [greetingName, setGreetingName] = React.useState('');
   const [greetingWords, setGreetingWords] = React.useState('');
@@ -281,8 +268,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [rowOpen, setRowOpen] = React.useState(-1);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
-  const [promptForMessage, setPromptForMessage] = React.useState('');
-  const [messageReplyRecipient, setMessageReplyRecipient] = React.useState('');
 
   const [loading, setLoading] = React.useState('Initializing');
   const [progress, setProgress] = React.useState(100);
@@ -313,11 +298,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
-  const buildMenu = async (beQuiet = null) => {
+  const buildMenu = async (reload = false, beQuiet = null) => {
     let nowTime = new Date().getTime();
     setLastActive(nowTime);
     localLastActive = nowTime;
-    cl(`Refreshed at ${new Date().toLocaleString()}.`);
+    setSectionOpen({});
+
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
     let menuRec = await dbClient
@@ -332,30 +318,24 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         }
         cl(`caught error getting People record; error is:`, error);
       });
-    if (recordExists(menuRec) && ('AVA_section_open' in menuRec.Item)) {
+    if (recordExists(menuRec)) {
       setSectionOpen(menuRec.Item.AVA_section_open);
-    }
-    else {
-      if (session?.current_event) {
-        if (typeof (session?.current_event) === 'object') {
-          setSectionOpen(session.current_event);
-        }
-        else {
-          setSectionOpen(JSON.parse(session.current_event));
-        }
-      }
-      else {
-        setSectionOpen({});
+      if ((menuRec.Item.AVA_main_menu.length > 0) && !reload) {
+        cl(`Used cached menu at ${new Date().toLocaleString()}.`);
+        setMainMenu(menuRec.Item.AVA_main_menu);
+        return menuRec.Item.AVA_main_menu;
       }
     }
-
+    
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus));
 
     if (wholeMenu.length > 0) {
+      cl(`Reloaded menu at ${new Date().toLocaleString()}.`);
       setMainMenu(wholeMenu);
       return wholeMenu;
     }
     else {
+      cl(`Empty menu for ${patient} in ${defaultClient} at ${new Date().toLocaleString()}.`);
       enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
         { variant: 'error', persist: true }
       );
@@ -411,78 +391,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     putActivityLog();
   };
 
-  const deleteMessage = async (pThread_id, pComposite_key) => {
-    await dbClient
-      .update({
-        Key: {
-          thread_id: pThread_id,
-          composite_key: pComposite_key
-        },
-        UpdateExpression: 'set delete_flag = :t',
-        ExpressionAttributeValues: {
-          ':t': true
-        },
-        TableName: 'TheseusMessages'
-      })
-      .promise()
-      .catch(error => {
-        enqueueSnackbar(`AVA couldn't delete that message.  Error is ${error}`,
-          { variant: 'error', persist: true }
-        );
-        return;
-      });
-  };
-
-  const getMessage = async (pPerson) => {
-    makeGreeting();
-    try {
-      let now = new Date().getTime();
-      cl(`Last message check set to ${new Date(now).toLocaleString()}`);
-      let mRecs = await dbClient
-        .query({
-          KeyConditionExpression: 'deliver_to = :p and created_time > :t',
-          FilterExpression: 'delete_flag <> :true',
-          ExpressionAttributeValues: {
-            ':p': pPerson,
-            ':t': (now - (24 * oneHour)).toString(),
-            ':true': true
-          },
-          TableName: "TheseusMessages",
-          IndexName: 'deliver_to-index',
-          ScanIndexForward: false,
-          Limit: 10
-        })
-        .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-          }
-          cl({ 'Error reading Messages': error });
-        });
-      if (recordExists(mRecs)) {
-        // handle a received message
-        let msg = mRecs.Items[0];
-        let language = msg.language || 'EN-US';
-        let msgText = '';
-        if (!msg.content.current[language].text.startsWith('Message from') && (msg.sent_from !== pPerson)) {
-          msgText = `From ${msg.author.author_name} - `;
-        }
-        msgText += msg.content.current[language].text;
-
-        msg.display_text = `${makeDate(msg.created_time).relative} - ${msgText}`;
-        setMessageReplyRecipient(`${msg.author.author_name}:${msg.author.author_id}`);
-        setMessageRec(msg);
-        return msg;
-      }
-    }
-    catch (error) {
-      console.error(`Error at Last message check is`, error);
-    }
-    setMessageRec(null);
-    setForceRedisplay(!forceRedisplay);
-    return null;
-  };
-
   async function putS3Object(pMediaData, pType) {
     enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: true });
     let uploadOK = true;
@@ -517,7 +425,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setLoading('Resetting your Favorites');
     setForceRedisplay(!forceRedisplay);
     makeGreeting();
-    await getMessage(pPerson);
     let activityRow = mainMenu[activityRowIndex];
     let changeMade = false;
     let personRec = await dbClient
@@ -744,9 +651,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         getImage(session.patient_id || patient.person_id);
         makeGreetingName(session.patient_display_name || patient.name.first || pPerson);
         makeGreeting();
-        setLoading('Getting recent messages');
-        setForceRedisplay(!forceRedisplay);
-        await getMessage(session.patient_id || patient.person_id);
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);
         await buildMenu();
@@ -932,11 +836,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       setGreetingWords(session.custom_greeting);
       return session.custom_greeting;
     }
-    let current_hour = Number(new Date().toTimeString().split(':')[0]);
-    let response = '';
-    if (current_hour < 12) { response = 'Good morning'; }
-    else if (current_hour < 17) { response = 'Good afternoon'; }
-    else { response = 'Good evening'; }
+    let response = `Good ${makeTime(new Date()).dayPart}`;
     setGreetingWords(response);
     return response;
   }
@@ -983,7 +883,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           timeout={msBeforeSleeping}   // every "n" minutes
           onIdle={async () => {
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
-            await getMessage(session.patient_id);
             setGreetingWords('Welcome back');
             await updateAVA(sectionOpen, mainMenu);
           }}
@@ -1138,13 +1037,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   setLoading('Resetting greeting');
                   setForceRedisplay(!forceRedisplay);
                   makeGreeting();
-                  setLoading('Checking messages');
-                  setForceRedisplay(!forceRedisplay);
-                  await getMessage(session.patient_id);
                   setLoading('Restarting AVA');
                   setForceRedisplay(!forceRedisplay);
                   await updateAVA(sectionOpen, mainMenu);
-                  await buildMenu();
+                  await buildMenu(true);
                   setCurrentMenu('main');
                   setMenuArray(['main']);
                   setMenuNames([]);
@@ -1217,54 +1113,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           </Box>
         }
 
-        {/* Message */}
-        {!loading && messageRec &&
-          <Box
-            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={3} mb={1} mr={3}
-          >
-            <Box
-              display='flex' mt={1} flexDirection='row' justifyContent='center' alignItems='center'
-              key={'msgButtonBox'}
-            >
-              <Typography key={'message'} variant='subtitle2' className={classes.boldCenter}>
-                {messageRec.display_text}
-              </Typography>
-            </Box>
-            <Box
-              display='flex' flexDirection='row' justifyContent='center' alignItems='center'
-            >
-              <Button
-                onClick={async () => {
-                  // mTime,mContent,mID,mType,mSenderName:respondTo
-                  await deleteMessage(messageRec.thread_id, messageRec.composite_key);
-                  setMessageRec(null);
-                  await getMessage(session.patient_id);
-                  setForceRedisplay(!forceRedisplay);
-                }}
-                className={classes.rowButtonRed}
-                startIcon={<DeleteIcon size='small' />}
-              >
-                {(messageRec.deliver_to !== session.patient_id) ? 'Hide' : 'Delete'}
-              </Button>
-              {(messageRec.deliver_to === session.patient_id) &&
-                <Button
-                  onClick={async () => {
-                    setPromptForMessage(true);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                  className={classes.rowButtonBlue}
-                  startIcon={<ReplyIcon size='small' />}
-                >
-                  Reply
-                </Button>
-              }
-            </Box>
-          </Box>
-        }
-
-        {/* AVA Menu */}
+    {/* AVA Menu */}
         {mainMenu && mainMenu.length > 0 && !loading &&
           <Paper component={Box} variant='outlined' overflow='auto'>
             <List >
@@ -1278,7 +1127,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     flexDirection='column'
                     minHeight={80}
                     onClick={async () => {
-                      await getMessage(session.patient_id);
                       menuArray.pop();
                       setCurrentMenu(menuArray[menuArray.length - 1]);
                       setMenuArray(menuArray);
@@ -1422,7 +1270,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                   }
                                 }
                                 setToggleClick(false);
-                                await getMessage(session.patient_id);
                               }}
                             >
                               {this_row.row_type === 'document' ?
@@ -1585,7 +1432,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 jumpTo += `?user=${session.url_parameters.user}`;
                 window.location.replace(jumpTo);
               }
-              await getMessage(pPerson);
             }}
             onSave={
               async (pResult) => {
@@ -1613,25 +1459,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           >
           </AVAConfirm>
         }
-        {promptForMessage &&
-          <MakeMessage
-            titleText={`Reply to ${messageReplyRecipient.split(':')[0]}`}
-            promptText={`What should your reply to ${messageReplyRecipient.split(':')[0]} say?`}
-            buttonText={'Send'}
-            sender={{
-              "client_id": defaultClient,
-              "patient_id": session.patient_id || patient.person_id,
-              "patient_display_name": `${patient.name.first} ${patient.name.last}`
-            }}
-            pRecipientID={messageReplyRecipient.split(':')[1]}
-            pRecipientName={messageReplyRecipient.split(':')[0]}
-            onCancel={() => { setPromptForMessage(false); }}
-            onComplete={() => { setPromptForMessage(false); }}
-            allowCancel={true}
-            thread_id={messageRec.thread_id || null}
-          />
-        }
-      </React.Fragment >
+        </React.Fragment >
     </Dialog >
   );
 };
