@@ -137,22 +137,17 @@ export async function getObject(pObjIn, pTyp) {
       imageURI = `public/patients/${pObj}.${fExt || 'jpg'}`;
       break;
     }
+    case 'temp_image': {
+      imageBucket = 'theseus-medical-storage';
+      imageURI = `temp/${pObj}.${fExt || 'jpg'}`;
+      break;
+    }
     default: {
       imageBucket = 'theseus-medical-storage';
       imageURI = pObjIn;
       }
   }
   try {
-    await s3.headObject({
-      Bucket: imageBucket,
-      Key: imageURI,
-    }, function (error, data) {
-      if (error && error.statusCode !== 403) { 
-        return null
-        }
-      }
-    )
-      .promise();
     let gotObject =
       s3.getSignedUrl('getObject', {
         Bucket: imageBucket,
@@ -160,6 +155,7 @@ export async function getObject(pObjIn, pTyp) {
         Expires: 3600
       });
     if (gotObject) { return gotObject; }
+    else { throw new Error('No object returned') }
   }
   catch (error) {
     cl({'error getting object': { pObjIn, pTyp, imageBucket, imageURI, pObj, fExt, error }});

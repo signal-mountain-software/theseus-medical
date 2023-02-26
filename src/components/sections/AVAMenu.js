@@ -871,7 +871,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           timeout={msBeforeSleeping}   // every "n" minutes
           onIdle={async () => {
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
-            setGreetingWords('Welcome back');
+            makeGreeting();
             await updateAVA(sectionOpen, mainMenu);
           }}
           debounce={250}
