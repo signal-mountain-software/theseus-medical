@@ -57,12 +57,12 @@ export async function prepareMessage(body) {
   results.author = body.author;
   results.preferred_method = body.method;
   if (!('format' in body)) { body.format = { 'type': 'factForm' }; }
-  if ('subject' in body.format) { results.subject = body.format.subject; }
+  if ('subject' in body.format) { results.subject = await resolveMessageVariables(body.format.subject); }
   if ('method' in body.format) { results.preferred_method = body.format.method; }
   switch (body.format.type) {
     case 'mealOrder':
     case 'factForm': {
-      [results.htmlText, results.messageText] = await formatFactSummary(body, body.format.type);
+      [results.htmlText, results.messageText] = await formatRequestDetails(body, body.format.type);
       break;
     }
     case 'plainText':
@@ -171,7 +171,7 @@ export async function prepareMessage(body) {
 
 }
 
-async function formatFactSummary(body, summaryType) {
+async function formatRequestDetails(body, summaryType) {
 
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">`
     + body.activityName
@@ -211,7 +211,6 @@ async function formatFactSummary(body, summaryType) {
   htmlMessage += '</p>';
   rawMessage += '\n\r';
 
-  let htmlSpace = '-20px';
   let spaceBetweenLines = 25;
   if (body.selections.length > 7) { spaceBetweenLines = 125 / (body.selections.length - 2); }
 
@@ -242,8 +241,8 @@ async function formatFactSummary(body, summaryType) {
           let sVal = sentenceCase(topic.trim());
           rawMessage += `${sVal}\n${body.textInput[topic]}\n\r`;
           htmlMessage += `<h2><span style="color: black;">${sVal}</span></h2>`;
-          htmlMessage += `<div style="padding-left: 40px; margin-top: ${htmlSpace}; font-size: 1.2em;"><strong>${body.textInput[topic]}</strong></div>`;
-          rawMessage += `${sVal}\n${body.textInput[topic]}\r\n\n`;
+          htmlMessage += `<div style="padding-left: 10px; margin-top: -15px; font-size: 1.2em;">${body.textInput[topic]}</div>`;
+          rawMessage += `${sVal}\n\r${body.textInput[topic]}\r\n\n`;
           delete body.textInput[topic];
         }
       }
@@ -253,10 +252,10 @@ async function formatFactSummary(body, summaryType) {
     }
   }
 
-  htmlSpace = '0px';
+  let lineSpacing = '0px';
   body.selections.forEach((aVal) => {
     let sVal = sentenceCase(aVal.trim());
-    htmlMessage += `<dt style="margin-top: ${htmlSpace}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[aVal] || ''}</dt>`;
+    htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[aVal] || ''}</dt>`;
     rawMessage += `${sVal}\n${body.textInput[aVal] || ''}\n\r`;
     delete body.textInput[aVal];
     /* Check for qualifiers */
@@ -267,15 +266,15 @@ async function formatFactSummary(body, summaryType) {
         rawMessage += `${sentenceCase(qual)}: ${tOut}\n\r`;
       }
     }
-    htmlSpace = `${spaceBetweenLines}px`;
+    lineSpacing = `${spaceBetweenLines}px`;
   });
   
   if (Object.keys(body.textInput).length > 0) {
     for (let topic in body.textInput) {
       let sVal = sentenceCase(topic.trim());
-      htmlMessage += `<dt style="padding-top:${htmlSpace}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[topic]}</dt>`;
-      rawMessage += `${sVal}\n${body.textInput[topic]}\r\n`;
-      htmlSpace = `${spaceBetweenLines}px`;
+      htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[topic]}</dt>`;
+      rawMessage += `${sVal}\n\r'kv ${body.textInput[topic]}\r\n`;
+      lineSpacing = `${spaceBetweenLines}px`;
     }
   }
 
