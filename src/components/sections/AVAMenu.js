@@ -316,7 +316,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         cl(`caught error getting People record; error is:`, error);
       });
     if (recordExists(menuRec)) {
-      setSectionOpen(menuRec.Item.AVA_section_open);
+      setSectionOpen(menuRec.Item.AVA_section_open || {});
       if ((menuRec.Item.AVA_main_menu.length > 0) && !reload) {
         cl(`Used cached menu at ${new Date().toLocaleString()}.`);
         setMainMenu(menuRec.Item.AVA_main_menu);

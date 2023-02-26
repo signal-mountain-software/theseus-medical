@@ -1162,9 +1162,7 @@ export default ({
         <MessageForm
           pPerson={session.patient_id}
           pClient={session.client_id}
-          pMessageList={
-            values.map(v => { return (JSON.parse(v)); })
-          }
+          pMessageList={[]}
           pSession={session}
           onReset={onSave}
         />
