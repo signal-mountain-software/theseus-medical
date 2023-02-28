@@ -67,11 +67,15 @@ export async function prepareMessage(body) {
     }
     case 'plainText':
     default: {
-      results.messageText = await resolveMessageVariables(body.format.text);
+      results.messageText = '%%custom_text%%\n\r\n' + (await resolveMessageVariables(body.format.text));
       results.htmlText = results.messageText;
     }
   }
-  if ('test' in body) { processRules(body); }
+  if ('test' in body) { await processRules(body); }
+  
+  results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
+  results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
+  
   return results;
 
   /**************************/
@@ -125,18 +129,18 @@ export async function prepareMessage(body) {
     for (let b = 0; b < body.test.length; b++) {
       let t = body.test[b];
       let thenArray = [];
-      if ((body.selections && body.selections.includes(t.check) && !t.test)
-        || ((t.check in body.textInput) && (body.textInput[t.check].toLowerCase().includes(t.test.toLowerCase())))) {
-        if ('then' in t) {
-          if (!Array.isArray(t.then)) { thenArray = [t.then]; }
-          else { thenArray = t.then; }
-        }
+      let passedTest = false;
+      if (body.selections && body.selections.includes(t.check) && !t.test) { passedTest = true; }
+      else if ((t.check in body.textInput) && (body.textInput[t.check].toLowerCase().includes(t.test.toLowerCase()))) { passedTest = true; }
+      else if (await resolveMessageVariables(t.check) === t.test) { passedTest = true; }
+      else { passedTest = false; }
+      if (passedTest && ('then' in t)) {
+        if (!Array.isArray(t.then)) { thenArray = [t.then]; }
+        else { thenArray = t.then; }
       }
-      else {
-        if ('else' in t) {
-          if (!Array.isArray(t.else)) { thenArray = [t.else]; }
-          else { thenArray = t.else; }
-        }
+      else if (!passedTest && ('else' in t)) {
+        if (!Array.isArray(t.else)) { thenArray = [t.else]; }
+        else { thenArray = t.else; }
       }
       for (let i = 0; i < thenArray.length; i++) {
         let rule = thenArray[i];
@@ -160,7 +164,9 @@ export async function prepareMessage(body) {
             break;
           }
           case 'add_message': {
-            results.messageText += await resolveMessageVariables(rule.value);
+            let custom_text = await resolveMessageVariables(rule.value);
+            results.messageText = results.messageText.replace('%%custom_text%%', custom_text );
+            results.htmlText = results.htmlText.replace('%%custom_text%%', custom_text );
             break;
           }
           default: { }
@@ -208,8 +214,8 @@ async function formatRequestDetails(body, summaryType) {
     }
   }
 
-  htmlMessage += '</p>';
-  rawMessage += '\n\r';
+  htmlMessage += '</p><h2 style = "color: black;" >%%custom_text%%</h2>';
+  rawMessage += '\n\r%%custom_text%%\n\r';
 
   let spaceBetweenLines = 25;
   if (body.selections.length > 7) { spaceBetweenLines = 125 / (body.selections.length - 2); }
@@ -268,7 +274,7 @@ async function formatRequestDetails(body, summaryType) {
     }
     lineSpacing = `${spaceBetweenLines}px`;
   });
-  
+
   if (Object.keys(body.textInput).length > 0) {
     for (let topic in body.textInput) {
       let sVal = sentenceCase(topic.trim());

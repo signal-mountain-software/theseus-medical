@@ -1,8 +1,9 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
-import { getImage } from '../../util/AVAPeople';
+import { getImage, makeName } from '../../util/AVAPeople';
 import { cl } from '../../util/AVAUtilities';
+import MakeAVAMenu from '../../util/MakeAVAMenu';
 
 import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
@@ -15,6 +16,10 @@ import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
+import MenuUpdateIcon from '@material-ui/icons/MobileFriendly';
+
+import CircularProgress from '@material-ui/core/CircularProgress';
+import LinearProgress from '@material-ui/core/LinearProgress';
 
 import SwapIcon from '@material-ui/icons/SwapHoriz';
 
@@ -48,6 +53,14 @@ const useStyles = makeStyles(theme => ({
   page: {
     height: 950,
     maxWidth: 1000
+  },
+  progressBar: {
+    marginTop: theme.spacing(4),
+    marginBottom: theme.spacing(3),
+    backgroundColor: '#a3a0a0',
+    color: '#000000',
+    transition: 'none',
+    height: '5px'
   },
   freeInput: {
     marginLeft: '25px',
@@ -174,6 +187,12 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 'bold',
     marginRight: theme.spacing(1),
   },
+  containerBox: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+  },
   superSizeLast: {
     marginTop: theme.spacing(0),
     fontWeight: 'bold',
@@ -218,6 +237,15 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
+const AWS = require('aws-sdk');
+
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, isMobile, onReset }) => {
 
   const classes = useStyles();
@@ -247,6 +275,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [open, setOpen] = React.useState([]);
 
   const [overrideRole, setOverrideRole] = React.useState();
+
+  const [loading, setLoading] = React.useState(null);
+  const [progress, setProgress] = React.useState(100);
+  const [pWidth, setPWidth] = React.useState(60);
 
   const [rowLimit, setRowLimit] = React.useState(5);
   const [previousY, setCurrentY] = React.useState(0);
@@ -287,8 +319,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         setFiltering(true);
       }
       setRowLimit(scrollValue);
-    }, 500)
-    
+    }, 500);
+
   };
 
   const prepareSwitch = async (pUser, pSwitchTo, pSwitchName) => {
@@ -409,6 +441,40 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       variant: 'success'
     });
   };
+
+  async function handleMenuUpdate(memberList) {
+    let mL = memberList.length;
+    let mLP = 1;
+    if (mL > 100) { mLP = (100 / mL); }
+    for (let m = 0; m < mL; m++) {
+      let member = memberList[m];
+      let wholeMenu = await MakeAVAMenu(member, pClient, () => { return; });
+      let memberName = await makeName(member.person_id);
+      screenStatus(memberName, ((m / mL) * 100), ((( mL * mLP ) / 40) + .75));
+      dbClient
+        .update({
+          Key: { person_id: member.person_id },
+          UpdateExpression: 'set AVA_main_menu = :m',
+          ExpressionAttributeValues: {
+            ':m': wholeMenu
+          },
+          TableName: "AVAMenu",
+        })
+        .promise()
+        .catch(error => {
+          cl(`AVA couldn't update your Menu settings.  Error is ${error}`);
+        });
+    }
+    setLoading(null);
+    return;
+
+    function screenStatus(statusMessage, progressPct, progressWidth) {
+      setLoading(statusMessage);
+      setProgress(progressPct);
+      setPWidth(progressWidth * 100);
+      setForceRedisplay(!forceRedisplay);
+    };
+  }
 
   const handlePrintRoster = async (pGroup) => {
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:group_roster';
@@ -542,461 +608,481 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   // ******************
 
-  // let myIndex = workingMemberList.findIndex(row => row.person_id === pPatient);
-
   return (
-    <Dialog
-      open={true || forceRedisplay}
-      onScroll={onScroll}
-      p={2}
-      fullScreen
-    >
-      {workingMemberList && workingMemberList.length > 0 &&
-        <React.Fragment>
-          {!showSuperSize &&
-            <React.Fragment>
-              <DialogContentText
-                className={classes.title}
-                id='scroll-dialog-title'
-              >
-                {(pGroup.toLowerCase() === '*all') ?
-                  'Administrative View - All Accounts' :
-                  `Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`
-                }
-              </DialogContentText>
-              <TextField
-                id='List Filter'
-                onChange={event => (handleChangePersonFilter(event.target.value))}
-                className={classes.freeInput}
-                label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
-                variant={'standard'}
-                autoComplete='off'
-              />
-            </React.Fragment>
-          }
-          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
-            <List>
-              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                {rowsWritten = 0}
-              </Typography>
-              {workingMemberList.map((this_item, index) => (
-                ((rowsWritten <= rowLimit) && (!filtering || okToShow(this_item)) &&
-                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
-                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      {rowsWritten++}
-                    </Typography>
-                    <Box display='flex' flexDirection='column'>
-                      <Box
-                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                        key={this_item.person_id + 'r' + index}
-                        className={classes.listItem}
-                      >
-                        <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                          <Box display='flex' flexDirection='column'>
-                            <Box onClick={() => {
-                              setshowSuperSize(true);
-                              setSuperSizeData(this_item);
-                            }}>
-                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
-                                {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
-                              </Box>
-                              {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
-                            </Box>
-                            {(this_item.member_of) &&
-                              <Typography key={`member_of-${index}`} className={classes.lastName}>{this_item.member_of}</Typography>
-                            }
-                            {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
-                              <Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>
-                            ))}
-                            {(this_item.directory_option === 'exclude') &&
-                              <Typography key={`excluded-${index}`} className={classes.locationLine}>{'** Excluded from Directory **'}</Typography>
-                            }
-                            <Box
-                              display='flex'
-                              flexDirection='row'
-                              justifyContent='flex-start'
-                              alignItems='center'
-                              key={`contactRows.${index}`}
-                            >
-                              <Box display='flex' flexDirection='column'>
-                                {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
-                                  .map((prefLine, prefIndex) => (
-                                    <a href={prefLine.split('~')[0]}
-                                      key={`prefLink-${index}.${prefIndex}`}
-                                      style={{ color: 'inherit', textDecoration: 'none' }}>
-                                      <Typography
-                                        key={`prefLine-${index}.${prefIndex}`}
-                                        className={classes.preferenceLine}
-                                      >
-                                        {prefLine.split('~')[1]}
-                                      </Typography>
-                                    </a>
-                                  )))}
-                              </Box>
-                            </Box>
-                          </Box>
-                        </Box>
+    <React.Fragment>
+      <Dialog
+        open={true || forceRedisplay}
+        onScroll={onScroll}
+        p={2}
+        fullScreen
+      >
+        {workingMemberList && workingMemberList.length > 0 &&
+          <React.Fragment>
+            {!showSuperSize &&
+              <React.Fragment>
+                <DialogContentText
+                  className={classes.title}
+                  id='scroll-dialog-title'
+                >
+                  {(pGroup.toLowerCase() === '*all') ?
+                    'Administrative View - All Accounts' :
+                    `Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`
+                  }
+                </DialogContentText>
+                <TextField
+                  id='List Filter'
+                  onChange={event => (handleChangePersonFilter(event.target.value))}
+                  className={classes.freeInput}
+                  label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+                  variant={'standard'}
+                  autoComplete='off'
+                />
+              </React.Fragment>
+            }
+            <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+              <List>
+                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                  {rowsWritten = 0}
+                </Typography>
+                {workingMemberList.map((this_item, index) => (
+                  ((rowsWritten <= rowLimit) && (!filtering || okToShow(this_item)) &&
+                    <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
+                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                        {rowsWritten++}
+                      </Typography>
+                      <Box display='flex' flexDirection='column'>
                         <Box
-                          display='flex'
-                          flexDirection='row'
-                          justifyContent='space-between'
-                          alignItems='center'
-                          onClick={() => {
-                            if (pRole === 'admin' || pRole === 'responsible') {
-                              open[index] = !open[index];
-                              setOpen(open);
-                              setForceRedisplay(!forceRedisplay);
-                            }
-                          }}
+                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                          key={this_item.person_id + 'r' + index}
+                          className={classes.listItem}
                         >
-                          <Box>
-                            <Box
-                              component="img"
-                              ml={isMobile ? 2 : 5}
-                              mr={1}
-                              minWidth={isMobile ? 100 : 150}
-                              maxWidth={isMobile ? 100 : 150}
-                              alt=''
-                              src={getImage(this_item.person_id)}
-                            />
+                          <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                            <Box display='flex' flexDirection='column'>
+                              <Box onClick={() => {
+                                setshowSuperSize(true);
+                                setSuperSizeData(this_item);
+                              }}>
+                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                  <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
+                                  {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                                </Box>
+                                {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                              </Box>
+                              {(this_item.member_of) &&
+                                <Typography key={`member_of-${index}`} className={classes.lastName}>{this_item.member_of}</Typography>
+                              }
+                              {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
+                                <Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>
+                              ))}
+                              {(this_item.directory_option === 'exclude') &&
+                                <Typography key={`excluded-${index}`} className={classes.locationLine}>{'** Excluded from Directory **'}</Typography>
+                              }
+                              <Box
+                                display='flex'
+                                flexDirection='row'
+                                justifyContent='flex-start'
+                                alignItems='center'
+                                key={`contactRows.${index}`}
+                              >
+                                <Box display='flex' flexDirection='column'>
+                                  {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
+                                    .map((prefLine, prefIndex) => (
+                                      <a href={prefLine.split('~')[0]}
+                                        key={`prefLink-${index}.${prefIndex}`}
+                                        style={{ color: 'inherit', textDecoration: 'none' }}>
+                                        <Typography
+                                          key={`prefLine-${index}.${prefIndex}`}
+                                          className={classes.preferenceLine}
+                                        >
+                                          {prefLine.split('~')[1]}
+                                        </Typography>
+                                      </a>
+                                    )))}
+                                </Box>
+                              </Box>
+                            </Box>
                           </Box>
-                          {(pRole === 'admin' || pRole === 'responsible') &&
-                            (!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />)
-                          }
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            justifyContent='space-between'
+                            alignItems='center'
+                            onClick={() => {
+                              if (pRole === 'admin' || pRole === 'responsible') {
+                                open[index] = !open[index];
+                                setOpen(open);
+                                setForceRedisplay(!forceRedisplay);
+                              }
+                            }}
+                          >
+                            <Box>
+                              <Box
+                                component="img"
+                                ml={isMobile ? 2 : 5}
+                                mr={1}
+                                minWidth={isMobile ? 100 : 150}
+                                maxWidth={isMobile ? 100 : 150}
+                                alt=''
+                                src={getImage(this_item.person_id)}
+                              />
+                            </Box>
+                            {(pRole === 'admin' || pRole === 'responsible') &&
+                              (!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />)
+                            }
+                          </Box>
                         </Box>
+                        {open[index] &&
+                          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                            {(pRole === 'admin' || pRole === 'responsible') &&
+                              <Button
+                                onClick={async () => {
+                                  let switchData = await prepareSwitch(
+                                    pPatient,
+                                    this_item.person_id,
+                                    `${this_item.name.first} ${this_item.name.last || this_item.display_name}:`
+                                  );
+                                  dispatch({ type: SET_SESSION, payload: switchData[0] });
+                                  dispatch({ type: SET_PATIENT, payload: switchData[1] });
+                                  let jumpTo = window.location.href.replace('refresh', 'theseus');
+                                  window.location.replace(jumpTo);
+                                }}
+                                className={classes.rowButtonGreen}
+                                startIcon={<SwapIcon fontSize="small" />}
+                              >
+                                Switch to
+                              </Button>
+                            }
+                            {pRole === 'responsible' &&
+                              <Button
+                                onClick={() => {
+                                  setEditIndex(index);
+                                  handlePatientEdit(this_item.person_id);
+                                }}
+                                className={classes.rowButtonDefault}
+                                startIcon={<EditIcon fontSize="small" />}
+                              >
+                                View/Edit
+                              </Button>
+                            }
+                            {(pRole === 'admin' || pRole === 'responsible') && (pGroup.toLowerCase() !== '*all') &&
+                              <Button
+                                onClick={() => {
+                                  setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                                  setConfirmPerson(this_item.person_id);
+                                  setConfirmIndex(index);
+                                  setDeletePending(true);
+                                  setForceRedisplay(false);
+                                }}
+                                className={classes.rowButtonGreen}
+                                startIcon={<DeleteIcon fontSize="small" />}
+                              >
+                                Remove from Group
+                              </Button>
+                            }
+                          </Box>
+                        }
                       </Box>
-                      {open[index] &&
-                        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                          {(pRole === 'admin' || pRole === 'responsible') &&
-                            <Button
-                              onClick={async () => {
-                                let switchData = await prepareSwitch(
-                                  pPatient,
-                                  this_item.person_id,
-                                  `${this_item.name.first} ${this_item.name.last || this_item.display_name}:`
-                                );
-                                dispatch({ type: SET_SESSION, payload: switchData[0] });
-                                dispatch({ type: SET_PATIENT, payload: switchData[1] });
-                                let jumpTo = window.location.href.replace('refresh', 'theseus');
-                                window.location.replace(jumpTo);
-                              }}
-                              className={classes.rowButtonGreen}
-                              startIcon={<SwapIcon fontSize="small" />}
-                            >
-                              Switch to
-                            </Button>
-                          }
-                          {pRole === 'responsible' &&
-                            <Button
-                              onClick={() => {
-                                setEditIndex(index);
-                                handlePatientEdit(this_item.person_id);
-                              }}
-                              className={classes.rowButtonDefault}
-                              startIcon={<EditIcon fontSize="small" />}
-                            >
-                              View/Edit
-                            </Button>
-                          }
-                          {(pRole === 'admin' || pRole === 'responsible') && (pGroup.toLowerCase() !== '*all') &&
-                            <Button
-                              onClick={() => {
-                                setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                                setConfirmPerson(this_item.person_id);
-                                setConfirmIndex(index);
-                                setDeletePending(true);
-                                setForceRedisplay(false);
-                              }}
-                              className={classes.rowButtonGreen}
-                              startIcon={<DeleteIcon fontSize="small" />}
-                            >
-                              Remove from Group
-                            </Button>
-                          }
-                        </Box>
-                      }
-                    </Box>
-                  </Paper>
-                )
-              ))}
-            </List>
-          </Paper>
-          {showPatientDialog &&
-            <PatientDialog
-              patient={personRec}
-              picture={""}
-              open={true}
-              onClose={(updatedPerson) => {
-                if (updatedPerson) {
-                  workingMemberList[editIndex].preferred_method = updatedPerson.preferred_method;
-                  workingMemberList[editIndex].home = updatedPerson.voice;
-                  workingMemberList[editIndex].work = updatedPerson.office;
-                  workingMemberList[editIndex].cell = updatedPerson.sms;
-                  workingMemberList[editIndex].email = updatedPerson.email;
-                  workingMemberList[editIndex].name = {
-                    'last': updatedPerson.last,
-                    'first': updatedPerson.first
-                  };
-                  workingMemberList[editIndex].location = updatedPerson.location;
-                  workingMemberList[editIndex].search_data = updatedPerson.search_data.toLowerCase();
-                }
-                setShowPatientDialog(false);
-              }}
-            />
-          }
-          {showAddPrompt &&
-            <PersonFilter
-              prompt={'Tap the name of the person you wish to add'}
-              peopleList={peopleList}
-              onCancel={() => {
-                setShowAddPrompt(false);
-              }}
-              onSelect={(selectedPerson) => {
-                handleAddPersonToGroup(selectedPerson.split(':')[1], pGroup, selectedPerson.split(':')[0]);
-              }}
-            >
-            </PersonFilter>
-          }
-          {promptForMessage &&
-            <MakeMessage
-              titleText={(messageType.includes('URGENT')) ? 'AVA will attempt to voice call all phones' : null}
-              promptText={`What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`}
-              buttonText={'Send'}
-              sender={{
-                "client_id": pClient,
-                "patient_id": pPatient,
-                "patient_display_name": pPatientName
-              }}
-              pRecipientID={recipient.split(':')[1]}
-              pRecipientName={recipient.split(':')[0]}
-              onCancel={() => { setPromptForMessage(false); }}
-              onComplete={() => { setPromptForMessage(false); }}
-              setMethod={(messageType === 'AVA') ? 'AVA' : (messageType.includes('URGENT') ? 'voice' : null)}
-              allowCancel={true}
-            />
-          }
-          {deletePending &&
-            <AVAConfirm
-              promptText={confirmMessage}
-              onCancel={() => {
-                setDeletePending(false);
-              }}
-              onConfirm={() => {
-                handleRemoveGroupMember(confirmPerson, confirmIndex);
-                if (confirmPerson === pPatient) { setOverrideRole('non-member'); }
-                setDeletePending(false);
-              }}
-            >
-            </AVAConfirm>
-          }
-          {!showSuperSize &&    // Command Area
-            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-              <Box display='flex' flexDirection='column'>
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                  <Button
-                    className={classes.rowButtonGreen}
-                    onClick={() => {
-                      setOverrideRole(null);
-                      onReset();
-                    }}
-                    startIcon={<CloseIcon size="small" />}
-                  >
-                    {'Close'}
-                  </Button>
-                  {(pRole === 'admin' || pRole === 'responsible') &&
-                    <React.Fragment>
-                      {(pGroup.toLowerCase() !== '*all') &&
-                        <Button
-                          className={classes.rowButtonGreen}
-                          onClick={() => {
-                            setShowAddPrompt(true);
-                          }}
-                          startIcon={<GroupAddIcon size="small" />}
-                        >
-                          {'Add Member'}
-                        </Button>
-                      }
-                      <Button
-                        className={classes.rowButtonDefault}
-                        onClick={() => { handlePrintDirectory(pGroup); }}
-                        startIcon={<PrintIcon size='small' />}
-                      >
-                        {'Directory'}
-                      </Button>
-                      <Button
-                        onClick={() => { handlePrintRoster(pGroup); }}
-                        className={classes.rowButtonGreen}
-                        startIcon={<StorageOutlined size='small' />}
-                      >
-                        {'Roster'}
-                      </Button>
-                    </React.Fragment>
+                    </Paper>
+                  )
+                ))}
+              </List>
+            </Paper>
+            {showPatientDialog &&
+              <PatientDialog
+                patient={personRec}
+                picture={""}
+                open={true}
+                onClose={(updatedPerson) => {
+                  if (updatedPerson) {
+                    workingMemberList[editIndex].preferred_method = updatedPerson.preferred_method;
+                    workingMemberList[editIndex].home = updatedPerson.voice;
+                    workingMemberList[editIndex].work = updatedPerson.office;
+                    workingMemberList[editIndex].cell = updatedPerson.sms;
+                    workingMemberList[editIndex].email = updatedPerson.email;
+                    workingMemberList[editIndex].name = {
+                      'last': updatedPerson.last,
+                      'first': updatedPerson.first
+                    };
+                    workingMemberList[editIndex].location = updatedPerson.location;
+                    workingMemberList[editIndex].search_data = updatedPerson.search_data.toLowerCase();
                   }
-                  {(overrideRole === 'member' || (!overrideRole && (pRole === 'member'))) &&
-                    <Button
-                      onClick={() => {
-                        setConfirmMessage(`Confirm removing ${pPatientName} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                        setConfirmPerson(pPatient);
-                        setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === pPatient; }));
-                        setDeletePending(true);
-                        setForceRedisplay(false);
-                      }}
-                      className={classes.rowButtonGreen}
-                      startIcon={<DeleteIcon fontSize="small" />}
-                    >
-                      Remove me
-                    </Button>
-                  }
-                  {(overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
-                    <React.Fragment>
-                      {(pGroup.toLowerCase() !== '*all') &&
-                        <Button
-                          className={classes.rowButtonGreen}
-                          onClick={() => {
-                            handleAddPersonToGroup(pPatient, pGroup, pPatientName);
-                            setOverrideRole('member');
-                          }}
-                          startIcon={<GroupAddIcon sisetMessageTypeze="small" />}
-                        >
-                          {'Add Myself'}
-                        </Button>
-                      }
-                    </React.Fragment>
-                  }
-                  {(pRole && (pRole !== 'admin') && (pRole !== 'responsible')) &&
-                    <Button
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('');
-                        let rKey = '';
-                        pGroupRec.admin_list.forEach((g, i) => {
-                          rKey += ((i > 0) ? ' ~ ' : '') + `${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'} Administrator:${g}`;
-                        });
-                        setRecipient(rKey);
-                      }}
-                      className={classes.rowButtonGreen}
-                      startIcon={<SendIcon size='small' />}
-                    >
-                      {`Msg Admin`}
-                    </Button>
-                  }
-                </Box>
-                {(pRole === 'admin' || pRole === 'responsible') &&
+                  setShowPatientDialog(false);
+                }}
+              />
+            }
+            {showAddPrompt &&
+              <PersonFilter
+                prompt={'Tap the name of the person you wish to add'}
+                peopleList={peopleList}
+                onCancel={() => {
+                  setShowAddPrompt(false);
+                }}
+                onSelect={(selectedPerson) => {
+                  handleAddPersonToGroup(selectedPerson.split(':')[1], pGroup, selectedPerson.split(':')[0]);
+                }}
+              >
+              </PersonFilter>
+            }
+            {promptForMessage &&
+              <MakeMessage
+                titleText={(messageType.includes('URGENT')) ? 'AVA will attempt to voice call all phones' : null}
+                promptText={`What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`}
+                buttonText={'Send'}
+                sender={{
+                  "client_id": pClient,
+                  "patient_id": pPatient,
+                  "patient_display_name": pPatientName
+                }}
+                pRecipientID={recipient.split(':')[1]}
+                pRecipientName={recipient.split(':')[0]}
+                onCancel={() => { setPromptForMessage(false); }}
+                onComplete={() => { setPromptForMessage(false); }}
+                setMethod={(messageType === 'AVA') ? 'AVA' : (messageType.includes('URGENT') ? 'voice' : null)}
+                allowCancel={true}
+              />
+            }
+            {deletePending &&
+              <AVAConfirm
+                promptText={confirmMessage}
+                onCancel={() => {
+                  setDeletePending(false);
+                }}
+                onConfirm={() => {
+                  handleRemoveGroupMember(confirmPerson, confirmIndex);
+                  if (confirmPerson === pPatient) { setOverrideRole('non-member'); }
+                  setDeletePending(false);
+                }}
+              >
+              </AVAConfirm>
+            }
+            {!showSuperSize &&    // Command Area
+              <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+                <Box display='flex' flexDirection='column'>
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                     <Button
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('Group');
-                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                      }}
                       className={classes.rowButtonGreen}
-                      startIcon={<SendIcon size='small' />}
-                    >
-                      {`Group ${isMobile ? 'Msg' : 'Message'}`}
-                    </Button>
-                    <Button
                       onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('URGENT Group');
-                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                        setOverrideRole(null);
+                        onReset();
                       }}
-                      className={classes.rowButtonRed}
-                      startIcon={<PhoneInTalkIcon size='small' />}
+                      startIcon={<CloseIcon size="small" />}
                     >
-                      {`Call ${isMobile ? 'All' : 'Everyone'}`}
+                      {'Close'}
                     </Button>
-                    <Button
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('AVA');
-                        setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
-                      }}
-                      className={classes.rowButtonGreen}
-                      startIcon={<ContactMailOutlinedIcon size='small' />}
-                    >
-                      {`AVA alert ${isMobile ? 'Msg' : 'Message'}`}
-                    </Button>
+                    {(pRole === 'admin' || pRole === 'responsible') &&
+                      <React.Fragment>
+                        {(pGroup.toLowerCase() !== '*all') &&
+                          <Button
+                            className={classes.rowButtonGreen}
+                            onClick={() => {
+                              setShowAddPrompt(true);
+                            }}
+                            startIcon={<GroupAddIcon size="small" />}
+                          >
+                            {'Add Member'}
+                          </Button>
+                        }
+                        <Button
+                          className={classes.rowButtonDefault}
+                          onClick={() => { handlePrintDirectory(pGroup); }}
+                          startIcon={<PrintIcon size='small' />}
+                        >
+                          {'Directory'}
+                        </Button>
+                        <Button
+                          onClick={() => { handlePrintRoster(pGroup); }}
+                          className={classes.rowButtonGreen}
+                          startIcon={<StorageOutlined size='small' />}
+                        >
+                          {'Roster'}
+                        </Button>
+                        <Button
+                          onClick={() => { handleMenuUpdate(workingMemberList); }}
+                          className={classes.rowButtonGreen}
+                          startIcon={<MenuUpdateIcon size='small' />}
+                        >
+                          {'Menu Update'}
+                        </Button>
+                      </React.Fragment>
+                    }
+                    {(overrideRole === 'member' || (!overrideRole && (pRole === 'member'))) &&
+                      <Button
+                        onClick={() => {
+                          setConfirmMessage(`Confirm removing ${pPatientName} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                          setConfirmPerson(pPatient);
+                          setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === pPatient; }));
+                          setDeletePending(true);
+                          setForceRedisplay(false);
+                        }}
+                        className={classes.rowButtonGreen}
+                        startIcon={<DeleteIcon fontSize="small" />}
+                      >
+                        Remove me
+                      </Button>
+                    }
+                    {(overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
+                      <React.Fragment>
+                        {(pGroup.toLowerCase() !== '*all') &&
+                          <Button
+                            className={classes.rowButtonGreen}
+                            onClick={() => {
+                              handleAddPersonToGroup(pPatient, pGroup, pPatientName);
+                              setOverrideRole('member');
+                            }}
+                            startIcon={<GroupAddIcon sisetMessageTypeze="small" />}
+                          >
+                            {'Add Myself'}
+                          </Button>
+                        }
+                      </React.Fragment>
+                    }
+                    {(pRole && (pRole !== 'admin') && (pRole !== 'responsible')) &&
+                      <Button
+                        onClick={() => {
+                          setPromptForMessage(true);
+                          setMessageType('');
+                          let rKey = '';
+                          pGroupRec.admin_list.forEach((g, i) => {
+                            rKey += ((i > 0) ? ' ~ ' : '') + `${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'} Administrator:${g}`;
+                          });
+                          setRecipient(rKey);
+                        }}
+                        className={classes.rowButtonGreen}
+                        startIcon={<SendIcon size='small' />}
+                      >
+                        {`Msg Admin`}
+                      </Button>
+                    }
                   </Box>
-                }
-              </Box>
-            </DialogActions>
-          }
-        </React.Fragment>
-      }
-      {showSuperSize &&
-        <List classes={{ root: classes.superSizeArea }}   >
-          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
-            <Box>
-              <Box
-                component="img"
-                mt={5}
-                minWidth={250}
-                maxWidth={250}
-                alt=''
-                src={superSizeData.image}
-              />
-            </Box>
-            <Typography className={classes.superSizeLast} >{superSizeData.name.last || superSizeData.display_name}</Typography>
-            <Typography className={classes.superSizeFirst}>{superSizeData.name.first}</Typography>
-            {(superSizeData.member_of) &&
-              <Typography key={`member_of-superSize`} className={classes.upSizeLast}>{superSizeData.member_of}</Typography>
-            }
-            {superSizeData.location && superSizeData.location.split('~').map((locLine, locIndex) => (
-              <Typography key={`locationLine-superSize_${locIndex}`} className={classes.upSizeLocation}>{locLine.trim()}</Typography>
-            ))}
-            {(superSizeData.directory_option === 'exclude') &&
-              <Typography key={`excluded-superSize`} className={classes.upSizeLocation}>{'** Excluded from Directory **'}</Typography>
-            }
-            {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
-              .map((prefLine, prefIndex) => (
-                <a href={prefLine.split('~')[0]}
-                  key={`prefLink-superSize.${prefIndex}`}
-                  style={{ color: 'inherit', textDecoration: 'none' }}>
-                  {(prefLine.split('~')[1].split(' ')[0].trim() !== '')
-                    ?
-                    <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center' >
-                      <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.superSizePreferenceLine1}>
-                        {prefLine.split('~')[1].split(' ')[0]}:
-                      </Typography>
-                      <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
-                        {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
-                      </Typography>
-                    </Box>
-                    :
-                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' >
-                      <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine3}>
-                        {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
-                      </Typography>
+                  {(pRole === 'admin' || pRole === 'responsible') &&
+                    <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                      <Button
+                        onClick={() => {
+                          setPromptForMessage(true);
+                          setMessageType('Group');
+                          setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                        }}
+                        className={classes.rowButtonGreen}
+                        startIcon={<SendIcon size='small' />}
+                      >
+                        {`Group ${isMobile ? 'Msg' : 'Message'}`}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setPromptForMessage(true);
+                          setMessageType('URGENT Group');
+                          setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                        }}
+                        className={classes.rowButtonRed}
+                        startIcon={<PhoneInTalkIcon size='small' />}
+                      >
+                        {`Call ${isMobile ? 'All' : 'Everyone'}`}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setPromptForMessage(true);
+                          setMessageType('AVA');
+                          setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                        }}
+                        className={classes.rowButtonGreen}
+                        startIcon={<ContactMailOutlinedIcon size='small' />}
+                      >
+                        {`AVA alert ${isMobile ? 'Msg' : 'Message'}`}
+                      </Button>
                     </Box>
                   }
-                </a>
-              )))}
-            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-              <Button
-                className={classes.rowButtonBack}
-                onClick={() => {
-                  setshowSuperSize(false);
-                  setForceRedisplay(!forceRedisplay);
-                }}
-              >
-                {'Back'}
-              </Button>
-              <Button
-                onClick={() => {
-                  setPromptForMessage(true);
-                  setMessageType('');
-                  let rKey = `${superSizeData.name.first} ${superSizeData.name.last}:${superSizeData.person_id}`;
-                  setRecipient(rKey.trim());
-                }}
-                className={classes.rowButtonSend}
-              >
-                {`Send Msg`}
-              </Button>
+                </Box>
+              </DialogActions>
+            }
+          </React.Fragment>
+        }
+        {showSuperSize &&
+          <List classes={{ root: classes.superSizeArea }}   >
+            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
+              <Box>
+                <Box
+                  component="img"
+                  mt={5}
+                  minWidth={250}
+                  maxWidth={250}
+                  alt=''
+                  src={superSizeData.image}
+                />
+              </Box>
+              <Typography className={classes.superSizeLast} >{superSizeData.name.last || superSizeData.display_name}</Typography>
+              <Typography className={classes.superSizeFirst}>{superSizeData.name.first}</Typography>
+              {(superSizeData.member_of) &&
+                <Typography key={`member_of-superSize`} className={classes.upSizeLast}>{superSizeData.member_of}</Typography>
+              }
+              {superSizeData.location && superSizeData.location.split('~').map((locLine, locIndex) => (
+                <Typography key={`locationLine-superSize_${locIndex}`} className={classes.upSizeLocation}>{locLine.trim()}</Typography>
+              ))}
+              {(superSizeData.directory_option === 'exclude') &&
+                <Typography key={`excluded-superSize`} className={classes.upSizeLocation}>{'** Excluded from Directory **'}</Typography>
+              }
+              {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
+                .map((prefLine, prefIndex) => (
+                  <a href={prefLine.split('~')[0]}
+                    key={`prefLink-superSize.${prefIndex}`}
+                    style={{ color: 'inherit', textDecoration: 'none' }}>
+                    {(prefLine.split('~')[1].split(' ')[0].trim() !== '')
+                      ?
+                      <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center' >
+                        <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.superSizePreferenceLine1}>
+                          {prefLine.split('~')[1].split(' ')[0]}:
+                        </Typography>
+                        <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
+                          {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
+                        </Typography>
+                      </Box>
+                      :
+                      <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' >
+                        <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine3}>
+                          {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
+                        </Typography>
+                      </Box>
+                    }
+                  </a>
+                )))}
+              <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                <Button
+                  className={classes.rowButtonBack}
+                  onClick={() => {
+                    setshowSuperSize(false);
+                    setForceRedisplay(!forceRedisplay);
+                  }}
+                >
+                  {'Back'}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setPromptForMessage(true);
+                    setMessageType('');
+                    let rKey = `${superSizeData.name.first} ${superSizeData.name.last}:${superSizeData.person_id}`;
+                    setRecipient(rKey.trim());
+                  }}
+                  className={classes.rowButtonSend}
+                >
+                  {`Send Msg`}
+                </Button>
+              </Box>
             </Box>
-          </Box>
-        </List>
-      }
-    </Dialog >
+          </List>
+        }
+      </Dialog >
+      <Dialog open={!!loading} fullWidth p={20} className={classes.containerBox}>
+        <Box
+          display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+          flexWrap='wrap' textOverflow='ellipsis' width='100%'
+          key={'loadingBox'}
+          mt={10} mb={10}
+        >
+          <Typography variant='h5' className={classes.lastName} >{`Updating Menus`}</Typography>
+          <Typography className={classes.lastName}>{loading}</Typography>
+          <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
+          <CircularProgress />
+        </Box>
+      </Dialog>
+    </React.Fragment>
   );
 };;

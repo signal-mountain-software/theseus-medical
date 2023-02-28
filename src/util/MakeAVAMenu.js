@@ -10,9 +10,19 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default async (requestor, masterClient, screenStatus, subMenuData = null) => {
+let customObj = {};
+let activityObj = {};
+let groupObj = {};
 
-  let groupList;
+export default async (requestor, masterClient, screenStatus, subMenuData = null, forceRefresh = false) => {
+
+  if (forceRefresh) {
+    customObj = {};
+    activityObj = {};
+    groupObj = {};
+  };
+
+  let groupList = [];
 
   // let subMenus = [];
   let numberOfRows = 1000;
@@ -67,6 +77,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       TableName: "ActivityEvent",
       IndexName: 'sequence-index',
     };
+    cl(`Get ActivityEvent for ${pClient}~${pEvent}`);
     let mRecs = await dbClient
       .query(queryObj)
       .promise()
@@ -148,7 +159,18 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     }
 
     // Get all Groups this person is associated with
-    groupList = await getGroupsPersonBelongsTo(pPerson);
+    let neededGroups = [];
+    requestor.groups.forEach(e => { 
+      if (e in groupObj) { groupList.push(groupObj[e]); }
+      else { neededGroups.push(e); }
+    })
+    if (neededGroups.length > 0) {
+      let addGroupList = await getGroupsPersonBelongsTo(neededGroups);
+      addGroupList.forEach(c => {
+        groupList.push(c);
+        groupObj[c.group_id] = c;
+      });
+    }
     groupList.sort((a, b) => {
       if (a.group_id < b.group_id) { return -1; }
       else { return 1; }
@@ -244,6 +266,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
           }
         }
         else {
+          if (!(sectionName in sectionDetails)) {
+            [sectionColor, sectionIcon] = await getCustomizations(sectionName);
+            sectionDetails[sectionName] = {
+              color: sectionColor,
+              icon: sectionIcon,
+              sort_key: sectionSort
+            };
+          }
           let currentMenu = menuStructure.length - 1;
           let this_row = await addRow
             (this_activity,                                 // pActivity
@@ -299,6 +329,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
   }
 
   async function saveMenu(pPerson, pMenu) {
+    cl(`Update menu for ${pPerson}`);
     await dbClient
       .update({
         Key: {
@@ -317,6 +348,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
   }
 
   async function getCustomizations(pName) {
+    if (pName in customObj) { return [customObj[pName].color, customObj[pName].icon]; }
+    cl(`Get Customizations for ${pName}`);
     let cRec = await dbClient
       .get({
         Key: {
@@ -331,12 +364,23 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
                     with client = ${masterClient} and custom_key = ${pName} `);
       });
     if (recordExists(cRec)) {
+      customObj[pName] = {
+        color: cRec.Item.color || stringToColor(pName),
+        icon: cRec.Item.icon || AVAIcon
+      }
       return [cRec.Item.color || stringToColor(pName), cRec.Item.icon || AVAIcon];
     }
-    else { return [stringToColor(pName), AVAIcon]; }
+    else {
+      customObj[pName] = {
+        color: stringToColor(pName),
+        icon: AVAIcon
+      }
+      return [stringToColor(pName), AVAIcon];
+    }
   }
 
   async function getActivityLog(pPerson) {
+    cl(`Get ActivityLog for ${pPerson}`);
     let aRecs = await dbClient
       .query({
         KeyConditionExpression: 'user_id = :p',
@@ -424,6 +468,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
   }
 
   async function getActivity(pActivityCode) {
+    if (pActivityCode in activityObj) { return activityObj[pActivityCode]; }
     let pClient = masterClient;
     let addClient = false;
     let overrideDefault, overrideTitle;
@@ -444,9 +489,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       }
     }
     if (pActivity.includes('//')) {
-      [pClient, pActivity] = pActivityCode.split('//');
+      [pClient, pActivity] = pActivity.split('//');
       addClient = true;
     }
+    cl(`Get Activities for ${requestor.person_id} - ${pActivity}`);
     let aRecs = await dbClient
       .get({
         Key: {
@@ -468,12 +514,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       if (overrideTitle) {
         aRecs.Item.name = overrideTitle;
       }
+      activityObj[pActivityCode] = aRecs.Item;
       return aRecs.Item;
     }
+    activityObj[pActivityCode] = {};
     return {};
   }
 
-  async function getGroupsPersonBelongsTo(pPerson) {
+  async function getGroupsPersonBelongsTo(neededGroupArray) {
     // ({ 'in getGroupsPersonBelongsTo': { pPerson } });
     let batchGetRequest = {
       RequestItems: {
@@ -486,7 +534,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     // requestor.groups was unexpectedly found to have duplicate entries in one instance
     // When that happened, this batchGetRequest would fail and no menu was rendered at all
     // the code "[...new Set(requestor.groups)]" assures that unique values only are considered
-    [...new Set(requestor.groups)].forEach(g => {
+    [...new Set(neededGroupArray)].forEach(g => {
       batchGetRequest.RequestItems.Groups.Keys.push(
         {
           client_id: masterClient,
@@ -494,6 +542,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
         }
       );
     });
+    cl(`Get Group batch for ${requestor.person_id} - ${neededGroupArray.join(' / ')}`);
     let groupRecs = await dbClient
       .batchGet(batchGetRequest)
       .promise()

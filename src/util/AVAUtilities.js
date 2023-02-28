@@ -20,7 +20,10 @@ export function recordExists(recordId) {
 }
 
 export function listFromArray(inArray) { 
-  if (!Array.isArray(inArray)) { return inArray }
+  if (!Array.isArray(inArray)) {
+    if (!inArray || (inArray.trim() === '')) { return 'None'}
+    return inArray;
+  }
   let makeList$ = '';
   let link = '';
   let nextToLast = inArray.length - 2;
@@ -28,7 +31,7 @@ export function listFromArray(inArray) {
   inArray.forEach((s, x) => {
     makeList$ += link + s;
     if (threeOrMore) { link = ', '; }
-    if (x === nextToLast) (link += 'and ');
+    if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + 'and ');
 
   });
   return makeList$;

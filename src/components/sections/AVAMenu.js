@@ -324,10 +324,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       }
     }
     
-    let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus));
+    let forceRefresh = true;
+    let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
 
     if (wholeMenu.length > 0) {
       cl(`Reloaded menu at ${new Date().toLocaleString()}.`);
+      await updateAVA(sectionOpen, wholeMenu);
       setMainMenu(wholeMenu);
       return wholeMenu;
     }
