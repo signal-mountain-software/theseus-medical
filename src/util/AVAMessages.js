@@ -61,19 +61,20 @@ export async function prepareMessage(body) {
   if ('method' in body.format) { results.preferred_method = body.format.method; }
   switch (body.format.type) {
     case 'mealOrder':
+    case 'checklist':
     case 'factForm': {
       [results.htmlText, results.messageText] = await formatRequestDetails(body, body.format.type);
       break;
     }
     case 'plainText':
     default: {
-      results.messageText = '%%custom_text%%\n\r\n' + (await resolveMessageVariables(body.format.text));
+      results.messageText = '%%custom_text%%' + (await resolveMessageVariables(body.format.text));
       results.htmlText = results.messageText;
     }
   }
   if ('test' in body) { await processRules(body); }
   
-  results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
+  results.messageText = results.messageText.replace('\n\r%%custom_text%%\n\r', '').trim();
   results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
   
   return results;
@@ -228,7 +229,7 @@ async function formatRequestDetails(body, summaryType) {
       let aVal = body.selections[x];
       if (['Dinner', 'Lunch', 'Pick-up', 'Deliver (+$5)', 'Deliver ($5)'].includes(aVal.trim())) {
         htmlMessage += pTag + aVal.trim();
-        rawMessage += aVal + "\r\n";
+        rawMessage += `${aVal}\r\n`;
         pXTag = '</h2>';
         pTag = '&nbsp;/&nbsp;';
         body.selections.splice(x, 1);
@@ -236,19 +237,18 @@ async function formatRequestDetails(body, summaryType) {
       }
     };
     htmlMessage += `${pXTag}<h2 style = "color: black;" >Order filled by:&nbsp;_______________________</h2>`;
-    rawMessage += '\r\n\nOrder filled by: ________________________\r\n\n';
+    rawMessage += '\n\nOrder filled by: ________________________\n\n';
     renderCheckBox = '&#8414;&nbsp;&nbsp;&nbsp;';
     htmlMessage += `<h2 style="color: black;">Order Details</h2><dl style="padding-left: 40px;">`;
   }
   else {
-    if (Object.keys(body.textInput).length > 0) {
+    if (body.textInput && (Object.keys(body.textInput).length > 0)) {
       for (let topic in body.textInput) {
         if (!body.selections.includes(topic)) {
           let sVal = sentenceCase(topic.trim());
-          rawMessage += `${sVal}\n${body.textInput[topic]}\n\r`;
+          rawMessage += `\n${sVal}\n${body.textInput[topic]}\n`;
           htmlMessage += `<h2><span style="color: black;">${sVal}</span></h2>`;
           htmlMessage += `<div style="padding-left: 10px; margin-top: -15px; font-size: 1.2em;">${body.textInput[topic]}</div>`;
-          rawMessage += `${sVal}\n\r${body.textInput[topic]}\r\n\n`;
           delete body.textInput[topic];
         }
       }
@@ -259,27 +259,31 @@ async function formatRequestDetails(body, summaryType) {
   }
 
   let lineSpacing = '0px';
+  if (!body.textInput) { body.textInput = {}; }
   body.selections.forEach((aVal) => {
     let sVal = sentenceCase(aVal.trim());
     htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[aVal] || ''}</dt>`;
-    rawMessage += `${sVal}\n${body.textInput[aVal] || ''}\n\r`;
-    delete body.textInput[aVal];
+    rawMessage += `\n${sVal}\n`;
+    if (body.textInput[aVal]) {
+      rawMessage += `${body.textInput[aVal]}\n`;
+      delete body.textInput[aVal];
+    }
     /* Check for qualifiers */
     if ((body.qualifiers) && (body.qualifiers.hasOwnProperty(aVal))) {
       for (let qual in body.qualifiers[aVal]) {
         let tOut = listFromArray(body.qualifiers[aVal][qual]);
         htmlMessage += `<dd>${sentenceCase(qual)}:&nbsp${tOut}</dd>`;
-        rawMessage += `${sentenceCase(qual)}: ${tOut}\n\r`;
+        rawMessage += `${sentenceCase(qual)}: ${tOut}\n`;
       }
     }
     lineSpacing = `${spaceBetweenLines}px`;
   });
 
-  if (Object.keys(body.textInput).length > 0) {
+  if (body.textInput && (Object.keys(body.textInput).length > 0)) {
     for (let topic in body.textInput) {
       let sVal = sentenceCase(topic.trim());
       htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[topic]}</dt>`;
-      rawMessage += `${sVal}\n\r'kv ${body.textInput[topic]}\r\n`;
+      rawMessage += `\n${sVal}\n${body.textInput[topic]}\n`;
       lineSpacing = `${spaceBetweenLines}px`;
     }
   }
@@ -288,7 +292,7 @@ async function formatRequestDetails(body, summaryType) {
   htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
   htmlMessage += `<div>AVA reference:&nbsp;${body.requestID}</div>`;
   htmlMessage += `<div>***** END *****</div></p>`;
-  rawMessage += `AVA reference: ${body.requestID}\n***** END *****`;
+  rawMessage += `\n\rAVA reference: ${body.requestID}\n***** END *****`;
 
   return [htmlMessage, rawMessage];
 }

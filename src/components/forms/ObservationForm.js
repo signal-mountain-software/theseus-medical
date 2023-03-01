@@ -750,7 +750,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     messageObj.messaging.activityName = factName;
                   }
                   let foreign_key = fact.value.freeText.foreignKey || '*tbd';
-                  if (textInput[fact.value.freeText.foreignKey]) { 
+                  if (textInput && textInput[fact.value.freeText.foreignKey]) { 
                     let fKDate = makeDate(textInput[fact.value.freeText.foreignKey]);
                     if (!fKDate.error) { foreign_key = fKDate.ymd; }
                   } 

@@ -560,7 +560,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               });
             if (qArray.length > 0) { constructedQualifier = ` ( ${qArray.join('; ')} )`; }
           }
-          if (pFact.value.freeText.hasOwnProperty(selection)) {
+          if (pFact.value.freeText && pFact.value.freeText.hasOwnProperty(selection)) {
             let freeText = pFact.value.freeText[selection];
             foundText.push(selection);    // we might have free text that is NOT associated with a check box, use foundText to prevent duplication
             return `${selection} = ${freeText}${constructedQualifier}`;
