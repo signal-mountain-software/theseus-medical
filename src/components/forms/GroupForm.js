@@ -251,7 +251,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const classes = useStyles();
   const { dispatch } = useSession();
 
-  const [person_filter, setPersonFilter] = React.useState(' ');
   const [person_filter_lower, setPersonFilterLower] = React.useState(' ');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [filtering, setFiltering] = React.useState(false);
@@ -307,13 +306,11 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     filterTimeOut = setTimeout(() => {
       cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
       if (vCheck.length === 0) {
-        setPersonFilter('');
         setPersonFilterLower('');
         setSingleFilterDigit(false);
         setFiltering(false);
       }
       else {
-        setPersonFilter(vCheck);
         setPersonFilterLower(vCheck.toLowerCase());
         setSingleFilterDigit(vCheck.length === 1);
         setFiltering(true);
@@ -549,20 +546,12 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         return (pPerson.name.last.toLowerCase().startsWith(person_filter_lower.trim()) || pPerson.location.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
       }
       else {
-        let searchString = [...Object.values(pPerson.name), pPerson.search_data, pPerson.location, ...Object.values(pPerson.messaging)].join(' ');
+        let searchString = [...Object.values(pPerson.name), pPerson.search_data, pPerson.location].join(' ');
+        if (pPerson.messaging) { searchString += Object.values(pPerson.messaging).join; }
         return searchString.toLowerCase().includes(person_filter_lower.trim());
       }
     }
-    catch (error) {
-      cl({
-        'Error in okToShow': {
-          'error': error,
-          singleFilterDigit,
-          person_filter,
-          pPerson
-        }
-      });
-      return false;
+    catch (error) { return false;
     }
   }
 
