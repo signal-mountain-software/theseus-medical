@@ -748,7 +748,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
   };
 
-  const getActivityDetail = async (pActRec) => {
+  async function getActivityDetail(pActRec) {
     let resolvedActivity = await makeObservationList(pActRec.activity_rec, session);
     resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
     resolvedActivity.activityRec.default_value = await resolveVariables(pActRec.default_value, session);

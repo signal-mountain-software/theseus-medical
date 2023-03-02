@@ -1,9 +1,8 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
-import { getImage, makeName } from '../../util/AVAPeople';
+import { getImage } from '../../util/AVAPeople';
 import { cl } from '../../util/AVAUtilities';
-import MakeAVAMenu from '../../util/MakeAVAMenu';
 
 import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
@@ -442,18 +441,17 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   async function handleMenuUpdate(memberList) {
     let mL = memberList.length;
     let mLP = 1;
+    let emptyMenu = [];
     if (mL > 100) { mLP = (100 / mL); }
     for (let m = 0; m < mL; m++) {
-      let member = memberList[m];
-      let wholeMenu = await MakeAVAMenu(member, pClient, () => { return; });
-      let memberName = await makeName(member.person_id);
-      screenStatus(memberName, ((m / mL) * 100), ((( mL * mLP ) / 40) + .75));
-      dbClient
+      let member = memberList[m];      
+      screenStatus('Updating Menus', ((m / mL) * 100), ((( mL * mLP ) / 40) + .75));
+      await dbClient
         .update({
           Key: { person_id: member.person_id },
           UpdateExpression: 'set AVA_main_menu = :m',
           ExpressionAttributeValues: {
-            ':m': wholeMenu
+            ':m': emptyMenu
           },
           TableName: "AVAMenu",
         })
@@ -886,7 +884,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           {'Roster'}
                         </Button>
                         <Button
-                          onClick={() => { handleMenuUpdate(workingMemberList); }}
+                          onClick={async () => { await handleMenuUpdate(workingMemberList); }}
                           className={classes.rowButtonGreen}
                           startIcon={<MenuUpdateIcon size='small' />}
                         >
