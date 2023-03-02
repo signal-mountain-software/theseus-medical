@@ -134,7 +134,6 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
       <Box display='flex'
         grow={1}
         mb={0}
-        fullWidth
         flexDirection='column'
         justifyContent='center'
         alignItems='flex-start'
@@ -161,7 +160,7 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
               <React.Fragment>
                 {prompt.toLowerCase().startsWith('[checkbox]') ?
                   <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                    alignItems='center' fullWidth flexWrap='wrap' key={'qrOpt'}
+                    alignItems='center' fullWidth flexWrap='wrap' key={`qropt-${ndx}`}
                   >
                     <Checkbox
                       className={classes.radioButton}

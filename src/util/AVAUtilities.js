@@ -140,11 +140,6 @@ export async function getObject(pObjIn, pTyp) {
       imageURI = `public/patients/${pObj}.${fExt || 'jpg'}`;
       break;
     }
-    case 'temp_image': {
-      imageBucket = 'theseus-medical-storage';
-      imageURI = `temp/${pObj}.${fExt || 'jpg'}`;
-      break;
-    }
     default: {
       imageBucket = 'theseus-medical-storage';
       imageURI = pObjIn;

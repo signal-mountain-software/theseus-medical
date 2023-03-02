@@ -276,7 +276,7 @@ export default ({ patient, picture, open, onClose }) => {
           preferred_method: localPersonRec.preferred_method || 'AVA',
           respArray: (finalRespArray || []),
           nameObj: (nameObj || {}),
-          photoURL: await getObject(patient.person_id, 'image'),
+          photoURL: await getObject(`${patient.person_id}`, 'image'),
           requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
           storePassword: (targetSession.hasOwnProperty('storePassword') ? targetSession.storePassword : true),
           groupMemberList: (workingGroupMemberList || []),
@@ -641,7 +641,7 @@ export default ({ patient, picture, open, onClose }) => {
     let s3Resp = await s3
       .upload({
         Bucket: 'theseus-medical-storage',
-        Key: `temp/${patient.person_id}.jpg`,
+        Key: `${patient.person_id}_original.jpg`,
         Body: pTarget,
         ACL: 'public-read-write',
         ContentType: pType
@@ -1033,7 +1033,7 @@ export default ({ patient, picture, open, onClose }) => {
                         hidden={patient.person_id.startsWith('*NEW~')}
                         size='small'
                         onClick={async () => {
-                          setEditPhoto(await getObject(patient.person_id, 'image'));
+                          setEditPhoto(localData.photoURL);
                         }}
                       >
                         <Typography>Edit this photo</Typography>
