@@ -9,7 +9,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
     secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-let profile, session;
+let profile, savedSession;
 
 export async function makeName(pRec) {
     if (!pRec) { return 'N/A'; }
@@ -110,8 +110,8 @@ export async function getPerson(pID, pElement = '*all', override = false) {
 };
 
 export async function getSession(pID) {
-    if (session && (session.session_id === pID)) {
-        return session;
+    if (savedSession && (savedSession.session_id === pID)) {
+        return savedSession;
     }
     let sessionRec = await dbClient
         .get({
@@ -121,7 +121,13 @@ export async function getSession(pID) {
         .promise()
         .catch(error => { cl({ 'Error reading Groups': error }); });
     if (recordExists(sessionRec)) {
-        session = sessionRec.Item;
+        if (!Array.isArray(sessionRec.Item.groups_managed)) {
+            sessionRec.Item.groups_managed = sessionRec.Item.groups_managed.split(/[[,\]]/);
+        }
+        if (!Array.isArray(sessionRec.Item.responsible_for)) {
+            sessionRec.Item.responsible_for = sessionRec.Item.responsible_for.split(/[[,\]]/);
+        }
+        savedSession = sessionRec.Item;
         return sessionRec.Item;
     }
     return {};

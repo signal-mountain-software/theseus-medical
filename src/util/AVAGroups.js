@@ -80,7 +80,8 @@ export async function getGroupsBelongTo(person_id) {
 export async function getGroup(pGroup_id, pClient_id) {
   if (!pClient_id) {
     if (pGroup_id.includes('//')) { [pClient_id, pGroup_id] = pGroup_id.split('//'); }
-    else { pClient_id = session.client_id; }
+    else if (session) { pClient_id = session.client_id; }
+    else return {};
   }
   let cKey = `${pClient_id}//${pGroup_id}`;
   if (cKey in groupRecs) { return groupRecs[cKey]; }
@@ -99,77 +100,76 @@ export async function getGroup(pGroup_id, pClient_id) {
 };
 
 export async function getRole(pGroup, pPerson) {
-  let pSession = getSession(pPerson);
-  if ('responsible_for' in pSession) {
-    if (Array.isArray(pSession.responsible_for)) {
-      if (pSession.responsible_for.includes(pGroup)) { return 'responsible'; }
-    }
-    else if (pSession.responsible_for.split(/[[,\]]/).includes(pGroup)) { return 'responsible'; }
-  }
-  else if ('groups_managed' in pSession) {
-    if (Array.isArray(pSession.groups_managed)) {
-      if (pSession.groups_managed.includes(pGroup)) { return 'responsible'; }
-    }
-    else if (pSession.groups_managed.split(/[[,\]]/).includes(pGroup)) { return 'responsible'; }
-  }
-  else if (getGroup(pGroup, pSession.client_id).admin_list.includes(pPerson)) {
+  let pSession = await getSession(pPerson);
+  if ((('responsible_for' in pSession) && (pSession.responsible_for.some(g => g.split('~')[0].trim() === pGroup)))
+    || (('groups_managed' in pSession) && (pSession.groups_managed.some(g => g.split('~')[0].trim() === pGroup)))
+    || (getGroup(pGroup, pSession.client_id).admin_list.includes(pPerson))) {
     return 'responsible';
   }
-  else { return 'member' }
+  else { return 'member'; }
 }
 
-export async function getMemberList(pGroup_id, pClient_id, checkExclude = false) {
-  let returnObj = {};
+export async function getMemberList(pGroups, pClient_id, options) {
+  // returns an array of peopleRecs that are members of the group(s) in pGroups
+  let returnArray = [];
+  let checkExclude = false;
+  let sortResults = false;
+  if (options) {
+    checkExclude = options.exclude;
+    sortResults = options.sort;
+  }
   let defaultClient = pClient_id || session.client_id;
   let gList = [];
-  if (Array.isArray(pGroup_id)) { gList = [...pGroup_id]; }
-  else { gList = [pGroup_id]; }
+  if (Array.isArray(pGroups)) { gList = [...pGroups]; }
+  else if (pGroups.includes('[')) { gList = pGroups.replace(/[[\]]/g, '').split(','); }
+  else { gList = [pGroups]; }
+  if (gList.some(g => g.toLowerCase().includes('*all'))) { gList = ['*all']; }
   for (let g = 0; g < gList.length; g++) {
-    let grp = gList[g];
+    let grp = gList[g].split('~')[0].trim();   // some arrays send 'group_id ~ group_name' in an element
     let client;
     if (grp.includes('//')) { [client, grp] = grp.split('//'); }
     else { client = defaultClient; }
-    let groupRec = getGroup(grp, client);
+    let qParm = {
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: { ':c': client },
+      TableName: "People",
+      IndexName: "client_id-index",
+    };
+    if (grp !== '*all') {
+      qParm.FilterExpression = 'contains ( groups, :n )';
+      qParm.ExpressionAttributeValues[':n'] = grp;
+    }
     let gPeopleRecs = await dbClient
-      .query({
-        KeyConditionExpression: 'client_id = :c',
-        FilterExpression: 'contains ( groups, :n )',
-        ExpressionAttributeValues: { ':n': grp, ':c': client },
-        TableName: "People",
-        IndexName: "client_id-index",
-      })
+      .query(qParm)
       .promise()
       .catch(error => {
         cl({ 'Bad scan on People in getGroupMembers - caught error is': error });
       });
     if (recordExists(gPeopleRecs)) {
       gPeopleRecs.Items.forEach(i => {
-        if (i.person_id in returnObj) { 
-          returnObj[i.person_id].role[groupRec.group_id] = getRole(groupRec.group_id, i.person_id) ;
-        }
-        else {
-          if (!checkExclude || (i.directory_option !== 'exclude')) { 
-            if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
-            if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
-            let role = {};
-            role[groupRec.group_id] = getRole(groupRec.group_id, i.person_id);
-            returnObj[i.person_id] = Object.assign(role, i);
-          }
+        if ((!returnArray.includes(i.person_id)) || !checkExclude || (i.directory_option !== 'exclude')) {
+          if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
+          if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
+          returnArray.push(i);
         }
       });
     }
   }
-  let peopleList = Object.keys(returnObj);
-  peopleList.sort((a, b) => {
-    if (returnObj[a].name.last === returnObj[b].name.last) {
-      if (returnObj[a].name.first > returnObj[b].name.first) { return 1; }
-      if (returnObj[a].name.first < returnObj[b].name.first) { return -1; }
-    }
-    else {
-      if (returnObj[a].name.last > returnObj[b].name.last) { return 1; }
-      if (returnObj[a].name.last < returnObj[b].name.last) { return -1; }
-    }
-    return 0;
-  });
-  returnObj.peopleList = peopleList;
+  if (sortResults) {
+    returnArray.sort((a, b) => {
+      if (a.name.last === b.name.last) {
+        if (a.name.first > b.name.first) { return 1; }
+        if (a.name.first < b.name.first) { return -1; }
+      }
+      else {
+        if (a.name.last > b.name.last) { return 1; }
+        if (a.name.last < b.name.last) { return -1; }
+      }
+      return 0;
+    });
+  }
+  return {
+    'peopleList': returnArray,
+    'groupList': gList
+  };
 }

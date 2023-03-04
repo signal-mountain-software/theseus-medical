@@ -3,6 +3,8 @@ import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 import { getImage } from '../../util/AVAPeople';
 import { cl } from '../../util/AVAUtilities';
+import { getMemberList } from '../../util/AVAGroups';
+
 
 import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
@@ -271,6 +273,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
   const [open, setOpen] = React.useState([]);
+  const [choiceList, setChoiceList] = React.useState([]);
 
   const [overrideRole, setOverrideRole] = React.useState();
 
@@ -521,6 +524,30 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     };
   };
 
+
+  const setChoices = async (inList) => {
+    // list is of the form <name>:<id>:<search_string>
+    let response = [];
+    let iLL = inList.length;
+    for (let l = 0; l < iLL; l++) {
+      let i = inList[l];
+      if (i.startsWith('~group:')) {
+        let memberInfo = await getMemberList(i.split(':')[1], pClient, { "sort": true, "exclude": false });
+        let pLL = memberInfo.peopleList.length;
+        for (let e = 0; e < pLL; e++) {
+          let p = memberInfo.peopleList[e];
+          let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+          if (p.messaging) { searchString += Object.values(p.messaging).join; }
+          response.push(`${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`);
+        };
+      }
+      else { response.push(i); }
+    }
+    setChoiceList(response);
+    setShowAddPrompt(true);
+  };
+
+
   const onScroll = event => {
     if (rowLimit < workingMemberList.length) {
       let currentY = window.scrollY;
@@ -611,7 +638,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   className={classes.title}
                   id='scroll-dialog-title'
                 >
-                  {(pGroup.toLowerCase() === '*all') ?
+                  {(!pGroup || (pGroup.toLowerCase() === '*all')) ?
                     'Administrative View - All Accounts' :
                     `Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`
                   }
@@ -800,7 +827,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             {showAddPrompt &&
               <PersonFilter
                 prompt={'Tap the name of the person you wish to add'}
-                peopleList={peopleList}
+                peopleList={choiceList}
                 onCancel={() => {
                   setShowAddPrompt(false);
                 }}
@@ -861,8 +888,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         {(pGroup.toLowerCase() !== '*all') &&
                           <Button
                             className={classes.rowButtonGreen}
-                            onClick={() => {
-                              setShowAddPrompt(true);
+                            onClick={async () => {
+                              await setChoices(peopleList);
                             }}
                             startIcon={<GroupAddIcon size="small" />}
                           >
