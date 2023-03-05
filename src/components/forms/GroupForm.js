@@ -1,7 +1,7 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
-import { getImage } from '../../util/AVAPeople';
+import { getImage, formatPhone } from '../../util/AVAPeople';
 import { cl } from '../../util/AVAUtilities';
 import { getMemberList } from '../../util/AVAGroups';
 
@@ -262,7 +262,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [editIndex, setEditIndex] = React.useState();
 
   const [deletePending, setDeletePending] = React.useState(false);
-  const [personRec, setPersonRec] = React.useState();
   const [showPatientDialog, setShowPatientDialog] = React.useState(false);
   const [confirmMessage, setConfirmMessage] = React.useState('');
   const [confirmPerson, setConfirmPerson] = React.useState('');
@@ -286,6 +285,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const scrollValue = 5;
   var rowsWritten;
   let filterTimeOut;
+
+  let allGroups = (pGroup && (pGroup.toLowerCase === '*all'));
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -442,6 +443,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   };
 
   async function handleMenuUpdate(memberList) {
+    // What we actually do is wipe out the AVA_main_menu entry from the AVAMenu table, forcing a reload next time 
     let mL = memberList.length;
     let mLP = 1;
     let emptyMenu = [];
@@ -497,34 +499,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     });
   };
 
-  const handlePatientEdit = async (pPerson) => {
-    let invokeFailed = false;
-
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    params.Payload = JSON.stringify({
-      action: "get_person_details",
-      clientId: pClient,
-      request: {
-        "person_id": pPerson,
-      }
-    });
-    let lambdaResponse = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let returnedPerson = JSON.parse(lambdaResponse.Payload);
-      if (returnedPerson.status === 200) {
-        setPersonRec(returnedPerson.body);
-        setShowPatientDialog(true);
-        return returnedPerson.body;
-      }
-    };
-  };
-
-
   const setChoices = async (inList) => {
     // list is of the form <name>:<id>:<search_string>
     let response = [];
@@ -547,7 +521,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     setShowAddPrompt(true);
   };
 
-
   const onScroll = event => {
     if (rowLimit < workingMemberList.length) {
       let currentY = window.scrollY;
@@ -558,12 +531,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       }
     }
   };
-
-  function formatPhone(pPhone) {
-    let match = ('' + pPhone).replace(/\D/g, '').match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
-    if (match) { return `(${match[2]}) ${match[3]}-${match[4]}`; }
-    else { return pPhone; }
-  }
 
   function okToShow(pPerson) {
     try {
@@ -585,25 +552,25 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     for (const messageType in pMessaging) {
       switch (messageType) {
         case 'sms': {
-          if (pMessaging.sms && (!pMessaging.sms_private || (pGroup.toLowerCase() === '*all'))) {
+          if (pMessaging.sms && (!pMessaging.sms_private || allGroups)) {
             returnArray.push(`sms:${pMessaging.sms}~cell ${formatPhone(pMessaging.sms)}${pMessaging.sms_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
         case 'voice': {
-          if (pMessaging.voice && (!pMessaging.voice_private || (pGroup.toLowerCase() === '*all'))) {
+          if (pMessaging.voice && (!pMessaging.voice_private || allGroups)) {
             returnArray.push(`tel:${pMessaging.voice}~home ${formatPhone(pMessaging.voice)}${pMessaging.voice_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
         case 'office': {
-          if (pMessaging.office && (!pMessaging.office_private || (pGroup.toLowerCase() === '*all'))) {
+          if (pMessaging.office && (!pMessaging.office_private || allGroups)) {
             returnArray.push(`tel:${pMessaging.office}~work ${formatPhone(pMessaging.office)}${pMessaging.office_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
         case 'email': {
-          if (pMessaging.email && (!pMessaging.email_private || (pGroup.toLowerCase() === '*all'))) {
+          if (pMessaging.email && (!pMessaging.email_private || allGroups)) {
             let emailLines = [];
             if ((pMessaging.email.length < 30) || !isMobile) { returnArray.push(`mailto:${pMessaging.email}~e-Mail ${pMessaging.email}${pMessaging.email_private ? ' *UNPUBLISHED*' : ''}`); }
             else {
@@ -638,7 +605,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   className={classes.title}
                   id='scroll-dialog-title'
                 >
-                  {(!pGroup || (pGroup.toLowerCase() === '*all')) ?
+                  {(!pGroup || allGroups) ?
                     'Administrative View - All Accounts' :
                     `Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`
                   }
@@ -770,7 +737,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               <Button
                                 onClick={() => {
                                   setEditIndex(index);
-                                  handlePatientEdit(this_item.person_id);
+                                  setShowPatientDialog(true);
                                 }}
                                 className={classes.rowButtonDefault}
                                 startIcon={<EditIcon fontSize="small" />}
@@ -778,7 +745,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 View/Edit
                               </Button>
                             }
-                            {(pRole === 'admin' || pRole === 'responsible') && (pGroup.toLowerCase() !== '*all') &&
+                            {(pRole === 'admin' || pRole === 'responsible') && !allGroups &&
                               <Button
                                 onClick={() => {
                                   setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
@@ -803,7 +770,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             </Paper>
             {showPatientDialog &&
               <PatientDialog
-                patient={personRec}
+                patient={workingMemberList[editIndex]}
                 picture={""}
                 open={true}
                 onClose={(updatedPerson) => {
@@ -885,7 +852,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     </Button>
                     {(pRole === 'admin' || pRole === 'responsible') &&
                       <React.Fragment>
-                        {(pGroup.toLowerCase() !== '*all') &&
+                        {!allGroups &&
                           <Button
                             className={classes.rowButtonGreen}
                             onClick={async () => {
@@ -936,7 +903,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     }
                     {(overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
                       <React.Fragment>
-                        {(pGroup.toLowerCase() !== '*all') &&
+                        {!allGroups &&
                           <Button
                             className={classes.rowButtonGreen}
                             onClick={() => {

@@ -276,16 +276,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [activityLogRecords, setActivityLogRecords] = React.useState([]);
 
-  const [lastActive, setLastActive] = React.useState(new Date().getTime());
-
   let currentSection = '';
 
   const oneMinute = 1000 * 60;
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 5 * oneMinute;
 
+  let idleTimer = React.createRef()
+
   let nowTime = new Date().getTime();
-  let localLastActive = nowTime;
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
@@ -296,9 +295,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   });
 
   const buildMenu = async (reload = false, beQuiet = null) => {
-    let nowTime = new Date().getTime();
-    setLastActive(nowTime);
-    localLastActive = nowTime;
     setSectionOpen({});
 
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
@@ -870,12 +866,16 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       <React.Fragment>
         {/* Idle timer always running */}
         <IdleTimer
+          ref={idleTimer}
           timeout={msBeforeSleeping}   // every "n" minutes
+          onActive={() => {
+            cl(`Active at ${new Date().toLocaleString()}.  Last idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
+          }}          
           onIdle={async () => {
-            cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
-            makeGreeting();
+            cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
             await updateAVA(sectionOpen, mainMenu);
           }}
+          startOnMount={true}
           debounce={250}
         />
 

@@ -9,7 +9,8 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
     secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-let profile, savedSession;
+let foundPeople = {};
+let savedSession;
 
 export async function makeName(pRec) {
     if (!pRec) { return 'N/A'; }
@@ -50,7 +51,7 @@ export function getImage(pPerson) {
 };
 
 export async function getPerson(pID, pElement = '*all', override = false) {
-    if (!profile || (profile.person_id !== pID)) {
+    if (!foundPeople || (!(pID in foundPeople))) {
         let personRec = await dbClient
             .get({
                 Key: { person_id: pID },
@@ -63,31 +64,17 @@ export async function getPerson(pID, pElement = '*all', override = false) {
             personRec.Item.messaging = {};
         }
         if (personRec.Item.messaging.voice) {
-            var cleaned = ('' + personRec.Item.messaging.voice).replace(/\D/g, '');
-            var match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
-            if (match) {
-                personRec.Item.home = [match[2], '-', match[3], '-', match[4]].join('');
-                personRec.Item.voice = [match[2], '-', match[3], '-', match[4]].join('');
-                personRec.Item.search_data += ' ' + personRec.Item.messaging.voice;
-            }
+            personRec.Item.voice = personRec.Item.home = formatPhone(personRec.Item.messaging.voice);
+            personRec.Item.search_data += ' ' + personRec.Item.messaging.voice;
         }
-        else { personRec.Item.home = ''; }
+        else { personRec.Item.voice = personRec.Item.home = ''; }
         if (personRec.Item.messaging.sms) {
-            cleaned = ('' + personRec.Item.messaging.sms).replace(/\D/g, '');
-            match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
-            if (match) {
-                personRec.Item.cell = [match[2], '-', match[3], '-', match[4]].join('');
-                personRec.Item.sms = [match[2], '-', match[3], '-', match[4]].join('');
-                personRec.Item.search_data += ' ' + personRec.Item.messaging.sms;
-            }
+            personRec.Item.cell = personRec.Item.sms = formatPhone(personRec.Item.messaging.sms);
+            personRec.Item.search_data += ' ' + personRec.Item.messaging.sms;
         }
+        else { personRec.Item.cell = personRec.Item.sms = ''; }
         if (personRec.Item.messaging.office) {
-            cleaned = ('' + personRec.Item.messaging.office).replace(/\D/g, '');
-            match = cleaned.match(/^(1|)?(\d{3})(\d{3})(\d{4})$/);
-            if (match) {
-                personRec.Item.office = [match[2], '-', match[3], '-', match[4]].join('');
-                personRec.Item.search_data += ' ' + personRec.Item.messaging.office;
-            }
+            personRec.Item.office = formatPhone(personRec.Item.messaging.office);
         }
         else { personRec.Item.office = ''; }
         personRec.Item.email = personRec.Item.messaging.email;
@@ -100,14 +87,32 @@ export async function getPerson(pID, pElement = '*all', override = false) {
             ' ' + personRec.Item.messaging.last +
             ' ' + personRec.Item.messaging.location;
         personRec.Item.search_data = personRec.Item.search_data.toLowerCase();
-        profile = personRec.Item;
+        foundPeople[pID] = personRec.Item;
     }
     switch (pElement.toLowerCase()) {
-        case '*all': { return profile; }
-        case 'name': { return makeName(profile); }
-        default: { return profile; }
+        case '*all': { return foundPeople[pID]; }
+        case 'name': { return makeName(foundPeople[pID]); }
+        default: { return foundPeople[pID]; }
     }
 };
+
+export function formatPhone(numberIn) {
+    if (typeof (numberIn) === 'string') { numberIn = Number(numberIn.replace(/\D/g, '')); }
+    let response = '';
+    switch (true) {
+        case (numberIn > 9999999): {
+            response += `(${('  ' + Math.floor(numberIn / 10000000)).slice(-3)}) `;
+        }
+        // eslint-disable-next-line
+        case (numberIn > 9999): {
+            response += `${('  ' + Math.floor(numberIn / 10000)).slice(-3)}-`;
+            response += ('0000' + (numberIn % 10000).toString()).slice(-4);
+            break;
+        }
+        default: { response += ('    ' + (numberIn % 10000).toString()).slice(-4); }
+    }
+    return response.trim();
+}
 
 export async function getSession(pID) {
     if (savedSession && (savedSession.session_id === pID)) {
