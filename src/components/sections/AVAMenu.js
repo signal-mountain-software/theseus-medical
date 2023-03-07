@@ -643,7 +643,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       async () => {
         setLoading('Getting your Information');
         setForceRedisplay(!forceRedisplay);
-        makeGreetingName(session.patient_display_name || patient.name.first || pPerson);
+        makeGreetingName(patient.name.first || session.patient_display_name || pPerson);
         makeGreeting();
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);
@@ -800,9 +800,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   };
 
   function makeGreetingName(pString) {
-    let response = pString.split(':')[0].trim().split(/[\s]+/)[0];
-    setGreetingName(response);
-    return response;
+    setGreetingName(pString);
+    return pString;
   }
 
   function makeExpiration() {
