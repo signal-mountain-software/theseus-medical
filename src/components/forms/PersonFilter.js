@@ -1,7 +1,11 @@
 import React from 'react';
+import { listFromArray } from '../../util/AVAUtilities';
+import { makeName } from '../../util/AVAPeople';
 
 import Paper from '@material-ui/core/Paper';
 import TextField from '@material-ui/core/TextField';
+import Checkbox from '@material-ui/core/Checkbox';
+import CheckIcon from '@material-ui/icons/Check';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -83,7 +87,8 @@ export default ({
   peopleList,
   onCancel,
   onSelect,
-  allowRandom
+  allowRandom,
+  multiSelect = false
 }) => {
 
   const [person_filter, setPersonFilter] = React.useState('');
@@ -93,11 +98,15 @@ export default ({
   const [maxY, setMaxY] = React.useState(0);
   const [previousY, setCurrentY] = React.useState(0);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [checkList, setCheckList] = React.useState([]);
+  const [selections, setSelections] = React.useState('');
+  const [selectedNames, setSelectedNames] = React.useState([]);
 
   const classes = useStyles();
 
   const scrollValue = 20;
   var rowsWritten;
+  let toggling = false;
 
   const onScroll = event => {
     if (rowLimit < peopleList.length) {
@@ -111,6 +120,31 @@ export default ({
       }
     }
   };
+
+  async function toggleCheck(pKey) {
+    let tempNames = [];
+    if (isChecked(pKey)) {
+      delete checkList[pKey];
+      let nList = Object.keys(checkList);
+      for (let n = 0; n < nList.length; n++) {
+        tempNames.push(await makeName(nList[n]));
+      }
+    }
+    else {
+      checkList[pKey] = true;
+      if (selectedNames.length > 0) { tempNames = [...selectedNames]; }
+      tempNames.push(await makeName(pKey));
+    }
+    setSelectedNames(tempNames);
+    setSelections(listFromArray(tempNames));
+    setCheckList(checkList);
+    setForceRedisplay(!forceRedisplay);
+  }
+
+  function isChecked(pKey) {
+    if ((pKey in checkList) && (checkList[pKey])) { return true; }
+    else { return false; }
+  }
 
   function formatPhone(match) {
     let formatted = '';
@@ -133,7 +167,7 @@ export default ({
       return;
     }
     var filterNumbers = '' + filterInput.replace(/\D/g, '').substr(-10);    // last 10 digits
-    if (filterNumbers.length > 6) {    // this will be trested as a phone number
+    if (filterNumbers.length > 6) {    // this will be treated as a phone number
       setPersonFilter(filterNumbers);
       setRandomAddress(formatPhone(filterNumbers));
       return;
@@ -141,6 +175,10 @@ export default ({
     setPersonFilter(filterInput.toLowerCase());
     setRandomAddress('');
     return;
+  };
+
+  const buildList = async () => {
+
   };
 
   function okToShow(pLine) {
@@ -175,6 +213,14 @@ export default ({
     }
   }
 
+  React.useEffect(() => {
+    async function initialize() {
+      await buildList();
+    }
+    initialize();
+  }, [peopleList]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+
   // **************************
 
   return (
@@ -202,8 +248,13 @@ export default ({
         variant="standard"
       />
       <Typography variant='h5' className={classes.orSeparator}>
-        {`You may filter the list below${!allowRandom ? '' : ', or enter a specific phone number or e-Mail address to send your message to'}`}
+        {`You may filter the list below${!allowRandom ? '' : ', or enter a specific phone number or e-Mail address'}`}
       </Typography>
+      {(Object.keys(checkList).length > 0) &&
+        <Typography variant='h5' className={classes.orSeparator}>
+          {`Selected: ${selections}`}
+        </Typography>
+      }
       <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
         <List component='nav'>
           <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -213,8 +264,12 @@ export default ({
             ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
               <ListItem
                 key={'person-list_' + x}
-                onClick={() => {
-                  onSelect(listEntry);
+                onClick={async () => {
+                  if (!multiSelect) { onSelect(listEntry); }
+                  else {
+                    if (!toggling) { await toggleCheck(listEntry.split(':')[1]); }
+                    toggling = false;
+                  }
                 }}
                 button
               >
@@ -224,10 +279,23 @@ export default ({
                 <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                   {!listEntry.split(':')[1].startsWith('GRP//') ?
                     <React.Fragment>
-                      <Typography variant='h5' className={classes.lastName}>{makeLastName(listEntry)}</Typography>
+                      {multiSelect &&
+                        <Checkbox
+                          edge='start'
+                          mr={4}
+                        checked={isChecked(listEntry.split(':')[1])}
+                          disableRipple
+                          key={'checkbox' + x}
+                          onClick={async () => {
+                            toggling = true;
+                            await toggleCheck(listEntry.split(':')[1]);
+                          }}
+                        />
+                      }
+                      <Typography variant='h5' className={classes.lastName}>{`${makeLastName(listEntry)}`}</Typography>
                       <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
-                      {(x > 0) && (x < (peopleList.length - 1))
-                        && ((peopleList[x - 1].split(':')[0] === listEntry.split(':')[0])
+                      {(x > 0) && (x < (peopleList.length - 1)) &&
+                        ((peopleList[x - 1].split(':')[0] === listEntry.split(':')[0])
                           || (peopleList[x + 1].split(':')[0] === listEntry.split(':')[0])) &&
                         <Typography variant='h5' className={classes.idText}>({listEntry.split(/[:]/)[1]})</Typography>
                       }
@@ -268,6 +336,17 @@ export default ({
         >
           {'Close/Exit'}
         </Button>
+        {multiSelect &&
+          <Button
+            className={classes.reject}
+            onClick={() => {
+              onSelect(Object.keys(checkList));
+            }}
+            startIcon={<CheckIcon fontSize="small" />}
+          >
+            {'Save/Confirm'}
+          </Button>
+        }
       </DialogActions>
     </Dialog>
   );

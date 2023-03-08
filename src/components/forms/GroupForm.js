@@ -3,7 +3,7 @@ import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 import { getImage, formatPhone } from '../../util/AVAPeople';
 import { cl } from '../../util/AVAUtilities';
-import { getMemberList } from '../../util/AVAGroups';
+import { getMemberList, addMember } from '../../util/AVAGroups';
 
 
 import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
@@ -355,40 +355,12 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     return [];
   };
 
-  const handleAddPersonToGroup = async (pPerson, pGroup, pDisplayName) => {
-    let invokeFailed = false;
-
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
-    params.Payload = JSON.stringify({
-      action: "add_person_to_group",
-      clientId: pClient,
-      request: {
-        "person_id": pPerson,
-        "group_id": pGroup,
-        "current_group_members": workingMemberList
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let workingMemberList = JSON.parse(fResp.Payload);
-      if (workingMemberList.status === 200) {
-        let pName = pDisplayName.split(',');
-        enqueueSnackbar(`AVA added ${pName.length > 1 ? pName[1] : ''} ${pName[0]} to the group!`, {
-          variant: 'success'
-        });
-        setGroupMemberList(workingMemberList.body);
-        return workingMemberList;
-      }
-    };
-    return [];
+  const handleAddPersonToGroup = async (pPerson, pGroup) => {
+    for (let p = 0; p < pPerson.length; p++) {
+      await addMember(pPerson[p], pClient, pGroup);
+    }
+    let memberInfo = await getMemberList(pGroup, pClient, { "sort": true, "exclude": false });   
+    setGroupMemberList(memberInfo.peopleList);
   };
 
   const handleRemoveGroupMember = async (pPerson, pIndex) => {
@@ -500,23 +472,29 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   };
 
   const setChoices = async (inList) => {
-    // list is of the form <name>:<id>:<search_string>
     let response = [];
-    let iLL = inList.length;
-    for (let l = 0; l < iLL; l++) {
-      let i = inList[l];
-      if (i.startsWith('~group:')) {
-        let memberInfo = await getMemberList(i.split(':')[1], pClient, { "sort": true, "exclude": false });
+    let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });    
+    /* getMemberList returns
+        {
+          peopleList: [<People records of the members>],
+          groupList: [<Group records for the selected groups>]
+        }
+    */
+        let mInfo;
         let pLL = memberInfo.peopleList.length;
         for (let e = 0; e < pLL; e++) {
           let p = memberInfo.peopleList[e];
           let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
-          if (p.messaging) { searchString += Object.values(p.messaging).join; }
-          response.push(`${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`);
+          if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+          // list is of the form <name>:<id>:<search_string>
+          try {
+            mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+            response.push(mInfo);
+          }
+          catch (error) {
+            cl(`response push error at index ${e} with ${mInfo}`);
+          }
         };
-      }
-      else { response.push(i); }
-    }
     setChoiceList(response);
     setShowAddPrompt(true);
   };
@@ -798,9 +776,11 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 onCancel={() => {
                   setShowAddPrompt(false);
                 }}
-                onSelect={(selectedPerson) => {
-                  handleAddPersonToGroup(selectedPerson.split(':')[1], pGroup, selectedPerson.split(':')[0]);
+                onSelect={async (selectedPerson) => {
+                  await handleAddPersonToGroup(selectedPerson, pGroup);
+                  setShowAddPrompt(false);
                 }}
+                multiSelect={true}
               >
               </PersonFilter>
             }
@@ -860,7 +840,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                             }}
                             startIcon={<GroupAddIcon size="small" />}
                           >
-                            {'Add Member'}
+                            {'Add Members'}
                           </Button>
                         }
                         <Button
@@ -876,13 +856,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           startIcon={<StorageOutlined size='small' />}
                         >
                           {'Roster'}
-                        </Button>
-                        <Button
-                          onClick={async () => { await handleMenuUpdate(workingMemberList); }}
-                          className={classes.rowButtonGreen}
-                          startIcon={<MenuUpdateIcon size='small' />}
-                        >
-                          {'Menu Update'}
                         </Button>
                       </React.Fragment>
                     }
@@ -906,8 +879,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         {!allGroups &&
                           <Button
                             className={classes.rowButtonGreen}
-                            onClick={() => {
-                              handleAddPersonToGroup(pPatient, pGroup, pPatientName);
+                            onClick={async () => {
+                              await handleAddPersonToGroup([pPatient], pGroup);
                               setOverrideRole('member');
                             }}
                             startIcon={<GroupAddIcon sisetMessageTypeze="small" />}
@@ -946,7 +919,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         className={classes.rowButtonGreen}
                         startIcon={<SendIcon size='small' />}
                       >
-                        {`Group ${isMobile ? 'Msg' : 'Message'}`}
+                        {`Group Msg`}
                       </Button>
                       <Button
                         onClick={() => {
@@ -957,7 +930,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         className={classes.rowButtonRed}
                         startIcon={<PhoneInTalkIcon size='small' />}
                       >
-                        {`Call ${isMobile ? 'All' : 'Everyone'}`}
+                        {`Call`}
                       </Button>
                       <Button
                         onClick={() => {
@@ -968,7 +941,14 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         className={classes.rowButtonGreen}
                         startIcon={<ContactMailOutlinedIcon size='small' />}
                       >
-                        {`AVA alert ${isMobile ? 'Msg' : 'Message'}`}
+                        {`Notify`}
+                      </Button>
+                      <Button
+                        onClick={async () => { await handleMenuUpdate(workingMemberList); }}
+                        className={classes.rowButtonGreen}
+                        startIcon={<MenuUpdateIcon size='small' />}
+                      >
+                        {'Menu Upd'}
                       </Button>
                     </Box>
                   }

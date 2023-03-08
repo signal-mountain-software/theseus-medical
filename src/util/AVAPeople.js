@@ -91,7 +91,7 @@ export async function getPerson(pID, pElement = '*all', override = false) {
     }
     switch (pElement.toLowerCase()) {
         case '*all': { return foundPeople[pID]; }
-        case 'name': { return makeName(foundPeople[pID]); }
+        case 'name': { return await makeName(foundPeople[pID]); }
         default: { return foundPeople[pID]; }
     }
 };

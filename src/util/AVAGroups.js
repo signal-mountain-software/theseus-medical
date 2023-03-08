@@ -1,4 +1,4 @@
-import { cl, recordExists } from './AVAUtilities';
+import { cl, clt, recordExists } from './AVAUtilities';
 import { getPerson, getSession } from '../util/AVAPeople';
 
 
@@ -125,8 +125,10 @@ export async function getMemberList(pGroups, pClient_id, options) {
   else { gList = [pGroups]; }
   if (gList.some(g => g.toLowerCase().includes('*all'))) { gList = ['*all']; }
   for (let g = 0; g < gList.length; g++) {
-    let grp = gList[g].split('~')[0].trim();   // some arrays send 'group_id ~ group_name' in an element
-    let client;
+    let grp, client;
+    if (gList[g].includes(':')) { grp = gList[g].split(':')[1].trim(); }  // some arrays send '~group:group_id' in an element
+    else if (gList[g].includes('~')) { grp = gList[g].split('~')[0].trim(); }   // some arrays send 'group_id ~ group_name' in an element
+    else { grp = gList[g]; }
     if (grp.includes('//')) { [client, grp] = grp.split('//'); }
     else { client = defaultClient; }
     let qParm = {
@@ -172,4 +174,49 @@ export async function getMemberList(pGroups, pClient_id, options) {
     'peopleList': returnArray,
     'groupList': gList
   };
+}
+
+export async function addMember(pPerson, pClient, pGroup) {
+  let peopleRec = await getPerson(pPerson);
+  if (peopleRec?.person_id) {
+    let newGroupList = peopleRec.groups;
+    newGroupList.push(pGroup);
+    let clientGroups = peopleRec.clients;
+    clientGroups.some((cG, ndx) => {
+      if (cG.id === pClient) {
+        peopleRec.clients[ndx].groups = newGroupList;
+        return true;
+      }
+      else { return false; }
+    });
+    await dbClient
+      .update({
+        Key: { person_id: pPerson },
+        UpdateExpression: "set groups = :g, clients = :cg",
+        ExpressionAttributeValues: {
+          ":g": newGroupList,
+          ":cg": peopleRec.clients
+        },
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        clt({ 'Bad update to People - caught error is': error });
+      });
+  }
+  let peopleGroupRec = {
+    client_group_id: pClient + '~' + pGroup,
+    display_name: (peopleRec?.person_id ? `${peopleRec.name.last}, ${peopleRec.name.first}` : `${pPerson}, Unknown Account`),
+    person_id: pPerson,
+    roles: ["patient"]
+  };
+  await dbClient
+    .put({
+      Item: peopleGroupRec,
+      TableName: "PeopleGroups"
+    })
+    .promise()
+    .catch(error => {
+      clt({ 'Bad put to PeopleGroups - caught error is': error });
+    });
 }
