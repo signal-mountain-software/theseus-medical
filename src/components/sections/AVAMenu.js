@@ -1135,9 +1135,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                         alt=""
                         variant="square"
                       />
-                      <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                      <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
                         <Box display='flex' flexDirection='column'>
-                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                             <Typography variant='h5' className={classes.lastName} >{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
                           </Box>
                         </Box>
