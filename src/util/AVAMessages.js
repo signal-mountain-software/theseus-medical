@@ -47,7 +47,9 @@ export async function getMessages(body) {
 }
 
 export async function prepareMessage(inBody) {
-  let messageList = [inBody];
+  let messageList = [];
+  if (Array.isArray(inBody)) { messageList.push(...inBody); }
+  else { messageList.push(inBody); }
   let returnResults = [];
   let results, body;
   do {
@@ -76,7 +78,10 @@ export async function prepareMessage(inBody) {
         results.htmlText = results.messageText;
       }
     }
-    if ('test' in body) { await processRules(body); }
+    if ('test' in body) {
+      let ruleStatus = await processRules(body);
+      if (ruleStatus === 'cancel') { continue; }
+    }
   
     results.messageText = results.messageText.replace('\n\r%%custom_text%%\n\r', '').trim();
     results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
@@ -84,7 +89,7 @@ export async function prepareMessage(inBody) {
     returnResults.push(results);
   } while (messageList.length > 0)
 
-  return results;
+  return returnResults;
 
   /**************************/
 
@@ -169,8 +174,27 @@ export async function prepareMessage(inBody) {
             break;
           }
           case 'replace_recipients': {
-            if (Array.isArray(rule.value)) { results.recipientList = [...rule.value]; }
-            else { results.recipientList = [rule.value]; }
+            if (Array.isArray(rule.value)) {
+              if (rule.value.length === 0) { results.recipientList = []; }
+              else { results.recipientList = [...rule.value]; }
+            }
+            else {
+              if (!rule.value) { results.recipientList = []; }
+              else { results.recipientList = [rule.value]; }
+            }
+            break;
+          }
+          case 'remove_recipients': {
+            if (Array.isArray(rule.value)) {
+              rule.value.forEach(v => { 
+                let foundAt = results.recipientList.indexOf(v);
+                if (foundAt >= 0) { results.recipientList.splice(foundAt, 1); }
+              })
+            }
+            else { 
+              let foundAt = results.recipientList.indexOf(rule.value);
+              if (foundAt >= 0) { results.recipientList.splice(foundAt, 1); }
+            }
             break;
           }
           case 'urgency': {
@@ -194,6 +218,9 @@ export async function prepareMessage(inBody) {
           case 'create_message': { 
             messageList.push(rule.value);
             break;
+          }
+          case 'cancel_message': {
+            return 'cancel';
           }
           default: { }
         }

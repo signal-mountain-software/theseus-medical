@@ -280,11 +280,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     if (!badData) {
       setMessage('');
       setStatusMessage('');
-      if (withNext) {
-        onNext(newFact);
-      } else {
-        onSave(newFact);
-      }
+      if (!factIOClass) { handleClose(); }
+      else if (withNext) { onNext(newFact); }
+      else { onSave(newFact); }
     }
     return badData;
   };
@@ -310,6 +308,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         case 'document':
         case 'render':
         case 'query':
+        case 'action':
         case 'list': { break; }   
         case 'media': { setFactIOClass(true); break; }
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break; }
@@ -447,7 +446,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     let nF = {
       client_id: fact.client_id || session.client_id,
       patient_id: session.patient_id || session.user_id,
-      activity_key: fact.code,
+      activity_key: fact.code || fact.activity_code,
       value: (fact.type === 'reservation')
         ? fact.default_value
         : {

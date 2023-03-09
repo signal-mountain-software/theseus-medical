@@ -104,7 +104,7 @@ export async function putServiceRequest(body) {
     });
   if (body.messaging) {
     let preparedMessages = await prepareMessage(body);
-    sendMessages(preparedMessages);
+    if (preparedMessages.length > 0) { sendMessages(preparedMessages); }
   }
   return {
     'request_id': serviceRequestRec.request_id,
