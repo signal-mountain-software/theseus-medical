@@ -42,10 +42,12 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
 
   // Functions
 
-  async function handleSubMenu(pSubMenu) {
+  async function handleSubMenu(pSubMenu, pActivities = null) {
     let returnArray = [];
     let [sectionColor, sectionIcon] = await getCustomizations(pSubMenu.menu_name);
-    let subActivities = await getSubMenu(pSubMenu.event_id, pSubMenu.client_id);
+    let subActivities = [];
+    if (pActivities) { subActivities.push(...pActivities); }
+    else { subActivities = await getSubMenu(pSubMenu.event_id, pSubMenu.client_id); }
     let aL = subActivities.length;
     if (aL > 0) {
       for (let a = 0; a < aL; a++) {
@@ -160,10 +162,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
 
     // Get all Groups this person is associated with
     let neededGroups = [];
-    requestor.groups.forEach(e => { 
+    requestor.groups.forEach(e => {
       if (e in groupObj) { groupList.push(groupObj[e]); }
       else { neededGroups.push(e); }
-    })
+    });
     if (neededGroups.length > 0) {
       let addGroupList = await getGroupsPersonBelongsTo(neededGroups);
       addGroupList.forEach(c => {
@@ -208,50 +210,66 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             sectionSort = sectionKeys[1];
             sectionName = sectionKeys[1];
           }
-          if (sectionName.startsWith('[')) {
-            let [, iType, iValue, iKey] = sectionName.split(/[[\]=:]/);
-            switch (iType) {
-              case 'subMenu': {
-                if (iValue === 'start') {
-                  let currentMenu = menuStructure.length - 1;
-                  let this_section = menuStructure[currentMenu].currentSection;
-                  returnArray.push({
-                    menu_name: menuStructure[currentMenu].menuName,
-                    sort_key: sectionDetails[this_section].sort_key,
-                    section_name: this_section,
-                    section_color: sectionDetails[this_section].color,
-                    section_icon: sectionDetails[this_section].icon,
-                    row_color: sectionDetails[this_section].color,
-                    activity_code: `event.${iKey}`,
-                    activity_name: await resolveVariables(iKey),
-                    row_type: 'event',
-                    default_value: null,
-                    parent_menu: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
-                    child_menu: iKey,
-                    reason: `Group ${this_group.group_id}`,
-                    last_used: -1,
-                    is_favorite: false,
-                    subMenu_data: {
-                      client_id: masterClient,
-                      event_id: iKey,
-                      parent: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
-                      parent_name: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
-                      menu_name: iKey
-                    }
-                  });
-                  menuStructure.push({ menuName: iKey, currentSection: iKey });
-                  sectionName = iKey;
-                }
-                else if (iValue === 'end') {
-                  if (menuStructure.length > 1) {
-                    menuStructure.pop();
-                    sectionName = menuStructure[menuStructure.length - 1].currentSection;
-                  }
-                };
-                break;
-              }
-              default: { break; }
+          if (sectionName.startsWith('submenu=')) {
+            let subName = sectionName.split('=')[1];
+            let currentMenu = menuStructure.length - 1;
+            let this_section = menuStructure[currentMenu].currentSection;
+            let subMenuObj = {
+              client_id: masterClient,
+              event_id: `submenu.${subName}`,
+              parent: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
+              parent_name: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
+              menu_name: subName
+            };
+            returnArray.push({
+              menu_name: menuStructure[currentMenu].menuName,
+              sort_key: sectionDetails[this_section].sort_key,
+              section_name: this_section,
+              section_color: sectionDetails[this_section].color,
+              section_icon: sectionDetails[this_section].icon,
+              row_color: sectionDetails[this_section].color,
+              activity_code: `submenu.${subName}`,
+              activity_name: await resolveVariables(subName),
+              row_type: 'event',
+              default_value: null,
+              parent_menu: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
+              child_menu: subName,
+              reason: `Group ${this_group.group_id}`,
+              last_used: -1,
+              is_favorite: false,
+              subMenu_data: subMenuObj
+            });
+            await addRow(
+              `submenu.${subName}`,   // activity_code
+              menuStructure[currentMenu].menuName,                  // this menu_id                      
+              subMenuObj.parent,                    // parent menu_id
+              subMenuObj.parent_name,               // parent menu name
+              sectionDetails[this_section].sort_key,           // pSectionSort
+              this_section,                                // pSectionName
+              sectionDetails[this_section].color,          // pSectionColor
+              sectionDetails[this_section].icon,          // pSectionIcon
+              `Group ${this_group.group_id}`              // pReason
+            );
+            menuStructure.push({ menuName: subName, currentSection: subName });
+            let subActivities = [];
+            let nextA;
+            for (let s = a + 1; ((s < aL) && (this_group.common_activities[s] !== '~~end_submenu')); s++) {
+              subActivities.push(this_group.common_activities[s]);
+              nextA = s;
             }
+            subMenuObj = {
+              client_id: masterClient,
+              event_id: subName,
+              parent: menuStructure[currentMenu].menuName,
+              parent_name: menuStructure[currentMenu].menuName,
+              menu_name: subName
+            };
+            let subLines = await handleSubMenu(subMenuObj, subActivities);
+            returnArray.push(...subLines);
+            menuStructure.pop();
+            sectionName = menuStructure[menuStructure.length - 1].currentSection;
+            a = nextA + 1;
+            continue;
           }
           else {
             menuStructure[menuStructure.length - 1].currentSection = sectionName;
@@ -367,14 +385,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       customObj[pName] = {
         color: cRec.Item.color || stringToColor(pName),
         icon: cRec.Item.icon || AVAIcon
-      }
+      };
       return [cRec.Item.color || stringToColor(pName), cRec.Item.icon || AVAIcon];
     }
     else {
       customObj[pName] = {
         color: stringToColor(pName),
         icon: AVAIcon
-      }
+      };
       return [stringToColor(pName), AVAIcon];
     }
   }
