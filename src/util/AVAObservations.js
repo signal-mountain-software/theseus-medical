@@ -28,7 +28,6 @@ export function putMessage_nonAsync(body) {
 */
 
 export async function makeObservationList(pObs, pSession) {
-  cl({ 'in makeObservation': { pObs, pSession } });
   let returnList = [];
   let returnQObj = {};
   let activityRec;
@@ -38,7 +37,6 @@ export async function makeObservationList(pObs, pSession) {
     activityRec = await getActivity(assignedClient, pObs);
   }
   else { activityRec = Object.assign({}, pObs); }
-  cl({ activityRec });
   if (activityRec?.validation?.values) {
     let listLength = activityRec.validation.values.length;
     for (let v = 0; v < listLength; v++) {
