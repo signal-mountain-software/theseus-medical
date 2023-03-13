@@ -112,6 +112,7 @@ export async function getRole(pGroup, pPerson) {
 export async function getMemberList(pGroups, pClient_id, options) {
   // returns an array of peopleRecs that are members of the group(s) in pGroups
   let returnArray = [];
+  let foundIDs = [];
   let checkExclude = false;
   let sortResults = false;
   if (options) {
@@ -149,14 +150,17 @@ export async function getMemberList(pGroups, pClient_id, options) {
       });
     if (recordExists(gPeopleRecs)) {
       gPeopleRecs.Items.forEach(i => {
-        if ((!returnArray.includes(i.person_id)) || !checkExclude || (i.directory_option !== 'exclude')) {
-          if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
-          if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
-          returnArray.push(i);
+        if (!foundIDs.includes(i.person_id)) {
+          foundIDs.push(i.person_id);
+          if (!checkExclude || (i.directory_option !== 'exclude')) {
+            if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
+            if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
+            returnArray.push(i);
+          }
         }
       });
     }
-  }
+  };
   if (sortResults) {
     returnArray.sort((a, b) => {
       if (a.name.last === b.name.last) {
@@ -171,6 +175,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
     });
   }
   return {
+    foundIDs,
     'peopleList': returnArray,
     'groupList': gList
   };

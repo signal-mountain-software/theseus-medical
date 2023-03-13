@@ -274,7 +274,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [pWidth, setPWidth] = React.useState(60);
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  const [activityLogRecords, setActivityLogRecords] = React.useState([]);
 
   let currentSection = '';
 
@@ -314,7 +313,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (recordExists(menuRec)) {
       setSectionOpen(menuRec.Item.AVA_section_open || {});
       if ((menuRec.Item.AVA_main_menu.length > 0) && !reload) {
-        cl(`Used cached menu at ${new Date().toLocaleString()}.`);
+        // cl(`Used cached menu at ${new Date().toLocaleString()}.`);
         setMainMenu(menuRec.Item.AVA_main_menu);
         return menuRec.Item.AVA_main_menu;
       }
@@ -324,13 +323,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
 
     if (wholeMenu.length > 0) {
-      cl(`Reloaded menu at ${new Date().toLocaleString()}.`);
+      // cl(`Reloaded menu at ${new Date().toLocaleString()}.`);
       await updateAVA(sectionOpen, wholeMenu);
       setMainMenu(wholeMenu);
       return wholeMenu;
     }
     else {
-      cl(`Empty menu for ${patient} in ${defaultClient} at ${new Date().toLocaleString()}.`);
+      // cl(`Empty menu for ${patient} in ${defaultClient} at ${new Date().toLocaleString()}.`);
       enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
         { variant: 'error', persist: true }
       );
@@ -383,7 +382,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         .promise()
         .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
-    putActivityLog();
   };
 
   async function putS3Object(pMediaData, pType) {
@@ -682,39 +680,26 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       });
   };
 
-  const activityLog = (pUser, pCode, pName, pIndex) => {
+  const activityLog = async (pUser, pCode, pName, pIndex) => {
     let postTime = new Date().getTime();
-    let activityLogRec = {
-      timestamp: postTime,
-      user_id: pUser,
-      activity_code: pCode,
-      activity_name: pName,
-      AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
-    };
-    let workLog = activityLogRecords;
-    workLog.push(activityLogRec);
-    setActivityLogRecords(workLog);
+    await dbClient
+      .put({
+        TableName: 'ActivityLog',
+        Item: {
+          timestamp: postTime,
+          user_id: pUser,
+          activity_code: pCode,
+          activity_name: pName,
+          AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+        }
+      })
+      .promise()
+      .catch(error => {
+        cl(`Bad put to ActivityLog - caught error is: ${error}`);
+      });
     mainMenu[pIndex].last_used = postTime;
     setMainMenu(mainMenu);
-    putActivityLog();
   };
-
-  async function putActivityLog() {
-    if (activityLogRecords.length > 0) {
-      let putObj = activityLogRecords.map(r => {
-        return { PutRequest: { Item: r } };
-      });
-      await dbClient
-        .batchWrite({
-          RequestItems: { 'ActivityLog': putObj }
-        })
-        .promise()
-        .catch(error => {
-          cl(`Bad put to ActivityLog - caught error is: ${error}`);
-        });
-      setActivityLogRecords([]);
-    }
-  }
 
   const putFact = async (pFact, pFactName, pIndex) => {
     let postTime = new Date().getTime();
@@ -868,7 +853,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           ref={idleTimer}
           timeout={msBeforeSleeping}   // every "n" minutes
           onActive={() => {
-            cl(`Active at ${new Date().toLocaleString()}.  Last idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
+            // cl(`Active at ${new Date().toLocaleString()}.  Last idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
           }}          
           onIdle={async () => {
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
@@ -1237,7 +1222,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               justifyContent='space-between'
                               alignItems='center'
                               onClick={async () => {
-                                activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
+                                await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
                                 if (!toggleClick && (this_row.row_type !== 'document')) {
                                   if (this_row.subMenu_data) {
                                     let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);

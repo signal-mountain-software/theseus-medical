@@ -2,7 +2,6 @@ import React from 'react';
 
 import { API, graphqlOperation } from 'aws-amplify';
 import { Lambda } from 'aws-sdk';
-// import { makeArray } from '../../util/AVAUtilities';
 import { getCalendarEntries } from '../../util/AVACalendars';
 
 import Box from '@material-ui/core/Box';

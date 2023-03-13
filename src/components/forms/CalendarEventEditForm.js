@@ -4,14 +4,13 @@ import { useSnackbar } from 'notistack';
 import { makeDate } from '../../util/AVADateTime';
 import { getSlotList, writeSlot } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
-import { cl } from '../../util/AVAUtilities';
+import { cl, makeArray } from '../../util/AVAUtilities';
+import { makeName } from '../../util/AVAPeople';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
-
-import CheckIcon from '@material-ui/icons/Check';
 
 import Button from '@material-ui/core/Button';
 import IconButton from '@material-ui/core/IconButton';
@@ -31,9 +30,14 @@ import StorageOutlined from '@material-ui/icons/StorageOutlined';
 import SendIcon from '@material-ui/icons/Send';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
+import CloseIcon from '@material-ui/icons/HighlightOff';
+import EditIcon from '@material-ui/icons/Edit';
+import SaveIcon from '@material-ui/icons/Save';
 
 import PersonFilter from '../forms/PersonFilter';
 import AVATextInput from '../forms/AVATextInput';
+
+import Input from '@material-ui/core/Input';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -77,6 +81,20 @@ const useStyles = makeStyles(theme => ({
     size: 'small',
     // color: theme.palette.primary[theme.palette.type],
   },
+  idText: {
+    display: 'inline',
+    marginTop: -5,
+    marginRight: theme.spacing(1),
+  },
+  idTextNoSpacing: {
+    display: 'inline',
+  },
+  inputRule: {
+    display: 'inline',
+    fontSize: theme.typography.fontSize * 1,
+    padding: 0,
+    margin: 0,
+  },
   rowButtonRed: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
@@ -117,6 +135,10 @@ const useStyles = makeStyles(theme => ({
   },
   standardIndent: {
     marginLeft: theme.spacing(1),
+    variant: 'body1',
+    marginRight: theme.spacing(1),
+    paddingRight: theme.spacing(2),
+    width: '100%'
   },
   lastName: {
     fontWeight: 'bold',
@@ -130,7 +152,6 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   const classes = useStyles();
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
-  const [occurrenceInfo, setOccurrenceInfo] = React.useState('');
   const [eventSlotList, setEventSlotList] = React.useState([]);
 
   const [selectNewSlotOwner, setSelectNewSlotOwner] = React.useState(false);
@@ -142,6 +163,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
   const [choiceList, setChoiceList] = React.useState([]);
+
+  const [editNoteNumber, setEditNoteNumber] = React.useState(-1);
+  const [newNote, setNewNote] = React.useState('');
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -195,78 +219,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     };
     setChoiceList(response);
   };
-  /*
-    const handleReleaseSlot = async (pIndexOfSlot) => {
-      let invokeFailed = false;
-  
-      let updateSlot = eventSlotList[pIndexOfSlot];
-      let eventParts = updateSlot.event_key.split('#');
-  
-      params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance';
-      params.Payload = JSON.stringify({
-        action: "update_slot",
-        clientId: pClient,
-        request: {
-          event_key: eventParts[0] + '#' + eventParts[1],
-          new_list_key: 'available#' + eventParts[1],
-          slot_id: updateSlot.slotData.id,
-          owner: 'available',
-          requestor: '',
-          display_name: ''
-        }
-      });
-      let lambdaResponse = await lambda
-        .invoke(params)
-        .promise()
-        .catch(err => {
-          invokeFailed = true;
-        });
-      if (!invokeFailed) {
-        let returnedSlot = JSON.parse(lambdaResponse.Payload);
-        if (returnedSlot.status === 200) {
-          let workingList = eventSlotList;
-          workingList[pIndexOfSlot].slotData.owner = 'available';
-          workingList[pIndexOfSlot].slotData.name = '';
-          setEventSlotList(workingList);
-          setForceRedisplay(!forceRedisplay);
-          return workingList;
-        }
-      };
-    };
-  */
-  /*
-  const handleRemoveSlot = async (pIndexOfSlot) => {
-    let invokeFailed = false;
-    let updateSlot = eventSlotList[pIndexOfSlot];
 
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance';
-    params.Payload = JSON.stringify({
-      action: "allocate",
-      clientId: pClient,
-      sign_up: {
-        event_key: pEventCode,
-        slot_id: updateSlot.slotData.id.toString().padStart(4, '0'),
-        owner: 'available',
-        requestor: pPatient,
-        display_name: '',
-        new_list_key: 'release'
-      }
-    });
-    await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let workingList = eventSlotList;
-      workingList.splice(pIndexOfSlot, 1);
-      setEventSlotList(workingList);
-      setForceRedisplay(!forceRedisplay);
-      return workingList;
-    };
-  };
-*/
   const handlePrint = async (pEvent, pType) => {
     let invokeFailed = false;
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:printCalendar';
@@ -306,28 +259,25 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
 
   const getEventSlots = async (pEvent) => {
     let slotInfo = await getSlotList({ "client": pClient, "event": pEvent });
-    setOccurrenceInfo(slotInfo.occRec);
     let slotList = Object.keys(slotInfo.slotObj).map(o => {
       let first = "";
       let last = "";
       if (slotInfo.slotObj[o].status === 'released') {
         slotInfo.slotObj[o].display_name = '';
-        slotInfo.slotObj[o].owner = ''
+        slotInfo.slotObj[o].owner = '';
       }
       if (slotInfo.slotObj[o].display_name) {
-          [first, last] = slotInfo.slotObj[o].display_name.split(/\s(.*)/);
+        [first, last] = slotInfo.slotObj[o].display_name.split(/\s(.*)/);
       }
       return {
         event_key: slotInfo.occRec.event_key,
         first,
         last,
         display_name: slotInfo.slotObj[o].display_name,
-        slotData: {
-          show_this_slot: slotInfo.slotObj[o].show_this_slot,
+        slotData: Object.assign(slotInfo.slotObj[o], {
           name: slotInfo.slotObj[o].display_name,
-          id: o,
-          owner: slotInfo.slotObj[o].owner
-        }
+          id: o
+        })
       };
     });
     slotList.sort((a, b) => {
@@ -337,35 +287,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     setEventSlotList(slotList);
     return slotList;
   };
-  /*    
-    const oldGetEventSlots = async (pEvent) => {  
-      let invokeFailed = false;
-      params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance';
-      params.Payload = JSON.stringify({
-        "action": "get_slots",
-        "clientId": pClient,
-        "request": { "event_id": pEvent }
-      });
-      let fResp = await lambda
-        .invoke(params)
-        .promise()
-        .catch(err => {
-          enqueueSnackbar(`AVA encountered an error while requesting the entries.  Error is ${err.message}`, {
-            variant: 'error'
-          });
-        });
-      if (!invokeFailed) {
-        let response = JSON.parse(fResp.Payload);
-        if (response.status === 200) {
-          let [occRec, slotList] = response.body;
-          setOccurrenceInfo(occRec);
-          setEventSlotList(slotList);
-          return slotList;
-        }
-      };
-      return [];
-    };
-  */
+
   const handleSendMessage = async (pMessage, pRecipient = null) => {
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
     params.Payload = JSON.stringify({
@@ -387,245 +309,111 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
       variant: 'success'
     });
   };
-/*
-  const handleAddSlot = async (pSlotToAdd) => {
-    let invokeFailed = false;
-    let request = {};
-    let eventParts = pEventCode.split('#');
 
-    let slotIDNumber = makeTime(pSlotToAdd).hhmm;
-    let slotIDString = slotIDNumber.toString();
-    eventParts[2] = (slotIDString.length < 4 ? '0' : '') + slotIDString;
-    request.minutesAfterMidnight = (Math.floor(slotIDNumber / 100) * 60) + (slotIDNumber % 100);
-
-    request.calRec = {
-      client: pClient,
-      id: eventParts[0],
-      event_key: eventParts[0] + '#' + eventParts[1],
-      schedule_key: 'slot_data',
-      list_key: 'available#' + eventParts[1]
-    };
-
-    request.slotData = {
-      date: eventParts[1],
-      id: eventParts[2],
-      owner: 'available',
-      name: null,
-      reminder_minutes: 0
-    };
-
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance';
-    params.Payload = JSON.stringify({
-      action: "add_slot",
-      clientId: pClient,
-      request: request
-    });
-    let lambdaResponse = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let returnedSlot = JSON.parse(lambdaResponse.Payload);
-      if (returnedSlot.status === 200) {
-        await getEventSlots(pEventCode);
-      }
-    };
-  };
-  */
-  /*
-    const handleChangeSlotOwner = async (pPerson, pIndexOfSlot) => {
-      let invokeFailed = false;
-  
-      let updateSlot = eventSlotList[pIndexOfSlot];
-      let [newPersonName, newPersonID] = pPerson.split(':');
-      let eventParts = updateSlot.event_key.split('#');
-      let slotIDString = updateSlot.slotData.id.toString();
-      eventParts[2] = (slotIDString.length < 4 ? '0' : '') + slotIDString;
-  
-      if (!newPersonID) {
-        sendAVASupportAlert(`${pPatient} atempted null update to Calendar event ${eventParts[0] + '#' + eventParts[1]} at slot ${eventParts[2]}`);
-      }
-  
-      params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance';
-      params.Payload = JSON.stringify({
-        action: "update_slot",
-        clientId: pClient,
-        request: {
-          event_key: eventParts[0] + '#' + eventParts[1],
-          new_list_key: newPersonID + '#' + eventParts[1],
-          slot_id: eventParts[2],
-          owner: newPersonID,
-          requestor: pPatient,
-          display_name: (pName || newPersonName) + (pInfo ? ` (${pInfo})` : ''),
-        }
-      });
-      let lambdaResponse = await lambda
-        .invoke(params)
-        .promise()
-        .catch(err => {
-          invokeFailed = true;
-        });
-      if (!invokeFailed) {
-        let returnedSlot = JSON.parse(lambdaResponse.Payload);
-        if (returnedSlot.status === 200) {
-          let workingList = eventSlotList;
-          workingList[pIndexOfSlot].slotData.owner = newPersonID;
-          workingList[pIndexOfSlot].slotData.name = (pName || newPersonName) + (pInfo ? ` (${pInfo})` : '');
-          setEventSlotList(workingList);
-          setForceRedisplay(!forceRedisplay);
-          return workingList;
-        }
-      };
-    };
-  */
-  /*
-  const sendAVASupportAlert = async (pMessage) => {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-    let lambdaPayload = {
-      "body": {
-        "client": 'SMSoft',
-        "author": 'rsteele',
-        "subject": 'AVA alert - Invalid Calendar update',
-        "values": `AVA Support:ava_support ~ MessageText = ${pMessage}`
-      }
-    };
-    params.Payload = JSON.stringify(lambdaPayload);
-    lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
-  };
-*/
   const handleAllocateSlot = async (body) => {
     let pPerson, pSlot, pRelease, pIndex;
-    pPerson = body.person;
-    if (body.slot) { pSlot = body.slot; }
-    else {
-      let a1 = pPerson.split(':');
-      pSlot = a1[Math.min(1, a1.length - 1)];
-    }
+
     if (body.release) { pRelease = body.release; }
     else { pRelease = false; }
-    if (body.index) { pIndex = body.index; }
-    let [newPersonName, newPersonID] = pPerson.split(':');
-    let [first, last] = newPersonName.split(/\s(.*)/);
-    let slotInfo = await writeSlot({
-      "client": pClient,
-      "event": pEventCode,
-      // "occurrence_date": <string or number>
-      "owner": newPersonID,
-      "override_name": newPersonName,
-      "slot": pSlot || newPersonID,
-      "status": (pRelease ? 'released' : 'selected'),
-      "show_this_slot": ((pOccData.signup_type === 'time') ? true : !pRelease)
-    });
+    if (body.hasOwnProperty('index')) { pIndex = body.index; }
     let workingList = eventSlotList;
-    if (pRelease) {
-      if (pSlot !== newPersonID) {
-        workingList[pIndex] = {
-          event_key: slotInfo.event_key,
-          first,
-          last,
-          display_name: '',
-          slotData: {
-            name: '',
-            id: pSlot,
-            owner: ''
-          }
-        };
+
+    pPerson = makeArray(body.person);
+    for (let p = 0; p < pPerson.length; p++) {
+      let nArray = pPerson[p].split(':');
+      if (body.slot) { pSlot = body.slot; }
+      else { pSlot = nArray[Math.min(1, nArray.length - 1)]; }
+      let newPersonName, newPersonID;
+      if (nArray.length === 1) {
+        newPersonID = nArray[0];
+        newPersonName = await makeName(newPersonID);
       }
       else {
-        workingList.splice(pIndex, 1);
+        newPersonID = nArray[1];
+        newPersonName = nArray[0];
       }
-    }
-    else {
-      if (!pIndex) {
-        workingList.unshift({
-          event_key: slotInfo.event_key,
-          first,
-          last,
-          display_name: newPersonName,
-          slotData: {
-            name: newPersonName,
-            id: newPersonID,
-            owner: newPersonID
-          }
-        });
+      let [first, last] = newPersonName.split(/\s(.*)/);
+      let slotInfo = await writeSlot({
+        "client": pClient,
+        "event": pEventCode,
+        // "occurrence_date": <string or number>
+        "owner": newPersonID,
+        "override_name": newPersonName,
+        "slot": pSlot || newPersonID,
+        "status": (pRelease ? 'released' : 'selected'),
+        "show_this_slot": ((pOccData.signup_type === 'time') ? true : !pRelease)
+      });
+
+      if (pRelease) {
+        if (pSlot !== newPersonID) {
+          workingList[pIndex] = {
+            event_key: slotInfo.event_key,
+            first,
+            last,
+            display_name: '',
+            slotData: {
+              name: '',
+              id: pSlot,
+              owner: ''
+            }
+          };
+        }
+        else {
+          workingList.splice(pIndex, 1);
+        }
       }
-      else { 
-        workingList[pIndex] = {
-          event_key: slotInfo.event_key,
-          first,
-          last,
-          display_name: newPersonName,
-          slotData: {
-            name: newPersonName,
-            id: pSlot,
-            owner: newPersonID
-          }
-        };
+      else {
+        if (pIndex > -1) {
+          workingList[pIndex] = {
+            event_key: slotInfo.event_key,
+            first,
+            last,
+            display_name: newPersonName,
+            slotData: {
+              name: newPersonName,
+              id: pSlot,
+              owner: newPersonID
+            }
+          };
+        }
+        else {
+          workingList.unshift({
+            event_key: slotInfo.event_key,
+            first,
+            last,
+            display_name: newPersonName,
+            slotData: {
+              name: newPersonName,
+              id: newPersonID,
+              owner: newPersonID
+            }
+          });
+        }
       }
-      
     }
     setEventSlotList(workingList);
     setForceRedisplay(!forceRedisplay);
     return workingList;
-
-    /*
-    // let invokeFailed = false;
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance';
-    params.Payload = JSON.stringify({
-      action: "allocate",
-      clientId: pClient,
-      sign_up: {
-        event_key: pEventCode,
-        slot_id: newPersonID,
-        owner: newPersonID,
-        requestor: pPatient,
-        display_name: newPersonName,
-        new_list_key: (pRelease ? 'release' : newPersonID)
-      }
-    });
-    let lambdaResponse = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        invokeFailed = true;
-      });
-    
-      if (!invokeFailed) {
-      let returnedSlot = JSON.parse(lambdaResponse.Payload);
-      if (returnedSlot.status === 200) {
-        let workingList = eventSlotList;
-        if (!pRelease) {
-          let slotObj = {
-            slotData: {
-              name: newPersonName,
-              owner: newPersonID,
-              id: newPersonID
-            }
-          };
-          workingList.push(slotObj);
-        }
-        else {
-          workingList.splice(pIndex, 1);
-          let workingOpen = open;
-          workingOpen[pIndex] = false;
-          setOpen(workingOpen);
-        }
-        setEventSlotList(workingList);
-        setForceRedisplay(!forceRedisplay);
-        return workingList;
-      }
-    };
-    */
   };
+
+  const handleChangeNotes = async (updatedIndex, pNote) => {
+    eventSlotList[updatedIndex].slotData.notes = pNote;
+    let slotUpdate = Object.assign(
+      {},
+      eventSlotList[updatedIndex],
+      eventSlotList[updatedIndex].slotData,
+      {
+        event: eventSlotList[updatedIndex].event_key,
+        client: pClient
+      }
+    );
+    await writeSlot(slotUpdate);
+    setEventSlotList(eventSlotList);
+    setEditNoteNumber(-1);
+    setForceRedisplay(!forceRedisplay);
+    return eventSlotList;
+  };
+
 
   function makeReadableName(pName) {
     let [pPrimary, pFirst] = pName.split(',');
@@ -669,9 +457,11 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
       <React.Fragment>
         <Box display='flex' className={classes.title} flexDirection='column'>
           <Typography variant='h5' >{pOccData.description}</Typography>
-          <Typography className={classes.standardIndent} variant='body1'>
-            {`${makeDate(pOccData.date).relative}`}
-          </Typography>
+          {pOccData.date &&
+            <Typography className={classes.standardIndent} variant='body1'>
+              {`${makeDate(pOccData.date).relative}`}
+            </Typography>
+          }
           {pOccData.location &&
             <Typography className={classes.standardIndent} variant='body1'>
               {pOccData.location}
@@ -689,7 +479,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     className={classes.listItem}
                     cols={1}
                   >
-                    <Box display='flex' flexDirection='row' alignItems='center'>
+                      <Box display='flex' flexGrow={1} flexDirection='row' alignItems='center'>
                       {isNaN(Number(this_item.slotData.id)) ?
                         null :
                         (Number(this_item.slotData.id) >= 100 ?    // Numbers that are times are in the range 100 through 1200; otherwise assume seat number 1, 2, 3, etc...
@@ -703,40 +493,75 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         )
                       }
                       {slotIsOccupied(this_item.slotData) &&
-                        <Typography variant='h5' className={classes.standardIndent}>{makeReadableName(this_item.slotData.name)}</Typography>
+                        <Box display='flex' flexDirection='column' flexGrow={1}>
+                          <Typography variant='h5' >{makeReadableName(this_item.slotData.name)}</Typography>
+                            {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
+                            (editNoteNumber === index ?
+                              <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>
+                                <Input classes={{ root: classes.standardIndent, input: classes.inputRule }}
+                                  multiline
+                                  key={`noteData_${index}`}
+                                  defaultValue={this_item.slotData.notes || ''}
+                                  onChange={(event) => { setNewNote(event.target.value); }}
+                                />
+                                <SaveIcon
+                                  aria-label="saveNote_icon"
+                                  onClick={() => { handleChangeNotes(index, newNote); }}
+                                  edge="end"
+                                />
+                                <CloseIcon
+                                  aria-label="closeNote_icon"
+                                  onClick={() => { setEditNoteNumber(-1); }}
+                                  edge="end"
+                                />
+                              </Box>
+                              :
+                              <Typography variant='body1' className={classes.standardIndent} >
+                                {this_item.slotData.notes}
+                              </Typography>
+                            )
+                          }
+                        </Box>
                       }
                     </Box>
-                    {slotIsOccupied(this_item.slotData) && (isEventOwner || isSlotOwner(this_item.slotData)) &&
-                        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                      {slotIsOccupied(this_item.slotData) &&
+                        (isEventOwner || isSlotOwner(this_item.slotData)) &&
+                        (editNoteNumber === -1) &&
+                      <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                         <Tooltip title={`Remove ${isEventOwner ? makeReadableName(this_item.slotData.name) : 'me'}`}>
                           <PersonAddDisabledIcon
-                            onClick={() => {
-                              // if (pOccData.signup_type === 'time') { handleReleaseSlot(index); }
-                              // else {
-                              handleAllocateSlot({
-                                person: `${this_item.slotData.name}:${this_item.slotData.owner}`,
-                                slot: this_item.slotData.id,
-                                release: true,
-                                index
+                            onClick={async () => {
+                                await handleAllocateSlot({
+                                  person: `${this_item.slotData.name}:${this_item.slotData.owner}`,
+                                  slot: this_item.slotData.id,
+                                  release: true,
+                                  index: (index || 0)
                               });
-                              // }
                             }}
                           />
+                        </Tooltip>
+                        <Tooltip title={`${this_item.slotData.notes ? 'Update' : 'Add a'} note...`}>
+                          <EditIcon
+                            onClick={() => {
+                              setEditNoteNumber(index);
+                            }}
+                          />
+                        </Tooltip>
+                        {isEventOwner &&
+                          <Tooltip title={`Send a message to ${makeReadableName(this_item.slotData.name)}`} >
+                            <SendIcon
+                              onClick={() => {
+                                setPromptForMessage(true);
+                                setMessageType('');
+                                setRecipient(`${makeReadableName(this_item.slotData.name)}:` + this_item.slotData.owner);
+                              }}
+                            />
                           </Tooltip>
-                          {isEventOwner &&
-                            <Tooltip title={`Send a message to ${makeReadableName(this_item.slotData.name)}`} >
-                              <SendIcon
-                                onClick={() => {
-                                  setPromptForMessage(true);
-                                  setMessageType('');
-                                  setRecipient(`${makeReadableName(this_item.slotData.name)}:` + this_item.slotData.owner);
-                                }}                             
-                              />
-                            </Tooltip>
-                          }
+                        }
                       </Box>
                     }
-                    {!slotIsOccupied(this_item.slotData) &&
+                      {!slotIsOccupied(this_item.slotData) &&
+                        (editNoteNumber === -1) &&
                       <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                         <Tooltip title={isEventOwner ? `Select someone` : `Add myself`}>
                           <PersonAddIcon
@@ -747,14 +572,11 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                                 setSelectNewSlotOwner(true);
                               }
                               else {
-                                // if (pOccData.signup_type === 'time') { handleChangeSlotOwner(pPatientRec.patient_display_name + ':' + pPatient, index); }
-                                // else { 
-                                handleAllocateSlot({
+                                await handleAllocateSlot({
                                   person: `${pPatientRec.patient_display_name}:${pPatient}`,
                                   slot: this_item.slotData.id,
-                                  index
+                                  index: (index || 0)
                                 });
-                                // }
                               }
                             }}
                           />
@@ -772,20 +594,20 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
           <PersonFilter
             prompt={'Who are you signing-up?'}
             peopleList={choiceList}
+            multiSelect={true}
             onCancel={() => {
               setSelectNewSlotOwner(false);
             }}
-            onSelect={(selectedPerson) => {
+            onSelect={async (selectedPerson) => {
               setSelectNewSlotOwner(false);
               // if (pOccData.signup_type === 'time') { handleChangeSlotOwner(selectedPerson, editIndex); }
               // else {
-              let pSplit = selectedPerson.split(':');
-              let slotObj = { person: `${pSplit[0]}:${pSplit[Math.min(1, pSplit.length - 1)]}` };
+              let slotObj = { person: selectedPerson };
               if (editIndex) {
                 slotObj.slot = eventSlotList[editIndex].slotData.id;
                 slotObj.index = editIndex;
               }
-              handleAllocateSlot(slotObj);
+              await handleAllocateSlot(slotObj);
             }}
           >
           </PersonFilter>
@@ -809,14 +631,14 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                   className={classes.rowButtonRed}
                   onClick={onReset}
                 >
-                  <CheckIcon size="small" />
+                  <CloseIcon size="small" />
                 </IconButton>
               </Tooltip>
               :
               <Button
                 className={classes.rowButtonRed}
                 onClick={onReset}
-                startIcon={<CheckIcon size="small" />}
+                startIcon={<CloseIcon size="small" />}
               >
                 {'Done'}
               </Button>
@@ -836,7 +658,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                       setSelectNewSlotOwner(true);
                     }
                     else {
-                      handleAllocateSlot({
+                      await handleAllocateSlot({
                         person: `${pPatientRec.patient_display_name}:${pPatient}`
                       });
                     }
@@ -867,12 +689,12 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     <PrintIcon size='small' />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title={`Send a message to everone that is signed-up`} >
+                <Tooltip title={`Send a message to everone on this list`} >
                   <IconButton
                     onClick={() => {
                       setPromptForMessage(true);
                       setMessageType('Group');
-                      setRecipient(`People signed-up for ${occurrenceInfo.description} ${makeDate(occurrenceInfo.date).relative}`
+                      setRecipient(`People on the ${pOccData.description} list`
                         + ':' +
                         + (eventSlotList.map(e => { return e.slotData.id; })).join(' ~ '));
                     }}
@@ -890,19 +712,20 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 <Button
                   className={classes.rowButtonRed}
                   onClick={onReset}
-                  startIcon={<CheckIcon size="small" />}
+                  startIcon={<CloseIcon size="small" />}
                 >
                   {'Done'}
                 </Button>
                 {pOccData.signup_type !== 'time' &&
                   <Button
+                    className={classes.rowButtonDefault}
                     onClick={async () => {
                       if (isEventOwner) {
                         await setChoices(peopleList);
                         setSelectNewSlotOwner(true);
                       }
                       else {
-                        handleAllocateSlot({ person: `${pPatientRec.patient_display_name}:${pPatient}` })
+                        await handleAllocateSlot({ person: `${pPatientRec.patient_display_name}:${pPatient}` });
                       }
                     }}
                     startIcon={<PersonAddIcon size="small" />}
@@ -929,6 +752,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
               {isEventOwner &&
                 <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                   <Button
+                    className={classes.rowButtonDefault}
                     onClick={async () => {
                       await handlePrint(pEventCode, 'sign-up');
                     }}
@@ -937,16 +761,17 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     {'Sign-up sheet'}
                   </Button>
                   <Button
+                    className={classes.rowButtonDefault}
                     onClick={() => {
                       setPromptForMessage(true);
                       setMessageType('Group');
-                      setRecipient(`People signed-up for ${occurrenceInfo.description} ${makeDate(occurrenceInfo.date).relative}`
+                      setRecipient(`People on the ${pOccData.description} list`
                         + ':' +
                         + (eventSlotList.map(e => { return e.slotData.id; })).join(' ~ '));
                     }}
                     startIcon={<SendIcon size='small' />}
                   >
-                    {'Message to all registrants'}
+                    {'Message to everyone on the list'}
                   </Button>
                 </Box>
               }

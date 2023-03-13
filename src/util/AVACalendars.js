@@ -212,12 +212,12 @@ export async function getSlotList(request) {
     slotRecs.forEach(r => {
       if (r.slotData) {
         let slotKey = r.slotData.slot || r.slotData.id;
-        slotObj[slotKey] = {
+        slotObj[slotKey] = Object.assign(r.slotData, {
           status: (r.slotData.status ? r.slotData.status.current : "undefined"),
           show_this_slot: (r.slotData.hasOwnProperty('show_this_slot') ? r.slotData.show_this_slot : true),
           owner: r.slotData.owner,
           display_name: r.slotData.display_name || r.slotData.name
-        };
+        });
       }
     });
   }
@@ -477,11 +477,29 @@ export async function writeSlot(body) {
       }];
     }
   }
-  slotHistory.unshift([{
+  let makeHistory = {
     date: makeDate(new Date()).absolute,
     status: body.status,
     owner: body.owner
-  }])
+  }; 
+  if (body.notes && slotRec.slotData && (slotRec.slotData.notes !== body.notes)) {
+    makeHistory.note = body.notes;
+  }
+  slotHistory.unshift([makeHistory]);
+  let slotUpdate = Object.assign(
+    slotRec.slotData || {},
+    { show_this_slot: true },
+    {
+      slot: body.slot,
+      owner: body.owner
+    },
+    body.slotData || {},
+    {
+    status: {
+      current: body.status,
+      history: slotHistory
+    }
+  });
   if (!body.status) { body.status = 'selected'; }
   let putCalendar = {
     client: body.client,
@@ -489,15 +507,7 @@ export async function writeSlot(body) {
     event_key,
     occurrence_date: `${occurrence}`,
     slot_owner: body.owner,
-    slotData: {
-      owner: body.owner,
-      slot: body.slot,
-      show_this_slot: (body.hasOwnProperty('show_this_slot') ? body.show_this_slot : true),
-      status: {
-        current: body.status,
-        history: slotHistory
-      }
-    }
+    slotData: slotUpdate
   };
   if (body.override_name) { putCalendar.slotData.display_name = body.override_name; }
   else { putCalendar.slotData.display_name = await makeName(body.owner); }
