@@ -1,4 +1,6 @@
-import { clt, cl, recordExists } from './AVAUtilities';
+import { clt, cl, recordExists, makeArray, resolveVariables } from './AVAUtilities';
+import { makeName } from './AVAPeople';
+import { addDays, makeDate } from './AVADateTime';
 
 const AWS = require('aws-sdk');
 const dbClient = new AWS.DynamoDB.DocumentClient({
@@ -11,18 +13,43 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
 // Functions
 
 export async function getCalendarEntries(body) {
+  /*  
+  body: {
+    client_id  (alt client)
+    person_id  (alt person)
+    event_id  (form event#occurrence OK) (alt event)
+    occurrence_id  (if present, replaces occurrence in event_id) (alt occurrence)
+    type ('event', 'occurrence', 'slot', 'all', 'exact', 'structure')
+    allow_create  (boolean - if type = occurrence AND record does not exist AND occurrence_id is a valid eccurrence for this event )
+    return_event (boolean - when allow_create adds an occerrence, also return the associated event record)
+    (alt) filter {
+      person_id  (alt person)
+      event_id  (alt event)
+      occurrence_id  (alt occurrence)
+      type
+    }
+  }
+  */
+  let rC = body.client_id || body.client;
   let rP = body.person_id || body.person || body.filter?.person_id || body.filter?.person;
   let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
-  let rT = body.type || body.filter?.type;  // 'event', 'occurrence', 'slot', 'all', 'exact', 'structure'
+  let rT = body.type || body.filter?.type;
+  let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
+  let create_occ = false;
+  if (body.allow_create) { create_occ = body.allow_create; }
+  if (rO) { rV = rV.split('#')[0] + '#' + rO; }
+  else { rO = rV.split('#')[1]; }
   let qQ = { TableName: 'Calendar' };
+  let returnValueIfNotFound = false;
   if (rV) {
     qQ.KeyConditionExpression = 'client = :c';
-    qQ.ExpressionAttributeValues = { ':c': body.client_id };
+    qQ.ExpressionAttributeValues = { ':c': rC };
     if (rT) {
       switch (rT) {
         case 'all': {
           qQ.KeyConditionExpression += ' and begins_with(event_key, :rP)';
           qQ.ExpressionAttributeValues[':rP'] = `${rV.split('#')[0]}#`;
+          returnValueIfNotFound = [];
           break;
         }
         case 'event': {
@@ -39,6 +66,7 @@ export async function getCalendarEntries(body) {
         case 'structure': {
           qQ.KeyConditionExpression += ' and begins_with(event_key, :rP)';
           qQ.ExpressionAttributeValues[':rP'] = rV;
+          returnValueIfNotFound = [];
           break;
         }
         case 'slot':
@@ -55,6 +83,7 @@ export async function getCalendarEntries(body) {
     qQ.IndexName = 'sign_up-index';
     qQ.KeyConditionExpression = 'schedule_key = :s and begins_with(list_key, :rP)';
     qQ.ExpressionAttributeValues = { ':rP': `${rP}#`, ':s': 'slot_data' };
+    returnValueIfNotFound = [];
   }
 
   let qR = await dbClient
@@ -69,17 +98,23 @@ export async function getCalendarEntries(body) {
   if (recordExists(qR)) {
     if (qR.Items.length === 1) { return qR.Items[0]; }
     else {
-      // sort by date in event key (most recent first)
+      // return the list of calendar entries sorted by date in event key (most recent first)
       return qR.Items.sort((a, b) => {
         if ((a.event_key.split(/#(.*)/)[1] || null) > (b.event_key.split(/#(.*)/)[1] || null)) { return -1; }
         else { return 1; }
       });
     }
   }
-  else { return []; }
+  else {
+    if ((rT !== 'occurrence') || (!create_occ)) { return returnValueIfNotFound; }
+    // occurrence not found... 
+    // asked to create the entry if not found(create_occ = true), so...
+    return await validateOccurrence(rC, rV, rO, true);  // will not create if it is an invalid occurrence
+  }
 }
 
 export async function updateCalendarEntry(body) {
+
   // body is a single, or an array of, service request records
   let unProcessed = [];
   if (Array.isArray(body)) {
@@ -133,3 +168,428 @@ export async function updateCalendarEntry(body) {
   return returnMessage;
 }
 
+export async function getSlotList(request) {
+  /* 
+  request
+    client - client
+    event - use this event 
+    occurrence - use this event
+  
+  response
+    eventRec
+    occRec
+    slotObj {slot: status, slot: status, ...]
+  */
+  let eventRec = {};
+  let occRec = {};
+  let slotObj = {};
+  let event_id, event_occurrence;
+  if (typeof (request.event) === 'string') {
+    [event_id, event_occurrence] = request.event.split('#');
+    eventRec = await getCalendarEntries({ client: request.client, event: `${event_id}`, type: 'event' });
+    if (!event_occurrence) { event_occurrence = request.occurrence; }
+    occRec = await getCalendarEntries({ client: request.client, event: `${event_id}#${event_occurrence}`, type: 'occurrence' });
+  }
+  else {
+    if (typeof (request.event) === 'object') { eventRec = request.event; }
+    if (typeof (request.occurrence) === 'object') { occRec = request.occurrence; }
+    else {
+      occRec = await getCalendarEntries({ client: request.client, event: `${eventRec.event_id}#${request.occurrence}`, type: 'occurrence' });
+    }
+  }
+  if (eventRec && ('eventData' in eventRec) && (eventRec.eventData.slotPattern)) {
+    let slotArray = eventRec.eventData.slotPattern;
+    if (('occData' in occRec) && (occRec.occData.slotPattern)) { slotArray = occRec.occData.slotPattern; };
+    slotArray.forEach(s => {
+      slotObj[s] = {
+        status: "available",
+        show_this_slot: true
+      };
+    });
+  }
+  let slotRecs = await getCalendarEntries({ client: request.client, event: `${occRec.event_key}`, type: 'structure' });
+  if (slotRecs.length > 0) {
+    slotRecs.forEach(r => {
+      if (r.slotData) {
+        let slotKey = r.slotData.slot || r.slotData.id;
+        slotObj[slotKey] = {
+          status: (r.slotData.status ? r.slotData.status.current : "undefined"),
+          show_this_slot: (r.slotData.hasOwnProperty('show_this_slot') ? r.slotData.show_this_slot : true),
+          owner: r.slotData.owner,
+          display_name: r.slotData.display_name || r.slotData.name
+        };
+      }
+    });
+  }
+  return ({ eventRec, slotObj, occRec });
+}
+
+export async function getOccurenceList(request) {
+  /* 
+  request
+    client - client
+    event - use this event 
+      if occurrence is in event (as in event#occurence), get next occurrence after the listed one
+    from_date - find next occurrence on or after this date (will override occurrence included in event)
+    to_date - find all occurrences up to and including this date (default if missing is 400 days after from_date)
+    number_of_occurrences - find this many
+  
+  response
+    eventRec
+    occArray [oDate, oDate...]
+    occRec {oDate: occRec, oDate: occRec, ...}  if rec already exists, otherwise not present
+  */
+  let eventRec = {};
+  let event_id, event_occurrence;
+  if (typeof (request.event) === 'string') {
+    [event_id, event_occurrence] = request.event.split('#');
+    eventRec = await getCalendarEntries({ client: request.client, event: event_id, type: 'event' });
+  }
+  else { eventRec = request.event; }
+  let response = { eventRec, occArray: [], occRec: {} };
+  let from_date, from_numeric, to_date, to_numeric;
+  if (request.from_date
+    || (('date' in request) &&
+      ((request.date.hasOwnProperty('from')) || (request.date.hasOwnProperty('from_date'))))) {
+    let fDate = makeDate(request.from_date || request.date.from || request.date.from_date);
+    from_date = fDate.date;
+    from_numeric = fDate.numeric;
+  }
+  else if (event_occurrence) { from_date = makeDate(event_occurrence).date; }
+  else { from_date = new Date(); }
+  if (request.to_date
+    || (('date' in request) &&
+      ((request.date.hasOwnProperty('to')) || (request.date.hasOwnProperty('to_date'))))) {
+    let tDate = makeDate(request.to_date || request.date.to || request.date.to_date).date;
+    to_date = tDate.date;
+    to_numeric = tDate.numeric;
+  }
+  else {
+    to_date = addDays(from_date, 400);
+    to_numeric = makeDate(to_date).numeric;
+  }
+  // Now have key elements in hand:
+  //   eventRec, from_date (as date), to_date (as date), and (optionally) number_of_occurrences
+  let occPattern = eventRec.eventData.occPattern;
+  switch (occPattern.recurrence) {
+    case "daily": {
+      for (let candidate = from_date; candidate < to_date; addDays(candidate, 1)) {
+        if (occPattern.day_of_week.includes(candidate.getDay())) {
+          await goodCandidate(makeDate(candidate).numeric);
+        }
+      }
+      break;
+    }
+    case "monthly": {
+      let targetArray = [];
+      if (typeof occPattern.day_of_month === 'string') { targetArray[0] = occPattern.day_of_month; }
+      else if (typeof occPattern.day_of_month === 'number') { targetArray[0] = occPattern.day_of_month; }
+      else { targetArray.push(...occPattern.day_of_month); }
+      from_date.setDate(1);
+      let monthToCheck;
+      for (let candidate = from_date; candidate < to_date; candidate.setMonth(monthToCheck + 1)) {
+        let yearToCheck = candidate.getFullYear();
+        monthToCheck = candidate.getMonth();
+        for (let r = 0; r < targetArray.length; r++) {
+          if (typeof targetArray[r] === 'number') {
+            await goodCandidate(`${yearToCheck}${monthToCheck}${targetArray[r]}`);
+          }
+          else {
+            for (let x = 0; x < 7; x++) {
+              let checkDate = addDays(candidate, x);
+              if (occPattern.day_of_week.includes(checkDate.getDay())) {
+                switch (targetArray[r]) {
+                  case "first": {
+                    await goodCandidate(makeDate(checkDate).numeric);
+                    break;
+                  }
+                  case "second": {
+                    await goodCandidate(makeDate(addDays(checkDate, 7)).numeric);
+                    break;
+                  }
+                  case "third": {
+                    await goodCandidate(makeDate(addDays(checkDate, 14)).numeric);
+                    break;
+                  }
+                  case "fourth": {
+                    await goodCandidate(makeDate(addDays(checkDate, 21)).numeric);
+                    break;
+                  }
+                  case "last": {
+                    let possDate = addDays(checkDate, 28);
+                    if (possDate.getMonth() === monthToCheck) {
+                      await goodCandidate(makeDate(possDate).numeric);
+                    }
+                    else {
+                      await goodCandidate(makeDate(addDays(checkDate, 21)).numeric);
+                    }
+                    break;
+                  }
+                  default: { }
+                }  // end switch on occPattern.day_of_month (as targetArray[r]) ("first Thursday", "second Thursday", etc)
+              } // end "if this date matches a target day of the week (Thursday)"
+            } // end trying every possible day of the week (Sunday - Saturday)
+          } // end else block - occPattern.day_of_month (targetArray[r]) is not a number
+        } // end loop through all occPattern.day_of_month entries
+      } // end loop from first date to last date
+      break;
+    } // end monthly case
+    case "yearly": {
+      let targetArray = [];
+      if (typeof occPattern.day_of_year === 'string') { targetArray[0] = Number(occPattern.day_of_year); }
+      else if (typeof occPattern.day_of_year === 'number') { targetArray[0] = occPattern.day_of_year; }
+      else {
+        occPattern.day_of_year.forEach(d => {
+          targetArray.push(Number(d));
+        });
+        targetArray.sort();
+      }
+      from_date.setMonth(1, 1);
+      let yearToCheck;
+      for (let candidate = from_date; candidate < to_date; candidate.setFullYear(yearToCheck + 1)) {
+        yearToCheck = candidate.getFullYear();
+        for (let t = 0; t < targetArray.length; t++) {
+          await goodCandidate((yearToCheck * 10000) + targetArray[t]);
+        }
+      }
+      break;
+    }
+    default: {
+      for (let s = 0; s < occPattern.specified.length; s++) {
+        await goodCandidate(occPattern.specified[s]);
+      }
+    }
+  }
+  return response;
+
+  // ----- Functions -----
+
+  async function goodCandidate(inDate) {
+    let numericDate, stringDate;
+    if (typeof inDate === 'string') { stringDate = inDate; numericDate = Number(inDate); }
+    else { stringDate = inDate.toString(); numericDate = inDate; }
+    if (('exceptions' in occPattern) && occPattern.exceptions.hasOwnProperty(stringDate)) {
+      if (occPattern.exceptions[stringDate] > 0) {
+        numericDate = occPattern.exceptions[stringDate];
+        stringDate = numericDate.toString();
+      }
+      else { return false; } // found a date specifically excluded
+    }
+    if (('first_date' in occPattern) && (numericDate < occPattern.first_date)) { return false; }
+    if (numericDate < from_numeric) { return false; }
+    if (('last_date' in occPattern) && (numericDate > occPattern.last_date)) { return false; }
+    if (numericDate > to_numeric) { return false; }
+    // All good if we get this far
+    response.occArray.push(numericDate);
+    let oRec = await getCalendarEntries({ event: `${event_id}#${stringDate}`, type: 'occurrence' });
+    if (recordExists.oRec) { response.occRec[stringDate] = oRec.occData; }
+    return numericDate;
+  }
+}
+
+export async function validateOccurrence(client, inEvent, inDate, addRec = false) {
+  let cDate = makeDate(inDate);
+  let result = await getOccurenceList({
+    client,
+    event: inEvent,
+    from_date: cDate.date,
+    to_date: cDate.date
+  });
+  if (result.occArray.length > 0) {
+    if (result.occRec.hasOwnProperty[result.occArray[0]]) { return result.occRec[result.occArray[0]]; }
+    else { return true; }
+  }
+  else {
+    if (!addRec) { return false; }
+    let occRec = await addOccurrence({
+      client,
+      event: result.eventRec,
+      occurrence_date: cDate.numeric
+    });
+    return [result.eventRec, occRec];
+  }
+}
+
+export async function addOccurrence(body) {
+  if (!body.event) { return false; }
+  let event_id, occurrence, oDesc;
+  if (typeof body.event === 'object') {
+    event_id = body.event.event_key;
+    occurrence = body.occurrence_date;
+    if (body.event.eventData) {
+      let rDesc = await resolveVariables(body.event.eventData.event_data.description);
+      if (rDesc !== body.event.eventData.event_data.description) { oDesc = rDesc; }
+    }
+  }
+  else {
+    let occ_id;
+    [event_id, occ_id] = body.event.split('#');
+    occurrence = body.occurrence_date || occ_id;
+  }
+  let putCalendar = {
+    client: body.client,
+    event_id,
+    event_key: `${event_id}#${occurrence}`,
+    occurrence_date: `${occurrence}`
+  };
+  if (oDesc) {
+    putCalendar.occData = {
+      "event_data": { 'description': oDesc }
+    }
+  }
+  if (body.occData) { putCalendar.occData = body.occData; }
+  await dbClient
+    .put({
+      Item: putCalendar,
+      TableName: "Calendar",
+    })
+    .promise()
+    .catch(error => {
+      cl(`caught error updating Calendar; error is:`, error);
+      return false;
+    });
+  return putCalendar;
+}
+
+export async function writeSlot(body) {
+  /*  
+    "client": <client>,
+    "event": <event_id>,
+    "occurrence_date (optional, if occurrence is in event as event#occurrence": <string or number>
+    "owner": <person>,
+    "override_name": <string or null>,
+    "slot": <"0900 (time) or s#103 (seat) or r#12/s#103 (row and seat) or rsteele (user_id)">,
+    "status": <"null (=selected), released, reserved, confirmed, attended, no-show, off_campus, left_campus, entered_campus... ">
+    "show_this_slot": <boolean>  (assume true if missing or null)
+  */
+  let [event_id, occ_id] = body.event.split('#');
+  let occurrence = body.occurrence_date || occ_id;
+  let event_key = `${event_id}#${occurrence}#${body.slot}`
+  let slotRec = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'slot' });
+  let slotHistory = [];
+  if (slotRec) {
+    if (slotRec.slotData.status) { slotHistory = slotRec.slotData.status.history; }
+    else {  // will convert a record from old style to new stlye
+      slotHistory = [{
+        date: 'unknown',
+        status: 'selected',
+        owner: slotRec.slotData.owner
+      }];
+    }
+  }
+  slotHistory.unshift([{
+    date: makeDate(new Date()).absolute,
+    status: body.status,
+    owner: body.owner
+  }])
+  if (!body.status) { body.status = 'selected'; }
+  let putCalendar = {
+    client: body.client,
+    event_id,
+    event_key,
+    occurrence_date: `${occurrence}`,
+    slot_owner: body.owner,
+    slotData: {
+      owner: body.owner,
+      slot: body.slot,
+      show_this_slot: (body.hasOwnProperty('show_this_slot') ? body.show_this_slot : true),
+      status: {
+        current: body.status,
+        history: slotHistory
+      }
+    }
+  };
+  if (body.override_name) { putCalendar.slotData.display_name = body.override_name; }
+  else { putCalendar.slotData.display_name = await makeName(body.owner); }
+  await dbClient
+    .put({
+      Item: putCalendar,
+      TableName: "Calendar",
+    })
+    .promise()
+    .catch(error => {
+      cl(`caught error updating Calendar; error is:`, error);
+    });
+  return putCalendar;
+}
+
+export async function updateSlotStatus(request) {
+  /* request is
+    {
+      client, 
+      body: [
+        { 
+          person: [p1:<opt pName>, p2...], 
+          event, 
+          occurrence 
+            -OR- 
+          date: { 
+            from: string -> makeDate.date
+            to: string -> makeDate.date
+          },
+          slot (if missing, use person_id), 
+          status 
+          show_this_slot
+        }, 
+        {}...
+      ];
+    }
+  */
+  let responseMessage = [];
+  let reqArray = makeArray(request.body);
+  for (let r = 0; r < reqArray.length; r++) {
+    let this_request = reqArray[r];
+    // figure out occurrences
+    let occArray = [];
+    if ('occurrence' in this_request) {
+      occArray = makeArray(this_request.occurrence);
+    }
+    else {
+      if (!('date' in this_request)) {
+        responseMessage.push(`No occurrence data`);
+        continue;
+      }
+      else if (typeof (this_request.date) === 'string') { occArray.push(makeDate(this_request.date).numeric); }
+      else if (Array.isArray(this_request.date)) {
+        this_request.date.forEach(d => { occArray.push(makeDate(d).numeric); });
+      }
+      else {
+        let from_date, to_date;
+        if ('from' in this_request.date) { from_date = makeDate(this_request.date.from).date; }
+        else { from_date = new Date(); }
+        if ('to' in this_request.date) { to_date = makeDate(this_request.date.to).date; }
+        else { to_date = addDays(from_date, 7); }
+        let rBody = {
+          client: request.client,
+          event: this_request.event,
+          from_date,
+          to_date
+        };
+        let oResponse = await getOccurenceList(rBody);
+        /* 
+          oResponse.occArray [oDate, oDate...]
+          oResponse.occRec {oDate: occRec, oDate: occRec, ...}  if rec already exists, otherwise not present
+        */
+        occArray = oResponse.occArray;
+      }
+    }
+    let peopleArray = makeArray(this_request.person);
+    for (let o = 0; o < occArray.length; o++) {
+      await validateOccurrence(request.client, this_request.event, occArray[o], true);
+      for (let p = 0; p < peopleArray.length; p++) {
+        let [pID, pName] = peopleArray[p].split(':');
+        await writeSlot({
+          client: request.client,
+          event: this_request.event,
+          occurrence_date: occArray[o],
+          owner: pID,
+          override_name: pName,
+          slot: this_request.slot,
+          status: this_request.status,
+          show_this_slot: this_request.show_this_slot || true
+        });
+      }
+    }
+  }
+  return responseMessage;
+}

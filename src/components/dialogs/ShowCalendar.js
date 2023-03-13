@@ -2,6 +2,8 @@ import React from 'react';
 
 import { API, graphqlOperation } from 'aws-amplify';
 import { Lambda } from 'aws-sdk';
+// import { makeArray } from '../../util/AVAUtilities';
+import { getCalendarEntries } from '../../util/AVACalendars';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -179,13 +181,76 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
     let fortnight_year = twoWeeksFromNow.getFullYear();
     let fortnight_month = twoWeeksFromNow.getMonth() + 1;
     let fortnight_date = twoWeeksFromNow.getDate();
-
+    let theCalendar = [];
     if (currentEvent && currentEvent.length > 0) {
+      /*
       params.Payload = JSON.stringify({
         action: "get_event",
         clientId: eventClient || (patient.adopted_client || patient.client_id),
         event_id: currentEvent,
         person_id: patient.patient_id
+      });
+      let fResp = await lambda
+      .invoke(params)
+      .promise()
+      .catch(err => {
+        console.log("AVA couldn't complete the query.  Error is", JSON.stringify(err));
+        invokeFailed = true;
+      });
+      */
+      let oResp = await getCalendarEntries({
+        client_id: eventClient || (patient.adopted_client || patient.client_id),
+        person_id: patient.patient_id,
+        event_id: currentEvent,
+        type: 'occurrence',
+        allow_create: true
+      });
+      let eventRec, occRec;
+      if (Array.isArray(oResp)) {
+        eventRec = oResp[0];
+        occRec = oResp[1];
+      }
+      else {
+        eventRec = await getCalendarEntries({
+          client_id: eventClient || (patient.adopted_client || patient.client_id),
+          person_id: patient.patient_id,
+          event_id: currentEvent,
+          type: 'event'
+        });
+        occRec = oResp;
+      }
+      let description, location, owner, signup_type;
+      if (eventRec.eventData) {
+        description = eventRec.eventData.event_data.description;
+        location = eventRec.eventData.event_data.location;
+        owner = eventRec.eventData.event_data.owner;
+        signup_type = eventRec.eventData.event_data.type
+      }
+      else if (eventRec.calData) {
+        description = eventRec.calData.description;
+        location = eventRec.calData.location;
+        owner = eventRec.calData.owner;
+        signup_type = eventRec.calData.signup_type;
+      }
+      if (occRec.occData && occRec.occData.event_data && occRec.occData.event_data.description) {
+        description = occRec.occData.event_data.description;
+      }
+      let oDate;
+      if (occRec.occData && occRec.occData.date) { oDate = occRec.occData.date; }
+      else { oDate = occRec.occurrence_date; }
+      theCalendar.push({
+        client: occRec.client,
+        event_key: occRec.event_key,
+        id: occRec.event_id,
+        // list_key: 'occurrence_master',
+        schedule_key: `${oDate}`,
+        occData: {
+          date: Number(oDate),
+          signup_type,
+          description,
+          location,
+          owner 
+        }
       });
       setShowAll(false);
     }
@@ -198,26 +263,25 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
         person_id: patient.patient_id
       });
       setShowAll(true);
-    }
-    let fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        console.log("AVA couldn't complete the query.  Error is", JSON.stringify(err));
-        invokeFailed = true;
-      });
-    let theCalendar = [];
-    if (!invokeFailed) {
-      let fullResponse = JSON.parse(fResp.Payload);
-      if (fullResponse.status === 200) {
-        fullResponse.body.forEach(cEv => {
-          theCalendar.push(cEv);
+      let fResp = await lambda
+        .invoke(params)
+        .promise()
+        .catch(err => {
+          console.log("AVA couldn't complete the query.  Error is", JSON.stringify(err));
+          invokeFailed = true;
         });
+      if (!invokeFailed) {
+        let fullResponse = JSON.parse(fResp.Payload);
+        if (fullResponse.status === 200) {
+          fullResponse.body.forEach(cEv => {
+            theCalendar.push(cEv);
+          });
+        };
       };
-      setMyCalendar(theCalendar);
-      setLastEndDate(twoWeeksFromNow);
-      return theCalendar;
-    };
+    }
+    setMyCalendar(theCalendar);
+    setLastEndDate(twoWeeksFromNow);
+    return theCalendar;
   };
 
   const extendDates = async () => {
@@ -233,7 +297,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
     let fortnight_month = twoWeeksFromNow.getMonth() + 1;
     let fortnight_date = twoWeeksFromNow.getDate();
     let result = {};
-    
+
     result = await API
       .graphql(
         graphqlOperation(getCalendar, {
@@ -250,7 +314,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
         console.log(error);
         invokeFailed = true;
       });
-    
+
     let theCalendar = myCalendar;
     if (!invokeFailed && result.data.getCalendar.body) {
       result.data.getCalendar.body.forEach(cEv => {

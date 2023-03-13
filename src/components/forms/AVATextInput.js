@@ -151,16 +151,15 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
             mb={0}
             id={`contentsColumn`}
             key={`contentsColumn`}
-            fullWidth
             flexDirection='column'
             justifyContent='center'
             alignItems='flex-start'
           >
             {promptArray.map((prompt, ndx) => (
-              <React.Fragment>
+              <React.Fragment key={`frag-${ndx}`}>
                 {prompt.toLowerCase().startsWith('[checkbox]') ?
                   <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                    alignItems='center' fullWidth flexWrap='wrap' key={`qropt-${ndx}`}
+                    alignItems='center' flexWrap='wrap' key={`qropt-${ndx}`}
                   >
                     <Checkbox
                       className={classes.radioButton}
@@ -177,7 +176,6 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
                     classes={{ root: classes.idText }}
                     id={`prompt-${ndx}`}
                     key={`prompt-${ndx}`}
-                    fullWidth
                     multiline
                     inputRef={input => (ndx === 0) && input && input.focus()}
                     label={(prompt === titleText) ? '' : prompt}

@@ -75,6 +75,13 @@ export function sentenceCase(pString) {
   return (!pString ? '' : pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase());
 }
 
+export function makeArray(input) {
+  let response = [];
+  if (Array.isArray(input)) { response.push(...input); }
+  else { response.push(input); }
+  return response;
+}
+
 export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/\s+/);
@@ -216,9 +223,9 @@ export async function resolveVariables(pKey, pSession) {
   if (!pKey) { return ''; }
   // look for brackets in the key and deal with what's between them
   do {
-    let [front, rest] = pKey.split(/\[(.*)/);
+    let [front, rest] = pKey.split(/[[<](.*)/);
     if (!rest) { return front; }
-    let [middle, back] = rest.split(/](.*)/);
+    let [middle, back] = rest.split(/[\]>](.*)/);
     if (middle) {
       // if there is a middle, but no front or back, this is an ARRAY...
       if (!front && !back) { return middle.split(","); }

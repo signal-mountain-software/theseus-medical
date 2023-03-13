@@ -21,6 +21,7 @@ export function makeDate(pInput) {
             'timestamp': 0,
             'ymd': '2099.01.01',
             'obs': '2099.1.1',
+            'numeric': 20990101
         };
     }
     let targetDateStamp, targetDate;
@@ -29,6 +30,7 @@ export function makeDate(pInput) {
         targetDate = pInput;
     }
     else {
+        if (Number(pInput).toString() === pInput) { pInput = Number(pInput); }  // convert a string that is all digits to its numeric equivalent
         if ((typeof pInput) === 'number') {
             //      101 -     1231 mm dd in logical year (see makedate)
             //    10101 -   123199 mm dd yy
@@ -67,6 +69,7 @@ export function makeDate(pInput) {
                 'timestamp': 0,
                 'ymd': '2099.01.01',
                 'obs': '2099.1.1',
+                'numeric': 20990101
             };
         }
     }
@@ -130,7 +133,8 @@ export function makeDate(pInput) {
         'date': targetDate,
         'timestamp': targetDateStamp,
         'ymd': targetDateYMD,
-        'obs': targetDateYMD.replace(regEx, '.')
+        'obs': targetDateYMD.replace(regEx, '.'),
+        'numeric': Number(targetDateYMD.replace(/\./g,''))
     };
 
     function buildDate(pString) {
@@ -144,8 +148,9 @@ export function makeDate(pInput) {
         let goodDate = new Date(pString);
         if (isNaN(goodDate)) {
             let currentDate = new Date();
-            currentDate.setHours(0, 0, 0, 0);
             let tDate = pString.trim().substr(0, 3).toLowerCase();
+            if (tDate === 'now') { tDate = 'tod'; }
+            else { currentDate.setHours(0, 0, 0, 0); }
             if (tDate === 'tom') {
                 return addDays(currentDate, (1 + daysToAdd));
             }
