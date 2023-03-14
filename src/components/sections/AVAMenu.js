@@ -297,7 +297,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setSectionOpen({});
 
     // Temp - make menu refresh on every reload
-    let forceRefresh = true;
+    reload = true;
 
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
@@ -322,7 +322,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       }
     }
     
-    forceRefresh = true;
+    let forceRefresh = true;
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
 
     if (wholeMenu.length > 0) {
