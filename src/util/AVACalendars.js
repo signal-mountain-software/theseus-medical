@@ -458,12 +458,13 @@ export async function writeSlot(body) {
     "occurrence_date (optional, if occurrence is in event as event#occurrence": <string or number>
     "owner": <person>,
     "override_name": <string or null>,
-    "slot": <"0900 (time) or s#103 (seat) or r#12/s#103 (row and seat) or rsteele (user_id)">,
+    "slot (alternate form = id)": <"0900 (time) or s#103 (seat) or r#12/s#103 (row and seat) or rsteele (user_id)">,
     "status": <"null (=selected), released, reserved, confirmed, attended, no-show, off_campus, left_campus, entered_campus... ">
     "show_this_slot": <boolean>  (assume true if missing or null)
   */
   let [event_id, occ_id] = body.event.split('#');
   let occurrence = body.occurrence_date || occ_id;
+  if (!body.slot && body.id) { body.slot = body.id; }
   let event_key = `${event_id}#${occurrence}#${body.slot}`
   let slotRec = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'slot' });
   let slotHistory = [];
@@ -517,6 +518,11 @@ export async function writeSlot(body) {
     slot_owner: body.owner,
     slotData: slotDataObj
   };
+
+  // legacy support
+  putCalendar.id = event_id;
+  putCalendar.list_key = `${body.status === 'released' ? 'available' : body.owner}#${occurrence}`;
+  putCalendar.schedule_key = 'slot_data';
   
   await dbClient
     .put({
