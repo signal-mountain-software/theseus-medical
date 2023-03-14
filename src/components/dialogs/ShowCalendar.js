@@ -379,7 +379,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
   return (
     showAll ?
       <Dialog
-        open={showCalendar}
+        open={!!showCalendar}
         onClose={handleAbort}
         TransitionComponent={Transition}
         fullScreen
@@ -515,6 +515,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
             pOccData={myCalendar[0].occData}
             pPatientRec={patient}
             onReset={() => { handleAbort(); }}
+            pInstruction={showCalendar}
           />
           :
           <DialogContentText className={classes.subDescriptionText}>

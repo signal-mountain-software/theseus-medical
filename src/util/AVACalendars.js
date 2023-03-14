@@ -477,40 +477,47 @@ export async function writeSlot(body) {
       }];
     }
   }
+
+  let slotDataObj = Object.assign(
+    {},
+    slotRec.slotData || {},
+    body.slotData || {},
+  );
+  
+  if ('show_this_slot' in body) { slotDataObj.show_this_slot = !!body.show_this_slot; }
+  else { slotDataObj.show_this_slot = true; }
+  if (body.slot) { slotDataObj.slot = body.slot; }
+  if (body.notes) { slotDataObj.notes = body.notes; }
+  if (body.owner) {
+    slotDataObj.owner = body.owner;
+    if (body.override_name) { slotDataObj.display_name = body.override_name; }
+    else { slotDataObj.display_name = await makeName(body.owner); }
+  }
+  slotDataObj.name = slotDataObj.display_name;
+  
   let makeHistory = {
     date: makeDate(new Date()).absolute,
-    status: body.status,
+    status: body.status || 'selected',
     owner: body.owner
-  }; 
+  };
   if (body.notes && slotRec.slotData && (slotRec.slotData.notes !== body.notes)) {
     makeHistory.note = body.notes;
   }
-  slotHistory.unshift([makeHistory]);
-  let slotUpdate = Object.assign(
-    slotRec.slotData || {},
-    { show_this_slot: true },
-    {
-      slot: body.slot,
-      owner: body.owner
-    },
-    body.slotData || {},
-    {
-    status: {
-      current: body.status,
-      history: slotHistory
-    }
-  });
-  if (!body.status) { body.status = 'selected'; }
+  slotHistory.unshift(makeHistory);
+  slotDataObj.status = {
+    current: body.status || 'selected',
+    history: slotHistory
+  };
+
   let putCalendar = {
     client: body.client,
     event_id,
     event_key,
     occurrence_date: `${occurrence}`,
     slot_owner: body.owner,
-    slotData: slotUpdate
+    slotData: slotDataObj
   };
-  if (body.override_name) { putCalendar.slotData.display_name = body.override_name; }
-  else { putCalendar.slotData.display_name = await makeName(body.owner); }
+  
   await dbClient
     .put({
       Item: putCalendar,

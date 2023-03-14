@@ -296,6 +296,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});
 
+    // Temp - make menu refresh on every reload
+    let forceRefresh = true;
+
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
     let menuRec = await dbClient
@@ -319,7 +322,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       }
     }
     
-    let forceRefresh = true;
+    forceRefresh = true;
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
 
     if (wholeMenu.length > 0) {

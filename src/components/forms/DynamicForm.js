@@ -1253,6 +1253,7 @@ export default ({
         />
       );
     case 'show_calendar':
+    case 'add_calendar':
       let OGsession = {};
       Object.assign(OGsession, session);
       return (
@@ -1262,7 +1263,7 @@ export default ({
           peopleList={values}
           currentEvent={defaultValue || []}
           eventClient={newFact.client_id || session.client_id}
-          showCalendar={true}
+          showCalendar={type.split('_')[0]}
           onClose={onSave}
         />
       );
