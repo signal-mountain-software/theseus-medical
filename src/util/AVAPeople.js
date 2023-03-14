@@ -126,10 +126,10 @@ export async function getSession(pID) {
         .promise()
         .catch(error => { cl({ 'Error reading Groups': error }); });
     if (recordExists(sessionRec)) {
-        if (!Array.isArray(sessionRec.Item.groups_managed)) {
+        if (('groups_managed' in sessionRec.Item) && !Array.isArray(sessionRec.Item.groups_managed)) {
             sessionRec.Item.groups_managed = sessionRec.Item.groups_managed.split(/[[,\]]/);
         }
-        if (!Array.isArray(sessionRec.Item.responsible_for)) {
+        if (('responsible_for' in sessionRec.Item) && !Array.isArray(sessionRec.Item.responsible_for)) {
             sessionRec.Item.responsible_for = sessionRec.Item.responsible_for.split(/[[,\]]/);
         }
         savedSession = sessionRec.Item;
