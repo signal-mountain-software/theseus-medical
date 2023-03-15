@@ -63,7 +63,7 @@ export async function prepareMessage(inBody) {
     results.author = body.author;
     results.preferred_method = body.method;
     if (!('format' in body)) { body.format = { 'type': 'factForm' }; }
-    if ('subject' in body.format) { results.subject = await resolveMessageVariables(body.format.subject); }
+    if ('subject' in body.format) { results.subject = await resolveMessageVariables(body.format.subject, body); }
     if ('method' in body.format) { results.preferred_method = body.format.method; }
     switch (body.format.type) {
       case 'mealOrder':
@@ -74,7 +74,7 @@ export async function prepareMessage(inBody) {
       }
       case 'plainText':
       default: {
-        results.messageText = '%%custom_text%%' + (await resolveMessageVariables(body.format.text));
+        results.messageText = '%%custom_text%%' + (await resolveMessageVariables(body.format.text, body));
         results.htmlText = results.messageText;
       }
     }
@@ -93,51 +93,6 @@ export async function prepareMessage(inBody) {
 
   /**************************/
 
-  async function resolveMessageVariables(inString) {
-    // extract first variable
-    let workString = inString;
-    while (workString.includes('<')) {
-      let [front, rest] = workString.split(/<(.*)/);
-      let [variable, back] = rest.split(/>(.*)/);
-      switch (variable) {
-        case 'client': {
-          workString = `${front}${body.client}${back}`;
-          break;
-        }
-        case 'author': {
-          workString = `${front}${await makeName(body.author)}${back}`;
-          break;
-        }
-        case 'person':
-        case 'patient':
-        case 'name': {
-          workString = `${front}${body.onBehalfOf || await makeName(body.author)}${back}`;
-          break;
-        }
-        case 'activityName':
-        case 'activity': {
-          workString = `${front}${body.activityName}${back}`;
-          break;
-        }
-        case 'location': {
-          let pMe = await getPerson(body.author);
-          workString = `${front}${pMe.location}${back}`;
-          break;
-        }
-        case 'user': { workString = `${front}${body.author}${back}`; break; }
-        case 'selections': {
-          workString = `${front}${listFromArray(body.selections)}${back}`;
-          break;
-        }
-        default: {
-          if (variable.startsWith('value')) { variable = variable.split(':')[1]; }
-          workString = `${front}${body.textInput[variable]}${back}`;
-        }
-      }
-    }
-    return workString;
-  };
-
   async function processRules() {
     let skipTo = false;
     for (let b = 0; b < body.test.length; b++) {
@@ -153,7 +108,7 @@ export async function prepareMessage(inBody) {
         if (body.textInput[t.check].toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
       }
       else if (t.test && t.check) {
-        let resolved = await resolveMessageVariables(t.check);
+        let resolved = await resolveMessageVariables(t.check, body);
         if (resolved && resolved.toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
       }
       else { passedTest = false; }
@@ -206,9 +161,9 @@ export async function prepareMessage(inBody) {
             break;
           }
           case 'add_message': {
-            let custom_text = await resolveMessageVariables(rule.value);
-            results.messageText = results.messageText.replace('%%custom_text%%', custom_text );
-            results.htmlText = results.htmlText.replace('%%custom_text%%', custom_text );
+            let custom_text = await resolveMessageVariables(rule.value, body);
+            results.messageText = results.messageText.replace('%%custom_text%%', `${custom_text}%%custom_text%%` );
+            results.htmlText = results.htmlText.replace('%%custom_text%%', `${custom_text}%%custom_text%%` );
             break;
           }
           case 'skip_to': {
@@ -230,6 +185,62 @@ export async function prepareMessage(inBody) {
 
 }
 
+export async function resolveMessageVariables(inString, body) {
+  // extract first variable
+  let workString = inString;
+  while (workString.includes('<')) {
+    let [front, rest] = workString.split(/<(.*)/);
+    let [variable, back] = rest.split(/>(.*)/);
+    switch (variable) {
+      case 'client': {
+        workString = `${front}${body.client}${back}`;
+        break;
+      }
+      case 'author': {
+        workString = `${front}${await makeName(body.author)}${back}`;
+        break;
+      }
+      case 'person':
+      case 'patient':
+      case 'name': {
+        workString = `${front}${body.onBehalfOf || await makeName(body.author)}${back}`;
+        break;
+      }
+      case 'activityName':
+      case 'activity': {
+        workString = `${front}${body.activityName}${back}`;
+        break;
+      }
+      case 'location': {
+        let pMe = await getPerson(body.author);
+        workString = `${front}${pMe.location}${back}`;
+        break;
+      }
+      case 'user': { workString = `${front}${body.author}${back}`; break; }
+      case 'selections': {
+        workString = `${front}${listFromArray(body.selections)}${back}`;
+        break;
+      }
+      default: {
+        if (body.hasOwnProperty(variable)) {
+          workString = `${front}${body[variable]}${back}`;
+        }
+        else if (body.hasOwnProperty('textInput')) {
+          if (variable.startsWith('value')) { variable = variable.split(':')[1]; }
+          workString = `${front}${body.textInput[variable]}${back}`;
+        }
+        else {
+          let [dDate, dType] = variable.split(':');
+          let keyDate = makeDate(dDate);
+          if (!keyDate.error) { workString = `${front}${keyDate[dType || 'absolute']}${back}`; }
+          else { workString = `${front}"${variable}"${back}`; }
+        }
+      }
+    }
+  }
+  return workString;
+};
+  
 async function formatRequestDetails(body, summaryType) {
 
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">`

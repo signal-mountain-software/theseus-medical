@@ -1,6 +1,7 @@
 import { clt, cl, recordExists, makeArray, resolveVariables } from './AVAUtilities';
 import { makeName } from './AVAPeople';
 import { addDays, makeDate } from './AVADateTime';
+import { sendMessages, resolveMessageVariables  } from './AVAMessages';
 
 const AWS = require('aws-sdk');
 const dbClient = new AWS.DynamoDB.DocumentClient({
@@ -533,6 +534,39 @@ export async function writeSlot(body) {
     .catch(error => {
       cl(`caught error updating Calendar; error is:`, error);
     });
+  
+  // messaging
+  let eventRec = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'event' });
+  if (eventRec.eventData.messaging) {
+    let messageList = [];
+    let msgObject = {
+      client: eventRec.client,
+      author: 'AVA'
+    };
+    body.client = eventRec.client;
+    body.person = eventRec.owner;
+    body.onBehalfOf = slotDataObj.name;
+    body = Object.assign(body, eventRec.eventData.event_data, slotDataObj)
+    if (Array.isArray(eventRec.eventData.messaging)) { messageList.push(...eventRec.eventData.messaging); }
+    else { messageList.push(eventRec.eventData.messaging); }
+    for (let m = 0; m < messageList.length; m++) {
+      let this_message = messageList[m];
+      if (!this_message.action || (this_message.action === body.status.current)) {
+        if ('subject' in this_message.format) { msgObject.subject = await resolveMessageVariables(this_message.format.subject, body); }
+        if (Array.isArray(this_message.recipientList)) { msgObject.recipientList = [...this_message.recipientList]; }
+        else { msgObject.recipientList = [this_message.recipientList]; }
+        msgObject.messageText = await resolveMessageVariables(this_message.format.text, body);
+        sendMessages(msgObject);
+      }
+    }
+  }
+  /*
+  return {
+    'request_id': serviceRequestRec.request_id,
+    'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
+  };
+  */
+  
   return putCalendar;
 }
 

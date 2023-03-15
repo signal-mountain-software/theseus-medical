@@ -178,7 +178,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   const { enqueueSnackbar } = useSnackbar();
 
   const isEventOwner = pOccData?.owner?.includes(pPatient);
-  const isBrowsing = (pInstruction === 'show');
+  const [isBrowsing, setIsBrowsing] = React.useState(pInstruction === 'show');
 
   var rowsWritten;
 
@@ -420,6 +420,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         client: pClient
       }
     );
+    slotUpdate.status = 'notes';
     await writeSlot(slotUpdate);
     setEventSlotList(eventSlotList);
     setEditNoteNumber(-1);
@@ -638,7 +639,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
           </PersonFilter>
         }
         {(rowsWritten === 0) &&
-          <AVATextInput
+          (!isBrowsing ?
+        <AVATextInput
             titleText={`Adding you to the list`}
             promptText={'Notes or Additional Information'}
             buttonText='Confirm'
@@ -651,7 +653,21 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
               if (myNotes) { slotObj.notes = myNotes; }
               await handleAllocateSlot(slotObj);
             }}
+            />
+          :
+          <AVATextInput
+            titleText={`The list is empty`}
+            promptText={[]}
+            buttonText='Add Myself'
+            onCancel={() => {
+              onReset();
+            }}
+            onSave={() => {
+              setIsBrowsing(false);
+              setForceRedisplay(!forceRedisplay);
+            }}
           />
+          )
         }
         {promptForMessage &&
           <AVATextInput

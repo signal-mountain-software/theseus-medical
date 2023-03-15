@@ -71,6 +71,7 @@ export async function putServiceRequest(body) {
               [requestDate: <timestamp>] (optional - defaults to currentTime),
               [onBehalfOf: <string>] (optional - defaults to author's name)
               request: <object> (required)
+              messaging: <messaging object>
       };
   */
   let now = new Date().getTime();
