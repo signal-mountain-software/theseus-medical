@@ -5,7 +5,7 @@ import { makeDate } from '../../util/AVADateTime';
 import { getSlotList, writeSlot } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
 import { cl, makeArray } from '../../util/AVAUtilities';
-import { makeName } from '../../util/AVAPeople';
+import { makeName, getImage } from '../../util/AVAPeople';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -146,6 +146,12 @@ const useStyles = makeStyles(theme => ({
     variant: 'body1',
     marginRight: theme.spacing(1),
     paddingRight: theme.spacing(2),
+    width: '100%'
+  },
+  standard: {
+    variant: 'body1',
+    marginRight: theme.spacing(1),
+    paddingRight: theme.spacing(1),
     width: '100%'
   },
   lastName: {
@@ -515,39 +521,49 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                       </Typography>
                       {(this_item.slotData.id !== this_item.slotData.owner) &&
                         <Box display='flex' width={60} flexDirection='row' justifyContent='center' alignItems='center'>
-                          <Typography variant='body1' className={classes.standardIndent} >{makeSlotName(this_item.slotData.id)}</Typography>
+                          <Typography variant='body1' className={classes.standard} >{makeSlotName(this_item.slotData.id)}</Typography>
                         </Box>
                       }
                       {isOwned(this_item.slotData) &&
-                        <Box display='flex' flexDirection='column' flexGrow={1}>
-                          <Typography variant='h5' >{makeReadableName(this_item.slotData.name)}</Typography>
-                          {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
-                            (editNoteNumber === index ?
-                              <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>
-                                <Input classes={{ root: classes.standardIndent, input: classes.inputRule }}
-                                  multiline
-                                  key={`noteData_${index}`}
-                                  defaultValue={this_item.slotData.notes || ''}
-                                  onChange={(event) => { setNewNote(event.target.value); }}
-                                />
-                                <SaveIcon
-                                  aria-label="saveNote_icon"
-                                  onClick={() => { handleChangeNotes(index, newNote); }}
-                                  edge="end"
-                                />
-                                <CloseIcon
-                                  aria-label="closeNote_icon"
-                                  onClick={() => { setEditNoteNumber(-1); }}
-                                  edge="end"
-                                />
-                              </Box>
-                              :
-                              <Typography variant='body1' className={classes.standardIndent} >
-                                {this_item.slotData.notes}
-                              </Typography>
-                            )
-                          }
-                        </Box>
+                        <React.Fragment>
+                          <Box
+                            component="img"
+                            mr={2}
+                            minWidth={50}
+                            maxWidth={50}
+                            alt=''
+                            src={getImage(this_item.slotData.owner)}
+                          />
+                          <Box display='flex' flexWrap='wrap' flexDirection='column' flexGrow={1}>
+                            <Typography variant='h5' >{makeReadableName(this_item.slotData.name)}</Typography>
+                            {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
+                              (editNoteNumber === index ?
+                                <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>
+                                  <Input classes={{ root: classes.standard, input: classes.inputRule }}
+                                    multiline
+                                    key={`noteData_${index}`}
+                                    defaultValue={this_item.slotData.notes || ''}
+                                    onChange={(event) => { setNewNote(event.target.value); }}
+                                  />
+                                  <SaveIcon
+                                    aria-label="saveNote_icon"
+                                    onClick={() => { handleChangeNotes(index, newNote); }}
+                                    edge="end"
+                                  />
+                                  <CloseIcon
+                                    aria-label="closeNote_icon"
+                                    onClick={() => { setEditNoteNumber(-1); }}
+                                    edge="end"
+                                  />
+                                </Box>
+                                :
+                                <Typography variant='body1' className={classes.standard} >
+                                  {this_item.slotData.notes}
+                                </Typography>
+                              )
+                            }
+                          </Box>
+                        </React.Fragment>
                       }
                     </Box>
                     {isOwned(this_item.slotData) &&
@@ -640,33 +656,33 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         }
         {(rowsWritten === 0) &&
           (!isBrowsing ?
-        <AVATextInput
-            titleText={`Adding you to the list`}
-            promptText={'Notes or Additional Information'}
-            buttonText='Confirm'
-            onCancel={() => {
-              onReset();
-            }}
-            onSave={async (myNotes) => {
-              let slotObj = { person: `${pPatientRec ? pPatientRec.patient_display_name : ''}:${pPatient}` };
-              slotObj.slot = pPatient;
-              if (myNotes) { slotObj.notes = myNotes; }
-              await handleAllocateSlot(slotObj);
-            }}
+            <AVATextInput
+              titleText={`Adding you to the list`}
+              promptText={'Notes or Additional Information'}
+              buttonText='Confirm'
+              onCancel={() => {
+                onReset();
+              }}
+              onSave={async (myNotes) => {
+                let slotObj = { person: `${pPatientRec ? pPatientRec.patient_display_name : ''}:${pPatient}` };
+                slotObj.slot = pPatient;
+                if (myNotes) { slotObj.notes = myNotes; }
+                await handleAllocateSlot(slotObj);
+              }}
             />
-          :
-          <AVATextInput
-            titleText={`The list is empty`}
-            promptText={[]}
-            buttonText='Add Myself'
-            onCancel={() => {
-              onReset();
-            }}
-            onSave={() => {
-              setIsBrowsing(false);
-              setForceRedisplay(!forceRedisplay);
-            }}
-          />
+            :
+            <AVATextInput
+              titleText={`The list is empty`}
+              promptText={[]}
+              buttonText='Add Myself'
+              onCancel={() => {
+                onReset();
+              }}
+              onSave={() => {
+                setIsBrowsing(false);
+                setForceRedisplay(!forceRedisplay);
+              }}
+            />
           )
         }
         {promptForMessage &&

@@ -1,6 +1,6 @@
 import React from 'react';
 import { listFromArray } from '../../util/AVAUtilities';
-import { makeName } from '../../util/AVAPeople';
+import { makeName, getImage } from '../../util/AVAPeople';
 
 import Paper from '@material-ui/core/Paper';
 import TextField from '@material-ui/core/TextField';
@@ -277,21 +277,30 @@ export default ({
                   {rowsWritten++}
                 </Typography>
                 <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                  {multiSelect &&
+                    <Checkbox
+                      edge='start'
+                      mr={4}
+                      checked={isChecked(listEntry.split(':')[1])}
+                      disableRipple
+                      key={'checkbox' + x}
+                      onClick={async () => {
+                        toggling = true;
+                        await toggleCheck(listEntry.split(':')[1]);
+                      }}
+                    />
+                  }
+                  <Box
+                    component="img"
+                    ml={1}
+                    mr={1}
+                    minWidth={50}
+                    maxWidth={50}
+                    alt=''
+                    src={getImage(listEntry.split(':')[1])}
+                  />
                   {!listEntry.split(':')[1].startsWith('GRP//') ?
-                    <React.Fragment>
-                      {multiSelect &&
-                        <Checkbox
-                          edge='start'
-                          mr={4}
-                        checked={isChecked(listEntry.split(':')[1])}
-                          disableRipple
-                          key={'checkbox' + x}
-                          onClick={async () => {
-                            toggling = true;
-                            await toggleCheck(listEntry.split(':')[1]);
-                          }}
-                        />
-                      }
+                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>           
                       <Typography variant='h5' className={classes.lastName}>{`${makeLastName(listEntry)}`}</Typography>
                       <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
                       {(x > 0) && (x < (peopleList.length - 1)) &&
@@ -299,12 +308,12 @@ export default ({
                           || (peopleList[x + 1].split(':')[0] === listEntry.split(':')[0])) &&
                         <Typography variant='h5' className={classes.idText}>({listEntry.split(/[:]/)[1]})</Typography>
                       }
-                    </React.Fragment>
+                    </Box>
                     :
-                    <React.Fragment>
+                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>           
                       <Typography variant='h5' className={classes.groupName}>{listEntry.split(':')[0]}</Typography>
                       <Typography variant='h5' className={classes.idText}>(GROUP)</Typography>
-                    </React.Fragment>
+                    </Box>
                   }
                 </Box>
               </ListItem>
