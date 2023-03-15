@@ -1,5 +1,6 @@
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
+import { getOccurenceList } from '../util/AVACalendars';
 
 // NOTES -
 // regex to split at the first instance of a character only (% used as example to split on): is .split(/%(.*)/)
@@ -232,23 +233,44 @@ export async function resolveVariables(pKey, pSession) {
       let [instruction, dType] = middle.split(':');
       instruction = instruction.toLowerCase();
       switch (instruction) {
-        case 'client': { pKey = `${front}${pSession.client_id}${back}`; break; }
-        case 'name': { pKey = `${front}${await makeName(pSession.patient_id)}${back}`; break; }
+        case 'client': {
+          pKey = `${front}${pSession.client_id}${back}`;
+          break;
+        }
+        case 'name': {
+          pKey = `${front}${await makeName(pSession.patient_id)}${back}`;
+          break;
+        }
         case 'location': {
           let pMe = await getPerson(pSession.patient_id);
           pKey = `${front}${pMe.location}${back}`;
           break;
         }
         case 'person':
-        case 'patient': { pKey = `${front}${pSession.patient_id}${back}`; break; }
-        case 'user': { pKey = `${front}${pSession.user_id}${back}`; break; }
-        default: {
+        case 'patient': {
+          pKey = `${front}${pSession.patient_id}${back}`;
+          break;
+        }
+        case 'user': {
+          pKey = `${front}${pSession.user_id}${back}`;
+          break;
+        }
+       default: {
           if (instruction.startsWith('today~')) {
             let now = new Date();
             let ttime = Number(instruction.split(/~/g)[1]);
             let tnow = (now.getHours() * 100) + now.getMinutes();
             if (tnow > ttime) { instruction = 'tomorrow'; }
             else { instruction = 'today'; }
+          }
+          else if (instruction.startsWith('next_event~')) { 
+            let oResponse = await getOccurenceList({
+              client: pSession.client_id,
+              event: instruction.split(/~/g)[1],
+              from_date: new Date(),
+              number_of_occurrences: 1
+            });
+            instruction = oResponse.occArray[0];
           }
           let keyDate = makeDate(instruction);
           if (!keyDate.error) { pKey = `${front}${keyDate[dType || 'obs']}${back}`; }

@@ -266,7 +266,7 @@ export async function getOccurenceList(request) {
     to_numeric = tDate.numeric;
   }
   else {
-    to_date = addDays(from_date, 400);
+    to_date = addDays(new Date(from_date), 400);
     to_numeric = makeDate(to_date).numeric;
   }
   // Now have key elements in hand:
@@ -277,6 +277,7 @@ export async function getOccurenceList(request) {
       for (let candidate = from_date; candidate < to_date; addDays(candidate, 1)) {
         if (occPattern.day_of_week.includes(candidate.getDay())) {
           await goodCandidate(makeDate(candidate).numeric);
+          if (foundEnough()) { break; }
         }
       }
       break;
@@ -288,16 +289,17 @@ export async function getOccurenceList(request) {
       else { targetArray.push(...occPattern.day_of_month); }
       from_date.setDate(1);
       let monthToCheck;
-      for (let candidate = from_date; candidate < to_date; candidate.setMonth(monthToCheck + 1)) {
+      for (let candidate = from_date; ((candidate < to_date) && !foundEnough()); candidate.setMonth(monthToCheck + 1)) {
         let yearToCheck = candidate.getFullYear();
         monthToCheck = candidate.getMonth();
-        for (let r = 0; r < targetArray.length; r++) {
+        for (let r = 0; ((r < targetArray.length) && !foundEnough()); r++) {
           if (typeof targetArray[r] === 'number') {
-            await goodCandidate(`${yearToCheck}${monthToCheck}${targetArray[r]}`);
+            await goodCandidate(`${yearToCheck}${(monthToCheck + 101).toString().slice(-2)}${(targetArray[r] + 100).toString().slice(-2)}`);
+            if (foundEnough()) { break; }
           }
           else {
+            let checkDate = new Date(candidate);
             for (let x = 0; x < 7; x++) {
-              let checkDate = addDays(candidate, x);
               if (occPattern.day_of_week.includes(checkDate.getDay())) {
                 switch (targetArray[r]) {
                   case "first": {
@@ -329,6 +331,8 @@ export async function getOccurenceList(request) {
                   default: { }
                 }  // end switch on occPattern.day_of_month (as targetArray[r]) ("first Thursday", "second Thursday", etc)
               } // end "if this date matches a target day of the week (Thursday)"
+              if (foundEnough()) { break; }
+              addDays(checkDate, 1);
             } // end trying every possible day of the week (Sunday - Saturday)
           } // end else block - occPattern.day_of_month (targetArray[r]) is not a number
         } // end loop through all occPattern.day_of_month entries
@@ -351,6 +355,7 @@ export async function getOccurenceList(request) {
         yearToCheck = candidate.getFullYear();
         for (let t = 0; t < targetArray.length; t++) {
           await goodCandidate((yearToCheck * 10000) + targetArray[t]);
+          if (foundEnough()) { break; }
         }
       }
       break;
@@ -358,12 +363,17 @@ export async function getOccurenceList(request) {
     default: {
       for (let s = 0; s < occPattern.specified.length; s++) {
         await goodCandidate(occPattern.specified[s]);
+        if (foundEnough()) { break; }
       }
     }
   }
   return response;
 
   // ----- Functions -----
+
+  function foundEnough() {
+    return (request.number_of_occurrences && (response.occArray.length >= request.number_of_occurrences));
+  }
 
   async function goodCandidate(inDate) {
     let numericDate, stringDate;
@@ -382,7 +392,7 @@ export async function getOccurenceList(request) {
     if (numericDate > to_numeric) { return false; }
     // All good if we get this far
     response.occArray.push(numericDate);
-    let oRec = await getCalendarEntries({ event: `${event_id}#${stringDate}`, type: 'occurrence' });
+    let oRec = await getCalendarEntries({ client: request.client, event: `${event_id}#${stringDate}`, type: 'occurrence' });
     if (recordExists.oRec) { response.occRec[stringDate] = oRec.occData; }
     return numericDate;
   }
@@ -418,7 +428,10 @@ export async function addOccurrence(body) {
     event_id = body.event.event_key;
     occurrence = body.occurrence_date;
     if (body.event.eventData) {
-      let rDesc = await resolveVariables(body.event.eventData.event_data.description);
+      let sessionData = {
+        client_id: body.client,
+      };
+      let rDesc = await resolveVariables(body.event.eventData.event_data.description, sessionData);
       if (rDesc !== body.event.eventData.event_data.description) { oDesc = rDesc; }
     }
   }
