@@ -301,7 +301,7 @@ export default ({ patient, session }) => {
         user_id: pUser,
         activity_code: pCodeOut,
         activity_name: pName,
-        AVA_version: `23.1.16${window.location.href.split('//')[1].slice(0, 1)}`
+        AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1)}`
       }
     };
     let params = {
@@ -404,7 +404,7 @@ export default ({ patient, session }) => {
           patient_id: patient.person_id,
           activity_key: '***ERROR_CAUGHT***',
           value: parmMessage,
-          status: `Version = 23.1.16~${errorTime}`,
+          status: `Version = ${process.env.REACT_APP_AVA_VERSION}~${errorTime}`,
           session: {
             user_id: patient.person_id,
             session_id: session.client_id,
@@ -1235,12 +1235,12 @@ export default ({ patient, session }) => {
               >
                 <CardMedia
                   component="img"
-                  image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                  image={process.env.REACT_APP_AVA_LOGO}
                   alt='AVA'
                 />
               </Card>
               <Typography align='center'>
-                {`Loading AVA version 23.1.16${window.location.href.split('//')[1].slice(0, 1)}`}
+                {`Loading AVA version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1)}`}
               </Typography>
               <CircularProgress />
             </Box>

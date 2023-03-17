@@ -122,8 +122,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   const searchText = '';
   const [factIOClass, setFactIOClass] = React.useState(false);
-  const [factRecordMediaClass, setFactRecordMediaClass] = React.useState(false);
-  if (factRecordMediaClass) { console.log(factRecordMediaClass); };
   const [factPromoClass, setFactPromoClass] = React.useState(false);
   const [factEventClass, setFactEventClass] = React.useState(false);
   const [factMessageClass, setFactMessageClass] = React.useState(false);
@@ -131,7 +129,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   // From DynamicForm
   //const [lastQualifier, setLastQualifier] = React.useState('');
-  const [value, setValue] = React.useState('');
+  const [value, setExecutionDefaultValue] = React.useState('');
   //const [nums, setNums] = React.useState(['', '']);
   //const [mOut, setMOut] = React.useState(message || 'enter something here');
 
@@ -282,11 +280,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     if (!badData) {
       setMessage('');
       setStatusMessage('');
-      if (withNext) {
-        onNext(newFact);
-      } else {
-        onSave(newFact);
-      }
+      if (!factIOClass) { handleClose(); }
+      else if (withNext) { onNext(newFact); }
+      else { onSave(newFact); }
     }
     return badData;
   };
@@ -306,15 +302,15 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   React.useEffect(() => {
     if (fact && session) {
-
-      var factCode = fact?.code?.split('.')[0];
+      let factCode = (fact.code || fact.activity_code).split('.')[0];
       setFactEventClass(false);
       switch (factCode) {
         case 'document':
         case 'render':
         case 'query':
-        case 'list': { break; }   // leave PromoClass, IOClass, and MessageClass as false
-        case 'media': { setFactRecordMediaClass(true); setFactIOClass(true); break; }
+        case 'action':
+        case 'list': { break; }   
+        case 'media': { setFactIOClass(true); break; }
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break; }
         case 'promo': { setFactPromoClass(true); break; }
         case 'search': { setFactEventClass(true); break; }
@@ -430,21 +426,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     catch (e) {
       console.error(e);
     }
-  
-    let qT = {};
-    setValue(defaultValue);
-    // console.log(`initializing: firstTime=${firstTime} and newFact.value null is ${!newFact.value}`);
-    if (fact.value_qualifiers && Array.isArray(fact.value_qualifiers) && (fact.value_qualifiers.length > 0)) {
-      fact.value_qualifiers.forEach(vQual => {
-        if (vQual && Object.keys(vQual).length > 0) {
-          qT[vQual.value] = vQual;
-          if (vQual.associated_activity) {
-            associationsTable[vQual.value] = vQual.associated_activity;
-          }
-        }
-      });
-    }
-    setQualifierTable(qT);
+    setExecutionDefaultValue(defaultValue);
+    setQualifierTable(fact.value_qualifiers);
     setAssociationsTable(associationsTable);
 
     var mF = '';
@@ -458,16 +441,12 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         v++;
       } while (v < vL && !mF);
     }
-    //setMessageField(mF);
-
-
-
     setQualChecked({});
 
     let nF = {
       client_id: fact.client_id || session.client_id,
       patient_id: session.patient_id || session.user_id,
-      activity_key: fact.code,
+      activity_key: fact.code || fact.activity_code,
       value: (fact.type === 'reservation')
         ? fact.default_value
         : {
@@ -481,22 +460,28 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       },
     };
 
+    if ('messaging' in fact) { nF.messaging = fact.messaging; }
+
+    let defaultSelections = [];
     if (defaultValue
       && fact.type !== 'reservation'
       && fact.type !== 'play_video'
       && fact.type !== 'make_message'
     ) {
-      let [dBase, dValues] = defaultValue.replace('.', '^').split('^');
-      let defaultSelections;
-      if (!dValues) {
-        defaultSelections = [dBase];
-      } else {
-        defaultSelections = dValues.split(/\s~|~\s/g);
+      if (Array.isArray(defaultValue)) {
+        if (defaultValue[0].includes('.')) {
+          let [, dValues] = defaultValue[0].split(/\.(.*)/);
+          defaultValue[0] = dValues;
+        }
+        setExecutionDefaultValue(defaultValue);     
+        defaultSelections = defaultValue;
+      }
+      else {
+        if (defaultValue.includes('.')) { defaultValue = defaultValue.split(/\.(.*)/)[1]; }
+        defaultSelections = defaultValue.split(/\s~|~\s/g);
+        setExecutionDefaultValue(defaultSelections[0].trim());     
       }
       if (defaultSelections.length > 0) {
-        setValue(defaultSelections[0].trim()); /* this line handles numeric & text defaults */
-        //setNums(defaultSelections[0].trim().split(' over ')); /* two numbers */
-        /* the rest handles selection screen defaults */
         defaultSelections.forEach(nfValue => {
           //  let [value, freeText] = nfValue.trim().split(/\s~|~\s/);
           let [value, freeText] = nfValue.trim().split("=");
@@ -506,11 +491,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             nF.value.freeText[value] = freeText;
             if (value === mF) {
               setMessage(freeText);
-            } else {
-              if (value === '%filter%') {
-                //setFilterText(freeText);
-              }
-            }
+            } 
           } else {
             nF.value.selected.push(value);
           }
@@ -546,9 +527,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         ? <DialogContentText className={classes.warningText}>{message}</DialogContentText>
         : <DialogContentText className={classes.descriptionText}>{message}</DialogContentText>
       }
-      {statusMessage ? (
+      {statusMessage &&
         <DialogContentText className={classes.subDescriptionText}>{statusMessage}</DialogContentText>
-      ) : null}
+      }
       <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
         {fact ? (
           <DynamicForm

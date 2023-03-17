@@ -169,7 +169,7 @@ export default ({ person, updateGroups }) => {
     let executioner = async () => { await getAllGroups(state.session.user_id); };
     executioner();
     
-  }, [notMyFirstTime, person, state.session.user_id]);
+  }, [notMyFirstTime, person, state.session.user_id, dbClient, state.session]);
 
   function handleToggle(rowData, remove) {
     if (remove) {

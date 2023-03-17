@@ -203,13 +203,22 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, onRefresh }) => {
   const [activity_filter, setActivityFilter] = React.useState('');
+  const [lower_activity_filter, setLowerFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
 
   const classes = useStyles();
 
   const handleChangeActivityFilter = event => {
     setActivityFilter(event.target.value);
+    setLowerFilter(event.target.value.toLowerCase());
   };
+
+  function OKtoShow(inObj) { 
+    return (
+      inObj.toLowerCase().includes(lower_activity_filter) ||
+      groupsManagedObject[inObj].group_id.toLowerCase().includes(lower_activity_filter)
+    );
+  }
 
   const handleCreateAGroup = async pGroupName => {
     const lambda = new Lambda({
@@ -281,8 +290,7 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, o
           <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
             <List component='nav'>
               {Object.keys(groupsManagedObject).map((listEntry, x) => (
-                (
-                  listEntry.toLowerCase().includes(activity_filter.toLowerCase()) ?
+                (OKtoShow(listEntry) &&
                     <ListItem
                       key={'activity-list_' + listEntry}
                       onClick={() => {
@@ -302,7 +310,6 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, o
                         </Typography>
                       </Box>
                     </ListItem>
-                    : null
                 )
               ))
               }

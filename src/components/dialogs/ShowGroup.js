@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
+import { getMemberList, getGroup, getRole } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -14,6 +15,7 @@ import GroupForm from '../forms/GroupForm';
 import GroupFilter from '../forms/GroupFilter';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
+
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -77,7 +79,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   const [groupsManagedObject, setGroupsManagedObject] = React.useState([]);
   const [showGroupSelect, setShowGroupSelect] = React.useState(false);
 
-  const [groupName, setGroupName] = React.useState();
+  const [groupName, setGroupName] = React.useState(pGroup_name);
   const [groupID, setGroupID] = React.useState();
   const [groupRole, setGroupRole] = React.useState();
   const [groupRec, setGroupRec] = React.useState();
@@ -85,9 +87,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   const [progressMessage, setprogressMessage] = React.useState('Building Member List');
 
   const classes = useStyles();
-
-  const [changes, setChanges] = React.useState(false);
-  if (changes) { }
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
   if (isMobile) { }
@@ -98,131 +97,36 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   const { enqueueSnackbar } = useSnackbar();
 
   const getGroupMemberList = async (inGroup) => {
+    setprogressMessage('Getting all accounts');
+    let memberInfo = await getMemberList(inGroup, pSession.client_id, { "sort": true, "exclude": false });
 
-    let workArray = [];
-    if (Array.isArray(inGroup)) { workArray = inGroup; }
-    else if (inGroup.includes('[')) { workArray = inGroup.replace(/[[\]]/g, '').split(','); }
-    else { workArray = [inGroup]; }
-
-    let groupArray = workArray.map(g => { 
-      return g.split('~')[0];
-    })
-
-    setGroupMemberList([]);
-    
-    let peopleRecs = {};
-    // People table
-    if (groupArray.includes('*all') || groupArray.includes('*ALL')) {
-      setGroupName('All accounts');
-      setGroupID('*all');
-      setGroupRole('responsible');
-      setprogressMessage('Getting all accounts');
-      // setForceRedisplay(!forceRedisplay);
-      peopleRecs = await dbClient
-        .query({
-          KeyConditionExpression: 'client_id = :c',
-          ExpressionAttributeValues: { ':c': pSession.client_id },
-          TableName: "People",
-          IndexName: "client_id-index",
-        })
-        .promise()
-        .catch(error => {
-          console.log({ 'Bad query on People in getGroupMembers - caught error is': error });
-        });
-    }
-    else {
-      let foundPeople = {};
-      let groupRec;
-      let gaL = groupArray.length;
-      peopleRecs.Items = [];
-      for (let gLoop = 0; gLoop < gaL; gLoop++) {
-        let pGroup = groupArray[gLoop];
-        groupRec = await getGroupDetails(pSession.client_id, pGroup);
-        if (Object.keys(groupRec).length === 0) { continue; }
-        let pGName = groupRec.name;
-        setprogressMessage(`Getting members of the ${pGName}${pGName.includes('roup') ? '' : ' Group'}`);
-        let gPeopleRecs = await dbClient
-          .query({
-            KeyConditionExpression: 'client_id = :c',
-            FilterExpression: 'contains ( groups, :n )',
-            ExpressionAttributeValues: { ':n': pGroup, ':c': pSession.client_id },
-            TableName: "People",
-            IndexName: "client_id-index",
-          })
-          .promise()
-          .catch(error => {
-            console.log({ 'Bad scan on People in getGroupMembers - caught error is': error });
-          });
-        if (('Items' in gPeopleRecs) && (gPeopleRecs.Items.length > 0)) {
-          gPeopleRecs.Items.forEach(i => { 
-            if (!(i.person_id in foundPeople)) {
-              if (gaL > 1) { i.member_of = pGName; }
-              peopleRecs.Items.push(i);
-              foundPeople[i.person_id] = pGName;
-            }
-          })
-        }
-      }
-      if (gaL === 1) {
-        setGroupName(groupRec.name);
-        setGroupRec(groupRec);
-        setGroupID(groupRec.group_id);
-        let myRole = groupsManagedObject[groupRec.name] ? groupsManagedObject[groupRec.name].role : null;
-        if (!myRole) {
-          let patientSession = await getSession(pSession.patient_id);
-          if (('responsible_for' in patientSession) && patientSession.responsible_for.includes(groupRec.group_id)) {
-            setGroupRole('responsible');
-          }
-          else if (('groups_managed' in patientSession) && patientSession.groups_managed.join(' ').includes(groupRec.group_id)) {
-            setGroupRole('responsible');
-          }
-          else {
-            setGroupRole(groupRec.admin_list.includes(patientSession.patient_id) ? 'responsible' : 'member');
-          }
-        }
-        else { setGroupRole(myRole); }
-      }
-      else {
-        setGroupName('Directory Search');
-        setGroupRec({});
-        setGroupID(...inGroup);
-        setGroupRole('');
-      }
-    }
-
-    if (!peopleRecs || !('Items' in peopleRecs) || (peopleRecs.Items.length === 0)) {
-      enqueueSnackbar(`AVA couldn't retrieve any Accounts.`, {
-        variant: 'error'
-      });
+    if (memberInfo.peopleList.length === 0) {
+      enqueueSnackbar(`AVA couldn't find any accounts.`, { variant: 'error' });
       onClose();
       return [];
     }
-
-    // Sort by name
-    // // setprogressMessage(`Sorting & filtering ${peopleRecs.Items.length} accounts`);
-    // setForceRedisplay(!forceRedisplay);
-    peopleRecs.Items.sort((a, b) => {
-      if (!a.hasOwnProperty('name')) {
-        a.name = { last: 'Missing', first: 'Name' };
-        console.log({ 'name missing for': a });
-      };
-      if (!b.hasOwnProperty('name')) {
-        b.name = { last: 'Missing', first: 'Name' };
-        console.log({ 'name missing for': b });
-      };
-      if (a.name.last === b.name.last) {
-        if (a.name.first > b.name.first) { return 1; }
-        if (a.name.first < b.name.first) { return -1; }
+    setGroupMemberList(memberInfo.peopleList);
+    if (memberInfo.groupList.length === 1) {
+      if (memberInfo.groupList[0] === '*all') {
+        setGroupID('*all');
+        setGroupRole('responsible');
       }
       else {
-        if (a.name.last > b.name.last) { return 1; }
-        if (a.name.last < b.name.last) { return -1; }
+        let groupRec = await getGroup(memberInfo.groupList[0], pSession.client_id);
+        setGroupRec(groupRec);
+        setGroupID(groupRec.group_id);
+        if (groupsManagedObject[groupRec.name]) {
+          setGroupRole(groupsManagedObject[groupRec.name].role);
+        }
+        else { setGroupRole(await getRole(groupRec.group_id, pSession.patient_id)); }
       }
-      return 0;
-    });
-    setGroupMemberList(peopleRecs.Items);
-    // setForceRedisplay(!forceRedisplay);
-    return peopleRecs.Items;
+    }
+    else {
+      setGroupRec({});
+      setGroupID(...inGroup);
+      setGroupRole('');
+    }
+    return memberInfo.peopleList;
   };
 
   async function getSession(who) {
@@ -312,7 +216,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     };
 
     // Next, get any other Groups that this person belongs to
-    var personRec = await getPerson(pPatient); 
+    var personRec = await getPerson(pPatient);
     for (let g = 0; g < personRec.groups.length; g++) {
       let group = personRec.groups[g];
       if (!foundGroups.includes(group)) {
@@ -369,12 +273,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   };
 
   const handleAbort = async () => {
-    if (pGroup_id) { onClose(); }
-    else {
-      setChanges(false);
-      setShowGroupSelect(true);
-      await getGroupsManagedObject(pSession.patient_id)
-    }
+    onClose();
   };
 
   // **************************

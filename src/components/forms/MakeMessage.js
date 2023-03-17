@@ -124,7 +124,11 @@ export default ({
   pRecipientName,
   onCancel,
   onComplete,
-  allowCancel = true
+  setUrgent = false,
+  setMethod,
+  allowCancel = true,
+  thread_id,
+  seedText
 }) => {
 
   const classes = useStyles();
@@ -135,10 +139,11 @@ export default ({
   const [recipientName, setRecipientName] = React.useState(pRecipientName);
   const [newAccount, setNewAccount] = React.useState(false);
 
-  const [textInput, setTextInput] = React.useState('');
+  const [textInput, setTextInput] = React.useState(seedText || '');
   const [nameInput, setNameInput] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
-  const [isUrgent, setIsUrgent] = React.useState(false);
+  const [isUrgent, setIsUrgent] = React.useState(setUrgent);
+  const [forceMethod, ] = React.useState(setMethod);
   const [imageURL, setImageURL] = React.useState('');
 
   const lambda = new Lambda({
@@ -190,6 +195,8 @@ export default ({
       }
     };
     lambdaPayload.body.values += ' ~ Urgent = ' + (isUrgent ? 'urgent' : 'normal');
+    if (forceMethod) { lambdaPayload.body.method = forceMethod; }
+    if (thread_id) { lambdaPayload.body.thread_id = thread_id; }
     params.Payload = JSON.stringify(lambdaPayload);
     lambda
       .invoke(params)
@@ -299,11 +306,6 @@ export default ({
       setForceRedisplay(!forceRedisplay);
     }
   };
-
-  const selectRecipient = () => {
-    return (recipientID === '*select');
-  };
-
   function makeName(pName) {
     let ans = pName.split(',');
     switch (ans.length) {
@@ -324,9 +326,9 @@ export default ({
             Key: imageURI,
             Expires: 3600
           })
-        )
+        );
       }
-      catch (e) { 
+      catch (e) {
         console.log(`error getting S3 image is ${e}`);
       }
     }
@@ -337,7 +339,7 @@ export default ({
 
   return (
     <Dialog open={forceRedisplay || true} fullScreen className={classes.containerBox}>
-      {selectRecipient() &&
+      {(recipientID === '*select') &&
         <SendMessageDialog
           open={true}
           onClose={() => {
@@ -354,7 +356,7 @@ export default ({
         >
         </SendMessageDialog>
       }
-      {!selectRecipient() &&
+      {(recipientID !== '*select') &&
         <React.Fragment>
           <Box display='flex'
             grow={1}
@@ -364,16 +366,14 @@ export default ({
             alignItems='flex-start'
           >
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {titleText || `Send a message to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
+              {titleText || `Send a${(forceMethod === 'AVA') ? 'n AVA Alert' : ''} ${thread_id ? 'reply' : 'message'} to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
             </DialogContentText>
-            <Box>
-              <Box
-                className={classes.imageArea}
-                component="img"
-                alt=''
-                src={getImage(recipientID)}
-              />
-            </Box>
+            <Box
+              className={classes.imageArea}
+              component="img"
+              alt=''
+              src={getImage(recipientID)}
+            />
             <DialogContent className={classes.contentBox}>
               <Box
                 display='flex'

@@ -2,6 +2,11 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
+import { recordExists, cl, resolveVariables } from '../../util/AVAUtilities';
+import { makeTime } from '../../util/AVADateTime';
+import { getImage } from '../../util/AVAPeople';
+import { makeObservationList } from '../../util/AVAObservations';
+
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -13,7 +18,6 @@ import PatientDialog from '../dialogs/PatientDialog';
 import NewFactDialog from '../dialogs/NewFactDialog';
 import AVAConfirm from '../forms/AVAConfirm';
 import MakeAVAMenu from '../../util/MakeAVAMenu';
-import AVATextInput from '../forms/AVATextInput';
 
 import List from '@material-ui/core/List';
 import Box from '@material-ui/core/Box';
@@ -22,7 +26,6 @@ import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import IconButton from '@material-ui/core/IconButton';
 import Dialog from '@material-ui/core/Dialog';
-import Button from '@material-ui/core/Button';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -39,8 +42,7 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import CircularProgress from '@material-ui/core/CircularProgress';
-import DeleteIcon from '@material-ui/icons/DeleteOutlineRounded';
-import ReplyIcon from '@material-ui/icons/ReplyOutlined';
+import LinearProgress from '@material-ui/core/LinearProgress';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 
 import Tooltip from '@material-ui/core/Tooltip';
@@ -49,6 +51,13 @@ const useStyles = makeStyles(theme => ({
   page: {
     height: 950,
     maxWidth: 1000
+  },
+  progressBar: {
+    marginBottom: theme.spacing(3),
+    backgroundColor: '#a3a0a0',
+    color: '#000000',
+    transition: 'none',
+    height: '5px'
   },
   freeInput: {
     marginLeft: '25px',
@@ -101,14 +110,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
     marginBottom: 0,
     fontSize: theme.typography.fontSize * 1.5,
-  },
-  messageScroll: {
-    maxHeight: 100,
-    marginTop: 1,
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: 0,
-    fontSize: '0.8rem',
   },
   buttonArea: {
     justifyContent: 'center',
@@ -235,7 +236,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ pPerson, patient, pClient, onReset }) => {
+export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const classes = useStyles();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
@@ -248,8 +249,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   const [, , removeCookie] = useCookies(['AVAuser']);
 
   const [mainMenu, setMainMenu] = React.useState([]);
-  const [messageText, setMessageText] = React.useState('');
-  const [imageURL, setImageURL] = React.useState('');
   const [greetingName, setGreetingName] = React.useState('');
   const [greetingWords, setGreetingWords] = React.useState('');
   const [confirmMessage, setConfirmMessage] = React.useState('');
@@ -269,15 +268,12 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   const [rowOpen, setRowOpen] = React.useState(-1);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
-  const [promptForMessage, setPromptForMessage] = React.useState('');
-  const [messageReplyRecipient, setMessageReplyRecipient] = React.useState('');
 
   const [loading, setLoading] = React.useState('Initializing');
+  const [progress, setProgress] = React.useState(100);
+  const [pWidth, setPWidth] = React.useState(60);
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  const [activityLogRecords, setActivityLogRecords] = React.useState([]);
-
-  const [lastActive, setLastActive] = React.useState(new Date().getTime());
 
   let currentSection = '';
 
@@ -285,11 +281,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 5 * oneMinute;
 
-  let nowTime = new Date().getTime();
-  let localLastActive = nowTime;
+  let idleTimer = React.createRef()
 
-  const imageBucket = 'theseus-medical-storage';
-  const imageURI = 'public/patients/[person_id].jpg';
+  let nowTime = new Date().getTime();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
@@ -299,11 +293,12 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     secretAccessKey: process.env.REACT_APP_AVA_KEY,
   });
 
-  const buildMenu = async (beQuiet = null) => {
-    let nowTime = new Date().getTime();
-    setLastActive(nowTime);
-    localLastActive = nowTime;
-    console.log(`Refreshed at ${new Date().toLocaleString()}.`);
+  const buildMenu = async (reload = false, beQuiet = null) => {
+    setSectionOpen({});
+
+    // Temp - make menu refresh on every reload
+    reload = true;
+
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
     let menuRec = await dbClient
@@ -316,32 +311,28 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        console.log(`caught error getting People record; error is:`, error);
+        cl(`caught error getting People record; error is:`, error);
       });
-    if (recordExists(menuRec) && ('AVA_section_open' in menuRec.Item)) {
-      setSectionOpen(menuRec.Item.AVA_section_open);
-    }
-    else {
-      if (session?.current_event) {
-        if (typeof (session?.current_event) === 'object') {
-          setSectionOpen(session.current_event);
-        }
-        else {
-          setSectionOpen(JSON.parse(session.current_event));
-        }
-      }
-      else {
-        setSectionOpen({});
+    if (recordExists(menuRec)) {
+      setSectionOpen(menuRec.Item.AVA_section_open || {});
+      if ((menuRec.Item.AVA_main_menu.length > 0) && !reload) {
+        // cl(`Used cached menu at ${new Date().toLocaleString()}.`);
+        setMainMenu(menuRec.Item.AVA_main_menu);
+        return menuRec.Item.AVA_main_menu;
       }
     }
-
-    let wholeMenu = await MakeAVAMenu(patient, pClient, (beQuiet ? screenQuiet : screenStatus));
+    
+    let forceRefresh = true;
+    let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
 
     if (wholeMenu.length > 0) {
+      // cl(`Reloaded menu at ${new Date().toLocaleString()}.`);
+      await updateAVA(sectionOpen, wholeMenu);
       setMainMenu(wholeMenu);
       return wholeMenu;
     }
     else {
+      // cl(`Empty menu for ${patient} in ${defaultClient} at ${new Date().toLocaleString()}.`);
       enqueueSnackbar(`AVA didn't find any options for you.  Ask AVA Support to check on this.`,
         { variant: 'error', persist: true }
       );
@@ -380,7 +371,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         })
         .promise()
         .catch(error => {
-          console.log(`AVA couldn't update your Menu settings.  Error is ${error}`);
+          cl(`AVA couldn't update your Menu settings.  Error is ${error}`);
         });
       dbClient
         .update({
@@ -392,119 +383,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           TableName: "SessionsV2",
         })
         .promise()
-        .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-    }
-    putActivityLog();
-  };
-
-  const deleteMessage = async (pMessage_id) => {
-    await dbClient
-      .update({
-        Key: { message_id: pMessage_id },
-        UpdateExpression: 'set delete_flag = :t',
-        ExpressionAttributeValues: {
-          ':t': true
-        },
-        TableName: "Messages",
-      })
-      .promise()
-      .catch(error => {
-        enqueueSnackbar(`AVA couldn't delete that message.  Error is ${error}`,
-          { variant: 'error', persist: true }
-        );
-        return;
-      });
-  };
-
-  const getMessage = async (pPerson) => {
-    makeGreeting();
-    try {
-      let now = new Date().getTime();
-      console.log(`Last message check set to ${new Date(now).toLocaleString()}`);
-      let mRecs = await dbClient
-        .query({
-          KeyConditionExpression: 'sender_id = :p and posted_time > :t',
-          FilterExpression: 'common_key = :msr and recipient_address <> :s and delete_flag <> :true',
-          ExpressionAttributeValues: {
-            ':p': pPerson,
-            ':t': now - (10 * oneMinute),
-            ':msr': 'message_status_record',
-            ':s': 'self',
-            ':true': true
-          },
-          TableName: "Messages",
-          IndexName: 'sender_id-index',
-          ScanIndexForward: false,
-          Limit: 10
-        })
-        .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-          }
-          console.log({ 'Error reading Messages': error });
-        });
-      if (!recordExists(mRecs)) {
-        mRecs = await dbClient
-          .query({
-            KeyConditionExpression: 'recipient_id = :p and posted_time > :t',
-            FilterExpression: 'delete_flag <> :true',
-            ExpressionAttributeValues: {
-              ':p': pPerson,
-              ':t': now - (24 * oneHour),
-              ':true': true
-            },
-            TableName: "Messages",
-            IndexName: 'recipient_id-index',
-            ScanIndexForward: false,
-            Limit: 10
-          })
-          .promise()
-          .catch(error => {
-            if (error.code === 'NetworkingError') {
-              enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-            }
-            console.log({ 'Error reading Messages': error });
-          });
-        if (recordExists(mRecs)) {
-          // handle a received message
-          let msg = mRecs.Items[0];
-          let httpAt = msg.message_content.indexOf('http');
-          if (httpAt > -1) {
-            let lastSentenceAt = msg.message_content.lastIndexOf('.', httpAt);
-            msg.message_content = msg.message_content.substring(0, lastSentenceAt + 1);
-          }
-          if (!msg.message_content.startsWith('Message from') && (msg.sender_id !== pPerson)) {
-            msg.message_content = `From ${msg.sender_name}: ${msg.message_content}`;
-          }
-          let foundMessage = `${msg.posted_time}$~~$${new Date(Number(msg.posted_time)).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-          })
-            } - ${msg.message_content}$~~$${msg.message_id}$~~$to$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
-          setMessageReplyRecipient(`${msg.sender_name}:${msg.response_target || msg.sender_id}`);
-          setMessageText(foundMessage);
-          return foundMessage;
-        }
-      }
-      else {
-        // handle a sent message
-        let msg = mRecs.Items[0];
-        let foundMessage = `${msg.posted_time}$~~$${msg.message_content}$~~$${msg.message_id}$~~$from$~~$${msg.sender_name}:${msg.response_target || msg.sender_id}`;
-        setMessageText(foundMessage);
-        return foundMessage;
-      }
-      setMessageText(null);
-      setForceRedisplay(!forceRedisplay);
-      return null;
-    }
-    catch (e) {
-      setMessageText(null);
-      setForceRedisplay(!forceRedisplay);
-      return null;
+        .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
   };
 
@@ -521,7 +400,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       });
     if (uploadOK) {
       closeSnackbar();
-      enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'info', persist: false });
+      enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
       return pMediaData.Key;
     };
     return null;
@@ -531,8 +410,10 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     return;
   };
 
-  const screenStatus = (statusMessage) => {
+  const screenStatus = (statusMessage, progressPct, progressWidth) => {
     setLoading(statusMessage);
+    setProgress(progressPct);
+    setPWidth(progressWidth * 100);
     setForceRedisplay(!forceRedisplay);
   };
 
@@ -540,7 +421,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     setLoading('Resetting your Favorites');
     setForceRedisplay(!forceRedisplay);
     makeGreeting();
-    await getMessage(pPerson);
     let activityRow = mainMenu[activityRowIndex];
     let changeMade = false;
     let personRec = await dbClient
@@ -553,7 +433,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         if (error.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        console.log(`caught error getting People record; error is:`, error);
+        cl(`caught error getting People record; error is:`, error);
       });
     if (recordExists(personRec)) {
       // add or remove from the favoriteList as appropriate
@@ -677,7 +557,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
               });
             if (qArray.length > 0) { constructedQualifier = ` ( ${qArray.join('; ')} )`; }
           }
-          if (pFact.value.freeText.hasOwnProperty(selection)) {
+          if (pFact.value.freeText && pFact.value.freeText.hasOwnProperty(selection)) {
             let freeText = pFact.value.freeText[selection];
             foundText.push(selection);    // we might have free text that is NOT associated with a check box, use foundText to prevent duplication
             return `${selection} = ${freeText}${constructedQualifier}`;
@@ -764,12 +644,8 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       async () => {
         setLoading('Getting your Information');
         setForceRedisplay(!forceRedisplay);
-        getImage(session.patient_id || patient.person_id);
-        makeName(session.patient_display_name || patient.name.first || pPerson);
+        makeGreetingName(patient.name.first || session.patient_display_name || pPerson);
         makeGreeting();
-        setLoading('Getting recent messages');
-        setForceRedisplay(!forceRedisplay);
-        await getMessage(session.patient_id || patient.person_id);
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);
         await buildMenu();
@@ -781,32 +657,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       response();
     }
   }, [pPerson]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleSendMessage = async (pPatient, pMessage, pRecipient = null) => {
-    // program expects pRecipient in the form <display name>:<id>
-    lambda
-      .invoke({
-        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine',
-        InvocationType: 'RequestResponse',
-        LogType: 'Tail',
-        Payload: JSON.stringify({
-          "body": {
-            "client": pClient,
-            "author": pPatient,
-            "values": pRecipient + ' ~ MessageText = ' + pMessage
-          }
-        })
-      })
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
-    enqueueSnackbar(`Sent "${pMessage}" to ${pRecipient.split(':')[0]}`, {
-      variant: 'success'
-    });
-  };
 
   const accessLog = async (pUser, pPwd, pMessage) => {
     var payload =
@@ -829,43 +679,30 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       .invoke(params)
       .promise()
       .catch(err => {
-        console.log('Access log call failed.  Error is', JSON.stringify(err));
+        cl('Access log call failed.  Error is', JSON.stringify(err));
       });
   };
 
-  const activityLog = (pUser, pCode, pName, pIndex) => {
+  const activityLog = async (pUser, pCode, pName, pIndex) => {
     let postTime = new Date().getTime();
-    let activityLogRec = {
-      timestamp: postTime,
-      user_id: pUser,
-      activity_code: pCode,
-      activity_name: pName,
-      AVA_version: `23.1.16${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
-    };
-    let workLog = activityLogRecords;
-    workLog.push(activityLogRec);
-    setActivityLogRecords(workLog);
+    await dbClient
+      .put({
+        TableName: 'ActivityLog',
+        Item: {
+          timestamp: postTime,
+          user_id: pUser,
+          activity_code: pCode,
+          activity_name: pName,
+          AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
+        }
+      })
+      .promise()
+      .catch(error => {
+        cl(`Bad put to ActivityLog - caught error is: ${error}`);
+      });
     mainMenu[pIndex].last_used = postTime;
     setMainMenu(mainMenu);
-    putActivityLog();
   };
-
-  async function putActivityLog() {
-    if (activityLogRecords.length > 0) {
-      let putObj = activityLogRecords.map(r => {
-        return { PutRequest: { Item: r } };
-      });
-      await dbClient
-        .batchWrite({
-          RequestItems: { 'ActivityLog': putObj }
-        })
-        .promise()
-        .catch(error => {
-          console.log(`Bad put to ActivityLog - caught error is: ${error}`);
-        });
-      setActivityLogRecords([]);
-    }
-  }
 
   const putFact = async (pFact, pFactName, pIndex) => {
     let postTime = new Date().getTime();
@@ -879,6 +716,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       method: 'AVAMenu',
       posted_time: postTime
     };
+    if (pFact.commonKey) { newFact.common_key = pFact.commonKey; }
     await dbClient
       .put({
         TableName: 'Facts',
@@ -894,62 +732,17 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     }
   };
 
-  const getActivityDetail = async (pActivity, pDefault) => {
-    let invokeFailed = false;
-    let cClient = pClient;
-    let cActivity = pActivity;
-    if (pActivity.includes('//')) {
-      [cClient, cActivity] = pActivity.split('//');
-    }
-    var payload =
-    {
-      'test': false,
-      'body': {
-        "clientId": cClient,
-        "personId": pPerson,
-        "activityType": `$$${cActivity}`,
-        "limit": 100,
-        "fact_data": false,
-        "historyOnly": false,
-        "use_short_date": true,
-        "kiosk_mode": false
-      }
-    };
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:thesesus-activityList',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
-    let fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        if (err.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-        }
-        console.log('Call for Activity details failed.  Error is', JSON.stringify(err));
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let activityResponse = JSON.parse(fResp.Payload);
-      if (activityResponse.status === 200) {
-        if (cClient !== pClient) {
-          activityResponse.body.activityData[0].client_id = cClient;
-        }
-        if (pDefault && (pDefault !== '') && !pDefault.includes('[')) {
-          activityResponse.body.activityData[0].default_value = pDefault;
-        }
-        setSelected(activityResponse.body.activityData[0]);
-        return activityResponse.body.activityData[0];
-      }
-    };
-    return [];
+  async function getActivityDetail(pActRec) {
+    let resolvedActivity = await makeObservationList(pActRec.activity_rec || pActRec.activity_code, session);
+    resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
+    resolvedActivity.activityRec.default_value = await resolveVariables(pActRec.default_value, session);
+    setSelected(resolvedActivity.activityRec);
+    return resolvedActivity;
   };
 
   const getActivityHistory = async (pActivity) => {
     let invokeFailed = false;
-    let cClient = pClient;
+    let cClient = defaultClient;
     let cActivity = pActivity;
     if (pActivity.includes('//')) {
       [cClient, cActivity] = pActivity.split('//');
@@ -981,7 +774,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
         if (err.code === 'NetworkingError') {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-        console.log('Call for Activity details failed.  Error is', JSON.stringify(err));
+        cl('Call for Activity details failed.  Error is', JSON.stringify(err));
         invokeFailed = true;
       });
     if (!invokeFailed) {
@@ -994,24 +787,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
     return [];
   };
 
-  function getImage(pPerson) {
-    setImageURL(s3.getSignedUrl('getObject', {
-      Bucket: imageBucket,
-      Key: imageURI.replace('[person_id]', pPerson),
-      Expires: 3600
-    }));
-  }
-
-  function recordExists(recordId) {
-    if (!recordId) { return false; }
-    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
-    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
-  }
-
-  function makeName(pString) {
-    let response = pString.split(':')[0].trim().split(/[\s]+/)[0];
-    setGreetingName(response);
-    return response;
+  function makeGreetingName(pString) {
+    setGreetingName(pString);
+    return pString;
   }
 
   function makeExpiration() {
@@ -1031,11 +809,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       setGreetingWords(session.custom_greeting);
       return session.custom_greeting;
     }
-    let current_hour = Number(new Date().toTimeString().split(':')[0]);
-    let response = '';
-    if (current_hour < 12) { response = 'Good morning'; }
-    else if (current_hour < 17) { response = 'Good afternoon'; }
-    else { response = 'Good evening'; }
+    let response = `Good ${makeTime(new Date()).dayPart}`;
     setGreetingWords(response);
     return response;
   }
@@ -1079,13 +853,16 @@ export default ({ pPerson, patient, pClient, onReset }) => {
       <React.Fragment>
         {/* Idle timer always running */}
         <IdleTimer
+          ref={idleTimer}
           timeout={msBeforeSleeping}   // every "n" minutes
+          onActive={() => {
+            // cl(`Active at ${new Date().toLocaleString()}.  Last idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
+          }}          
           onIdle={async () => {
-            console.log(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(Math.max(lastActive, localLastActive)).toLocaleString()}`);
-            await getMessage(session.patient_id);
-            setGreetingWords('Welcome back');
+            cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
             await updateAVA(sectionOpen, mainMenu);
           }}
+          startOnMount={true}
           debounce={250}
         />
 
@@ -1113,7 +890,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 </Typography>
               }
               placement='bottom-start'>
-              <Avatar src={imageURL} alt={greetingName} />
+              <Avatar src={getImage(session.patient_id)} alt={greetingName} />
             </Tooltip>
             <Box
               flexGrow={1}
@@ -1135,15 +912,20 @@ export default ({ pPerson, patient, pClient, onReset }) => {
             </Box>
           </Box>
           <Box
-            paddingRight={2}
+            component="img"
+            ml={isMobile ? 2 : 5}
+            mr={2}
             aria-controls='hidden-menu'
             aria-haspopup='true'
+            minWidth={isMobile ? 50 : 55}
+            maxWidth={isMobile ? 50 : 55}
             onClick={(event) => {
               handleClick(event);
               setPopupMenuOpen(true);
-            }}>
-            <Avatar src={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'} />
-          </Box>
+            }}
+            alt=''
+            src={process.env.REACT_APP_AVA_LOGO}
+          />
           <Menu
             id='hidden-menu'
             anchorEl={anchorEl}
@@ -1232,13 +1014,10 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   setLoading('Resetting greeting');
                   setForceRedisplay(!forceRedisplay);
                   makeGreeting();
-                  setLoading('Checking messages');
-                  setForceRedisplay(!forceRedisplay);
-                  await getMessage(session.patient_id);
-                  setLoading('Refreshing your AVA menu');
+                  setLoading('Restarting AVA');
                   setForceRedisplay(!forceRedisplay);
                   await updateAVA(sectionOpen, mainMenu);
-                  await buildMenu();
+                  await buildMenu(true);
                   setCurrentMenu('main');
                   setMenuArray(['main']);
                   setMenuNames([]);
@@ -1250,7 +1029,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   key={'vRowRefresh'}
                 >
                   <AutorenewIcon />
-                  <Typography className={classes.popUpMenuRow} >{'Refresh'}</Typography>
+                  <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
                 </Box>
               </MenuItem>
               <MenuItem>
@@ -1258,7 +1037,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                   key={'vRowRefresh'}
                 >
-                  <Typography className={classes.popUpFooter} >{`AVA vers 23.1.16${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   <Typography className={classes.popUpFooter} >{makeExpiration()}
                   </Typography>
                   <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
@@ -1281,7 +1060,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
               minWidth={isMobile ? 150 : 175}
               maxWidth={isMobile ? 150 : 175}
               alt=''
-              src={session?.client_logo || 'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+              src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
             />
             <React.Fragment>
               <Box
@@ -1291,7 +1070,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 mb={2}
               >
                 <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version 23.1.16${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -1305,59 +1084,13 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                   <Typography>{loading}</Typography>
                 }
               </Box>
+              <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
               <CircularProgress />
             </React.Fragment>
           </Box>
         }
 
-        {/* Message */}
-        {!loading && messageText &&
-          <Box
-            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={3} mb={1} mr={3}
-          >
-            <Box
-              display='flex' mt={1} flexDirection='row' justifyContent='center' alignItems='center'
-              key={'msgButtonBox'}
-            >
-              <Typography key={'message'} variant='subtitle2' className={classes.boldCenter}>
-                {messageText.split('$~~$')[1]}
-              </Typography>
-            </Box>
-            <Box
-              display='flex' flexDirection='row' justifyContent='center' alignItems='center'
-            >
-              <Button
-                onClick={async () => {
-                  // mTime,mContent,mID,mType,mSenderName:respondTo
-                  await deleteMessage(messageText.split('$~~$')[2]);
-                  setMessageText(null);
-                  await getMessage(session.patient_id);
-                  setForceRedisplay(!forceRedisplay);
-                }}
-                className={classes.rowButtonRed}
-                startIcon={<DeleteIcon size='small' />}
-              >
-                {(messageText.split('$~~$')[3] !== 'to') ? 'Hide' : 'Delete'}
-              </Button>
-              {(messageText.split('$~~$')[3] === 'to') &&
-                <Button
-                  onClick={async () => {
-                    setPromptForMessage(true);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                  className={classes.rowButtonBlue}
-                  startIcon={<ReplyIcon size='small' />}
-                >
-                  Reply
-                </Button>
-              }
-            </Box>
-          </Box>
-        }
-
-        {/* AVA Menu */}
+    {/* AVA Menu */}
         {mainMenu && mainMenu.length > 0 && !loading &&
           <Paper component={Box} variant='outlined' overflow='auto'>
             <List >
@@ -1371,7 +1104,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                     flexDirection='column'
                     minHeight={80}
                     onClick={async () => {
-                      await getMessage(session.patient_id);
                       menuArray.pop();
                       setCurrentMenu(menuArray[menuArray.length - 1]);
                       setMenuArray(menuArray);
@@ -1391,9 +1123,9 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                         alt=""
                         variant="square"
                       />
-                      <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                      <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
                         <Box display='flex' flexDirection='column'>
-                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                             <Typography variant='h5' className={classes.lastName} >{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
                           </Box>
                         </Box>
@@ -1493,10 +1225,10 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                               justifyContent='space-between'
                               alignItems='center'
                               onClick={async () => {
-                                activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
+                                await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
                                 if (!toggleClick && (this_row.row_type !== 'document')) {
                                   if (this_row.subMenu_data) {
-                                    let subMenu = await MakeAVAMenu(patient, pClient, screenQuiet, this_row.subMenu_data);
+                                    let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
                                     delete mainMenu[index].subMenu_data;
                                     mainMenu.push(...subMenu);
                                     setMainMenu(mainMenu);
@@ -1510,12 +1242,11 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                                     setForceRedisplay(!forceRedisplay);
                                   }
                                   else {
-                                    await getActivityDetail(this_row.activity_code, this_row.default_value);
+                                    await getActivityDetail(this_row);
                                     setShowNewFactDialog(index);
                                   }
                                 }
                                 setToggleClick(false);
-                                await getMessage(session.patient_id);
                               }}
                             >
                               {this_row.row_type === 'document' ?
@@ -1642,7 +1373,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           <PatientDialog
             patient={{
               "person_id": `*NEW~${new Date().getTime()}`,
-              "client_id": pClient,
+              "client_id": defaultClient,
               "groups": [],
               "name": {
                 "first": 'New',
@@ -1651,7 +1382,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
               "clients": [
                 {
                   "groups": [],
-                  "id": pClient
+                  "id": defaultClient
                 }
               ],
             }}
@@ -1678,7 +1409,6 @@ export default ({ pPerson, patient, pClient, onReset }) => {
                 jumpTo += `?user=${session.url_parameters.user}`;
                 window.location.replace(jumpTo);
               }
-              await getMessage(pPerson);
             }}
             onSave={
               async (pResult) => {
@@ -1706,18 +1436,7 @@ export default ({ pPerson, patient, pClient, onReset }) => {
           >
           </AVAConfirm>
         }
-        {promptForMessage &&
-          <AVATextInput
-            promptText={`What should your reply to ${messageReplyRecipient.split(':')[0]} say?`}
-            buttonText='Send'
-            onCancel={() => { setPromptForMessage(false); }}
-            onSave={(messageText) => {
-              setPromptForMessage(false);
-              handleSendMessage(pPerson, messageText, messageReplyRecipient);
-            }}
-          />
-        }
-      </React.Fragment >
+        </React.Fragment >
     </Dialog >
   );
-};;
+};

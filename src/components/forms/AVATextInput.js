@@ -11,6 +11,8 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import TextField from '@material-ui/core/TextField';
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
+import Typography from '@material-ui/core/Typography';
+import Checkbox from '@material-ui/core/Checkbox';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 const useStyles = makeStyles(theme => ({
@@ -36,6 +38,13 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     textTransform: 'none',
     size: 'small',
+  },
+  radioButton: {
+    marginTop: 0,
+    marginRight: 10,
+    marginLeft: 0,
+    paddingLeft: 0,
+    paddingRight: 1,
   },
   dialogBox: {
     paddingTop: theme.spacing(1),
@@ -92,7 +101,14 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
   const handleChangeTextInput = (event, ndx) => {
     textInput[ndx] = event.target.value;
     setTextInput(textInput);
-    setForceRedisplay(!forceRedisplay)
+    setForceRedisplay(!forceRedisplay);
+  };
+
+  const toggleCheckbox = (ndx) => {
+    if (textInput[ndx] === 'checked') { textInput[ndx] = ''; }
+    else { textInput[ndx] = 'checked'; }
+    setTextInput(textInput);
+    setForceRedisplay(!forceRedisplay);
   };
 
   const handleSave = () => {
@@ -121,67 +137,87 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
         flexDirection='column'
         justifyContent='center'
         alignItems='flex-start'
-        >
+      >
         {titleText &&
-          <DialogContentText className={classes.title} id='scroll-dialog-title'>
+          <DialogContentText className={classes.title} id='dialog-title'>
             {titleText}
           </DialogContentText>
         }
-        <DialogContent className={classes.contentBox}>
+        <DialogContent className={classes.contentBox} id='dialog-content'>
           <Box
             display='flex'
             grow={1}
+            pt={1}
             mb={0}
+            id={`contentsColumn`}
+            key={`contentsColumn`}
             flexDirection='column'
             justifyContent='center'
             alignItems='flex-start'
           >
             {promptArray.map((prompt, ndx) => (
-              <TextField
-                classes={{ root: classes.idText }}
-                id={`prompt-${ndx}`}
-                key={`prompt-${ndx}`}
-                fullWidth
-                multiline
-                inputRef={input => (ndx === 0) && input && input.focus()}
-                label={(prompt === titleText) ? '' : prompt}
-                value={textInput[ndx] || ''}
-                onChange={(event) => {
-                  handleChangeTextInput(event, ndx);
-                }}
-                onKeyPress={(event) => {
-                  onCheckEnter(event);
-                }}
-                autoComplete='off'
-              />
+              <React.Fragment key={`frag-${ndx}`}>
+                {prompt.toLowerCase().startsWith('[checkbox]') ?
+                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                    alignItems='center' flexWrap='wrap' key={`qropt-${ndx}`}
+                  >
+                    <Checkbox
+                      className={classes.radioButton}
+                      size="small"
+                      onClick={() => {
+                        toggleCheckbox(ndx);
+                      }}
+                      checked={(textInput[ndx] === 'checked')}
+                    />
+                    <Typography>{prompt.slice(10)}</Typography>
+                  </Box>
+                  :
+                  <TextField
+                    classes={{ root: classes.idText }}
+                    id={`prompt-${ndx}`}
+                    key={`prompt-${ndx}`}
+                    multiline
+                    inputRef={input => (ndx === 0) && input && input.focus()}
+                    label={(prompt === titleText) ? '' : prompt}
+                    value={textInput[ndx] || ''}
+                    onChange={(event) => {
+                      handleChangeTextInput(event, ndx);
+                    }}
+                    onKeyPress={(event) => {
+                      onCheckEnter(event);
+                    }}
+                    autoComplete='off'
+                  />
+                }
+              </React.Fragment>
             ))}
           </Box>
         </DialogContent>
       </Box>
-        <DialogActions style={{ justifyContent: 'center' }}>
-          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-            {allowCancel &&
-              <Button
-                className={classes.rowButtonRed}
-                size='small'
-                onClick={() => {
-                  onCancel();
-                }}
-                startIcon={<CloseIcon size="small" />}
-              >
-                {'Back'}
-              </Button>
-            }
+      <DialogActions style={{ justifyContent: 'center' }}>
+        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+          {allowCancel &&
             <Button
-              className={classes.rowButtonGreen}
+              className={classes.rowButtonRed}
               size='small'
-              onClick={handleSave}
-              startIcon={<LoadIcon size="small" />}
+              onClick={() => {
+                onCancel();
+              }}
+              startIcon={<CloseIcon size="small" />}
             >
-              {buttonText}
+              {'Back'}
             </Button>
-          </Box>
-        </DialogActions>
+          }
+          <Button
+            className={classes.rowButtonGreen}
+            size='small'
+            onClick={handleSave}
+            startIcon={<LoadIcon size="small" />}
+          >
+            {buttonText}
+          </Button>
+        </Box>
+      </DialogActions>
     </Dialog>
   );
 };

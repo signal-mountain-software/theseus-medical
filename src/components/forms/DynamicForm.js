@@ -14,6 +14,8 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import ObservationForm from '../forms/ObservationForm';
+import RequestDashboard from '../dialogs/RequestDashboard';
+import CalendarDashboard from '../dialogs/CalendarDashboard';
 import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
@@ -1160,9 +1162,7 @@ export default ({
         <MessageForm
           pPerson={session.patient_id}
           pClient={session.client_id}
-          pMessageList={
-            values.map(v => { return (JSON.parse(v)); })
-          }
+          pMessageList={[]}
           pSession={session}
           onReset={onSave}
         />
@@ -1180,20 +1180,22 @@ export default ({
           pRecipientID={defaultValueObj.recipientID}
           pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
           onCancel={onClose}
-          onComplete={onSave}
+          onComplete={onClose}
           allowCancel={true}
         />
       );
     case 'observation_form':
       return (
         <ObservationForm
-          factType={newFact.activity_key.split('.')[0]}
+          fact={newFact}
           factName={factName}
           defaultValue={defaultValue}
+          prompt={message}
           pClient={session.client_id}
           qualifiers={qualifierTable}
           listValues={values}
-          onSave={(oSelected, fText, fQualifiers) => { 
+          onSave={(requestNumber, oSelected, fText, fQualifiers) => { 
+            newFact.commonKey = requestNumber; 
             newFact.value.selected = oSelected; 
             newFact.value.freeText = fText;
             newFact.value.qualifiers = fQualifiers;
@@ -1204,6 +1206,32 @@ export default ({
           onClose={onClose}
         />
       );
+    case 'request_dashboard': {
+      let filter = { person_id: session.patient_id };
+      if (newFact?.value?.freeText?.requestType) {
+        filter = { request_type: newFact.value.freeText.requestType };
+      }
+      return (
+        <RequestDashboard
+          session={session}
+          filter={filter}
+          onClose={onClose}
+        />
+      );
+    }
+    case 'calendar_dashboard': {
+      let filter = { person_id: session.patient_id };
+      if (newFact?.value?.freeText?.requestType) {
+        filter = { request_type: newFact.value.freeText.requestType };
+      }
+      return (
+        <CalendarDashboard
+          session={session}
+          filter={filter}
+          onClose={onClose}
+        />
+      );
+    }
     case 'new_event':
       return (
         <NewCalendarEvent
@@ -1225,6 +1253,7 @@ export default ({
         />
       );
     case 'show_calendar':
+    case 'add_calendar':
       let OGsession = {};
       Object.assign(OGsession, session);
       return (
@@ -1234,7 +1263,7 @@ export default ({
           peopleList={values}
           currentEvent={defaultValue || []}
           eventClient={newFact.client_id || session.client_id}
-          showCalendar={true}
+          showCalendar={type.split('_')[0]}
           onClose={onSave}
         />
       );

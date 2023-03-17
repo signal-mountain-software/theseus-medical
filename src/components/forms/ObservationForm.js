@@ -1,5 +1,9 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
+import { makeDate } from '../../util/AVADateTime';
+import { makeName } from '../../util/AVAPeople';
+import { putServiceRequest } from '../../util/AVAServiceRequest';
+
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import TextField from '@material-ui/core/TextField';
@@ -13,6 +17,15 @@ import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
+
+import HomeIcon from '@material-ui/icons/Home';
+import AutorenewIcon from '@material-ui/icons/Autorenew';
+
+import Avatar from '@material-ui/core/Avatar';
+import Menu from '@material-ui/core/Menu';
+import MenuList from '@material-ui/core/MenuList';
+import MenuItem from '@material-ui/core/MenuItem';
+
 
 import AVAConfirm from './AVAConfirm';
 
@@ -44,6 +57,29 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 50,
   },
+  messageArea: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+  },
+  profileArea: {
+    alignItems: 'center'
+  },
+  popUpMenu: {
+    marginRight: theme.spacing(3),
+    paddingRight: 2,
+  },
+  popUpMenuRow: {
+    marginLeft: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  popUpFooter: {
+    fontSize: theme.typography.fontSize * 0.8,
+  },
+
   qualText: {
     fontSize: theme.typography.fontSize * 1.0,
     marginLeft: 0,
@@ -97,7 +133,7 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.8
   },
   title: {
-    marginTop: theme.spacing(3),
+    marginTop: theme.spacing(2),
     marginRight: theme.spacing(2),
     marginLeft: theme.spacing(2),
     marginBottom: 0,
@@ -125,7 +161,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ factType, factName, defaultValue, pClient, qualifiers, listValues, onSave, onClose }) => {
+export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
   const classes = useStyles();
 
@@ -138,11 +174,16 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
 
   const [textInput, setTextInput] = React.useState();
   const [initialLoadComplete, setLoadComplete] = React.useState();
-  // const [displayRows, setDisplayRows] = React.useState();
-
   const [dataRows, setDataRows] = React.useState();
-  // const [checked, setChecked] = React.useState();
-  // const [chosenQual, setChosenQual] = React.useState();
+
+  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
+  const [anchorEl, setAnchorEl] = React.useState(null);
+
+  const factType = fact.activity_key.split('.')[0];
+
+  const handleClick = async (event) => {
+    setAnchorEl(event.currentTarget);
+  };
 
   const lambda = new Lambda({
     region: 'us-east-1',
@@ -159,8 +200,7 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
 
   if (!initialLoadComplete && defaultValue) {
     let defaultObj = {};
-    let inputDefaults = defaultValue.split('~');
-    inputDefaults.forEach(i => {
+    (Array.isArray(defaultValue) ? [...defaultValue] : [defaultValue]).forEach(i => {
       let [key, value] = i.split('=');
       defaultObj[key] = value;
     });
@@ -293,16 +333,20 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
 
   if (!initialLoadComplete) {
     for (let vIndex = 0; vIndex < listValues.length; vIndex++) {
+      // All rows are evaluated as follows "<instruction[0]>~<instruction[1]>:<instruction[2]>"
+      // OR... "<instruction[0]>~~<instruction[1]>" (instruction[0] expected to be null/blank in thsi case)
       let instruction = listValues[vIndex].split(/[~:]+/);
+
+      // This checks for rows in the form "~[<oControl>=<oValue on/off>]"
       if (instruction[1] && (instruction[1].charAt(0) === '[')) {
         let [, oControl, oValue] = instruction[1].split(/[=[\]]+/);
         switch (oControl) {
-          case 'checkbox': {
+          case 'checkbox': {    // checkbox default state is true; this allows you to toggle it off/on
             checkbox = (oValue.toLowerCase() === 'on');
             break;
           }
           case 'display': {
-            ignore = (oValue.toLowerCase() === 'on');
+            ignore = (oValue.toLowerCase() === 'off');
             break;
           }
           case 'required': {
@@ -313,9 +357,11 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
         }
         continue;
       }
+
       if (ignore) { continue; }
+
+      // This handles any row without a leading "~"
       if (instruction[0]) {
-        // CheckBox selection
         displayRowList.push({
           checkbox,
           required,
@@ -326,8 +372,12 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
         });
         continue;
       }
+
+      // Dropping through to here means that instruction[0] was null/blank
+      //    (ie. there was nothing before the first "~"; the row started with "~")
+      // This handles rows in the form "~<instruction[1]>:<instruction[2]>", for example
+      //     "~lambda:<instruction[2]>"
       if (instruction[2]) {
-        // Special Instruction - input = date, time, or file...  anything else is plain text prompt
         displayRowList.push({
           checkbox: (instruction[1].includes('withCheckBox')),
           required: required || (instruction[1].includes('required')),
@@ -338,6 +388,9 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
         });
         continue;
       }
+
+      // Dropping through to here means that instruction[2] was also null/blank
+      //      so the row looked like "~<instruction[1]>" or "~~<instruction[1]>"
       // Turns out, this is a header line in instruction[1]
       displayRowList.push({
         checkbox: false,
@@ -348,7 +401,7 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
         input: false,
         header: true
       });
-    }
+    };
     setLoadComplete(true);
     setDataRows({ displayRows: displayRowList, dataRows: {}, checked: [] });
   }
@@ -362,38 +415,9 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
     setForceRedisplay(!forceRedisplay);
   };
 
-  const handleDateExit = (event, this_item) => {
-    let goodDate = new Date(event.target.value);
-    if (isNaN(goodDate)) {
-      let tNext = event.target.value.trim().toLowerCase().startsWith('next');
-      if (tNext) {
-        let dayWord = event.target.value.split(' ')[1].trim();
-        event.target.value = dayWord;
-      }
-      let tDate = event.target.value.substr(0, 3).toLowerCase();
-      let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
-      goodDate = new Date(Date.now());
-      if (dOfw > -1) {
-        if ((goodDate.getDay() > dOfw) && tNext) {
-          tNext = false;
-        }
-        goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + (tNext ? 7 : 0));
-      }
-      else if (tDate === 'tom') {
-        goodDate.setDate(goodDate.getDate() + 1);
-      }
-      else if (tDate !== 'tod') {
-        goodDate = new Date(event.target.value);
-      }
-    }
-    let current = new Date(Date.now());
-    current.setHours(0, 0, 0, 0);
-    if (goodDate < current) {
-      let yyyy = current.getFullYear();
-      goodDate.setFullYear(yyyy);
-      if (goodDate < current) { goodDate.setFullYear(yyyy + 1); }
-    };
-    textInput[this_item.text] = goodDate.toDateString();
+  const handleDateExit = async (event, this_item) => {
+    let AVAdate = makeDate(event.target.value);
+    textInput[this_item.text] = AVAdate.absolute;
     setTextInput(textInput);
   };
 
@@ -450,7 +474,7 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
     return (isChecked(pObj) && !!dataRows && dataRows.hasOwnProperty(pObj.text));
   }
 
-  function makeConfirm(pDisplayRows, pChecked, textInput = {'empty': true}) {
+  function makeConfirm(pDisplayRows, pChecked, textInput = { 'empty': true }) {
     let workChecked = [];
     let errorsExist = false;
     let errorMessage = ['Please correct these errors', '----'];
@@ -471,8 +495,8 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
             for (let key in dataRows.chosenQual[r.text]) {
               if (dataRows.chosenQual[r.text][key] && (dataRows.chosenQual[r.text][key].length > 0)) {
                 dataRows.chosenQual[r.text][key].forEach(qRow => {
-                  responseArray.push(`[indent=1]${qRow}`)  
-                })
+                  responseArray.push(`[indent=1]${qRow}`);
+                });
               }
             }
           }
@@ -491,17 +515,80 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
     >
       {!!dataRows && dataRows.hasOwnProperty('displayRows') && dataRows.displayRows.length > 0 &&
         <React.Fragment>
-          <Box display='flex' flexDirection='column' key={'titlesection'}>
-            <Typography
-              className={classes.title}
-            >
-              {factName}
-            </Typography>
-            <Typography
-              className={classes.subTitle}
-            >
-              {`Please select from these options`}
-            </Typography>
+          {/* Header with Avatar, Message, and VertMenu */}
+          <Box
+            display='flex' flexDirection='row'
+            className={classes.messageArea}
+            key={'topBox'}
+          >
+            <Box display='flex' flexDirection='column' key={'titlesection'}>
+              <Typography
+                className={classes.title}
+              >
+                {factName}
+              </Typography>
+              <Typography
+                className={classes.subTitle}
+              >
+                {prompt || `Please select from these options`}
+              </Typography>
+            </Box>
+            <Box
+              paddingRight={2}
+              marginTop={1}
+              aria-controls='hidden-menu'
+              aria-haspopup='true'
+              onClick={(event) => {
+                handleClick(event);
+                setPopupMenuOpen(true);
+              }}>
+              <Avatar src={process.env.REACT_APP_AVA_LOGO} />
+            </Box>
+            <Menu
+              id='hidden-menu'
+              anchorEl={anchorEl}
+              open={popupMenuOpen}
+              onClose={() => { setPopupMenuOpen(false); }}
+              keepMounted>
+              <MenuList className={classes.popUpMenu}>
+                <MenuItem
+                  onClick={() => {
+                    onClose();
+                  }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowHome'}
+                  >
+                    <HomeIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Go to AVA Menu'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    let jumpTo = window.location.origin;
+                    window.location.replace(jumpTo);
+                  }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowRefresh'}
+                  >
+                    <AutorenewIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem>
+                  <Box
+                    display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                    key={'vRowRefresh'}
+                  >
+                    <Typography className={classes.popUpFooter} >{`AVA vers RE${process.env.REACT_APP_AVA_VERSION}window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`User ${fact.session.user_id}${fact.patient_id !== fact.session.user_id ? (' (' + fact.patient_id + ')') : ''}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`Function: ObservationForm`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`Activity: ${fact.activity_key}`}</Typography>
+                  </Box>
+                </MenuItem>
+              </MenuList>
+            </Menu>
           </Box>
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
@@ -648,7 +735,38 @@ export default ({ factType, factName, defaultValue, pClient, qualifiers, listVal
               cancelText={'Go back'}
               confirmText={'Save/Send'}
               onCancel={() => { setConfirmStatus(''); }}
-                onConfirm={() => { onSave(checkedToSave, textInput, dataRows.chosenQual); }}
+              onConfirm={async () => {
+                let rObj;
+                if (factType !== 'list') {
+                  let oBo = await makeName(fact.patient_id);
+                  if (fact.value.freeText && ('onBehalfOf' in fact.value.freeText)) {
+                    oBo = textInput[fact.value.freeText.onBehalfOf];
+                    delete textInput[fact.value.freeText.onBehalfOf];
+                  }
+                  let requestObj = { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual };
+                  let messageObj = {};
+                  if ('messaging' in fact) { 
+                    messageObj.messaging = Object.assign(requestObj, fact.messaging);
+                    messageObj.messaging.activityName = factName;
+                  }
+                  let foreign_key = fact.value.freeText.foreignKey || '*tbd';
+                  if (textInput && textInput[fact.value.freeText.foreignKey]) { 
+                    let fKDate = makeDate(textInput[fact.value.freeText.foreignKey]);
+                    if (!fKDate.error) { foreign_key = fKDate.ymd; }
+                  } 
+                  rObj = await putServiceRequest(
+                    {
+                      client: pClient,
+                      author: fact.patient_id,
+                      requestType: fact.value.freeText.requestType,
+                      onBehalfOf: oBo,
+                      foreignKey: foreign_key,
+                      request: requestObj,
+                      messaging: fact.messaging
+                    });
+                }
+                onSave((rObj ? rObj.request_id : ''), checkedToSave, textInput, dataRows.chosenQual);
+              }}
             >
             </AVAConfirm>
           }

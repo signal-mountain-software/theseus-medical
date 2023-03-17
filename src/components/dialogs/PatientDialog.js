@@ -3,8 +3,10 @@ import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { Lambda } from 'aws-sdk';
+import { getPerson, makeName } from '../../util/AVAPeople';
+import { getObject, cl } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
-import { getSession, getPerson } from '../../graphql/queries';
+import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
 
 import { useSnackbar } from 'notistack';
@@ -43,6 +45,12 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 const AWS = require('aws-sdk');
 const dbClient = new AWS.DynamoDB.DocumentClient({
   apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
+const cloudfront = new AWS.CloudFront({
   region: "us-east-1",
   accessKeyId: process.env.REACT_APP_AVA_ID,
   secretAccessKey: process.env.REACT_APP_AVA_KEY
@@ -175,10 +183,8 @@ export default ({ patient, picture, open, onClose }) => {
   const [resettingPwd, setResettingPwd] = React.useState(false);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
 
-  const [savedImageFile, setSavedImageFile] = React.useState();
-  const [savedImageKey, setSavedImageKey] = React.useState();
-  const [savedTmp, setSavedTmp] = React.useState([]);
-  const [editPhoto, setEditPhoto] = React.useState('');
+  const [editPhotoKey, setEditPhotoKey] = React.useState();
+  const [editPhoto, setEditPhoto] = React.useState(null);
   const [cropperInstance, setCropper] = React.useState();
 
   const { enqueueSnackbar } = useSnackbar();
@@ -203,37 +209,6 @@ export default ({ patient, picture, open, onClose }) => {
     return formatted;
   }
 
-  const imageBucket = 'theseus-medical-storage';
-  const imageURI = 'public/patients/[person_id].jpg';
-  const updatedImageURI = 'public/patients/[person_id]$cropped$.jpg';
-
-  function getOriginalImage(pPerson) {
-    let imageURL = s3.getSignedUrl('getObject', {
-      Bucket: imageBucket,
-      Key: imageURI.replace('[person_id]', pPerson),
-      Expires: 3600
-    });
-    return imageURL;
-  }
-
-  function getTempImage(pKey) {
-    let imageURL = s3.getSignedUrl('getObject', {
-      Bucket: imageBucket,
-      Key: pKey,
-      Expires: 3600
-    });
-    return imageURL;
-  }
-
-  function getUpdatedImage(pPerson) {
-    let imageURL = s3.getSignedUrl('getObject', {
-      Bucket: imageBucket,
-      Key: updatedImageURI.replace('[person_id]', pPerson),
-      Expires: 3600
-    });
-    return imageURL;
-  }
-
   const lambda = new Lambda({
     region: 'us-east-1',
     accessKeyId: process.env.REACT_APP_AVA_ID,
@@ -254,19 +229,7 @@ export default ({ patient, picture, open, onClose }) => {
         setPatientGroups(localPersonRec.groups);
         if (localPersonRec.relationships) {
           localPersonRec.relationships.forEach(async (relationship, index) => {
-            let result = await API.graphql(
-              graphqlOperation(getPerson, {
-                person_id: relationship.person_id,
-              })
-            ).catch(error => {
-              console.log(error);
-            });
-            if (result?.data) {
-              localPersonRec.relationships[index].name = result.data.getPerson.name.first + ' ' + result.data.getPerson.name.last;
-            }
-            else {
-              localPersonRec.relationships[index].name = null;
-            }
+            localPersonRec.relationships[index].name = makeName(relationship.person_id);
           });
         }
         let targetSession = await getSessionData(patient.person_id);
@@ -313,7 +276,7 @@ export default ({ patient, picture, open, onClose }) => {
           preferred_method: localPersonRec.preferred_method || 'AVA',
           respArray: (finalRespArray || []),
           nameObj: (nameObj || {}),
-          temp_photo: getOriginalImage(patient.person_id),
+          photoURL: await getObject(`${patient.person_id}`, 'image'),
           requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
           storePassword: (targetSession.hasOwnProperty('storePassword') ? targetSession.storePassword : true),
           groupMemberList: (workingGroupMemberList || []),
@@ -330,42 +293,34 @@ export default ({ patient, picture, open, onClose }) => {
   }, [patient]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const getPersonRec = async (pPerson) => {
-    let peopleRec = await dbClient
-      .get({
-        Key: { person_id: pPerson },
-        TableName: "People"
-      })
-      .promise()
-      .catch(error => {
-        console.log({ 'Bad get on People - caught error is': error });
-      });
-    if (recordExists(peopleRec)) { return peopleRec.Item; }
-    let templatePerson = {
-      "person_id": pPerson,
-      "location": "",
-      "client_id": state.session.client_id,
-      "search_data": "",
-      "clients": [
-        {
-          "groups": [],
-          "id": state.session.client_id
-        }
-      ],
-      "name": {
-        "last": "",
-        "first": ""
-      },
-      "directory_option": "normal",
-      "display_name": "",
-      "groups": [],
-      "preferred_method": "AVA",
-      "relationships": null,
-      "roles": ["patient"],
-      "messaging": {},
-      "time_offset": -5,
+    let pRec = await getPerson(pPerson);
+    if (pRec) { return pRec; }
+    else {
+      return {
+        "person_id": pPerson,
+        "location": "",
+        "client_id": state.session.client_id,
+        "search_data": "",
+        "clients": [
+          {
+            "groups": [],
+            "id": state.session.client_id
+          }
+        ],
+        "name": {
+          "last": "",
+          "first": ""
+        },
+        "directory_option": "normal",
+        "display_name": "",
+        "groups": [],
+        "preferred_method": "AVA",
+        "relationships": null,
+        "roles": ["patient"],
+        "messaging": {},
+        "time_offset": -5,
+      };
     };
-    // setPersonRec(templatePerson);
-    return templatePerson;
   };
 
   const getSessionData = async (pWho) => {
@@ -376,7 +331,7 @@ export default ({ patient, picture, open, onClose }) => {
       })
       .promise()
       .catch(error => {
-        console.log({ 'Bad get on Session - caught error is': error });
+        cl({ 'Bad get on Session - caught error is': error });
       });
     if (recordExists(sessionRec)) {
       setPatientSession(sessionRec.Item);
@@ -400,7 +355,7 @@ export default ({ patient, picture, open, onClose }) => {
       .invoke(params)
       .promise()
       .catch(err => {
-        console.log(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`);
+        cl(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`);
       });
     if (!invokeFailed) {
       let gML = JSON.parse(fResp.Payload);
@@ -418,18 +373,23 @@ export default ({ patient, picture, open, onClose }) => {
     hiddenFileInput.current.click();
   };
 
+  const removeTemporaryPhoto = async () => {
+    if (editPhotoKey) {
+      s3.deleteObject({
+        Bucket: 'theseus-medical-storage',
+        Key: editPhotoKey,
+      }).promise();
+      setEditPhotoKey();
+    }
+  };
+
   const handleAbort = () => {
     setResettingPwd(false);
     setPwdConfirmed(false);
     localData.inputPWD = (patientSession ? (patientSession.last_login || 'password') : 'password');
     setChanges(false);
     setPhotoChanges(false);
-    if (savedImageKey) {
-      s3.deleteObject({
-        Bucket: 'theseus-medical-storage',
-        Key: savedImageKey
-      }).promise();
-    };
+    if (editPhotoKey) { removeTemporaryPhoto(); };
     onClose();
   };
 
@@ -525,23 +485,10 @@ export default ({ patient, picture, open, onClose }) => {
         TableName: "People",
       })
       .promise()
-      .catch(error => { console.log(`caught error updating People; error is:`, error); });
-
-    if (savedImageFile) {
-      s3.copyObject({
-        Bucket: 'theseus-medical-storage',
-        CopySource: savedImageFile,
-        Key: savedImageKey.replace(savedTmp[savedTmp.length - 1], '')
-      }).promise()
-        .catch((e) => console.error(e));
-      s3.deleteObject({
-        Bucket: 'theseus-medical-storage',
-        Key: savedImageKey
-      }).promise();
-    }
+      .catch(error => { cl(`caught error updating People; error is:`, error); });
 
     let updateString = 'newData.' + JSON.stringify(updatePerson);
-    console.log(updatePerson);
+    cl(updatePerson);
     let newFactData = {
       patient_id: patient.person_id,
       activity_key: 'action.updateUser',
@@ -554,12 +501,12 @@ export default ({ patient, picture, open, onClose }) => {
       },
     };
     await API.graphql(graphqlOperation(createPutFact, { input: newFactData })).catch(error => {
-      console.log(error);
+      cl(error);
     });
 
     let attributeValues = {
       ':s': JSON.stringify({
-        'version': `v23.1.16`,
+        'version': `v${process.env.REACT_APP_AVA_VERSION}`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'action': 'Updated Person record',
@@ -608,7 +555,7 @@ export default ({ patient, picture, open, onClose }) => {
         TableName: "SessionsV2",
       })
       .promise()
-      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+      .catch(error => { cl(`caught error updating SessionsV2; error is: `, error); });
 
     enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
     patient.name.first = localData.firstName;
@@ -687,34 +634,72 @@ export default ({ patient, picture, open, onClose }) => {
     setChanges(true);
   };
 
-  async function handleSavePhoto(pTarget, pTmp) {
+  async function handleSaveTemporaryPhoto(pTarget) {
+    let pType;
+    if (typeof (pTarget) === 'string') { pType = 'jpg'; }
+    else { pType = pTarget.type; }
+    let s3Resp = await s3
+      .upload({
+        Bucket: 'theseus-medical-storage',
+        Key: `${patient.person_id}_original.jpg`,
+        Body: pTarget,
+        ACL: 'public-read-write',
+        ContentType: pType
+      })
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+      });
+    cl(s3Resp);
+    setEditPhotoKey(s3Resp.Key);
+    return s3Resp.Location;
+  };
+
+  async function handleSavePhoto(pTarget) {
     let extension = pTarget.type.split('/')[1];
     if (extension === 'jpeg') { extension = 'jpg'; }
     const pFile = {
       Bucket: 'theseus-medical-storage',
-      Key: 'public/patients/' + patient.person_id + pTmp + '.' + extension,
+      Key: 'public/patients/' + patient.person_id + '.' + extension,
       Body: pTarget,
       ACL: 'public-read-write',
       ContentType: pTarget.type
     };
-    let s3Resp = await s3
+    await s3
       .upload(pFile)
       .promise()
       .catch(err => {
         enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
       });
-    console.log(s3Resp);
-    setSavedImageFile(s3Resp.Location);
-    setSavedImageKey(s3Resp.Key);
-    savedTmp.push(pTmp);
-    setSavedTmp(savedTmp);
-    return pFile.Key;
-  }
+    let cfParm = {
+      DistributionId: 'E3DXPQ4WCODC8A',
+      InvalidationBatch: {
+        CallerReference: new Date().getTime().toString(),
+        Paths: {
+          Quantity: 1,
+          Items: [`/${patient.person_id}.jpg`]
+        }
+      }
+    };
+    await cloudfront
+      .createInvalidation(cfParm)
+      .promise()
+      .catch(err => {
+        cl({
+          'clearing cache - cloudfront invalidation error': {
+            err, cfParm
+          }
+        })
+        enqueueSnackbar(`The new image is saved, but you'll still see the old one for a little while`, { variant: 'warning', persist: false });
+      });
+    localData.photoURL = await getObject(patient.person_id, 'image');
+    setLocalData(localData);
+    return;
+  };
 
   const handleChangeSearch = event => {
     localData.searchTerm = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setSearchTerm(event.target.value);
     setChanges(true);
   };
 
@@ -757,14 +742,12 @@ export default ({ patient, picture, open, onClose }) => {
   const handleChangeLocation = event => {
     localData.location = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setLocation(event.target.value);
     setChanges(true);
   };
 
   const handleChangePassword = event => {
     localData.inputPWD = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setInputPWD(event.target.value);
   };
 
   const handleChangeGroups = updatedGroupArray => {
@@ -905,6 +888,9 @@ export default ({ patient, picture, open, onClose }) => {
                         </RadioGroup>
                       </FormControl>
                     }
+                    {localData.preferred_method !== 'time_based' &&
+                      <Typography className={classes.radioText}>Urgent messages will re-try this method every 30 minutes for 2 hours</Typography>
+                    }
 
                     <Typography className={classes.idText1}>
                       {`My userID is ${patient?.person_id}`}
@@ -1017,7 +1003,7 @@ export default ({ patient, picture, open, onClose }) => {
                 minWidth={150}
                 maxWidth={150}
                 alt='No photo'
-                src={localData.temp_photo}
+                src={localData.photoURL}
               />
               <br />
               <Box display='flex'
@@ -1025,7 +1011,7 @@ export default ({ patient, picture, open, onClose }) => {
                 flexDirection='row'
                 justifyContent='center'
                 alignItems='center'>
-                {(editPhoto === '') &&
+                {!editPhoto &&
                   <React.Fragment>
                     <Button
                       className={classes.photoButton}
@@ -1033,7 +1019,7 @@ export default ({ patient, picture, open, onClose }) => {
                       color='primary'
                       hidden={patient.person_id.startsWith('*NEW~')}
                       size='small'
-                      onClick={async () => {
+                      onClick={() => {
                         handlePhotoUpload();
                       }}
                     >
@@ -1047,7 +1033,7 @@ export default ({ patient, picture, open, onClose }) => {
                         hidden={patient.person_id.startsWith('*NEW~')}
                         size='small'
                         onClick={async () => {
-                          setEditPhoto(localData.temp_photo || `public/patients/${patient.person_id}.jpg`);
+                          setEditPhoto(localData.photoURL);
                         }}
                       >
                         <Typography>Edit this photo</Typography>
@@ -1055,7 +1041,7 @@ export default ({ patient, picture, open, onClose }) => {
                     }
                   </React.Fragment>
                 }
-                {(editPhoto !== '') &&
+                {editPhoto &&
                   <React.Fragment>
                     <Button
                       className={classes.photoButton}
@@ -1075,9 +1061,9 @@ export default ({ patient, picture, open, onClose }) => {
                       size='small'
                       onClick={() => {
                         cropperInstance.destroy();
-                        setEditPhoto('');
+                        setEditPhoto(null);
                         setPhotoChanges(false);
-                        localData.temp_photo = getOriginalImage(patient.person_id);
+                        removeTemporaryPhoto();
                         setRefreshTrigger(!refreshTrigger);
                       }}
                     >
@@ -1089,14 +1075,14 @@ export default ({ patient, picture, open, onClose }) => {
                       color='primary'
                       size='small'
                       onClick={async () => {
-                        setEditPhoto('');
+                        setEditPhoto(null);
                         setPhotoChanges(true);
                         cropperInstance
                           .getCroppedCanvas()
                           .toBlob((async (pBlob) => {
-                            await handleSavePhoto(new File([pBlob], patient.person_id, { type: 'image/jpeg' }), '$cropped$');
+                            let editedPhoto = new File([pBlob], patient.person_id, { type: 'image/jpeg' });
+                            await handleSavePhoto(editedPhoto);
                           }), 'image/jpeg');
-                        localData.temp_photo = getUpdatedImage(patient.person_id);
                         setRefreshTrigger(!refreshTrigger);
                       }}
                     >
@@ -1105,12 +1091,12 @@ export default ({ patient, picture, open, onClose }) => {
                   </React.Fragment>
                 }
               </Box>
-              {(editPhoto !== '') &&
+              {editPhoto &&
                 <Cropper
                   zoomTo={0.5}
                   style={{ width: "100%", height: "400px" }}
                   aspectRatio={1 / 1}
-                  src={localData.temp_photo}
+                  src={editPhoto}
                   viewMode={0}
                   minCropBoxHeight={150}
                   minCropBoxWidth={150}
@@ -1130,9 +1116,7 @@ export default ({ patient, picture, open, onClose }) => {
                 style={{ display: 'none' }}
                 ref={hiddenFileInput}
                 onChange={async (target) => {
-                  let photoKey = await handleSavePhoto(target.target.files[0], 'tmp');
-                  localData.temp_photo = await getTempImage(photoKey);
-                  setEditPhoto(localData.temp_photo);
+                  setEditPhoto(await handleSaveTemporaryPhoto(target.target.files[0]));
                 }}
               />
             </Box>
@@ -1261,7 +1245,7 @@ export default ({ patient, picture, open, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {((changes || pwdConfirmed || photoChanges) && (!editPhoto || (editPhoto === ''))) &&
+            {(changes || pwdConfirmed || photoChanges) && !editPhoto &&
               <Button
                 onClick={handleUpdate}
                 disabled={!changes && !pwdConfirmed}

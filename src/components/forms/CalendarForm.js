@@ -226,7 +226,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopl
   };
 
   React.useEffect(() => {
-    console.log('in use Effect of CalendarForm.js');
+    
   }, [theCalendar]); // eslint-disable-line react-hooks/exhaustive-deps
 
 

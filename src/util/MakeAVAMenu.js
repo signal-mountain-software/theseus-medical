@@ -1,6 +1,8 @@
-const AWS = require('aws-sdk');
+import { resolveVariables, stringToColor, cl, clt, recordExists } from '../util/AVAUtilities';
+import { getPerson } from '../util/AVAPeople';
 
-const AVAIcon = 'https://ava-icons.s3.amazonaws.com/AVA+Logo.png';
+const AWS = require('aws-sdk');
+const AVAIcon = process.env.REACT_APP_AVA_LOGO;
 
 const dbClient = new AWS.DynamoDB.DocumentClient({
   apiVersion: '2012-08-10',
@@ -9,14 +11,31 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default async (requestor, masterClient, screenStatus, subMenuData = null) => {
+let customObj = {};
+let activityObj = {};
+let groupObj = {};
 
-  let groupList;
+export default async (requestor, masterClient, screenStatus, subMenuData = null, forceRefresh = false) => {
 
-  // let subMenus = [];
+  if (forceRefresh) {
+    customObj = {};
+    activityObj = {};
+    groupObj = {};
+    requestor = await getPerson(requestor.person_id, '*all', true);
+  };
+
+  let groupList = [];
+
   let numberOfRows = 1000;
   let sectionDetails = {};
   let activityHistory = {};
+
+  function makeVersion(inStr) { 
+    let [vYr, vDay] = inStr.split(/\.(.*)/);
+    return ((Number(vYr) % 100) * 100) + parseFloat(vDay);
+  }
+
+  let ava_version_number = makeVersion(process.env.REACT_APP_AVA_VERSION);
 
   // Main line
 
@@ -31,10 +50,12 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
 
   // Functions
 
-  async function handleSubMenu(pSubMenu) {
+  async function handleSubMenu(pSubMenu, pActivities = null) {
     let returnArray = [];
     let [sectionColor, sectionIcon] = await getCustomizations(pSubMenu.menu_name);
-    let subActivities = await getSubMenu(pSubMenu.event_id, pSubMenu.client_id);
+    let subActivities = [];
+    if (pActivities) { subActivities.push(...pActivities); }
+    else { subActivities = await getSubMenu(pSubMenu.event_id, pSubMenu.client_id); }
     let aL = subActivities.length;
     if (aL > 0) {
       for (let a = 0; a < aL; a++) {
@@ -91,7 +112,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
 
     // Get Favorites from the People record
     // ({ '** FAVORITES **': (requestor.favorite_activities || 'no favorite activities') });
-    screenStatus('Loading Favorites');
     sectionSort = '**2';
     sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} favorites`;
     sectionColor = '#6bb44b';
@@ -100,6 +120,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     if (requestor.hasOwnProperty('favorite_activities')) {
       aL = requestor.favorite_activities.length;
       for (let a = 0; a < aL; a++) {
+        screenStatus('Loading Favorites', ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = requestor.favorite_activities[a];
         let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Favorite');
         if (this_row) { returnArray.push(this_row); }
@@ -112,24 +133,26 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     // Also add anything that you've used 3 or more times recently
     // Get Recent history
     // ({ '** HISTORY **': (activityHistory || 'no history found') });
-    screenStatus('Checking History');
     if (!('favorite_blocked' in requestor)) { requestor.favorite_blocked = []; }
     sectionSort = '**2a';
     sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} frequently used`;
     sectionColor = '#4bb491';
     sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-star-half-empty-50.png';
     activityHistory = await getActivityLog(pPerson);
+    let hL = Object.keys(activityHistory).length;
+    let h = 0;
     for (const hActivity in activityHistory) {
+      h++;
       if ((activityHistory[hActivity].length > 4) &&
         !(requestor.favorite_activities.includes(hActivity)) &&
         !(requestor.favorite_blocked.includes(hActivity))) {
+        screenStatus('Frequently Used', ((h / hL) * 100), ((hL / 40) + .75));
         let this_row = await addRow(hActivity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'History');
         if (this_row) { returnArray.push(this_row); }
       }
     }
 
     // ({ '** PRIORITIES **': (requestor.priority_activities || 'no priority activities') });
-    screenStatus('Checking for Priority Items');
     if (requestor.hasOwnProperty('priority_activities')) {
       sectionSort = '**2b';
       sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} priorities`;
@@ -137,6 +160,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-idea-sharing-64.png';
       let aL = requestor.priority_activities.length;
       for (let a = 0; a < aL; a++) {
+        screenStatus('Priority Items', ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = requestor.priority_activities[a];
         let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Priorities');
         if (this_row) { returnArray.push(this_row); }
@@ -144,7 +168,18 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     }
 
     // Get all Groups this person is associated with
-    groupList = await getGroupsPersonBelongsTo(pPerson);
+    let neededGroups = [];
+    requestor.groups.forEach(e => {
+      if (e in groupObj) { groupList.push(groupObj[e]); }
+      else { neededGroups.push(e); }
+    });
+    if (neededGroups.length > 0) {
+      let addGroupList = await getGroupsPersonBelongsTo(neededGroups);
+      addGroupList.forEach(c => {
+        groupList.push(c);
+        groupObj[c.group_id] = c;
+      });
+    }
     groupList.sort((a, b) => {
       if (a.group_id < b.group_id) { return -1; }
       else { return 1; }
@@ -158,11 +193,11 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       sectionName = `Common activities for the ${this_group.name}${!this_group.name.includes('roup') ? ' group' : ''}`;
       sectionColor = stringToColor(sectionName);
       sectionIcon = AVAIcon;
-      screenStatus(`Common activities for ${this_group.name}`);
       // (`Checking group ${this_group.group_id} (${this_group.name}): ${(this_group.common_activities || 'no common activities')}`);
       if (!this_group.hasOwnProperty('common_activities')) { continue; }
       let aL = this_group.common_activities.length;
       for (let a = 0; a < aL; a++) {
+        screenStatus(`Common activities for ${this_group.name}`, ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = this_group.common_activities[a];
         if (!allowDuplicates && duplicateCheck.includes(this_activity)) {   // this_activity is already loaded
           continue;
@@ -182,50 +217,66 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
             sectionSort = sectionKeys[1];
             sectionName = sectionKeys[1];
           }
-          if (sectionName.startsWith('[')) {
-            let [, iType, iValue, iKey] = sectionName.split(/[[\]=:]/);
-            switch (iType) {
-              case 'subMenu': {
-                if (iValue === 'start') {
-                  let currentMenu = menuStructure.length - 1;
-                  let this_section = menuStructure[currentMenu].currentSection;
-                  returnArray.push({
-                    menu_name: menuStructure[currentMenu].menuName,
-                    sort_key: sectionDetails[this_section].sort_key,
-                    section_name: this_section,
-                    section_color: sectionDetails[this_section].color,
-                    section_icon: sectionDetails[this_section].icon,
-                    row_color: sectionDetails[this_section].color,
-                    activity_code: `event.${iKey}`,
-                    activity_name: reconcile(iKey),
-                    row_type: 'event',
-                    default_value: null,
-                    parent_menu: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
-                    child_menu: iKey,
-                    reason: `Group ${this_group.group_id}`,
-                    last_used: -1,
-                    is_favorite: false,
-                    subMenu_data: {
-                      client_id: masterClient,
-                      event_id: iKey,
-                      parent: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
-                      parent_name: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
-                      menu_name: iKey
-                    }
-                  });
-                  menuStructure.push({ menuName: iKey, currentSection: iKey });
-                  sectionName = iKey;
-                }
-                else if (iValue === 'end') {
-                  if (menuStructure.length > 1) {
-                    menuStructure.pop();
-                    sectionName = menuStructure[menuStructure.length - 1].currentSection;
-                  }
-                };
-                break;
-              }
-              default: { break; }
+          if (sectionName.startsWith('submenu=')) {
+            let subName = sectionName.split('=')[1];
+            let currentMenu = menuStructure.length - 1;
+            let this_section = menuStructure[currentMenu].currentSection;
+            let subMenuObj = {
+              client_id: masterClient,
+              event_id: `submenu.${subName}`,
+              parent: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
+              parent_name: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
+              menu_name: subName
+            };
+            returnArray.push({
+              menu_name: menuStructure[currentMenu].menuName,
+              sort_key: sectionDetails[this_section].sort_key,
+              section_name: this_section,
+              section_color: sectionDetails[this_section].color,
+              section_icon: sectionDetails[this_section].icon,
+              row_color: sectionDetails[this_section].color,
+              activity_code: `submenu.${subName}`,
+              activity_name: await resolveVariables(subName, { client_id: masterClient, patient_id: pPerson, user_id: pPerson }),
+              row_type: 'event',
+              default_value: null,
+              parent_menu: ((currentMenu === 0) ? null : menuStructure[currentMenu - 1].menuName),
+              child_menu: subName,
+              reason: `Group ${this_group.group_id}`,
+              last_used: -1,
+              is_favorite: false,
+              subMenu_data: subMenuObj
+            });
+            await addRow(
+              `submenu.${subName}`,   // activity_code
+              menuStructure[currentMenu].menuName,                  // this menu_id                      
+              subMenuObj.parent,                    // parent menu_id
+              subMenuObj.parent_name,               // parent menu name
+              sectionDetails[this_section].sort_key,           // pSectionSort
+              this_section,                                // pSectionName
+              sectionDetails[this_section].color,          // pSectionColor
+              sectionDetails[this_section].icon,          // pSectionIcon
+              `Group ${this_group.group_id}`              // pReason
+            );
+            menuStructure.push({ menuName: subName, currentSection: subName });
+            let subActivities = [];
+            let nextA;
+            for (let s = a + 1; ((s < aL) && (this_group.common_activities[s] !== '~~end_submenu')); s++) {
+              subActivities.push(this_group.common_activities[s]);
+              nextA = s;
             }
+            subMenuObj = {
+              client_id: masterClient,
+              event_id: subName,
+              parent: menuStructure[currentMenu].menuName,
+              parent_name: menuStructure[currentMenu].menuName,
+              menu_name: subName
+            };
+            let subLines = await handleSubMenu(subMenuObj, subActivities);
+            returnArray.push(...subLines);
+            menuStructure.pop();
+            sectionName = menuStructure[menuStructure.length - 1].currentSection;
+            a = nextA + 1;
+            continue;
           }
           else {
             menuStructure[menuStructure.length - 1].currentSection = sectionName;
@@ -240,6 +291,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
           }
         }
         else {
+          if (!(sectionName in sectionDetails)) {
+            [sectionColor, sectionIcon] = await getCustomizations(sectionName);
+            sectionDetails[sectionName] = {
+              color: sectionColor,
+              icon: sectionIcon,
+              sort_key: sectionSort
+            };
+          }
           let currentMenu = menuStructure.length - 1;
           let this_row = await addRow
             (this_activity,                                 // pActivity
@@ -313,6 +372,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
   }
 
   async function getCustomizations(pName) {
+    if (pName in customObj) { return [customObj[pName].color, customObj[pName].icon]; }
     let cRec = await dbClient
       .get({
         Key: {
@@ -327,9 +387,19 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
                     with client = ${masterClient} and custom_key = ${pName} `);
       });
     if (recordExists(cRec)) {
+      customObj[pName] = {
+        color: cRec.Item.color || stringToColor(pName),
+        icon: cRec.Item.icon || AVAIcon
+      };
       return [cRec.Item.color || stringToColor(pName), cRec.Item.icon || AVAIcon];
     }
-    else { return [stringToColor(pName), AVAIcon]; }
+    else {
+      customObj[pName] = {
+        color: stringToColor(pName),
+        icon: AVAIcon
+      };
+      return [stringToColor(pName), AVAIcon];
+    }
   }
 
   async function getActivityLog(pPerson) {
@@ -387,7 +457,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     else {
       pSort = `${pSectionSort}-${numberOfRows}`;
     }
+    activityRec.code = activityRec.activity_code;
     return {
+      activity_rec: activityRec,
+      code: activityRec.activity_code,
       menu_name: pMenu,
       sort_key: pSort,
       section_name: (!favorite && activityRec.section_name) || pSectionName,
@@ -395,7 +468,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       section_icon: pSectionIcon,
       row_color: pSectionColor,
       activity_code: activityRec.activity_code,
-      activity_name: reconcile(activityRec.name),
+      activity_name: await resolveVariables(activityRec.name, { client_id: masterClient, patient_id: pPerson, user_id: pPerson }),
       row_type: activityRec.type,
       default_value: activityRec.validation?.default_value || null,
       parent_menu: pParent,
@@ -417,13 +490,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
   }
 
   async function getActivity(pActivityCode) {
+    if (pActivityCode in activityObj) { return activityObj[pActivityCode]; }
     let pClient = masterClient;
     let addClient = false;
     let overrideDefault, overrideTitle;
     let parts = pActivityCode.split('~[');
     let pActivity = parts[0];
     for (let p = 1; p < parts.length; p++) {
-      let [iType, iData] = parts[p].split(/[=\]]/);
+      let [iType, iData] = parts[p].split(/[=<>\]]/);
       switch (iType) {
         case 'default': {
           overrideDefault = iData;
@@ -433,11 +507,22 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
           overrideTitle = iData;
           break;
         }
+        case 'version':
+        case 'release': {
+          let checkVer = makeVersion(iData);
+          if ((parts[p].includes('<') && (ava_version_number >= checkVer))
+            || (parts[p].includes('>') && (ava_version_number <= checkVer))
+            || (parts[p].includes('=') && (checkVer !== ava_version_number))) {
+            activityObj[pActivityCode] = {};
+            return {};
+          }
+          break;
+        }
         default: { break; }
       }
     }
     if (pActivity.includes('//')) {
-      [pClient, pActivity] = pActivityCode.split('//');
+      [pClient, pActivity] = pActivity.split('//');
       addClient = true;
     }
     let aRecs = await dbClient
@@ -461,12 +546,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       if (overrideTitle) {
         aRecs.Item.name = overrideTitle;
       }
+      activityObj[pActivityCode] = aRecs.Item;
       return aRecs.Item;
     }
+    activityObj[pActivityCode] = {};
     return {};
   }
 
-  async function getGroupsPersonBelongsTo(pPerson) {
+  async function getGroupsPersonBelongsTo(neededGroupArray) {
     // ({ 'in getGroupsPersonBelongsTo': { pPerson } });
     let batchGetRequest = {
       RequestItems: {
@@ -479,7 +566,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
     // requestor.groups was unexpectedly found to have duplicate entries in one instance
     // When that happened, this batchGetRequest would fail and no menu was rendered at all
     // the code "[...new Set(requestor.groups)]" assures that unique values only are considered
-    [...new Set(requestor.groups)].forEach(g => {
+    [...new Set(neededGroupArray)].forEach(g => {
       batchGetRequest.RequestItems.Groups.Keys.push(
         {
           client_id: masterClient,
@@ -497,120 +584,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null)
       return groupRecs.Responses.Groups;
     }
     else { return []; }
-  }
-
-  function reconcile(pString) {
-    if (!pString || !pString.includes('[')) { return pString; };
-    // ({ 'reconciling': pString });
-    let nameArray = pString.split(/\[|\]/g);
-    let betweenTheBrackets = nameArray[1];
-    if (betweenTheBrackets.includes('~')) {
-      // handle [morning~1200~afternoon], reconciling the respone as per the hhmm
-      let [earlyPart, timeTrigger$, latePart] = betweenTheBrackets.split('~');
-      let timeTrigger = parseInt(timeTrigger$.trim(), 10);
-      let timeNow = new Date();
-      let timeNowHHMM = ((timeNow.getHours() - 4) * 100) + timeNow.getMinutes();
-      if (timeNowHHMM > timeTrigger) { nameArray[1] = latePart; }
-      else { nameArray[1] = earlyPart; }
-      return nameArray.join('');
-    }
-    betweenTheBrackets = betweenTheBrackets.toLowerCase();
-    if (betweenTheBrackets === 'name') {
-      nameArray[1] = `${requestor.name.first} ${requestor.name.last} `;
-      return nameArray.join('');
-    }
-    else if (betweenTheBrackets === 'location') {
-      nameArray[1] = requestor.location;
-      return nameArray.join('');
-    }
-    else {
-      let keyDate;
-      let today = new Date();
-      let todayDayOfWeek = today.getDay();
-      if (betweenTheBrackets.startsWith('today+')) {
-        keyDate = addDays(today, parseInt(betweenTheBrackets.split('+')[1], 10));
-      }
-      else if (betweenTheBrackets.startsWith('sunday')) {
-        let nextSunday = addDays(today, ((7 - todayDayOfWeek) % 7));
-        keyDate = addDays(nextSunday, ((betweenTheBrackets.includes('-') ? -1 : 1) * parseInt(betweenTheBrackets.split('+')[1], 10)));
-      }
-      else {
-        if (betweenTheBrackets.startsWith('next ')) {
-          today = addDays(today, 1);
-          todayDayOfWeek = today.getDay();
-          betweenTheBrackets = betweenTheBrackets.substring(5).trim();
-        };
-        switch (betweenTheBrackets) {
-          case 'today':
-            { keyDate = today; break; }
-          case 'tomorrow':
-            { keyDate = addDays(today, 1); break; }
-          case 'sunday':
-            { keyDate = addDays(today, ((7 - todayDayOfWeek) % 7)); break; }
-          case 'monday':
-            { keyDate = addDays(today, ((8 - todayDayOfWeek) % 7)); break; }
-          case 'tuesday':
-            { keyDate = addDays(today, ((9 - todayDayOfWeek) % 7)); break; }
-          case 'wednesday':
-            { keyDate = addDays(today, ((10 - todayDayOfWeek) % 7)); break; }
-          case 'thursday':
-            { keyDate = addDays(today, ((11 - todayDayOfWeek) % 7)); break; }
-          case 'friday':
-            { keyDate = addDays(today, ((12 - todayDayOfWeek) % 7)); break; }
-          case 'saturday':
-            { keyDate = addDays(today, ((13 - todayDayOfWeek) % 7)); break; }
-          default:
-            { break; }
-        }
-      }
-      if (keyDate) {
-        nameArray[1] = `${keyDate.getMonth() + 1}/${keyDate.getDate()}`;
-        return nameArray.join('');
-      }
-    }
-    return pString;
-  }
-
-  function addDays(pDate, pDays) {
-    const copy = pDate;
-    copy.setDate(pDate.getDate() + pDays);
-    return copy;
-  }
-
-  function stringToColor(string) {
-    let hash = 0;
-    let i;
-    /* eslint-disable no-bitwise */
-    for (i = 0; i < string.length; i += 1) {
-      hash = string.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    let color = '#';
-    for (i = 0; i < 3; i += 1) {
-      const value = (hash >> (i * 8)) & 0xff;
-      color += `00${value.toString(16)}`.substr(-2);
-    }
-    /* eslint-enable no-bitwise */
-    return color;
-  }
-
-  function cl() {
-    for (let v = 0; v < arguments.length; v++) {
-      let value = arguments[v];
-      if (typeof (value) === 'object') { console.log(JSON.stringify(value)); }
-      else { console.log(value); }
-    }
-  };
-
-  function clt() {
-    for (let v = 0; v < arguments.length; v++) {
-      let value = arguments[v];
-      if (typeof (value) === 'object') { console.log(JSON.stringify(value)); }
-      else { console.log({ value }); }
-    };
-  };
-
-  function recordExists(recordId) {
-    return (recordId != null && (recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items")));
   }
 
 };    // end

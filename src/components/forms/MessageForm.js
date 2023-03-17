@@ -1,6 +1,7 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
+import { getImage, getPerson } from '../../util/AVAPeople';
 
 import List from '@material-ui/core/List';
 
@@ -30,7 +31,6 @@ import TextField from '@material-ui/core/TextField';
 import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
 import AVAConfirm from './AVAConfirm';
-import AVATextInput from '../forms/AVATextInput';
 import SendMessageDialog from '../dialogs/SendMessageDialog';
 
 const useStyles = makeStyles(theme => ({
@@ -48,6 +48,14 @@ const useStyles = makeStyles(theme => ({
     width: '60%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
+  },
+  imageArea: {
+    minWidth: '100px',
+    maxWidth: '100px',
+    minHeight: '100px',
+    maxHeight: '100px',
+    marginBottom: theme.spacing(1),
+    marginRight: theme.spacing(1),
   },
   title: {
     marginTop: theme.spacing(3),
@@ -150,6 +158,15 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
+const AWS = require('aws-sdk');
+
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
 
   const classes = useStyles();
@@ -171,6 +188,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
   const [confirmIndex, setConfirmIndex] = React.useState('');
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [recipient, setRecipient] = React.useState();
+  const [recipientIndex, setRecipientIndex] = React.useState(-1);
   const [open, setOpen] = React.useState([]);
 
   const [inOut_mode, setinOut] = React.useState('in');
@@ -196,7 +214,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
   };
 
   function makeReadableTime(pJavaDate) {
-    let dDate = new Date(pJavaDate);
+    let dDate = new Date(Number(pJavaDate));
     return dDate.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
@@ -209,8 +227,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
 
   function makeSubject(pContent) {
     if (pContent) {
+      return pContent.slice(0, 1).toUpperCase() + pContent.slice(1);
+      /*
       let lContent = pContent.toLowerCase().trim().split(/[^a-zA-Z0-9 ']+/);
       return (lContent[0] || lContent[1]).split(/[ ]+/g).map(w => { return (w.charAt(0).toUpperCase() + w.substring(1)); }).join(' ');
+      */
     }
     else { return 'AVA Message'; }
   }
@@ -228,22 +249,25 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
     setRowLimit(scrollValue);
   };
 
-  const handleRemoveMessage = async (pMessageID, pIndex) => {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:MessageMaintenance';
-    params.Payload = JSON.stringify({
-      action: "mark_deleted",
-      clientId: pClient,
-      request: {
-        "message_id": pMessageID,
-      }
-    });
-    await lambda
-      .invoke(params)
+  const handleRemoveMessage = async (pMessage_id, pIndex) => {
+    await dbClient
+      .update({
+        Key: {
+          thread_id: pMessage_id.split('~')[0].slice(2),
+          composite_key: pMessage_id
+        },
+        UpdateExpression: 'set delete_flag = :t',
+        ExpressionAttributeValues: {
+          ':t': true
+        },
+        TableName: "TheseusMessages",
+      })
       .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while deleting that item.  Error is ${err.message}`, {
-          variant: 'error'
-        });
+      .catch(error => {
+        enqueueSnackbar(`AVA couldn't delete that message.  Error is ${error}`,
+          { variant: 'error', persist: true }
+        );
+        return;
       });
     let tempMessageList = messageList;
     tempMessageList.splice(pIndex, 1);
@@ -256,34 +280,112 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
   };
 
   async function getMessageResults(pCommonKey) {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:MessageMaintenance';
-    params.Payload = JSON.stringify({
-      action: "send_results",
-      clientId: pClient,
-      request: {
-        "common_key": pCommonKey,
-        "person_id": pPerson
-      }
-    });
-    let invokeFailed = false;
-    const fResp = await lambda
-      .invoke(params)
+    let returnArray = [];
+    let mRecs = await dbClient
+      .query({
+        KeyConditionExpression: 'thread_id = :k AND begins_with(composite_key, :c)',
+        FilterExpression: 'record_type = :t',
+        ExpressionAttributeValues: {
+          ':c': pCommonKey,
+          ':k': pCommonKey.split('~')[0].slice(2),
+          ':t': 'delivery'
+        },
+        TableName: "TheseusMessages",
+        ScanIndexForward: false,
+      })
       .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let returnData = JSON.parse(fResp.Payload);
-      if (returnData.status === 200) {
-        if (returnData.body.length > 0) {
-          return ['~~~', 'Results:', ...returnData.body];
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
-      }
+        console.log({ 'Error reading Messages': error });
+      });
+    if (mRecs && mRecs.hasOwnProperty('Items')) {
+      // let timeZones = ['UTC', 'UTC-1', 'UTC-2', 'UTC-3', 'America/New_York', 'America/New_York', 'America/Chicago'];
+      // let timeZone = timeZones[-1 * (authorRec?.time_offset || -5)] || 'America/New_York';
+      let timeZone = 'America/New_York';
+      const oneMinute = 1000 * 60;
+      const oneHour = 60 * oneMinute;
+      let currentTime = new Date().getTime();
+      let Time24HoursAgo = currentTime - (24 * oneHour);
+      let Time7DaysAgo = currentTime - (7 * 24 * oneHour);
+      mRecs.Items.forEach(mR => {
+        let mTime = mR.posted_time;
+        let mInfo = '';
+        let mLine = `Sent to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
+        switch (mR.deliver_method) {
+          case 'sms': {
+            mLine += ' via text message';
+            break;
+          }
+          case 'voice':
+          case 'office': {
+            mLine += ' via phone call';
+            break;
+          }
+          case 'email': {
+            mLine += ' via e-Mail';
+            break;
+          }
+          case 'hold': {
+            mLine += " held for later delivery per recipient's instructions";
+            break;
+          }
+          default: { mLine += ` via ${mR.deliver_method}`; }
+        }
+        if (mR.results) {
+          let mRLast = mR.results[0];
+          mTime = mRLast.posted_time;
+          switch (mRLast.result) {
+            case 'reply': {
+              mLine += '.  Reply received';
+              mInfo = ` Reply is "${mRLast.update_contents.replace(':', ' -')}"`;
+              break;
+            }
+            case 'submitted': {
+              break;
+            }
+            case 'replyReceived': {
+              mLine += '.  Reply received';
+              break;
+            }
+            case 'delivered': {
+              mLine += '.  Delivered';
+              break;
+            }
+            case 'open': {
+              mLine += '.  Opened';
+              break;
+            }
+            default: {
+              mLine += `. ${mRLast.result}`;
+            }
+          }
+        }
+
+        let mDateCheck = new Date(mTime);
+        let mDate = '';
+        if (mTime > Time24HoursAgo) {   // date within the last 24 hours?  Use Time only
+          if ((mDateCheck.getHours() > new Date(currentTime).getHours())) {
+            mDate = ' yesterday';
+          }
+        }
+        else if (mTime > Time7DaysAgo) {  // date within the last 7 days?  Use Day of week ("Tue", "Sun", etc)
+          let mWord = 'on';
+          if ((mDateCheck.getDay() % 6 !== 0) && (mDateCheck.getDay() > new Date().getDay())) {
+            mWord = 'last';
+          }
+          mDate = ` ${mWord} ${mDateCheck.toLocaleString([], { timeZone: timeZone, weekday: 'short' })}`;
+        }
+        else {
+          mDate = ` on ${mDateCheck.toLocaleString([], { timeZone: timeZone, month: 'short', day: 'numeric' })}`;
+        }
+        mLine += `${mDate} at ${mDateCheck.toLocaleString([], { timeZone: timeZone, hour: 'numeric', minute: '2-digit' })}`;
+        mLine += mInfo;
+        returnArray.push(mLine);
+      });
+      return ['~~~', 'Results:', ...returnArray];
     }
-    return [];
   };
 
   async function getReceiptDetails(pCommonKey) {
@@ -317,31 +419,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
     return [];
   };
 
-  const handleSendMessage = async (pPatient, pMessage, pRecipient = null) => {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-    let nqMessage = '';
-    nqMessage = `Sent "${pMessage}" to ${pRecipient.split(':')[0]}`;
-    let lambdaPayload = {
-      "body": {
-        "client": pClient,
-        "author": pPatient,
-        "values": pRecipient + ' ~ MessageText = ' + pMessage
-      }
-    };
-    params.Payload = JSON.stringify(lambdaPayload);
-    lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
-    enqueueSnackbar(nqMessage, {
-      variant: 'success'
-    });
-  };
-
   const onScroll = event => {
     if (rowLimit < messageList.length) {
       let currentY = window.scrollY;
@@ -371,6 +448,122 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
       return searchString.toLowerCase().includes(message_filter_lower);
     }
   }
+
+
+  React.useEffect(() => {
+    async function initialize() {
+      let messageArray = [];
+      // Get messages to me
+      let mRecs = await dbClient
+        .query({
+          KeyConditionExpression: 'deliver_to = :p',
+          FilterExpression: 'delete_flag <> :true',
+          ExpressionAttributeValues: {
+            ':p': pPerson,
+            ':true': true
+          },
+          TableName: "TheseusMessages",
+          IndexName: 'deliver_to-index',
+          ScanIndexForward: false,
+          Limit: 20
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          }
+          console.log({ 'Error reading Messages': error });
+        });
+      if (mRecs && mRecs.hasOwnProperty('Items')) {
+        for (let x = 0; x < mRecs.Items.length; x++) {
+          let m = mRecs.Items[x];
+          let language = m.language || 'EN-US';
+          let this_image = await getImage(m.author.author_id);
+          if (m.author.author_name === 'AVA notifications') {
+            let sRec = await getPerson(m.author.author_id);
+            if (sRec && sRec.name) {
+              m.author.author_name = `${sRec.name.first} ${sRec.name.last}`;
+            }
+          }
+          let this_message = {
+            inOut: 'in',
+            delete_flag: m.delete_flag,
+            person_id: m.deliver_to,
+            patient_name: m.author.author_name,
+            sender_name: m.author.author_name,
+            sender_id: m.author.author_id,
+            sender_image: this_image,
+            message_id: m.composite_key,
+            posted_time: m.created_time,
+            deliver_time: m.created_time,
+            common_key: m.composite_key,
+            message_content: m.content.current[language].text,
+            subject: m.subject_line,
+            message_text: m.content.current[language].text,
+            thread_id: m.thread_id
+          };
+          messageArray.push(this_message);
+        };
+      }
+      // Get messages From me
+      mRecs = await dbClient
+        .query({
+          KeyConditionExpression: 'sent_from = :p',
+          FilterExpression: 'delete_flag <> :true AND record_type = :t',
+          ExpressionAttributeValues: {
+            ':p': pPerson,
+            ':t': 'message',
+            ':true': true
+          },
+          TableName: "TheseusMessages",
+          IndexName: 'sent_from-index',
+          ScanIndexForward: false,
+          Limit: 20
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          }
+          console.log({ 'Error reading Messages': error });
+        });
+      if (mRecs && mRecs.hasOwnProperty('Items')) {
+        for (let x = 0; x < mRecs.Items.length; x++) {
+          let m = mRecs.Items[x];
+          let language = m.language || 'EN-US';
+          let this_message = {
+            inOut: 'out',
+            delete_flag: m.delete_flag,
+            person_id: m.deliver_to,
+            patient_name: m.author.author_name,
+            sender_name: m.author.author_name,
+            sender_id: m.author.author_id,
+            message_id: m.composite_key,
+            posted_time: m.created_time,
+            deliver_time: m.created_time,
+            common_key: m.composite_key,
+            message_content: m.content.current[language].text,
+            subject: m.subject_line,
+            message_text: m.content.current[language].text
+          };
+          let rArray = Object.keys(m.recipient_list);
+          if (rArray.length === 1) {
+            this_message.sender_image = await getImage(m.recipient_list[rArray[0]].id);
+            this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
+          }
+          else {
+            this_message.sender_image = await getImage('AVA Logo');
+            this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
+            this_message.toLine += ` and ${rArray.length - 1} others`;
+          }
+          messageArray.push(this_message);
+        };
+      }
+      setMessageList(messageArray);
+    }
+    initialize();
+  }, [pPerson, pClient]);  // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // ******************
 
@@ -422,41 +615,57 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
                         <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                           {(inOut_mode === 'in') &&
                             <Box display='flex' flexDirection='column'>
-                              <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.message_content || this_item.subject || this_item.message_text)}</Typography>
-                              <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
-                              <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
-                              {open[index] &&
-                                this_item.message_content.replace('http', '\n\rhttp').split(/[\n\r]+/).map((mLine, mIndex) => (
-                                  ((mLine.startsWith('http')) ?
-                                    <a
-                                      href={mLine.split(/\s+/g)[0]}
-                                      target='_blank'
-                                      rel='noopener noreferrer'
-                                      style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                      <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
-                                    </a>
-                                    :
-                                    <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                                ))
-                              }
+                              <Box display='flex' flexDirection='row'>
+                                <Box
+                                  className={classes.imageArea}
+                                  component="img"
+                                  alt={''}
+                                  src={this_item.sender_image}
+                                />
+                                <Box display='flex' flexDirection='column'>
+                                  <Typography variant='h5' className={classes.lastName} >{makeSubject(this_item.subject || this_item.message_text)}</Typography>
+                                  <Typography variant='h5' className={classes.firstName}>{`from: ${this_item.patient_name || this_item.sender_name || this_item.sender_id}`}</Typography>
+                                  <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
+                                </Box>
+                              </Box>
+                              {this_item.message_content.replace('http', '\n\rhttp').split(/[\n\r]+/).map((mLine, mIndex) => (
+                                ((mLine.startsWith('http')) ?
+                                  <a
+                                    href={mLine.split(/\s+/g)[0]}
+                                    key={`prefLine-${mIndex}-href`}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                    <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
+                                  </a>
+                                  :
+                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
+                              ))}
                               {open[index] &&
                                 messageResults.map((mLine, mIndex) => (
                                   <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
                                 )
                               }
-
                             </Box>
                           }
                           {(inOut_mode === 'out') &&
                             <Box display='flex' flexDirection='column'>
-                              <Typography variant='h5' className={classes.lastName} >{this_item.subject || makeSubject(this_item.message_text)}</Typography>
-                              <Typography variant='h5' className={classes.firstName}>{`to: ${this_item.toLine}`}</Typography>
-                              <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.deliver_time)}</Typography>
-                              {open[index] &&
-                                this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
-                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
-                                )
-                              }
+                              <Box display='flex' flexDirection='row'>
+                                <Box
+                                  className={classes.imageArea}
+                                  component="img"
+                                  alt={''}
+                                  src={this_item.sender_image}
+                                />
+                                <Box display='flex' flexDirection='column'>
+                                  <Typography variant='h5' className={classes.lastName} >{this_item.subject || makeSubject(this_item.message_text)}</Typography>
+                                  <Typography variant='h5' className={classes.firstName}>{`to: ${this_item.toLine}`}</Typography>
+                                  <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.deliver_time)}</Typography>
+                                </Box>
+                              </Box>
+                              {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
+                                <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
+                              )}
                               {open[index] &&
                                 messageResults.map((mLine, mIndex) => (
                                   <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
@@ -485,7 +694,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
                               <Button
                                 onClick={() => {
                                   setPromptForMessage(true);
-                                  setRecipient(`${this_item.patient_name || this_item.sender_name}:` + this_item.patient_id);
+                                  setRecipient(`${this_item.sender_name}:${this_item.sender_id}`);
+                                  setRecipientIndex(index);
                                 }}
                                 className={classes.rowButtonGreen}
                                 startIcon={<SendIcon fontSize="small" />}
@@ -503,9 +713,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
               ))}
             </List>
           </Paper>
-          {promptForMessage &&
+          {
+            promptForMessage &&
             <MakeMessage
-              titleText={`Send a Message to ${recipient.split(':')[0]}`}
+              titleText={`Send a Reply to ${recipient.split(':')[0]}`}
               promptText={`What's the Message?`}
               buttonText={'Send'}
               sender={pSession}
@@ -514,9 +725,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
               onCancel={() => { setPromptForMessage(false); }}
               onComplete={() => { setPromptForMessage(false); }}
               allowCancel={true}
+              thread_id={(recipientIndex >= 0) ? messageList[recipientIndex].thread_id : ''}
             />
           }
-          {deletePending &&
+          {
+            deletePending &&
             <AVAConfirm
               promptText={confirmMessage}
               onCancel={() => {
@@ -529,7 +742,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
             >
             </AVAConfirm>
           }
-          {showAddPrompt &&
+          {
+            showAddPrompt &&
             <SendMessageDialog
               open={true}
               onClose={() => {
@@ -578,7 +792,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
               </Box>
             </DialogActions>
           }
-        </React.Fragment>
+        </React.Fragment >
       }
     </Dialog >
   );

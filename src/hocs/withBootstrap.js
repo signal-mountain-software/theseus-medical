@@ -300,12 +300,12 @@ export default Component => props => {
             >
               <CardMedia
                 component="img"
-                image={'https://ava-icons.s3.amazonaws.com/AVA+Logo.png'}
+                image={process.env.REACT_APP_AVA_LOGO}
                 alt='AVA'
               />
             </Card>
             <Typography align='center'>
-              {`AVA version 23.1.16${AVA_environment}`}
+              {`AVA version ${process.env.REACT_APP_AVA_VERSION}${AVA_environment}`}
             </Typography>
           </Box>
         </React.Fragment>
@@ -349,14 +349,19 @@ export default Component => props => {
               setMessageList([]);
             }}
             onSave={async (enteredUserID) => {
-              setMessageList([]);
-              closeSnackbar();
-              enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
-              let cookieValues = getCookie();
-              let result = await tryUser(enteredUserID.toLowerCase(), cookieValues.client, 'entered');
-              if ((result === 'invalid') && (enteredUserID.toLowerCase() !== enteredUserID)) {
-                enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
-                await tryUser(enteredUserID, cookieValues.client, 'entered');
+              if (!enteredUserID) {
+                enqueueSnackbar(`You must enter a User ID or Name`, { variant: 'info' });
+              }
+              else {
+                setMessageList([]);
+                closeSnackbar();
+                enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID.toLowerCase()}"`, { variant: 'info' });
+                let cookieValues = getCookie();
+                let result = await tryUser(enteredUserID.toLowerCase(), cookieValues.client, 'entered');
+                if ((result === 'invalid') && (enteredUserID.toLowerCase() !== enteredUserID)) {
+                  enqueueSnackbar(`AVA is trying to sign you in with "${enteredUserID}"`, { variant: 'info' });
+                  await tryUser(enteredUserID, cookieValues.client, 'entered');
+                }
               }
               setDoneTrying(true);
             }}
@@ -669,7 +674,7 @@ export default Component => props => {
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
-        'version': `v23.1.16`,
+        'version': `v${process.env.REACT_APP_AVA_VERSION}`,
         'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
         'time': new Date().toString(),
         'signin_status': pMessage,
