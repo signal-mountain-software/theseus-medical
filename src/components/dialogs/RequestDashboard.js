@@ -1,7 +1,7 @@
 import React from 'react';
 import { makeNumber, sentenceCase, titleCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
-import { getImage, getPerson } from '../../util/AVAPeople';
+import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';
@@ -441,7 +441,9 @@ export default ({ session, filter = {}, onClose }) => {
     if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
     let AVArequestDate = makeDate(i.request_date);
     i.workData.display_date = AVArequestDate.relative;
-    i.workData.requestor_name = await getPerson(i.requestor, 'name');
+    let requestorRec = await getPerson(i.requestor, '*all');
+    i.workData.requestor_name = await makeName(i.requestor);
+    i.workData.requestor_location = requestorRec.location; 
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
     if (makeNumber(i.last_update) > makeNumber(i.request_date)) {
@@ -460,6 +462,7 @@ export default ({ session, filter = {}, onClose }) => {
       i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
       i.workData.search_data = i.original_request;
     }
+    i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name}`
     i.workData.checked = false;
     i.workData.open = false;
     return i;
@@ -621,7 +624,7 @@ export default ({ session, filter = {}, onClose }) => {
               }
             }}
             component={Box}
-            className={classes.page}
+            // className={classes.page}
             variant='outlined'
             overflow='auto'
             square
@@ -655,7 +658,7 @@ export default ({ session, filter = {}, onClose }) => {
                               />
                               <Box display='flex' flexDirection='column'>
                                 <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
-                                <Typography variant='h5' className={classes.firstName}>{`requested by: ${this_item.workData.requestor_name}`}</Typography>
+                                <Typography variant='h5' className={classes.firstName}>{`requested by: ${this_item.workData.requestor_name} (${this_item.workData.requestor_location})`}</Typography>
                                 <Typography variant='h5' className={classes.timeLine}>{this_item.workData.display_date}</Typography>
                               </Box>
                             </Box>
