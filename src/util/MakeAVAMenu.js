@@ -1,4 +1,5 @@
 import { resolveVariables, stringToColor, cl, clt, recordExists } from '../util/AVAUtilities';
+import { getPerson } from '../util/AVAPeople';
 
 const AWS = require('aws-sdk');
 const AVAIcon = process.env.REACT_APP_AVA_LOGO;
@@ -20,14 +21,21 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     customObj = {};
     activityObj = {};
     groupObj = {};
+    requestor = await getPerson(requestor.person_id, '*all', true);
   };
 
   let groupList = [];
 
-  // let subMenus = [];
   let numberOfRows = 1000;
   let sectionDetails = {};
   let activityHistory = {};
+
+  function makeVersion(inStr) { 
+    let [vYr, vDay] = inStr.split(/\.(.*)/);
+    return ((Number(vYr) % 100) * 100) + parseFloat(vDay);
+  }
+
+  let ava_version_number = makeVersion(process.env.REACT_APP_AVA_VERSION);
 
   // Main line
 
@@ -79,7 +87,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       TableName: "ActivityEvent",
       IndexName: 'sequence-index',
     };
-    cl(`Get ActivityEvent for ${pClient}~${pEvent}`);
     let mRecs = await dbClient
       .query(queryObj)
       .promise()
@@ -347,7 +354,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   async function saveMenu(pPerson, pMenu) {
-    cl(`Update menu for ${pPerson}`);
     await dbClient
       .update({
         Key: {
@@ -367,7 +373,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
 
   async function getCustomizations(pName) {
     if (pName in customObj) { return [customObj[pName].color, customObj[pName].icon]; }
-    cl(`Get Customizations for ${pName}`);
     let cRec = await dbClient
       .get({
         Key: {
@@ -398,7 +403,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   async function getActivityLog(pPerson) {
-    cl(`Get ActivityLog for ${pPerson}`);
     let aRecs = await dbClient
       .query({
         KeyConditionExpression: 'user_id = :p',
@@ -493,7 +497,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let parts = pActivityCode.split('~[');
     let pActivity = parts[0];
     for (let p = 1; p < parts.length; p++) {
-      let [iType, iData] = parts[p].split(/[=\]]/);
+      let [iType, iData] = parts[p].split(/[=<>\]]/);
       switch (iType) {
         case 'default': {
           overrideDefault = iData;
@@ -503,6 +507,17 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           overrideTitle = iData;
           break;
         }
+        case 'version':
+        case 'release': {
+          let checkVer = makeVersion(iData);
+          if ((parts[p].includes('<') && (ava_version_number >= checkVer))
+            || (parts[p].includes('>') && (ava_version_number <= checkVer))
+            || (parts[p].includes('=') && (checkVer !== ava_version_number))) {
+            activityObj[pActivityCode] = {};
+            return {};
+          }
+          break;
+        }
         default: { break; }
       }
     }
@@ -510,7 +525,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       [pClient, pActivity] = pActivity.split('//');
       addClient = true;
     }
-    cl(`Get Activities for ${requestor.person_id} - ${pActivity}`);
     let aRecs = await dbClient
       .get({
         Key: {
@@ -560,7 +574,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         }
       );
     });
-    cl(`Get Group batch for ${requestor.person_id} - ${neededGroupArray.join(' / ')}`);
     let groupRecs = await dbClient
       .batchGet(batchGetRequest)
       .promise()

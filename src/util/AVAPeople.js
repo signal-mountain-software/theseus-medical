@@ -51,7 +51,7 @@ export function getImage(pPerson) {
 };
 
 export async function getPerson(pID, pElement = '*all', override = false) {
-    if (!foundPeople || (!(pID in foundPeople))) {
+    if (!foundPeople || (!(pID in foundPeople)) || override) {
         let personRec = await dbClient
             .get({
                 Key: { person_id: pID },

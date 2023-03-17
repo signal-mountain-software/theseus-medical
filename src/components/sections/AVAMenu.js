@@ -400,7 +400,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       });
     if (uploadOK) {
       closeSnackbar();
-      enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'info', persist: false });
+      enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
       return pMediaData.Key;
     };
     return null;
