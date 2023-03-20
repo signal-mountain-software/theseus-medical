@@ -520,7 +520,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         {rowsWritten++}
                       </Typography>
                       {(this_item.slotData.id !== this_item.slotData.owner) &&
-                        <Box display='flex' width={60} flexDirection='row' justifyContent='center' alignItems='center'>
+                        <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
                           <Typography variant='body1' className={classes.standard} >{makeSlotName(this_item.slotData.id)}</Typography>
                         </Box>
                       }
