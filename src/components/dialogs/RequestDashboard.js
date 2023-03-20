@@ -441,6 +441,7 @@ export default ({ session, filter = {}, onClose }) => {
     if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
     let AVArequestDate = makeDate(i.request_date);
     i.workData.display_date = AVArequestDate.relative;
+    let anonymous = false;
     let requestorRec = await getPerson(i.requestor, '*all');
     i.workData.requestor_name = await makeName(i.requestor);
     i.workData.requestor_location = requestorRec.location; 
@@ -454,13 +455,20 @@ export default ({ session, filter = {}, onClose }) => {
     i.workData.formatted_request.push(['head', `Current status: ${sentenceCase(i.last_status)}`]);
     i.workData.formatted_request.push(['head', 'Details']);
     if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
+      anonymous = (i.original_request.selections && i.original_request.selections.join(' ').includes('anonymous'));
       let [fReq, fSearch] = formatRequest(i, i.original_request);
       i.workData.formatted_request.push(...fReq);
       i.workData.search_data = fSearch;
     }
     else {
+      anonymous = i.original_request.includes('anonymous');
       i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
       i.workData.search_data = i.original_request;
+    }
+    if (anonymous) {
+      i.workData.requestor_name = 'Anonymous';
+      i.workData.requestor_location = null;
+      i.workData.requestor_image = null;
     }
     i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name}`
     i.workData.checked = false;
@@ -597,7 +605,7 @@ export default ({ session, filter = {}, onClose }) => {
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'vRowRefresh'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers RE${process.env.REACT_APP_AVA_VERSION}window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
                   </Box>
@@ -658,7 +666,7 @@ export default ({ session, filter = {}, onClose }) => {
                               />
                               <Box display='flex' flexDirection='column'>
                                 <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
-                                <Typography variant='h5' className={classes.firstName}>{`requested by: ${this_item.workData.requestor_name} (${this_item.workData.requestor_location})`}</Typography>
+                                <Typography variant='h5' className={classes.firstName}>{`requested by: ${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}</Typography>
                                 <Typography variant='h5' className={classes.timeLine}>{this_item.workData.display_date}</Typography>
                               </Box>
                             </Box>
