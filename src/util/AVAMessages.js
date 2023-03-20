@@ -48,67 +48,76 @@ export async function getMessages(body) {
 
 export async function prepareMessage(inBody) {
   let messageList = [];
-  if (Array.isArray(inBody)) { messageList.push(...inBody); }
-  else { messageList.push(inBody); }
+  if (Array.isArray(inBody.messaging)) { messageList.push(...inBody.messaging); }
+  else { messageList.push(inBody.messaging); }
   let returnResults = [];
-  let results, body;
+  let results;
+  let requestInfo = Object.assign({}, {
+    activityName: inBody.activityName,
+    client: inBody.client,
+    author: inBody.author,
+    onBehalfOf: inBody.onBehalfOf,
+    requestType: inBody.requestType,
+    requestDate: inBody.requestDate,
+    requestID: inBody.requestID
+  },
+    inBody.request);
   do {
-    let this_body = messageList.shift();
-    body = Object.assign(this_body, this_body.messaging, this_body.request);
-    cl({ 'in prepare messages': body });
+    let this_request = Object.assign({}, requestInfo, messageList.shift());
+    cl({ 'in prepare messages': { this_request } });
     results = {};
-    if (Array.isArray(body.recipientList)) { results.recipientList = [...body.recipientList]; }
-    else { results.recipientList = [body.recipientList]; }
-    results.client = body.client;
-    results.author = body.author;
-    results.preferred_method = body.method;
-    if (!('format' in body)) { body.format = { 'type': 'factForm' }; }
-    if ('subject' in body.format) { results.subject = await resolveMessageVariables(body.format.subject, body); }
-    if ('method' in body.format) { results.preferred_method = body.format.method; }
-    switch (body.format.type) {
+    if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
+    else { results.recipientList = [this_request.recipientList]; }
+    results.client = this_request.client;
+    results.author = this_request.author;
+    results.preferred_method = this_request.method;
+    if (!('format' in this_request)) { this_request.format = { 'type': 'factForm' }; }
+    if ('subject' in this_request.format) { results.subject = await resolveMessageVariables(this_request.format.subject, this_request); }
+    if ('method' in this_request.format) { results.preferred_method = this_request.format.method; }
+    switch (this_request.format.type) {
       case 'mealOrder':
       case 'checklist':
       case 'factForm': {
-        [results.htmlText, results.messageText] = await formatRequestDetails(body, body.format.type);
+        [results.htmlText, results.messageText] = await formatRequestDetails(this_request, this_request.format.type);
         break;
       }
       case 'plainText':
       default: {
-        results.messageText = '%%custom_text%%' + (await resolveMessageVariables(body.format.text, body));
+        results.messageText = '%%custom_text%% ' + (await resolveMessageVariables(this_request.format.text, this_request));
         results.htmlText = results.messageText;
       }
     }
-    if ('test' in body) {
-      let ruleStatus = await processRules(body);
+    if ('test' in this_request) {
+      let ruleStatus = await processRules(this_request);
       if (ruleStatus === 'cancel') { continue; }
     }
-  
-    results.messageText = results.messageText.replace('\n\r%%custom_text%%\n\r', '').trim();
+
+    results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
     results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
-  
+
     returnResults.push(results);
-  } while (messageList.length > 0)
+  } while (messageList.length > 0);
 
   return returnResults;
 
   /**************************/
 
-  async function processRules() {
+  async function processRules(requestToTest) {
     let skipTo = false;
-    for (let b = 0; b < body.test.length; b++) {
-      let t = body.test[b];
-      if (skipTo) { 
-        if (!body.id || skipTo !== body.id) { continue; }
+    for (let b = 0; b < requestToTest.test.length; b++) {
+      let t = requestToTest.test[b];
+      if (skipTo) {
+        if (!requestToTest.id || skipTo !== requestToTest.id) { continue; }
         else { skipTo = false; }
       }
       let thenArray = [];
       let passedTest = false;
-      if (body.selections && body.selections.includes(t.check) && !t.test) { passedTest = true; }
-      else if (t.check in body.textInput) {
-        if (body.textInput[t.check].toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
+      if (requestToTest.selections && requestToTest.selections.includes(t.check) && !t.test) { passedTest = true; }
+      else if (t.check in requestToTest.textInput) {
+        if (requestToTest.textInput[t.check].toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
       }
       else if (t.test && t.check) {
-        let resolved = await resolveMessageVariables(t.check, body);
+        let resolved = await resolveMessageVariables(t.check, requestToTest);
         if (resolved && resolved.toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
       }
       else { passedTest = false; }
@@ -141,12 +150,12 @@ export async function prepareMessage(inBody) {
           }
           case 'remove_recipients': {
             if (Array.isArray(rule.value)) {
-              rule.value.forEach(v => { 
+              rule.value.forEach(v => {
                 let foundAt = results.recipientList.indexOf(v);
                 if (foundAt >= 0) { results.recipientList.splice(foundAt, 1); }
-              })
+              });
             }
-            else { 
+            else {
               let foundAt = results.recipientList.indexOf(rule.value);
               if (foundAt >= 0) { results.recipientList.splice(foundAt, 1); }
             }
@@ -161,16 +170,16 @@ export async function prepareMessage(inBody) {
             break;
           }
           case 'add_message': {
-            let custom_text = await resolveMessageVariables(rule.value, body);
-            results.messageText = results.messageText.replace('%%custom_text%%', `${custom_text}%%custom_text%%` );
-            results.htmlText = results.htmlText.replace('%%custom_text%%', `${custom_text}%%custom_text%%` );
+            let custom_text = await resolveMessageVariables(rule.value, requestToTest);
+            results.messageText = results.messageText.replace('%%custom_text%%', `${custom_text} %%custom_text%%`);
+            results.htmlText = results.htmlText.replace('%%custom_text%%', `${custom_text} %%custom_text%%`);
             break;
           }
           case 'skip_to': {
             skipTo = rule.value;
             break;
           }
-          case 'create_message': { 
+          case 'create_message': {
             messageList.push(rule.value);
             break;
           }
@@ -240,13 +249,17 @@ export async function resolveMessageVariables(inString, body) {
   }
   return workString;
 };
-  
+
 async function formatRequestDetails(body, summaryType) {
 
-  let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">`
-    + body.activityName
-    + '</span></h1>';
-  let rawMessage = `${body.activityName}\n\r`;
+  let titleWords = body.subject;
+  if (!titleWords && body.format) { titleWords = body.format.subject; }
+  if (!titleWords && body.activityName) { titleWords = body.activityName; }
+  if (!titleWords) { titleWords = 'AVA Request'; }
+  else { titleWords = await resolveMessageVariables(titleWords, body); }
+
+  let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${titleWords}</span></h1>`;
+  let rawMessage = `${titleWords}\n\r`;
 
   // Person
   let pRec = await getPerson(body.author);
