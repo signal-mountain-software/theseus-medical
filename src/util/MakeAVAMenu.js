@@ -30,7 +30,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   let sectionDetails = {};
   let activityHistory = {};
 
-  function makeVersion(inStr) { 
+  function makeVersion(inStr) {
     let [vYr, vDay] = inStr.split(/\.(.*)/);
     return ((Number(vYr) % 100) * 100) + parseFloat(vDay);
   }
@@ -94,6 +94,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         cl({ 'Error reading ActivityEvent': error });
       });
     if (recordExists(mRecs) && (mRecs.Count > 0)) {
+      for (let m = 0; m < mRecs.Items.length; m++) {
+        mRecs.Items[m].resolved = await resolveVariables(`%%${mRecs.Items[m].sort_order}%%`, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });
+        mRecs.Items[m].resolved = mRecs.Items[m].resolved.replace(/%%/g,'');
+      }
+      mRecs.Items.sort((a, b) => {
+        if (a.resolved > b.resolved) { return 1; }
+        else { return -1; }
+      });
       return (mRecs.Items.map(m => { return m.activity_code; }));
     }
     else {
