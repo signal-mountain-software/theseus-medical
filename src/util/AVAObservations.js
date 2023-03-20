@@ -41,6 +41,13 @@ export async function makeObservationList(pObs, pSession) {
     let listLength = activityRec.validation.values.length;
     for (let v = 0; v < listLength; v++) {
       let this_entry = activityRec.validation.values[v];
+      let strings = this_entry.split(/[[\]]/g);
+      if (strings.length > 1) {
+        for (let s = 1; s < strings.length; s += 2) {
+          strings[s] = `[${await resolveVariables(strings[s], pSession)}]`;
+        }
+        this_entry = strings.join('');
+      }
       if (!this_entry.startsWith('~')) { returnList.push(this_entry); }
       else {
         // deconstruct this_entry as ~<oType>.<oKey>  
@@ -50,7 +57,9 @@ export async function makeObservationList(pObs, pSession) {
         let [oType, oKey] = this_entry.slice(1).split(/[.|:](.*)/);
         switch (true) {
           case (oType === 'includeObservations'): {
-            let [cList, cQual] = await getObservations(assignedClient, oKey);
+            let oClient = assignedClient;
+            if (oKey.includes('//')) { [oClient, oKey] = oKey.split('//'); }
+            let [cList, cQual] = await getObservations(oClient, oKey);
             returnList.push(...cList);
             if (Object.keys(cQual).length > 0) { returnQObj = Object.assign(returnQObj, cQual); }
             break;
@@ -68,6 +77,9 @@ export async function makeObservationList(pObs, pSession) {
             let [cList, cQual] = await getLambda(oKey);
             returnList.push(...cList);
             if (Object.keys(cQual).length > 0) { returnQObj = Object.assign(returnQObj, cQual); }
+            break;
+          }
+          case (oType === 'peopleList'): {
             break;
           }
           default: {
