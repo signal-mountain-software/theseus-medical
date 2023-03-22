@@ -38,8 +38,10 @@ export async function getCalendarEntries(body) {
   let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
   let create_occ = false;
   if (body.allow_create) { create_occ = body.allow_create; }
-  if (rO) { rV = rV.split('#')[0] + '#' + rO; }
-  else { rO = rV.split('#')[1]; }
+  if (rO && rV) { rV = rV.split('#')[0] + '#' + rO; }   // both sent in change rV to include passed rO
+  else if (rO) { }    // rO sent without an rV - that's bad; ignore rO
+  else if (rV) { rO = rV.split('#')[1]; }     // rV sent without an rO; try to set rO from the rV value
+  else { }   // netiher sent;  that's OK
   let qQ = { TableName: 'Calendar' };
   let returnValueIfNotFound = false;
   if (rV) {
