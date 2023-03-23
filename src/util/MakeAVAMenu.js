@@ -1,5 +1,6 @@
 import { resolveVariables, stringToColor, cl, clt, recordExists } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
+import { makeDate } from '../util/AVADateTime';
 
 const AWS = require('aws-sdk');
 const AVAIcon = process.env.REACT_APP_AVA_LOGO;
@@ -35,7 +36,13 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     return ((Number(vYr) % 100) * 100) + parseFloat(vDay);
   }
 
+  function makeNumber(inStr) {
+    let [vYr, vMo, vDay] = inStr.split(/\./g);
+    return (20000000 + ((Number(vYr) % 100) * 10000) + (Number(vMo) * 100) + Number(vDay));
+  }
+
   let ava_version_number = makeVersion(process.env.REACT_APP_AVA_VERSION);
+  let todays_numeric_date = makeDate(new Date()).numeric;
 
   // Main line
 
@@ -521,6 +528,16 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           if ((parts[p].includes('<') && (ava_version_number >= checkVer))
             || (parts[p].includes('>') && (ava_version_number <= checkVer))
             || (parts[p].includes('=') && (checkVer !== ava_version_number))) {
+            activityObj[pActivityCode] = {};
+            return {};
+          }
+          break;
+        }
+        case 'date': {
+          let checkDate = makeNumber(iData);
+          if ((parts[p].includes('<') && (todays_numeric_date >= checkDate))
+            || (parts[p].includes('>') && (todays_numeric_date <= checkDate))
+            || (parts[p].includes('=') && (checkDate !== todays_numeric_date))) {
             activityObj[pActivityCode] = {};
             return {};
           }
