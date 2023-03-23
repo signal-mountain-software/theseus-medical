@@ -280,7 +280,7 @@ export default ({
                   {multiSelect &&
                     <Checkbox
                       edge='start'
-                      mr={4}
+                      mr={1}
                       checked={isChecked(listEntry.split(':')[1])}
                       disableRipple
                       key={'checkbox' + x}
@@ -292,7 +292,7 @@ export default ({
                   }
                   <Box
                     component="img"
-                    ml={1}
+                  //  ml={1}
                     mr={1}
                     minWidth={50}
                     maxWidth={50}
