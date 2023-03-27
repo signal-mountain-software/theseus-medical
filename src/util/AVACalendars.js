@@ -1,7 +1,9 @@
-import { clt, cl, recordExists, makeArray, resolveVariables } from './AVAUtilities';
+import { clt, cl, recordExists, makeArray, resolveVariables, uuid } from './AVAUtilities';
 import { makeName } from './AVAPeople';
 import { addDays, makeDate } from './AVADateTime';
-import { sendMessages, resolveMessageVariables  } from './AVAMessages';
+import { sendMessages, resolveMessageVariables } from './AVAMessages';
+
+// const PDFDocument = require('pdfkit');
 
 const AWS = require('aws-sdk');
 const dbClient = new AWS.DynamoDB.DocumentClient({
@@ -12,6 +14,172 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
 });
 
 // Functions
+
+export async function addEvent(body) {
+  /*  request body is
+  {
+      "clientId": patient.client_id,
+      "eventID (optional)": "Use this eventID" (if existing ID, this will override the existing event)
+      "calendar_info": {
+        "groups": 
+        "description"
+        "image"
+        "event_date",
+        "last_date"
+        "schedule_type"
+        "time_from": time_from_display_string,
+        "time_to": time_to_display_string,
+        "location"
+        "owner"
+        "restrictions"
+        "signup_type"
+        "slot_max_seats": slot_max_seats,
+        "slot_interval": slot_interval,
+        "slot_visibility":
+        "reminder_minutes_Enrolled"
+        "reminder_minutes_NotEnrolled"
+      }
+    }
+  */
+  // Prepare Event record
+  let eventID = `${body.calendar_info.description.replace(/\W/g, '').slice(0, 8)}_${uuid(6)}`.toLowerCase();
+  let eventRec = {
+    client: body.clientId,
+    event_key: eventID,
+    event_id: eventID,
+    eventData: {
+      messaging: [],
+      event_data: {
+        description: body.calendar_info.description,
+        owner: makeArray(body.calendar_info.owner),
+        groups: setRestrictions(body.calendar_info.restrictions),
+        type: body.calendar_info.signup_type,
+        image: body.calendar_info.image,
+        location: {
+          // code:  (future)
+          description: body.calendar_info.location
+        },
+        time: {
+          from: body.calendar_info.time_from,
+          to: body.calendar_info.time_to,
+        }
+      },
+      occPattern: Object.assign({}, setRecurrence(body.calendar_info.schedule_type)),
+      reminders: {
+        reminder_minutes_Enrolled: body.calendar_info.reminder_minutes_Enrolled,
+        reminder_minutes_NotEnrolled: body.calendar_info.reminder_minutes_NotEnrolled
+      },
+      sign_up: {
+        name_security: (body.calendar_info.slot_visibility && (body.calendar_info.slot_visibility !== 'show_name')),
+        type: body.calendar_info.signup_type,
+      },
+      slotPattern: body.calendar_info.slot_max_seats ? setSeatNames(body.calendar_info.slot_max_seats) : body.calendar_info.slots
+    }
+  };
+
+  await dbClient
+    .put({
+      Item: eventRec,
+      TableName: "Calendar",
+    })
+    .promise()
+    .catch(error => {
+      cl(`caught error updating Calendar; error is:`, error);
+      return false;
+    });
+
+  return eventRec;
+
+  // **********
+
+  function setRestrictions(inR) {
+    if ((inR) && (inR.length > 0)) { return inR; }
+    else { return ['*all']; }
+  }
+
+  function setRecurrence(inR) {
+    let first_date = makeDate(body.calendar_info.event_date);
+    let last_date = body.calendar_info.last_date ? makeDate(body.calendar_info.last_date).numeric : null;
+    switch (inR) {
+      case 'yearly':
+      case 'annually_on': {
+        return {
+          recurrence: 'yearly',
+          first_date: first_date.numeric,
+          last_date,
+          day_of_year: [first_date.numeric % 10000]
+        };
+      }
+      case 'daily': {
+        return {
+          recurrence: 'daily',
+          first_date: first_date.numeric,
+          last_date,
+          day_of_week: [0, 1, 2, 3, 4, 5, 6]
+        };
+      }
+      case 'weekdays_only': {
+        return {
+          recurrence: 'daily',
+          first_date: first_date.numeric,
+          last_date,
+          day_of_week: [1, 2, 3, 4, 5]
+        };
+      }
+      case 'weekends_only': {
+        return {
+          recurrence: 'daily',
+          first_date: first_date.numeric,
+          last_date,
+          day_of_week: [0, 6]
+        };
+      }
+      case 'weekly_on': {
+        return {
+          recurrence: 'daily',
+          first_date: first_date.numeric,
+          last_date,
+          day_of_week: [first_date.date.getDay()]
+        };
+      }
+      case 'monthly_by_dayOfWeek': {
+        let ordinal = ['first', 'second', 'third', 'last'];
+        return {
+          recurrence: 'monthly',
+          day_of_month: [ordinal[(Math.min(Math.floor(first_date.date.getDate() / 7.1) + 1, 4)) - 1]],
+          day_of_week: [first_date.date.getDay()],
+          first_date: first_date.numeric,
+          last_date,
+        };
+      }
+      case 'monthly':
+      case 'monthly_by_date': {
+        return {
+          recurrence: 'monthly',
+          first_date,
+          last_date,
+          day_of_month: [first_date.numeric % 100]
+        };
+      }
+      case 'specified':
+      case 'specific_date':
+      default: {
+        return {
+          recurrence: 'specified',
+          specified: [first_date.numeric]
+        };
+      }
+    }
+  }
+
+  function setSeatNames(inNum) {
+    let returnArr = [];
+    for (let i = 0; i < inNum; i++) {
+      returnArr.push(i.toString());
+    }
+    return returnArr;
+  }
+};
 
 export async function getCalendarEntries(body) {
   /*  
@@ -451,7 +619,7 @@ export async function addOccurrence(body) {
   if (oDesc) {
     putCalendar.occData = {
       "event_data": { 'description': oDesc }
-    }
+    };
   }
   if (body.occData) { putCalendar.occData = body.occData; }
   await dbClient
@@ -481,7 +649,7 @@ export async function writeSlot(body) {
   let [event_id, occ_id] = body.event.split('#');
   let occurrence = body.occurrence_date || occ_id;
   if (!body.slot && body.id) { body.slot = body.id; }
-  let event_key = `${event_id}#${occurrence}#${body.slot}`
+  let event_key = `${event_id}#${occurrence}#${body.slot}`;
   let slotRec = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'slot' });
   let slotHistory = [];
   if (slotRec) {
@@ -500,7 +668,7 @@ export async function writeSlot(body) {
     slotRec.slotData || {},
     body.slotData || {},
   );
-  
+
   if ('show_this_slot' in body) { slotDataObj.show_this_slot = !!body.show_this_slot; }
   else { slotDataObj.show_this_slot = true; }
   if (body.slot) { slotDataObj.slot = body.slot; }
@@ -511,7 +679,7 @@ export async function writeSlot(body) {
     else { slotDataObj.display_name = await makeName(body.owner); }
   }
   slotDataObj.name = slotDataObj.display_name;
-  
+
   let makeHistory = {
     date: makeDate(new Date()).absolute,
     status: body.status || 'selected',
@@ -539,7 +707,7 @@ export async function writeSlot(body) {
   putCalendar.id = event_id;
   putCalendar.list_key = `${body.status === 'released' ? 'available' : body.owner}#${occurrence}`;
   putCalendar.schedule_key = 'slot_data';
-  
+
   await dbClient
     .put({
       Item: putCalendar,
@@ -549,10 +717,10 @@ export async function writeSlot(body) {
     .catch(error => {
       cl(`caught error updating Calendar; error is:`, error);
     });
-  
+
   // messaging
   let eventRec = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'event' });
-  if (eventRec.eventData.messaging) {
+  if (eventRec.eventData && eventRec.eventData.messaging) {
     let messageList = [];
     let msgObject = {
       client: eventRec.client,
@@ -561,7 +729,7 @@ export async function writeSlot(body) {
     body.client = eventRec.client;
     body.person = eventRec.owner;
     body.onBehalfOf = slotDataObj.name;
-    body = Object.assign(body, eventRec.eventData.event_data, slotDataObj)
+    body = Object.assign(body, eventRec.eventData.event_data, slotDataObj);
     if (Array.isArray(eventRec.eventData.messaging)) { messageList.push(...eventRec.eventData.messaging); }
     else { messageList.push(eventRec.eventData.messaging); }
     for (let m = 0; m < messageList.length; m++) {
@@ -581,7 +749,7 @@ export async function writeSlot(body) {
     'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
   };
   */
-  
+
   return putCalendar;
 }
 
@@ -665,3 +833,296 @@ export async function updateSlotStatus(request) {
   }
   return responseMessage;
 }
+
+export async function occurrenceData(body) {
+  /*  
+    request {
+      client (or client_id)
+      event (or event_id)
+      occurrence (or occurrence_id - if null, then get occurrence from event_id)
+    }
+    returnObj {
+      description,
+      location,
+      type,
+      time,
+      slots: {
+        slotName: {
+          owner (or false),
+          notes,
+          display_name
+        }
+      }
+    }
+  */
+  let returnObj = {
+    description: '',
+    location: '',
+    time: '',
+    slots: {}
+  };
+ 
+  let rC = body.client_id || body.client;
+  let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
+  let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
+  if (rO && rV) { rV = rV.split('#')[0] + '#' + rO; }   // both sent in change rV to include passed rO
+  else if (rO) { return {}; }    // rO sent without an rV - that's bad; ignore rO
+  else if (rV) { rO = rV.split('#')[1]; }     // rV sent without an rO; try to set rO from the rV value
+  else { return {}; }   // netiher sent;  return void
+  // if no rO was set, use the event only (all slots will be empty)
+  let occInfoArray = getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'structure' });
+  occInfoArray.forEach(rec => {
+    if (rec.eventData) {
+      if (!returnObj.description) { returnObj.description = rec.eventData.event_data.description; }
+      if (!returnObj.location) { returnObj.location = rec.eventData.event_data.location; }
+      if (!returnObj.type && rec.eventData.sign_up) {
+        if (rec.eventData.sign_up.type === 'time') { returnObj.type = 'time'; }
+        else { returnObj.type = 'seats'; }
+      }
+      if (!returnObj.time) {
+        if (rec.eventData.event_data.time) {
+          returnObj.time = rec.eventData.event_data.time.from;
+          if (rec.eventData.event_data.time.to) {
+            returnObj.time += ' to ' + rec.eventData.event_data.time.to;
+          }
+        }
+      }
+      if (returnObj.slots.length === 0) {
+        rec.slotPattern.forEach(sID => {
+          if (!(sID in returnObj.slots)) {
+            returnObj.slots[sID] = { owner: null, notes: null, display_name: null };
+          }
+        });
+      };
+    }
+    else if (rec.occData) {
+      if (!returnObj.date && rec.occurrence_date) { returnObj.date = makeDate(rec.occurrence_date).absolute; }
+      if ('event_data' in rec.occData) {
+        if ('description' in rec.occData.event_data) {
+          returnObj.description = rec.occData.event_data.description;
+        }
+        if ('location' in rec.occData.event_data) {
+          returnObj.location = rec.occData.event_data.location;
+        }
+        if ('time' in rec.occData.event_data) {
+          returnObj.time = rec.occData.event_data.time.from;
+          if (rec.occData.event_data.time.to) {
+            returnObj.time += ' to ' + rec.occData.event_data.time.to;
+          }
+        }
+        if (rec.occData.sign_up) {
+          if (rec.occData.sign_up.type === 'time') { returnObj.type = 'time'; }
+          else { returnObj.type = 'seats'; }
+        }
+        if ('slotPattern' in rec.occData.event_data) {
+          for (const sID in returnObj.slots) {
+            if (!returnObj.slots[sID].owner) { delete returnObj.slots[sID]; }  // unoccupied slots are removed
+          }
+          rec.slotPattern.forEach(sID => {     // fill the array with slots from the pattern
+            returnObj.slots[sID] = { owner: null, notes: null, display_name: null };
+          });
+        }
+      }
+    }
+    else if (rec.slotData) {
+      let sID = rec.slotData.slot || rec.slotData.id;
+      returnObj.slots[sID] = {
+        owner: rec.slotData.owner,
+        notes: rec.slotData.notes,
+        display_name: rec.slotData.display_name || ((typeof rec.slotData.name === 'string') ? rec.slotData.name :
+          `${rec.slotData.name.first} ${rec.slotData.name.last}`.trim())
+      };
+    }
+  });
+};
+
+/*
+export async function printOccurrenceSheet(body) {
+  let fSize = [14, 12, 10];
+  let default_font = 'Helvetica';
+
+  const doc = new PDFDocument({ size: 'LETTER', layout: 'portrait', autoFirstPage: false })
+    .font(default_font)
+    .fontSize(fSize[2]);
+
+  // at 72px per inch, 8.5 x 11 (letter size) is 612px wide x 792px long
+  let pageHeight = 792;
+
+  newPage();
+
+  // Get the event master record
+
+  let oData = await occurrenceData(body);
+  // Let's do this thang...
+  doc.info = { author: 'AVA', title: oData.description };
+
+  // Body
+
+  let totalLines = 0;
+  let pageNumber = 0;
+
+  let detail_indent = 70;
+  // let detail_indent = ((time_type || seats_type) ? 70 : 10);
+  let nameRow_indent = detail_indent - 10;
+
+  for (const sID in oData.slots) {
+    if (doc.y > (pageHeight - doc.page.margins.bottom - 54) || pageNumber === 0) {
+      // Title lines
+      if (pageNumber > 0) { newPage(); }
+      pageNumber++;
+      doc
+        .fontSize(fSize[0] * 1.5)
+        .font(`${default_font}-Bold`)
+        .text(oData.description, { align: 'center' });
+      doc
+        .fontSize(fSize[1] * 1.5)
+        .font(`${default_font}-Bold`)
+        .text(oData.location, { align: 'center' });
+      doc
+        .fontSize(fSize[1] * 1.5)
+        .font(default_font)
+        .text(`${oData.date}${oData.time ? (' at ' + oData.time) : ''}`, { align: 'center' });
+      if (pageNumber > 1) {
+        doc
+          .fontSize(fSize[2])
+          .text(`page ${pageNumber}`, { align: 'center' });
+        totalLines++;
+      }
+      doc.moveDown(3);
+      totalLines += 6;
+    }
+
+    // if request_type is sign-up turn on underline on display_name
+    // if time type show nn:mm display_name
+    // is seats type show index display_name
+
+    let rowTag = '';
+    if (oData.type === 'time') { rowTag = formatTime(sID); }
+    else if (sID !== oData.slots[sID].owner) { rowTag = sID; }
+
+    let rowName = ' ';
+    let slot_person = '';
+    if (oData.slots[sID].owner && (oData.slots[sID].owner !== 'available') && (oData.slots[sID].owner !== '')) {
+      rowName = oData.slots[sID].display_name;
+      slot_person = oData.slots[sID].owner;
+    }
+
+    doc.moveDown(1);
+    doc
+      .fontSize(fSize[1])
+      .font(`${default_font}-Bold`);
+    if (rowTag) {
+      doc
+        .text(rowTag.padEnd(10), { align: 'left', continued: true });
+    }
+    let xAt = ((parseInt(doc.x / 10) + 1) * 10);
+    let yAt = doc.y;
+    doc
+      .fontSize(fSize[1] * 2)
+      .moveUp(0.3)
+      .text(rowName, { indent: nameRow_indent });
+    if (!rowName) {
+      doc
+        .moveTo(xAt + 35, yAt + 12)
+        .lineTo(xAt + 400, yAt + 12)
+        .stroke();
+    }
+    doc
+      .moveUp(2);
+    doc.font(default_font);
+    totalLines += 2;
+    if (slot_person && body.request_type === 'full') {
+      let pRec = getPerson(slot_person);
+      if (pRec) {
+        doc.fontSize(fSize[2]);
+        if (pRec.person_id !== 'void') {
+          doc.text(pRec.Location, { indent: detail_indent });
+          totalLines++;
+          if (pRec.messaging.voice) {
+            doc
+              .text('Phone: ' + pRec.messaging.voice, { indent: detail_indent });
+            totalLines++;
+          }
+          if (pRec.messaging.sms) {
+            doc
+              .text('Cell: ' + pRec.messaging.sms, { indent: detail_indent });
+            totalLines++;
+          }
+          if (pRec.messaging.eMail) {
+            doc
+              .text('e-Mail: ' + pRec.messaging.eMail, { indent: detail_indent });
+            totalLines++;
+          }
+        }
+      }
+      doc.moveDown(2);
+    };
+  }
+
+  cl({ 'total Line Count': totalLines });
+  if (totalLines === 0) {
+    doc
+      .fontSize(fSize[2])
+      .moveDown(3)
+      .text(`No data found for ${oData.description}`);
+  }
+
+  // Wrap up
+  var now = new Date();
+  var postTime = now.getTime();
+  var timeString = now.toLocaleString([], {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+
+  let yAt = doc.y;
+  let xAt = doc.x;
+  if (doc.y > (pageHeight - 36)) {
+    newPage();
+    yAt = doc.y;
+  }
+  else { yAt = pageHeight - 36; };
+
+  doc.page.margins.bottom = 0;
+  doc.page.margins.left = 0;
+  doc
+    .fontSize(fSize[2] - 2)
+    .text('***** END *****', 36, pageHeight - 36);
+  let rC = body.client_id || body.client;
+  let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
+  doc.text('AVA reference: ' + rC + '/' + rV + '/' + body.request_type + '/' + postTime);
+  doc.text('Printed: ' + timeString + ' ET');
+
+  // Finalize PDF file
+  doc.end();
+
+  return {
+    status: 200,
+  };
+
+  function newPage() {
+    doc.addPage({
+      margins: {
+        top: pageHeight * .1,
+        bottom: pageHeight * .05,
+        left: pageHeight * .1,
+        right: pageHeight * .1
+      }
+    });
+  }
+
+  function formatTime(pHHMM) {
+    let mm = pHHMM % 100;
+    let hh_raw = Math.floor(pHHMM / 100);
+    let hh = hh_raw;
+    if (hh_raw > 12) { hh = hh_raw - 12; }
+    else if (hh_raw === 0) { hh = 12; };
+    return (`${hh}:${mm < 10 ? '0' + mm : mm}`);
+  };
+
+}
+*/

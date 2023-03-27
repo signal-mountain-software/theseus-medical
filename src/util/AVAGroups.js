@@ -13,6 +13,9 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
 let profile, session;
 let groupRecs = {};
 let groupObj = {};
+let targetObj = {};
+let targetArray = [];
+let targetPerson = null;
 let loadedGroupObj = {};
 let loadedPerson = null;
 
@@ -25,7 +28,7 @@ export async function isMemberOf(person_id, pGroup_id) {
   return (Object.keys(loadedGroupObj).includes(pGroup_id));
 };
 
-export async function getGroupsBelongTo(person_id) {
+export async function getGroupsResponsibleFor(person_id) {
   if (!session || (session.patient_id !== person_id)) {
     session = await getSession(person_id);
   }
@@ -58,7 +61,14 @@ export async function getGroupsBelongTo(person_id) {
       };
     }
   };
-  // Next, get any other Groups that this person belongs to
+  loadedPerson = person_id;
+  return returnObject;
+}
+
+export async function getGroupsBelongTo(person_id) {
+  // You belong to all groups that you are responsible for
+  var returnObject = await getGroupsResponsibleFor(person_id);
+  // Next, get any other Groups that this person belongs to (but aren't responsible for)
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);
   }
@@ -224,4 +234,56 @@ export async function addMember(pPerson, pClient, pGroup) {
     .catch(error => {
       clt({ 'Bad put to PeopleGroups - caught error is': error });
     });
+}
+
+export async function prepareTargets(pPerson, pClient_id, options) {
+  if (targetPerson === pPerson) {
+    return { targetArray, targetObj };
+  }
+  let includeGroups = false;
+  let includePeople = true;
+  if (options) {
+    if (options.includeGroups) { includeGroups = options.includeGroups; };
+    if (options.includePeople) { includePeople = options.includePeople; };
+  }
+  if (!pClient_id) {
+    let peopleRec = await getPerson(pPerson);
+    pClient_id = peopleRec.client_id;
+  }
+  let responsibleList = [];   // legacy format
+  let responsibleObj = {};
+  let groupObj = await getGroupsBelongTo(pPerson);
+  let allGroupArr = Object.keys(groupObj);
+  if (allGroupArr.length === 0) { return []; }
+  if (includeGroups) {   // first, add a list of groups that you are responsible for (if requested)
+    allGroupArr.forEach(g => {
+      if (groupObj[g].role === 'responsible') {
+        responsibleList.push(`${groupObj[g].group_name}:GRP//${profile.client_id}/${groupObj[g].group_id}`);
+        let gKey = `GRP//${profile.client_id}/${groupObj[g].group_id}`;
+        responsibleObj[gKey] = {
+          group_id: groupObj[g].group_id,
+          type: 'group',
+          client_id: profile.client_id,
+          name: groupObj[g].group_name,
+          search: `${groupObj[g].group_name}`
+        };
+      }
+    });
+  }
+  if (includePeople) {   // then, add any individual in a group that you are responsible for OR are a member of
+    let responseObj = await getMemberList(allGroupArr, profile.client_id);
+    let allPeopleArr = responseObj.peopleList;
+    if (allPeopleArr.length > 0) {
+      allPeopleArr.forEach(p => {
+        responsibleList.push(((`${p.name?.last}, ${p.name?.first}:${p.person_id}:${p.search_data} ${((typeof p.messaging) === 'object') ? JSON.stringify(p.messaging) : ''}`).trim()));
+        responsibleObj[p.person_id] = {
+          type: 'person',
+          name: p.name,
+          search: p.search_data,
+          messaging: p.messaging
+        };
+      });
+    }
+  }
+  return { responsibleList, responsibleObj };
 }

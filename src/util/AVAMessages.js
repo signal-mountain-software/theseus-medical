@@ -225,6 +225,18 @@ export async function resolveMessageVariables(inString, body) {
         workString = `${front}${pMe.location}${back}`;
         break;
       }
+      case 'event_location': {
+        if (body.location) { workString = `${front}${body.location}${back}`; };
+        break;
+      }
+      case 'event_description': {
+        if (body.description) { workString = `${front}${body.description}${back}`; };
+        break;
+      }
+      case 'event_date': {
+        if (body.event) { workString = `${front}${makeDate(body.event.split('#')[1]).absolute}${back}`; };
+        break;
+      }
       case 'user': { workString = `${front}${body.author}${back}`; break; }
       case 'selections': {
         workString = `${front}${listFromArray(body.selections)}${back}`;
