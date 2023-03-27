@@ -225,7 +225,7 @@ export default ({ session, filter = {}, onClose }) => {
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
-  const [showReactError, setShowReactError] = React.useState(false);
+  const [showReactError, ] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [deletePending, setDeletePending] = React.useState(false);
   const showDeleted = false;
