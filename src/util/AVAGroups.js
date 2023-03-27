@@ -54,8 +54,17 @@ export async function getGroupsResponsibleFor(person_id) {
   for (let g = 0; g < respArray.length; g++) {
     let group = respArray[g].trim();
     if (!(group in returnObject)) {
+      let groupName;
+      if (groupObj[group]) { groupName = groupObj[group].name; }
+      else { 
+        let groupO = await getGroup(group, session.client_id);
+        if (Object.keys(groupO).length === 0) {
+          continue;
+        }
+        groupName = groupO.name;
+      }
       returnObject[group] = {
-        group_name: (groupObj[group] ? groupObj[group].name : null),
+        group_name: groupName,
         group_id: group,
         role: 'responsible'
       };
@@ -113,7 +122,7 @@ export async function getRole(pGroup, pPerson) {
   let pSession = await getSession(pPerson);
   if ((('responsible_for' in pSession) && (pSession.responsible_for.some(g => g.split('~')[0].trim() === pGroup)))
     || (('groups_managed' in pSession) && (pSession.groups_managed.some(g => g.split('~')[0].trim() === pGroup)))
-    || (getGroup(pGroup, pSession.client_id).admin_list.includes(pPerson))) {
+    || (await getGroup(pGroup, pSession.client_id).admin_list.includes(pPerson))) {
     return 'responsible';
   }
   else { return 'member'; }
