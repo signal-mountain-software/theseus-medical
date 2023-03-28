@@ -535,6 +535,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   };
 
   const onSaveFact = async (pFact, pFactName, pIndex) => {
+    if (pFact.activity_key.includes('//')) {
+      [pFact.client_id, pFact.activity_key] = pFact.activity_key.split('//');
+    }
     if (typeof (pFact.value) === 'string') { putFact(pFact, pFactName, pIndex); }
     else {
       let factFlavor = pFact.activity_key.split('.')[0];
