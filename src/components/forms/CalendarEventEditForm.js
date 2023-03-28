@@ -171,6 +171,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const [editIndex, setEditIndex] = React.useState();
+  const [editSlot, setEditSlot] = React.useState();
 
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [recipient, setRecipient] = React.useState();
@@ -612,6 +613,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                             onClick={async () => {
                               if (isEventOwner) {
                                 setEditIndex(index);
+                                setEditSlot(true);
                                 await setChoices(peopleList);
                                 setSelectNewSlotOwner(true);
                               }
@@ -638,14 +640,14 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
           <PersonFilter
             prompt={'Who are you signing-up?'}
             peopleList={choiceList}
-            multiSelect={!editIndex}
+            multiSelect={!editSlot}
             onCancel={() => {
               setSelectNewSlotOwner(false);
             }}
             onSelect={async (selectedPerson) => {
               setSelectNewSlotOwner(false);
               let slotObj = { person: selectedPerson };
-              if (editIndex) {
+              if (editSlot) {
                 slotObj.slot = eventSlotList[editIndex].slotData.id;
                 slotObj.index = editIndex;
               }
@@ -708,13 +710,15 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                   {isMobile ? '' : 'Done'}
                 </Button>
               </Tooltip>
-              {(pOccData.signup_type !== 'time') && isBrowsing &&
+              {(pOccData.signup_type === 'none') && isBrowsing &&
                 <Tooltip title={(isEventOwner ? 'Add a person' : 'Add myself to the list')} placement='top'>
                   <Button
                     className={classes.rowButtonDefault}
                     onClick={async () => {
                       if (isEventOwner) {
                         await setChoices(peopleList);
+                        setEditIndex(false);
+                        setEditSlot(false);
                         setSelectNewSlotOwner(true);
                       }
                       else {
