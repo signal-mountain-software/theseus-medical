@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, makeArray, resolveVariables, uuid } from './AVAUtilities';
+import { clt, cl, recordExists, makeArray, makeNumber, resolveVariables, uuid } from './AVAUtilities';
 import { makeName } from './AVAPeople';
 import { addDays, makeDate } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
@@ -267,7 +267,7 @@ export async function getCalendarEntries(body) {
       cl(`Error reading ${qQ.TableName} id ${error}`);
     });
   if (recordExists(qR)) {
-    if (qR.Items.length === 1) { return qR.Items[0]; }
+   if (qR.Items.length === 1) { return qR.Items[0]; }
     else {
       // return the list of calendar entries sorted by date in event key (most recent first)
       return qR.Items.sort((a, b) => {
@@ -846,6 +846,7 @@ export async function occurrenceData(body) {
       location,
       type,
       time,
+      date (as returned from makeDate)
       slots: {
         slotName: {
           owner (or false),
@@ -870,9 +871,15 @@ export async function occurrenceData(body) {
   else if (rV) { rO = rV.split('#')[1]; }     // rV sent without an rO; try to set rO from the rV value
   else { return {}; }   // netiher sent;  return void
   // if no rO was set, use the event only (all slots will be empty)
-  let occInfoArray = getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'structure' });
-  occInfoArray.forEach(rec => {
+  let eventInfoArray = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'event' });
+  let occInfoArray = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'structure' });
+  occInfoArray.unshift(eventInfoArray);
+  occInfoArray.forEach((rec, x) => {
+    if (!returnObj.date && (rec.occurrence_date || (makeNumber(rec.schedule_key) > 0))) {
+      returnObj.date = makeDate(rec.occurrence_date || makeNumber(rec.schedule_key));
+    }
     if (rec.eventData) {
+      cl({ 'handling eventData': rec.eventData.event_data });
       if (!returnObj.description) { returnObj.description = rec.eventData.event_data.description; }
       if (!returnObj.location) { returnObj.location = rec.eventData.event_data.location; }
       if (!returnObj.type && rec.eventData.sign_up) {
@@ -896,7 +903,6 @@ export async function occurrenceData(body) {
       };
     }
     else if (rec.occData) {
-      if (!returnObj.date && rec.occurrence_date) { returnObj.date = makeDate(rec.occurrence_date).absolute; }
       if ('event_data' in rec.occData) {
         if ('description' in rec.occData.event_data) {
           returnObj.description = rec.occData.event_data.description;
@@ -923,17 +929,42 @@ export async function occurrenceData(body) {
           });
         }
       }
+      else { 
+        if ('description' in rec.occData) {
+          returnObj.description = rec.occData.description;
+        };
+        if ('time_from' in rec.occData) {
+          returnObj.time = rec.occData.time_from;
+        };
+
+      }
     }
     else if (rec.slotData) {
       let sID = rec.slotData.slot || rec.slotData.id;
-      returnObj.slots[sID] = {
-        owner: rec.slotData.owner,
-        notes: rec.slotData.notes,
-        display_name: rec.slotData.display_name || ((typeof rec.slotData.name === 'string') ? rec.slotData.name :
-          `${rec.slotData.name.first} ${rec.slotData.name.last}`.trim())
-      };
+      if (rec.slotData.status && rec.slotData.status.current === 'released') {
+        returnObj.slots[sID] = {
+          owner: '',
+          notes: '',
+          display_name: ''
+        };
+      }
+      else {
+        let slotName = '';
+        if (rec.slotData.display_name) { slotName = rec.slotData.display_name; }
+        else if (rec.slotData.name) {
+          if (typeof rec.slotData.name === 'string') { slotName = rec.slotData.name; }
+          else { slotName = `${rec.slotData.name.first} ${rec.slotData.name.last}`.trim(); }
+        }
+        returnObj.slots[sID] = {
+          owner: rec.slotData.owner,
+          notes: rec.slotData.notes,
+          display_name: slotName
+        };
+      }
     }
+    else if (rec.calData) { }
   });
+  return returnObj;
 };
 
 /*

@@ -2,7 +2,7 @@ import React from 'react';
 import { titleCase, cl } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage, getPerson } from '../../util/AVAPeople';
-import { getCalendarEntries } from '../../util/AVACalendars';
+import { getCalendarEntries,occurrenceData } from '../../util/AVACalendars';
 import { getMessages } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
@@ -352,13 +352,12 @@ export default ({ session, filter = {}, onClose }) => {
 
   
   const onScroll = async (event) => {
-    cl(`scroll event ${scrollCount++}`);
-    cl({ yoff: window.pageYOffset, scrollTop: document.documentElement.scrollTop });
     if (dataRows.length < allRows.length) {
       let promiseArr = [];
       let stopAt = Math.min(allRows.length, (dataRows.length + scrollValue));
       for (let x = dataRows.length; x < stopAt; x++) {
-        promiseArr.push(buildCalendarDetails(allRows[x])
+        promiseArr.push(
+          await buildCalendarDetails(allRows[x])
           .then((good, bad) => { 
             if (good) { dataRows[x] = good; }
             else { console.log(bad); }
@@ -465,42 +464,43 @@ export default ({ session, filter = {}, onClose }) => {
   };
 
   async function buildCalendarDetails(i) {
-    let cResp = await getCalendarEntries({
+    let [e, o, ] = i.event_key.split('#');
+    let thisEntry = await occurrenceData({
       'client_id': i.client,
       'type': 'occurrence',
-      'event': i.event_key
+      'event': e,
+      'occurrence': o
     });
-    let thisEntry;
-    if (Array.isArray(cResp)) { thisEntry = cResp[0]; }
-    else { thisEntry = cResp; }
-    i.occData = thisEntry.occData;
     i.workData = {};
-    i.workData.formatted_type = titleCase(i.occData.description || (i.occData.event_data ? i.occData.event_data.description : null));
-    let AVArequestDate = makeDate(i.occData.date || i.occurrence_date);
-    i.workData.display_date = AVArequestDate.relative;
-    let owner = i.slotData.owner || i.occData.owner;
+    i.workData.formatted_type = thisEntry.description;
+    i.workData.display_date = thisEntry.date.relative;
+    let owner = i.slotData.owner || i.slot_owner;
     i.workData.requestor_image = await getImage(owner);
     i.workData.formatted_request = [];
-    let location = i.occData.location || i.location;
+    let location = i.location;
+    if (thisEntry.location) {
+      if (typeof thisEntry.location === 'string') { location = thisEntry.location; }
+      else { location = thisEntry.location.description; }
+    }
     if (location) {
       i.workData.formatted_request.push(['head', titleCase(location)]);
     }
-    i.workData.start_time = i.occData.time_from || i.time_from;
+    i.workData.start_time = thisEntry.time || i.time_from;
     if (i.slotData) {
       let this_slot = (i.slotData.slot || i.slotData.id);
       let list_type = (this_slot === owner)
-      if (isNaN(Number(this_slot)) && !list_type) { i.workData.formatted_request.push(['head', this_slot]); }
+      if (isNaN(Number(this_slot)) && !list_type) { i.workData.formatted_request.push(['detail', this_slot]); }
       else {
         let slot_number = Number(this_slot);
-        if ((slot_number > 99) && (slot_number < 2400)) { i.workData.formatted_request.push(['head', `${makeTime(this_slot).time}`]); }
-        else if (this_slot && !list_type) { i.workData.formatted_request.push(['head', this_slot]); }
+        if ((slot_number > 99) && (slot_number < 2400)) { i.workData.formatted_request.push(['detail', `${makeTime(this_slot).time}`]); }
+        else if (this_slot && !list_type) { i.workData.formatted_request.push(['detail', this_slot]); }
       }
       if (i.slotData.status
         && (typeof(i.slotData.status.current) === 'string')
         && (i.slotData.status.current.toLowerCase() !== 'selected')) {
         i.workData.formatted_request.push(['details', titleCase(i.slotData.status.current)]);
       }
-      if (i.slotData.notes) { i.workData.formatted_request.push(['details', `Notes: ${titleCase(i.slotData.notes)}`]); }
+      if (i.slotData.notes) { i.workData.formatted_request.push(['qual', `Notes: ${titleCase(i.slotData.notes)}`]); }
     }
     i.workData.checked = false;
     i.workData.open = false;
@@ -654,7 +654,7 @@ export default ({ session, filter = {}, onClose }) => {
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'vRowRefresh'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
                   </Box>
@@ -709,7 +709,7 @@ export default ({ session, filter = {}, onClose }) => {
                               <Box display='flex' flexDirection='column'>
                                 <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
                                 <Typography variant='h5' className={classes.firstName}>{this_item.workData.requestor_name}</Typography>
-                                <Typography variant='h5' className={classes.timeLine}>{`${this_item.workData.display_date}${this_item.workData.start_time ? (' at ' + this_item.workData.start_time) : ''}`}</Typography>
+                                <Typography variant='h5' className={classes.timeLine}>{`${this_item.workData.display_date}${this_item.workData.start_time ? (' - ' + this_item.workData.start_time) : ''}`}</Typography>
                               </Box>
                             </Box>
                             {this_item && this_item.workData && this_item.workData.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
