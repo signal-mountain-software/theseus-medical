@@ -145,6 +145,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       requestor.favorite_activities = [];
     }
 
+    /*
     // Also add anything that you've used 3 or more times recently
     // Get Recent history
     // ({ '** HISTORY **': (activityHistory || 'no history found') });
@@ -166,6 +167,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         if (this_row) { returnArray.push(this_row); }
       }
     }
+    */
 
     // ({ '** PRIORITIES **': (requestor.priority_activities || 'no priority activities') });
     if (requestor.hasOwnProperty('priority_activities')) {
@@ -417,6 +419,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     }
   }
 
+  /*
   async function getActivityLog(pPerson) {
     let aRecs = await dbClient
       .query({
@@ -446,6 +449,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     }
     else { return []; }
   }
+  */
 
   async function addRow(pActivity, pMenu, pParent, pParentName, pSectionSort, pSectionName, pSectionColor, pSectionIcon, pReason) {
     let activityRec = await getActivity(pActivity);
