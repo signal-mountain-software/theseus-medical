@@ -121,11 +121,14 @@ export async function getGroup(pGroup_id, pClient_id) {
 export async function getRole(pGroup, pPerson) {
   let pSession = await getSession(pPerson);
   if ((('responsible_for' in pSession) && (pSession.responsible_for.some(g => g.split('~')[0].trim() === pGroup)))
-    || (('groups_managed' in pSession) && (pSession.groups_managed.some(g => g.split('~')[0].trim() === pGroup)))
-    || (await getGroup(pGroup, pSession.client_id).admin_list.includes(pPerson))) {
+    || (('groups_managed' in pSession) && (pSession.groups_managed.some(g => g.split('~')[0].trim() === pGroup)))) {
     return 'responsible';
   }
-  else { return 'member'; }
+  else {
+    let gRec = await getGroup(pGroup, pSession.client_id);
+    if (gRec.admin_list.includes(pPerson)) { return 'responsible'; }
+  }
+  return 'member';
 }
 
 export async function getMemberList(pGroups, pClient_id, options) {
