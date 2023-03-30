@@ -68,6 +68,9 @@ export async function prepareMessage(inBody) {
     results = {};
     if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
     else { results.recipientList = [this_request.recipientList]; }
+    results.recipientList = results.recipientList.map(async (r) => {
+      return await resolveMessageVariables(r, this_request);
+    })
     results.client = this_request.client;
     results.author = this_request.author;
     results.preferred_method = this_request.method;
@@ -83,7 +86,7 @@ export async function prepareMessage(inBody) {
       }
       case 'plainText':
       default: {
-        results.messageText = '%%custom_text%% ' + (await resolveMessageVariables(this_request.format.text, this_request));
+        results.messageText = await resolveMessageVariables(this_request.format.text, this_request) + ' %%custom_text%%';
         results.htmlText = results.messageText;
       }
     }
@@ -237,6 +240,10 @@ export async function resolveMessageVariables(inString, body) {
         if (body.event) { workString = `${front}${makeDate(body.event.split('#')[1]).absolute}${back}`; };
         break;
       }
+      case 'person_id':
+      case 'patient_id':
+      case 'requestor':
+      case 'self':
       case 'user': { workString = `${front}${body.author}${back}`; break; }
       case 'selections': {
         workString = `${front}${listFromArray(body.selections)}${back}`;
@@ -245,6 +252,10 @@ export async function resolveMessageVariables(inString, body) {
       default: {
         if (body.hasOwnProperty(variable)) {
           workString = `${front}${body[variable]}${back}`;
+        }
+        else if (variable.trim().toLowerCase().startsWith('if ')) { 
+          let [if$, then$] = variable.trim().slice(2).split(':');
+          if (body.hasOwnProperty(if$.trim())) { workString = `${front}${then$.trim()}${back}` }
         }
         else if (body.hasOwnProperty('textInput')) {
           if (variable.startsWith('value')) { variable = variable.split(':')[1]; }
