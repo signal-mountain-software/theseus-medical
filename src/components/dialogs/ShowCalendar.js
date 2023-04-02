@@ -182,21 +182,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
     let fortnight_date = twoWeeksFromNow.getDate();
     let theCalendar = [];
     if (currentEvent && currentEvent.length > 0) {
-      /*
-      params.Payload = JSON.stringify({
-        action: "get_event",
-        clientId: eventClient || (patient.adopted_client || patient.client_id),
-        event_id: currentEvent,
-        person_id: patient.patient_id
-      });
-      let fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        console.log("AVA couldn't complete the query.  Error is", JSON.stringify(err));
-        invokeFailed = true;
-      });
-      */
       let oResp = await getCalendarEntries({
         client_id: eventClient || (patient.adopted_client || patient.client_id),
         person_id: patient.patient_id,
@@ -218,12 +203,24 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
         });
         occRec = oResp;
       }
-      let description, location, owner, signup_type;
+      let description, location, owner, signup_type, time$;
       if (eventRec.eventData) {
         description = eventRec.eventData.event_data.description;
-        location = eventRec.eventData.event_data.location;
+        
         owner = eventRec.eventData.event_data.owner;
-        signup_type = eventRec.eventData.event_data.type
+        signup_type = eventRec.eventData.event_data.type;
+        if (eventRec.eventData.event_data.time) {
+          time$ = eventRec.eventData.event_data.time.from;
+          if (eventRec.eventData.event_data.time.to) { 
+            time$ += ' to ' + eventRec.eventData.event_data.time.to;
+          }
+        }
+        if (eventRec.eventData.event_data.location) {
+          location = ((typeof eventRec.eventData.event_data.location === 'object')
+            ? eventRec.eventData.event_data.location.description
+            : eventRec.eventData.event_data.location);
+        }
+        else { location = ''; }
       }
       else if (eventRec.calData) {
         description = eventRec.calData.description;
@@ -248,6 +245,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
           signup_type,
           description,
           location,
+          time$,
           owner 
         }
       });

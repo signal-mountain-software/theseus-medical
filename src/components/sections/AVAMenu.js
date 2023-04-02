@@ -535,6 +535,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   };
 
   const onSaveFact = async (pFact, pFactName, pIndex) => {
+    if (pFact.activity_key.includes('//')) {
+      [pFact.client_id, pFact.activity_key] = pFact.activity_key.split('//');
+    }
     if (typeof (pFact.value) === 'string') { putFact(pFact, pFactName, pIndex); }
     else {
       let factFlavor = pFact.activity_key.split('.')[0];
@@ -856,7 +859,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           ref={idleTimer}
           timeout={msBeforeSleeping}   // every "n" minutes
           onActive={() => {
-            // cl(`Active at ${new Date().toLocaleString()}.  Last idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
+            let now = new Date();
+            cl(`Active at ${now.toLocaleString()}.  Idle since ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
+            if ((now.getTime() - idleTimer.current.state.lastIdle) > oneHour) {
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
+            }
           }}          
           onIdle={async () => {
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
@@ -1010,6 +1017,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               </MenuItem>
               <MenuItem
                 onClick={async () => {
+                  window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+                  /*
                   setPopupMenuOpen(false);
                   setLoading('Resetting greeting');
                   setForceRedisplay(!forceRedisplay);
@@ -1023,6 +1032,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   setMenuNames([]);
                   setLoading(false);
                   setForceRedisplay(!forceRedisplay);
+                  */
                 }}>
                 <Box
                   display='flex' flexDirection='row' alignItems={'center'}

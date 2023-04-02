@@ -127,43 +127,11 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   const [factMessageClass, setFactMessageClass] = React.useState(false);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
-  // From DynamicForm
-  //const [lastQualifier, setLastQualifier] = React.useState('');
   const [value, setExecutionDefaultValue] = React.useState('');
-  //const [nums, setNums] = React.useState(['', '']);
-  //const [mOut, setMOut] = React.useState(message || 'enter something here');
-
-  //const [formState, setFormState] = React.useState(1);
-  //const [firstTime, setFirstTime] = React.useState(true);
-
   const [qualifierTable, setQualifierTable] = React.useState({});
   const [associationsTable, setAssociationsTable] = React.useState({});
-  //const [qualifiers, setQualifiers] = React.useState([]);
-  //const [selectedFact, setSelectedFact] = React.useState('');
-
-  //const [qualifierImage, setDialogImage] = React.useState('');
   const [checked, setChecked] = React.useState([]);
-  //const [qualifierOpen, setQualifierOpen] = React.useState(false);
-  //const [qualifierData, setQualifierData] = React.useState({});
-  //const [qMessage, setQMessage] = React.useState('');
-  //const [OGmessage, setOGmessage] = React.useState('');
-  //const [OGvalue, setOGvalue] = React.useState('');
-
-  //const [peopleMode, setPeopleMode] = React.useState(false);
-  //const [saveMode, setSaveMode] = React.useState(false);
-
-  //const [listValues, setListValues] = React.useState([]);
-
   const [qualChecked, setQualChecked] = React.useState({});
-  // const [qualMessage, setQualMessage] = React.useState('');
-  //const [OGqualifiers, setOGQualifiers] = React.useState([]);
-
-  //const [freeText, setFreeText] = React.useState('');
-  //const [filterText, setFilterText] = React.useState('');
-  //const [messageField, setMessageField] = React.useState('');
-
-  //let type, values;
-  // ***END
 
   var withNext;
   var oopsie;

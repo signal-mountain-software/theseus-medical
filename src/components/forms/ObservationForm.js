@@ -26,7 +26,6 @@ import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
-
 import AVAConfirm from './AVAConfirm';
 
 const useStyles = makeStyles(theme => ({
@@ -162,7 +161,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
-
+ 
   const classes = useStyles();
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -198,14 +197,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     Payload: ''
   };
 
-  if (!initialLoadComplete && defaultValue) {
-    let defaultObj = {};
-    (Array.isArray(defaultValue) ? [...defaultValue] : [defaultValue]).forEach(i => {
-      let [key, value] = i.split('=');
-      defaultObj[key] = value;
-    });
-    setTextInput(defaultObj);
-  }
 
   /* value                       | meaning                                  | example                                                   */
   /* ---------                   | ----------                               | -------------                                             */
@@ -232,6 +223,101 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   let checkbox = true;
   let ignore = false;
   let required = false;
+
+  if (!initialLoadComplete) {
+    let defaultObj = {};
+    let defaultChecked = [];
+    if (defaultValue) {
+      (Array.isArray(defaultValue) ? [...defaultValue] : [defaultValue]).forEach(i => {
+        let [key, value] = i.split('=');
+        defaultObj[key] = value;
+      });
+    }
+    for (let vIndex = 0; vIndex < listValues.length; vIndex++) {
+      // All rows are evaluated as follows "<instruction[0]>~<instruction[1]>:<instruction[2]>"
+      // OR... "<instruction[0]>~~<instruction[1]>" (instruction[0] expected to be null/blank in this case)
+      let instruction = listValues[vIndex].split(/[~:]+/);
+      // console.log(instruction);
+
+      // This checks for rows that contain "~[<oControl>=<oValue on/off>]"
+      let dValue = '';
+      let last_instruction = instruction[instruction.length - 1];
+      if (last_instruction.charAt(0) === '[') {
+        let [, oControl, oValue] = last_instruction.split(/[=[\]]+/);
+        switch (oControl) {
+          case 'checkbox': {    // checkbox default state is true; this allows you to toggle it off/on
+            checkbox = (oValue.toLowerCase() === 'on');
+            break;
+          }
+          case 'display': {
+            ignore = (oValue.toLowerCase() === 'off');
+            break;
+          }
+          case 'required': {
+            required = (oValue.toLowerCase() === 'on');
+            break;
+          }
+          case 'default': {
+            dValue = oValue;
+            break;
+          }
+          default: { }
+        }
+        instruction.pop();
+        if ((instruction.length === 0) || ((instruction.length === 1) && !instruction[0])) { continue; }
+      }
+
+      if (ignore) { continue; }
+
+      // This handles any row without a leading "~"
+      if (instruction[0]) {
+        displayRowList.push({
+          checkbox,
+          required,
+          text: instruction[0],
+          oKey: getKey(instruction[0]),
+          desc: getDescription(instruction[0]),
+          input: false
+        });
+        if (['checked', 'on', 'selected', 'true'].includes(dValue)) { defaultChecked.push(instruction[0]); }
+        continue;
+      }
+
+      // Dropping through to here means that instruction[0] was null/blank
+      //    (ie. there was nothing before the first "~"; the row started with "~")
+      // This handles rows in the form "~<instruction[1]>:<instruction[2]>", for example
+      //     "~lambda:<instruction[2]>"
+      if (instruction[2]) {
+        displayRowList.push({
+          checkbox: (instruction[1].includes('withCheckBox')),
+          required: required || (instruction[1].includes('required')),
+          text: instruction[2],
+          oKey: getKey(instruction[2]),
+          desc: getDescription(instruction[2]),
+          input: instruction[1]
+        });
+        if (dValue) { defaultObj[instruction[2]] = dValue; }
+        continue;
+      }
+
+      // Dropping through to here means that instruction[2] was also null/blank
+      //      so the row looked like "~<instruction[1]>" or "~~<instruction[1]>"
+      // Turns out, this is a header line in instruction[1]
+      displayRowList.push({
+        checkbox: false,
+        required: false,
+        text: instruction[1],
+        oKey: getKey(instruction[1]),
+        desc: getDescription(instruction[1]),
+        input: false,
+        header: true
+      });
+      if (dValue) { defaultObj[instruction[1]] = dValue; }
+    };
+    setTextInput(defaultObj);
+    setLoadComplete(true);
+    setDataRows({ displayRows: displayRowList, dataRows: {}, checked: defaultChecked });
+  }
 
   async function getObservations(pText, pObsKey, pChecked) {
     let workDataRows = dataRows;
@@ -329,81 +415,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     else {
       return null;
     }
-  }
-
-  if (!initialLoadComplete) {
-    for (let vIndex = 0; vIndex < listValues.length; vIndex++) {
-      // All rows are evaluated as follows "<instruction[0]>~<instruction[1]>:<instruction[2]>"
-      // OR... "<instruction[0]>~~<instruction[1]>" (instruction[0] expected to be null/blank in thsi case)
-      let instruction = listValues[vIndex].split(/[~:]+/);
-
-      // This checks for rows in the form "~[<oControl>=<oValue on/off>]"
-      if (instruction[1] && (instruction[1].charAt(0) === '[')) {
-        let [, oControl, oValue] = instruction[1].split(/[=[\]]+/);
-        switch (oControl) {
-          case 'checkbox': {    // checkbox default state is true; this allows you to toggle it off/on
-            checkbox = (oValue.toLowerCase() === 'on');
-            break;
-          }
-          case 'display': {
-            ignore = (oValue.toLowerCase() === 'off');
-            break;
-          }
-          case 'required': {
-            required = (oValue.toLowerCase() === 'on');
-            break;
-          }
-          default: { }
-        }
-        continue;
-      }
-
-      if (ignore) { continue; }
-
-      // This handles any row without a leading "~"
-      if (instruction[0]) {
-        displayRowList.push({
-          checkbox,
-          required,
-          text: instruction[0],
-          oKey: getKey(instruction[0]),
-          desc: getDescription(instruction[0]),
-          input: false
-        });
-        continue;
-      }
-
-      // Dropping through to here means that instruction[0] was null/blank
-      //    (ie. there was nothing before the first "~"; the row started with "~")
-      // This handles rows in the form "~<instruction[1]>:<instruction[2]>", for example
-      //     "~lambda:<instruction[2]>"
-      if (instruction[2]) {
-        displayRowList.push({
-          checkbox: (instruction[1].includes('withCheckBox')),
-          required: required || (instruction[1].includes('required')),
-          text: instruction[2],
-          oKey: getKey(instruction[2]),
-          desc: getDescription(instruction[2]),
-          input: instruction[1]
-        });
-        continue;
-      }
-
-      // Dropping through to here means that instruction[2] was also null/blank
-      //      so the row looked like "~<instruction[1]>" or "~~<instruction[1]>"
-      // Turns out, this is a header line in instruction[1]
-      displayRowList.push({
-        checkbox: false,
-        required: false,
-        text: instruction[1],
-        oKey: getKey(instruction[1]),
-        desc: getDescription(instruction[1]),
-        input: false,
-        header: true
-      });
-    };
-    setLoadComplete(true);
-    setDataRows({ displayRows: displayRowList, dataRows: {}, checked: [] });
   }
 
   const onCheckEnter = (event, this_item) => {
@@ -581,7 +592,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'vRowRefresh'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers RE${process.env.REACT_APP_AVA_VERSION}window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`User ${fact.session.user_id}${fact.patient_id !== fact.session.user_id ? (' (' + fact.patient_id + ')') : ''}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Function: ObservationForm`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Activity: ${fact.activity_key}`}</Typography>
@@ -738,22 +749,42 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               onConfirm={async () => {
                 let rObj;
                 if (factType !== 'list') {
-                  let oBo = await makeName(fact.patient_id);
-                  if (fact.value.freeText && ('onBehalfOf' in fact.value.freeText)) {
-                    oBo = textInput[fact.value.freeText.onBehalfOf];
-                    delete textInput[fact.value.freeText.onBehalfOf];
+                  // in defaultValues, if foreign_key and/or obo exist they can either mean:
+                  //    1. the name of the prompt whose textInput contains the value, OR
+                  //    2. the value itself
+                  // if not mentioned in defaultValues, we'll assign values to them
+                  let oBo, foreign_key;
+                  if (fact.value.freeText) {
+                    if ('onBehalfOf' in fact.value.freeText) { 
+                      oBo = fact.value.freeText.onBehalfOf;
+                      if (textInput && textInput[fact.value.freeText.onBehalfOf]) {
+                        oBo = textInput[fact.value.freeText.onBehalfOf];
+                        delete textInput[fact.value.freeText.onBehalfOf];
+                      }
+                    }
+                    if ('foreignKey' in fact.value.freeText) {
+                      foreign_key = fact.value.freeText.foreignKey;
+                      if (textInput) {
+                        if (textInput[fact.value.freeText.foreignKey]) {
+                          foreign_key = textInput[fact.value.freeText.foreignKey];
+                          delete textInput[fact.value.freeText.foreignKey];
+                        }
+                        else if ('foreignKey' in textInput) { 
+                          foreign_key = textInput['foreignKey'];
+                          delete textInput['foreignKey'];
+                        }
+                      }
+                    }
                   }
+                  if (!oBo) { oBo = await makeName(fact.patient_id); }
+                  if (!foreign_key) { foreign_key = '*tbd'; }
+                  
                   let requestObj = { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual };
                   let messageObj = {};
-                  if ('messaging' in fact) { 
-                    messageObj.messaging = Object.assign(requestObj, fact.messaging);
+                  if ('messaging' in fact) {
+                    messageObj.messaging = Object.assign({}, requestObj, fact.messaging);
                     messageObj.messaging.activityName = factName;
                   }
-                  let foreign_key = fact.value.freeText.foreignKey || '*tbd';
-                  if (textInput && textInput[fact.value.freeText.foreignKey]) { 
-                    let fKDate = makeDate(textInput[fact.value.freeText.foreignKey]);
-                    if (!fKDate.error) { foreign_key = fKDate.ymd; }
-                  } 
                   rObj = await putServiceRequest(
                     {
                       client: pClient,

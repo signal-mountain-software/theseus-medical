@@ -58,7 +58,7 @@ export async function getPerson(pID, pElement = '*all', override = false) {
                 TableName: "People"
             })
             .promise()
-            .catch(error => { cl({ 'Error reading Groups': error }); });
+            .catch(error => { cl({ 'Error reading People': error }); });
         if (!recordExists(personRec)) { return {}; }
         if (!personRec.Item.hasOwnProperty('messaging')) {
             personRec.Item.messaging = {};
@@ -124,7 +124,7 @@ export async function getSession(pID) {
             TableName: "SessionsV2"
         })
         .promise()
-        .catch(error => { cl({ 'Error reading Groups': error }); });
+        .catch(error => { cl({ 'Error reading SessionsV2': error }); });
     if (recordExists(sessionRec)) {
         if (('groups_managed' in sessionRec.Item) && !Array.isArray(sessionRec.Item.groups_managed)) {
             sessionRec.Item.groups_managed = sessionRec.Item.groups_managed.split(/[[,\]]/);

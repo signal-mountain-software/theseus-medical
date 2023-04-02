@@ -283,6 +283,10 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       if (pGroup_id) {
         setShowGroupSelect(false);
         await getGroupMemberList(pGroup_id);
+        if (!(pGroup_name.trim())) { 
+          let gRec = await getGroup(pGroup_id, pSession.client_id);
+          if (gRec && gRec.name) { setGroupName(gRec.name); }
+        }
       }
       else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
         setShowGroupSelect(true);

@@ -1,8 +1,8 @@
 import React from 'react';
-import { titleCase } from '../../util/AVAUtilities';
+import { titleCase, cl } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage, getPerson } from '../../util/AVAPeople';
-import { getCalendarEntries } from '../../util/AVACalendars';
+import { getCalendarEntries,occurrenceData } from '../../util/AVACalendars';
 import { getMessages } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
@@ -199,6 +199,9 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+let runNumber = 1;
+let scrollCount = 1;
+
 export default ({ session, filter = {}, onClose }) => {
 
   /*
@@ -214,12 +217,15 @@ export default ({ session, filter = {}, onClose }) => {
   const classes = useStyles();
 
   const [dataRows, setDataRows] = React.useState();
+  const [allRows, setAllRows] = React.useState();
+  const [moreRows, setMoreRows] = React.useState();
 
   const [request_filter, setRequestFilter] = React.useState('');
   const [request_filter_lower, setRequestFilterLower] = React.useState('');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
+  const [showReactError, ] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [deletePending, setDeletePending] = React.useState(false);
   const showDeleted = false;
@@ -233,8 +239,7 @@ export default ({ session, filter = {}, onClose }) => {
   const [anchorEl, setAnchorEl] = React.useState(null);
 
   const [rowLimit, setRowLimit] = React.useState(20);
-  const [previousY, setCurrentY] = React.useState(0);
-  const scrollValue = 20;
+  const scrollValue = 5;
   var rowsWritten;
 
   const handleClick = async (event) => {
@@ -345,15 +350,28 @@ export default ({ session, filter = {}, onClose }) => {
     // will mark request as cancelled as send appropriate messages 
   };
 
-  const onScroll = event => {
-    if (rowLimit < dataRows.length) {
-      let currentY = window.scrollY;
-      if (currentY - (previousY + 50)) {
-        setCurrentY(currentY);
-        setRowLimit(rowLimit + scrollValue);
-        setForceRedisplay(!forceRedisplay);
+  
+  const onScroll = async (event) => {
+    if (dataRows.length < allRows.length) {
+      let promiseArr = [];
+      let stopAt = Math.min(allRows.length, (dataRows.length + scrollValue));
+      for (let x = dataRows.length; x < stopAt; x++) {
+        promiseArr.push(
+          await buildCalendarDetails(allRows[x])
+          .then((good, bad) => { 
+            if (good) { dataRows[x] = good; }
+            else { console.log(bad); }
+          })
+        );
       }
+      await Promise.all(promiseArr);
+      setDataRows(dataRows);
+      setRowLimit(dataRows.length);
+      cl(`scroll done - now ${dataRows.length} rows of ${allRows.length} loaded`)
+      setMoreRows(allRows.length > dataRows.length);
+      setForceRedisplay(!forceRedisplay);
     }
+    else { cl(`scroll ignored`); }
   };
 
   function toggleCheck(pI) {
@@ -431,34 +449,59 @@ export default ({ session, filter = {}, onClose }) => {
     qList = await getCalendarEntries({
       'person': session.patient_id
     });
-    for (let x = 0; x < qList.length; x++) {
-      qList[x] = await buildCalendarDetails(qList[x]);
+    qList.sort((a, b) => {
+      let [, aSort] = a.event_key.split(/#/g);
+      let [, bSort] = b.event_key.split(/#/g);
+      if (aSort > bSort) { return -1; }
+      else { return 1; }
+    });
+    setAllRows(qList);
+    let workingList = [];
+    for (let x = 0; x < Math.min(qList.length, scrollValue); x++) {
+      workingList.push(await buildCalendarDetails(qList[x]));
     }
-    setDataRows(qList);
+    return { dataRows: workingList, allRows: qList }
   };
 
   async function buildCalendarDetails(i) {
-    let cResp = await getCalendarEntries({
+    let [e, o, ] = i.event_key.split('#');
+    let thisEntry = await occurrenceData({
       'client_id': i.client,
       'type': 'occurrence',
-      'event': i.event_key
+      'event': e,
+      'occurrence': o
     });
-    let thisEntry;
-    if (Array.isArray(cResp)) { thisEntry = cResp[0]; }
-    else { thisEntry = cResp; }
-    i.occData = thisEntry.occData;
     i.workData = {};
-    i.workData.formatted_type = titleCase(i.occData.description);
-    let AVArequestDate = makeDate(i.occData.date);
-    i.workData.display_date = AVArequestDate.relative;
-    i.workData.requestor_name = i.slotData.name;
-    i.workData.requestor_image = await getImage(i.slotData.owner);
+    i.workData.formatted_type = thisEntry.description;
+    i.workData.display_date = thisEntry.date.relative;
+    let owner = i.slotData.owner || i.slot_owner;
+    i.workData.requestor_image = await getImage(owner);
     i.workData.formatted_request = [];
-    if (i.occData.signup_type === 'time') {
-      i.workData.formatted_request.push(['head', `Sign-up time: ${makeTime(i.slotData.id).time}`]);
+    let location = i.location;
+    if (thisEntry.location) {
+      if (typeof thisEntry.location === 'string') { location = thisEntry.location; }
+      else { location = thisEntry.location.description; }
     }
-    i.workData.formatted_request.push(['head', 'Details']);
-    i.workData.formatted_request.push(['detail', `Location: ${titleCase(i.occData.location)}`]);
+    if (location) {
+      i.workData.formatted_request.push(['head', titleCase(location)]);
+    }
+    i.workData.start_time = thisEntry.time || i.time_from;
+    if (i.slotData) {
+      let this_slot = (i.slotData.slot || i.slotData.id);
+      let list_type = (this_slot === owner)
+      if (isNaN(Number(this_slot)) && !list_type) { i.workData.formatted_request.push(['detail', this_slot]); }
+      else {
+        let slot_number = Number(this_slot);
+        if ((slot_number > 99) && (slot_number < 2400)) { i.workData.formatted_request.push(['detail', `${makeTime(this_slot).time}`]); }
+        else if (this_slot && !list_type) { i.workData.formatted_request.push(['detail', this_slot]); }
+      }
+      if (i.slotData.status
+        && (typeof(i.slotData.status.current) === 'string')
+        && (i.slotData.status.current.toLowerCase() !== 'selected')) {
+        i.workData.formatted_request.push(['details', titleCase(i.slotData.status.current)]);
+      }
+      if (i.slotData.notes) { i.workData.formatted_request.push(['qual', `Notes: ${titleCase(i.slotData.notes)}`]); }
+    }
     i.workData.checked = false;
     i.workData.open = false;
     return i;
@@ -514,12 +557,29 @@ export default ({ session, filter = {}, onClose }) => {
       return [returnMessage, returnSearch];
     }
   */
+  
   React.useEffect(() => {
     async function initialize() {
-      await buildDashboard();
+      let myPromise = buildDashboard()
+        .then((returnedData, bad) => {
+          if (!bad) {
+            setDataRows(returnedData.dataRows);
+            setMoreRows(returnedData.allRows.length > returnedData.dataRows.length);
+            cl(`initialize done - ${returnedData.dataRows.length} rows of ${returnedData.allRows.length} loaded`)
+          }
+          else { console.log(bad); }
+        })
+      await Promise.all([myPromise]);
+  }
+  
+    cl(`initializing dashboard (run #${runNumber})`);
+    if (runNumber === 1) {
+      scrollCount = 1;
+      runNumber++;
+      initialize();
     }
-    initialize();
-  }, [session]);  // eslint-disable-line react-hooks/exhaustive-deps
+    else {cl(`ignoring CalendarDashboard request #${runNumber++}`)}
+}, [session]);  // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // ******************
@@ -527,7 +587,6 @@ export default ({ session, filter = {}, onClose }) => {
   return (
     <Dialog
       open={true || forceRedisplay}
-      onScroll={onScroll}
       p={2}
       fullScreen
     >
@@ -566,6 +625,7 @@ export default ({ session, filter = {}, onClose }) => {
               <MenuList className={classes.popUpMenu}>
                 <MenuItem
                   onClick={() => {
+                    runNumber = 1;
                     onClose();
                   }}>
                   <Box
@@ -594,7 +654,7 @@ export default ({ session, filter = {}, onClose }) => {
                     display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
                     key={'vRowRefresh'}
                   >
-                    <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
                   </Box>
@@ -611,7 +671,14 @@ export default ({ session, filter = {}, onClose }) => {
             variant={'standard'}
             autoComplete='off'
           />
-          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+          <Paper
+            component={Box}
+            onScroll={moreRows ? onScroll : null}
+            className={classes.page}
+            variant='outlined'
+            overflow='auto'
+            square
+          >
             <List  >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsWritten = 0}
@@ -641,8 +708,8 @@ export default ({ session, filter = {}, onClose }) => {
                               />
                               <Box display='flex' flexDirection='column'>
                                 <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
-                                <Typography variant='h5' className={classes.firstName}>{`requested by: ${this_item.workData.requestor_name}`}</Typography>
-                                <Typography variant='h5' className={classes.timeLine}>{this_item.workData.display_date}</Typography>
+                                <Typography variant='h5' className={classes.firstName}>{this_item.workData.requestor_name}</Typography>
+                                <Typography variant='h5' className={classes.timeLine}>{`${this_item.workData.display_date}${this_item.workData.start_time ? (' - ' + this_item.workData.start_time) : ''}`}</Typography>
                               </Box>
                             </Box>
                             {this_item && this_item.workData && this_item.workData.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
@@ -732,7 +799,10 @@ export default ({ session, filter = {}, onClose }) => {
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
                     className={classes.rowButtonGreen}
-                    onClick={onClose}
+                    onClick={() => {
+                      runNumber = 1;
+                      onClose();
+                    }}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Close'}
@@ -760,6 +830,13 @@ export default ({ session, filter = {}, onClose }) => {
             </DialogActions>
           }
         </React.Fragment >
+      }
+      {(showReactError) &&
+        <React.Fragment>
+          <Typography className={classes.title}>
+            {dataRows[dataRows.length + 10].person_id}
+          </Typography>
+        </React.Fragment>
       }
     </Dialog >
   );

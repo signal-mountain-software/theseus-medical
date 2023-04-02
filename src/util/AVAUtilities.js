@@ -79,6 +79,7 @@ export function sentenceCase(pString) {
 export function makeArray(input) {
   let response = [];
   if (Array.isArray(input)) { response.push(...input); }
+  else if (typeof input === 'object') { response = Object.keys(input); }
   else { response.push(input); }
   return response;
 }

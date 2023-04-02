@@ -1,5 +1,5 @@
 import React from 'react';
-import { listFromArray } from '../../util/AVAUtilities';
+import { listFromArray, makeArray } from '../../util/AVAUtilities';
 import { makeName, getImage } from '../../util/AVAPeople';
 
 import Paper from '@material-ui/core/Paper';
@@ -88,7 +88,8 @@ export default ({
   onCancel,
   onSelect,
   allowRandom,
-  multiSelect = false
+  multiSelect = false,
+  alreadyChecked
 }) => {
 
   const [person_filter, setPersonFilter] = React.useState('');
@@ -218,6 +219,12 @@ export default ({
       await buildList();
     }
     initialize();
+    if (alreadyChecked) {
+      let newCheckList = {};
+      let theList = makeArray(alreadyChecked);
+      theList.forEach(p => { newCheckList[p] = true; })
+      setCheckList(newCheckList);
+    }
   }, [peopleList]);  // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -280,7 +287,7 @@ export default ({
                   {multiSelect &&
                     <Checkbox
                       edge='start'
-                      mr={4}
+                      mr={1}
                       checked={isChecked(listEntry.split(':')[1])}
                       disableRipple
                       key={'checkbox' + x}
@@ -292,7 +299,7 @@ export default ({
                   }
                   <Box
                     component="img"
-                    ml={1}
+                  //  ml={1}
                     mr={1}
                     minWidth={50}
                     maxWidth={50}

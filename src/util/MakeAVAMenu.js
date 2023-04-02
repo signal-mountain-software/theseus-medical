@@ -1,5 +1,6 @@
 import { resolveVariables, stringToColor, cl, clt, recordExists } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
+import { makeDate } from '../util/AVADateTime';
 
 const AWS = require('aws-sdk');
 const AVAIcon = process.env.REACT_APP_AVA_LOGO;
@@ -30,12 +31,18 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   let sectionDetails = {};
   let activityHistory = {};
 
-  function makeVersion(inStr) { 
+  function makeVersion(inStr) {
     let [vYr, vDay] = inStr.split(/\.(.*)/);
     return ((Number(vYr) % 100) * 100) + parseFloat(vDay);
   }
 
+  function makeNumber(inStr) {
+    let [vYr, vMo, vDay] = inStr.split(/\./g);
+    return (20000000 + ((Number(vYr) % 100) * 10000) + (Number(vMo) * 100) + Number(vDay));
+  }
+
   let ava_version_number = makeVersion(process.env.REACT_APP_AVA_VERSION);
+  let todays_numeric_date = makeDate(new Date()).numeric;
 
   // Main line
 
@@ -94,6 +101,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         cl({ 'Error reading ActivityEvent': error });
       });
     if (recordExists(mRecs) && (mRecs.Count > 0)) {
+      for (let m = 0; m < mRecs.Items.length; m++) {
+        mRecs.Items[m].resolved = await resolveVariables(`%%${mRecs.Items[m].sort_order}%%`, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });
+        mRecs.Items[m].resolved = mRecs.Items[m].resolved.replace(/%%/g,'');
+      }
+      mRecs.Items.sort((a, b) => {
+        if (a.resolved > b.resolved) { return 1; }
+        else { return -1; }
+      });
       return (mRecs.Items.map(m => { return m.activity_code; }));
     }
     else {
@@ -130,6 +145,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       requestor.favorite_activities = [];
     }
 
+    /*
     // Also add anything that you've used 3 or more times recently
     // Get Recent history
     // ({ '** HISTORY **': (activityHistory || 'no history found') });
@@ -151,6 +167,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         if (this_row) { returnArray.push(this_row); }
       }
     }
+    */
 
     // ({ '** PRIORITIES **': (requestor.priority_activities || 'no priority activities') });
     if (requestor.hasOwnProperty('priority_activities')) {
@@ -402,6 +419,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     }
   }
 
+  /*
   async function getActivityLog(pPerson) {
     let aRecs = await dbClient
       .query({
@@ -431,6 +449,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     }
     else { return []; }
   }
+  */
 
   async function addRow(pActivity, pMenu, pParent, pParentName, pSectionSort, pSectionName, pSectionColor, pSectionIcon, pReason) {
     let activityRec = await getActivity(pActivity);
@@ -513,6 +532,16 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           if ((parts[p].includes('<') && (ava_version_number >= checkVer))
             || (parts[p].includes('>') && (ava_version_number <= checkVer))
             || (parts[p].includes('=') && (checkVer !== ava_version_number))) {
+            activityObj[pActivityCode] = {};
+            return {};
+          }
+          break;
+        }
+        case 'date': {
+          let checkDate = makeNumber(iData);
+          if ((parts[p].includes('<') && (todays_numeric_date >= checkDate))
+            || (parts[p].includes('>') && (todays_numeric_date <= checkDate))
+            || (parts[p].includes('=') && (checkDate !== todays_numeric_date))) {
             activityObj[pActivityCode] = {};
             return {};
           }

@@ -8,8 +8,6 @@ import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import Typography from '@material-ui/core/Typography';
 import Button from '@material-ui/core/Button';
 
-import { Auth } from '@aws-amplify/auth';
-
 import withRecoil from './wrappers/withRecoil';
 import withRoot from './wrappers/withRoot';
 import hocFactory from './util/hocFactory';
@@ -24,16 +22,6 @@ import withRouter from './hocs/withRouter';
 import withSession from './hocs/withSession';
 import withSnackbar from './hocs/withSnackbar';
 import withTheme from './hocs/withTheme';
-import { createPutFact } from './graphql/mutations';
-import { API, graphqlOperation } from 'aws-amplify';
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 const menu = [
   { label: 'AVA', path: '/theseus', icon: <AssignmentIcon />, screen: <TheseusScreen /> },
@@ -52,12 +40,12 @@ class ErrorBoundary extends React.Component {
 
   static getDerivedStateFromError(error) {
     hasError = true;
-    handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
+    // handleWriteError(`AVA caught error "${error.message}" at line ${error.lineNumber} in file ${error.fileName}`);
   }
 
   componentDidCatch(error, info) {
     hasError = true;
-    handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
+    // handleWriteError(`AVA caught error.  String is "${error.toString()}". Cause is ${error.cause} on stack ${error.stack}`);
   }
 
   render() {
@@ -80,7 +68,7 @@ class ErrorBoundary extends React.Component {
               <Button
                 aria-label='showActivities'
                 variant='contained'
-                onClick={async () => {
+                onClick={() => {
                   let jumpTo = window.location.href.replace('refresh', 'theseus');
                   window.location.replace(jumpTo);
                 }}
@@ -97,76 +85,6 @@ class ErrorBoundary extends React.Component {
     }
   }
 }
-
-const handleWriteError = async (parmMessage) => {
-  let AVA_env = window.location.href.split('//')[1].slice(0, 1).toLocaleUpperCase();
-  const user = await Auth
-    .currentAuthenticatedUser()
-    .catch(e => {
-      parmMessage = `*** Auth error thrown is ${JSON.stringify(e)} *** original error is ${parmMessage}`;
-
-    });
-
-  let sObj_user = 'no sessionObject';
-  let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
-  if (sessionObject.currentProfile?.person_id) {
-    sObj_user = sessionObject.currentProfile.person_id;
-  }
-
-  let errorTime = new Date();
-  const newFact = {
-    person_id: user?.username || 'no info',
-    activity_key: '***ERROR_CAUGHT***',
-    value: `error.${parmMessage}`,
-    status: {
-      'version': process.env.REACT_APP_AVA_VERSION,
-      'env': AVA_env,
-      'time': errorTime.toString(),
-      'cognito_user': user?.username,
-      'sessObj_user': sObj_user
-    },
-    user_id: user?.username || 'no user logged',
-    session_id: 'no session recorded',
-    method: 'AVAMenu',
-    posted_time: errorTime.getTime()
-  };
-  await dbClient
-    .put({
-      TableName: 'Facts',
-      Item: newFact
-    })
-    .promise()
-    .catch(async (error) => {
-      let instruction = {
-        patient_id: newFact.person_id,
-        activity_key: '***ERROR_CAUGHT***',
-        value: `error.*** Write to Fact failed; used graphQL *** ${parmMessage}`,
-        status: `Version = ${process.env.REACT_APP_AVA_VERSION}~${errorTime}`,
-        session: {
-          user_id: user?.username || 'no user logged',
-          session_id: 'no session recorded',
-        },
-      };
-      await API
-        .graphql(graphqlOperation(createPutFact, { input: instruction }))
-        .catch(e => { alert(`Temporary connection failure, possible cause: ${parmMessage}`); }); console.error('Error adding a fact:', error.message);
-    });
-
-  let activityLogRec = {
-    timestamp: errorTime.getTime(),
-    user_id: newFact.person_id,
-    activity_code: newFact.activity_key,
-    activity_name: newFact.value,
-    AVA_version: `${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`
-  };
-  await dbClient
-    .put({
-      Item: activityLogRec,
-      TableName: "ActivityLog",
-    })
-    .promise()
-    .catch(error => { console.log(`caught error updating ActivityLog; error is:`, error); });
-};
 
 const App = () => (
   <ErrorBoundary>

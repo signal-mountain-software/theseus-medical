@@ -12,7 +12,6 @@ import useMediaQuery from '@material-ui/core/useMediaQuery';
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import Button from '@material-ui/core/Button';
-import IconButton from '@material-ui/core/IconButton';
 import Tooltip from '@material-ui/core/Tooltip';
 
 import Dialog from '@material-ui/core/Dialog';
@@ -172,6 +171,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const [editIndex, setEditIndex] = React.useState();
+  const [editSlot, setEditSlot] = React.useState();
 
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [recipient, setRecipient] = React.useState();
@@ -373,7 +373,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             slotData: {
               name: '',
               id: pSlot,
-              owner: ''
+              owner: '',
+              notes: ''
             }
           };
         }
@@ -391,7 +392,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             slotData: {
               name: newPersonName,
               id: pSlot,
-              owner: newPersonID
+              owner: newPersonID,
+              notes: body.notes
             }
           };
         }
@@ -404,7 +406,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             slotData: {
               name: newPersonName,
               id: newPersonID,
-              owner: newPersonID
+              owner: newPersonID,
+              notes: body.notes
             }
           });
         }
@@ -491,7 +494,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
           <Typography variant='h5' >{pOccData.description}</Typography>
           {pOccData.date &&
             <Typography className={classes.standardIndent} variant='body1'>
-              {`${makeDate(pOccData.date).relative}`}
+              {`${makeDate(pOccData.date).relative}${pOccData.time$ ? ' - ' + pOccData.time$ : ''}`}
             </Typography>
           }
           {pOccData.location &&
@@ -520,7 +523,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         {rowsWritten++}
                       </Typography>
                       {(this_item.slotData.id !== this_item.slotData.owner) &&
-                        <Box display='flex' width={60} flexDirection='row' justifyContent='center' alignItems='center'>
+                        <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
                           <Typography variant='body1' className={classes.standard} >{makeSlotName(this_item.slotData.id)}</Typography>
                         </Box>
                       }
@@ -589,7 +592,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                             }}
                           />
                         </Tooltip>
-                        {isEventOwner &&
+                        {isEventOwner && !isSlotOwner(this_item.slotData) &&
                           <Tooltip title={`Send a message to ${makeReadableName(this_item.slotData.name)}`} >
                             <SendIcon
                               onClick={() => {
@@ -610,6 +613,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                             onClick={async () => {
                               if (isEventOwner) {
                                 setEditIndex(index);
+                                setEditSlot(true);
                                 await setChoices(peopleList);
                                 setSelectNewSlotOwner(true);
                               }
@@ -636,16 +640,14 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
           <PersonFilter
             prompt={'Who are you signing-up?'}
             peopleList={choiceList}
-            multiSelect={true}
+            multiSelect={!editSlot}
             onCancel={() => {
               setSelectNewSlotOwner(false);
             }}
             onSelect={async (selectedPerson) => {
               setSelectNewSlotOwner(false);
-              // if (pOccData.signup_type === 'time') { handleChangeSlotOwner(selectedPerson, editIndex); }
-              // else {
               let slotObj = { person: selectedPerson };
-              if (editIndex) {
+              if (editSlot) {
                 slotObj.slot = eventSlotList[editIndex].slotData.id;
                 slotObj.index = editIndex;
               }
@@ -696,105 +698,27 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             }}
           />
         }
-        {isMobile ?
-          <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-            {isEventOwner ?
-              <Tooltip title={`Exit`} >
-                <IconButton
-                  className={classes.rowButtonRed}
-                  onClick={onReset}
-                >
-                  <CloseIcon size="small" />
-                </IconButton>
-              </Tooltip>
-              :
-              <Button
-                className={classes.rowButtonRed}
-                onClick={onReset}
-                startIcon={<CloseIcon size="small" />}
-              >
-                {'Done'}
-              </Button>
-            }
-            {pOccData.signup_type !== 'time' &&
-              <Tooltip title={
-                isEventOwner ?
-                  'Add a person'
-                  :
-                  'Add myself to the list'
-              }
-              >
-                <IconButton
-                  onClick={async () => {
-                    if (isEventOwner) {
-                      await setChoices(peopleList);
-                      setSelectNewSlotOwner(true);
-                    }
-                    else {
-                      await handleAllocateSlot({
-                        person: `${pPatientRec.patient_display_name}:${pPatient}`
-                      });
-                    }
-                  }}
-                >
-                  <PersonAddIcon size="small" />
-                </IconButton>
-              </Tooltip>
-            }
-            {isEventOwner &&
-              <React.Fragment>
-                <Tooltip title={`Prepare a sign-up sheet`} >
-                  <IconButton
-                    className={classes.rowButtonDefault}
-                    onClick={async () => {
-                      await handlePrint(pEventCode, 'sign-up');
-                    }}
-                  >
-                    <StorageOutlined size='small' />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={`Prepare a report of all that have signed-up`} >
-                  <IconButton
-                    onClick={async () => {
-                      await handlePrint(pEventCode, 'report');
-                    }}
-                  >
-                    <PrintIcon size='small' />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={`Send a message to everone on this list`} >
-                  <IconButton
-                    onClick={() => {
-                      setPromptForMessage(true);
-                      setMessageType('Group');
-                      setRecipient(`People on the ${pOccData.description} list`
-                        + ':' +
-                        + (eventSlotList.map(e => { return e.slotData.id; })).join(' ~ '));
-                    }}
-                  >
-                    <SendIcon size='small' />
-                  </IconButton>
-                </Tooltip>
-              </React.Fragment>
-            }
-          </DialogActions>
-          :
-          <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-            <Box display='flex' flexDirection='column'>
-              <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+        <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+          <Box display='flex' flexDirection='column'>
+            <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+              <Tooltip title={`Exit`} placement='top'>
                 <Button
                   className={classes.rowButtonRed}
                   onClick={onReset}
                   startIcon={<CloseIcon size="small" />}
                 >
-                  {'Done'}
+                  {isMobile ? '' : 'Done'}
                 </Button>
-                {pOccData.signup_type !== 'time' &&
+              </Tooltip>
+              {(pOccData.signup_type === 'none') && isBrowsing &&
+                <Tooltip title={(isEventOwner ? 'Add a person' : 'Add myself to the list')} placement='top'>
                   <Button
                     className={classes.rowButtonDefault}
                     onClick={async () => {
                       if (isEventOwner) {
                         await setChoices(peopleList);
+                        setEditIndex(false);
+                        setEditSlot(false);
                         setSelectNewSlotOwner(true);
                       }
                       else {
@@ -803,14 +727,12 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     }}
                     startIcon={<PersonAddIcon size="small" />}
                   >
-                    {isEventOwner ?
-                      'Add a person'
-                      :
-                      'Add myself to the list'
-                    }
+                    {isMobile ? '' : (isEventOwner ? 'Add a person' : 'Add myself to the list')}
                   </Button>
-                }
-                {isEventOwner &&
+                </Tooltip>
+              }
+              {isEventOwner && isBrowsing &&
+                <Tooltip title={'Prepare Detail Report'} placement='top'>
                   <Button
                     className={classes.rowButtonDefault}
                     onClick={async () => {
@@ -818,12 +740,14 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     }}
                     startIcon={<PrintIcon size='small' />}
                   >
-                    {'Detail report'}
+                    {isMobile ? '' : 'Detail report'}
                   </Button>
-                }
-              </Box>
-              {isEventOwner &&
-                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                </Tooltip>
+              }
+            </Box>
+            {isEventOwner && isBrowsing &&
+              <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                <Tooltip title={'Prepare Sign-up sheet'} placement='top'>
                   <Button
                     className={classes.rowButtonDefault}
                     onClick={async () => {
@@ -831,8 +755,10 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     }}
                     startIcon={<StorageOutlined size='small' />}
                   >
-                    {'Sign-up sheet'}
+                    {isMobile ? '' : 'Sign-up sheet'}
                   </Button>
+                </Tooltip>
+                <Tooltip title={'Send a message to everyone that is signed-up'} >
                   <Button
                     className={classes.rowButtonDefault}
                     onClick={() => {
@@ -844,14 +770,13 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     }}
                     startIcon={<SendIcon size='small' />}
                   >
-                    {'Message to everyone on the list'}
+                    {isMobile ? '' : 'Message to everyone on the list'}
                   </Button>
-                </Box>
-              }
-            </Box>
-          </DialogActions>
-
-        }
+                </Tooltip>
+              </Box>
+            }
+          </Box>
+        </DialogActions>
       </React.Fragment>
     </Dialog >
   );

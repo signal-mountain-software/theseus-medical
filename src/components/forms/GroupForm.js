@@ -320,7 +320,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       }
       setRowLimit(scrollValue);
     }, 500);
-
   };
 
   const prepareSwitch = async (pUser, pSwitchTo, pSwitchName) => {
@@ -585,7 +584,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 >
                   {(!pGroup || allGroups) ?
                     'Administrative View - All Accounts' :
-                    `Members of the ${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'}`
+                    `Members of the ${pGroupName} Group`
                   }
                 </DialogContentText>
                 <TextField

@@ -1,15 +1,12 @@
 import React from 'react';
-// import { API, graphqlOperation } from 'aws-amplify';
-// import { createPutFact } from '../../graphql/mutations';
-// import { getSession } from '../../graphql/queries';
-// import useSession from '../../hooks/useSession';
+
+import { prepareTargets } from '../../util/AVAGroups';
+import { makeArray, cl } from '../../util/AVAUtilities';
+import { addEvent } from '../../util/AVACalendars';
 
 import { useSnackbar } from 'notistack';
 
-import { Lambda } from 'aws-sdk';
-import AVAConfirm from '../forms/AVAConfirm';
-
-// import "react-datepicker/dist/react-datepicker.css";
+import PersonFilter from '../forms/PersonFilter';
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
@@ -30,12 +27,9 @@ import Radio from '@material-ui/core/Radio';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 
-import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 
-// import ClientsSection from '../sections/ClientsSection';
-
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+import useSession from '../../hooks/useSession';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -82,11 +76,10 @@ const useStyles = makeStyles(theme => ({
   },
   defaultButton: {
     alignSelf: 'end',
-    marginTop: 1,
-    variant: 'outlined',
+    marginTop: 20,
+    textTransform: 'none',
     verticalAlign: 'center',
-    fontSize: theme.typography.fontSize * 0.6,
-    backgroundColor: theme.palette.confirm[theme.palette.type],
+    color: theme.palette.confirm[theme.palette.type],
   },
   topButton: {
     variant: 'outlined',
@@ -163,16 +156,12 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const classes = useStyles();
 
-  const [description, setDescription] = React.useState();
-  const [event_date, setEventDate] = React.useState();
-  const [copy_from_date, setCopyFromDate] = React.useState();
-  const [copyFromAsADate, setCopyFromAsADate] = React.useState();
-  const [copy_to_date, setCopyToDate] = React.useState();
-  const [copyToAsADate, setCopyToAsADate] = React.useState();
-  const [eventList, setEventList] = React.useState();
-  const [copyPending, setCopyPending] = React.useState(false);
-  const [rememberedSelection, setRememberedSelection] = React.useState();
-  const [confirmMessage, setConfirmMessage] = React.useState('');
+  const { state } = useSession();
+  const { session } = state;
+  const [message_targets, setMessageTargets] = React.useState();
+  const [targetInfo, setTargetInfo] = React.useState();
+  const [description, setDescription] = React.useState(' ');
+  const [event_date, setEventDate] = React.useState(' ');
 
   const [last_date, setLastDate] = React.useState();
   const [eventAsADate, setEventAsADate] = React.useState();
@@ -189,26 +178,16 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [location, setLocation] = React.useState();
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
-  const [showCopyFromPrevious, setShowCopyFromPrevious] = React.useState(false);
-  const [person_filter, setPersonFilter] = React.useState('');
   const [restrictionList, setRestrictionList] = React.useState([]);
 
-  const { enqueueSnackbar } = useSnackbar();
+  const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   // const [patientGroups, setPatientGroups] = React.useState();
 
-  const [changes, setChanges] = React.useState(false);
-
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  let intervals24h = [];
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let ordinal = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th',
     '11th', '12th', '13th', '14th', '15th', '16th', '17th', '18th', '19th', '20th',
@@ -219,29 +198,24 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     }
   }, [patient]);
 
-
   const handleAbort = () => {
-    setChanges(false);
     onClose();
   };
 
   const handleUpdate = async () => {
-    enqueueSnackbar(`AVA is creating your new event!  Stand by...`, {
-      variant: 'warning'
-    });
-    let invokeFailed = false;
+    enqueueSnackbar(`AVA is creating your new event!  Stand by...`, { variant: 'warning' });
     var payload = {
-      "action": "add_event",
       "clientId": patient.client_id,
       "calendar_info": {
         "groups": null,
         "description": description,
         "image": null,
         "event_date": eventAsADate.getTime(),
-        "last_date": lastAsADate?.getTime() || eventAsADate?.getTime(),
+        "last_date": lastAsADate?.getTime() || null,
         "schedule_type": prefMethod,
         "time_from": time_from_display_string,
         "time_to": time_to_display_string,
+        "slotArr": (intervals24h.length > 0 ? intervals24h : null),
         "location": location,
         "owner": patient.patient_id,
         "restrictions": restrictionList,
@@ -253,75 +227,49 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         "reminder_minutes_NotEnrolled": 0
       }
     };
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        console.log("AVA couldn't save this event.  Error is", JSON.stringify(err));
-        enqueueSnackbar(`AVA couldn't save this event.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed && JSON.parse(fResp.Payload).status === 200) {
-      enqueueSnackbar(`Your event has been saved!`, {
-        variant: 'success'
-      });
+    let response = await addEvent(payload);
+    closeSnackbar();
+    if (response) { 
+      enqueueSnackbar(`${response.eventData.event_data.description} has been saved!`, { variant: 'success' });
+    }
+    else { 
+      enqueueSnackbar(`Sorry.  AVA could not save this event!`, { variant: 'error' });
     }
     onClose();
   };
 
   // **************************
 
-  const handleChangeDescription = event => {
-    setDescription(event.target.value);
-    if (event_date && time_from_display_string) { setChanges(true); }
+  function OK2Save() {
+    return ((description.trim() !== '') && (event_date.trim() !== ''));
+  }
+
+  let filterTimeOut;
+  const handleChangeDescription = vCheck => {
+    clearTimeout(filterTimeOut);
+    cl(`set timeout with ${vCheck}`);
+    filterTimeOut = setTimeout(() => {
+      cl(`timeout ended ${vCheck}`);
+      setDescription(vCheck);
+    }, 500);
   };
 
-  const handleChangeLocation = event => {
-    setLocation(event.target.value);
+  const handleChangeLocation = vCheck => {
+    clearTimeout(filterTimeOut);
+    cl(`set timeout with ${vCheck}`);
+    filterTimeOut = setTimeout(() => {
+      cl(`timeout ended ${vCheck}`);
+      setLocation(vCheck);
+    }, 500);
   };
 
-  const handleSelectPerson = (pPerson) => {
-    let newRList = restrictionList;
-    newRList.push(pPerson.replace(':', '%%').split(':')[0]);
-    setRestrictionList(newRList);
-  };
-
-  const choosePerson = () => {
-    setShowPersonSelect(true);
-  };
-
-  const handleChangePersonFilter = event => {
-    setPersonFilter(event.target.value);
-  };
-
-  const handleChangeDate = event => {
+ const handleChangeDate = event => {
     setEventDate(event.target.value);
     setEventAsADate(null);
-    if (description && time_from_display_string) { setChanges(true); }
-  };
-
-  const handleChangeCopyFromDate = event => {
-    setCopyFromDate(event.target.value);
-    setCopyFromAsADate(null);
-  };
-
-  const handleChangeCopyToDate = event => {
-    setCopyToDate(event.target.value);
-    setCopyToAsADate(null);
-    setCopyPending(false);
   };
 
   const handleChangeTimeFrom = event => {
     setTimeFromAsDisplayString(event.target.value);
-    if (description && event_date) { setChanges(true); }
   };
 
   const handleTimeFromExit = event => {
@@ -461,104 +409,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     }
   };
 
-  const handleCopyFromDateExit = async (event) => {
-    if (event.key === 'Enter' || event.type === 'blur') {
-      let goodDate = makeDate(event_date);
-      setCopyFromDate(goodDate.toDateString());
-      let formattedDate = (goodDate.getFullYear() * 10000) + ((goodDate.getMonth() + 1) * 100) + (goodDate.getDate());
-      setCopyFromAsADate(formattedDate);
-      let invokeFailed = false;
-      var payload = {
-        "action": "list_events",
-        "clientId": patient.client_id,
-        "list_filter": {
-          "list_start": formattedDate,
-          "list_end": formattedDate
-        }
-      };
-      let params = {
-        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
-        InvocationType: 'RequestResponse',
-        LogType: 'Tail',
-        Payload: JSON.stringify(payload)
-      };
-      const fResp = await lambda
-        .invoke(params)
-        .promise()
-        .catch(err => {
-          enqueueSnackbar(`AVA couldn't retrieve events.  Error is ${err.message}`, {
-            variant: 'error'
-          });
-          invokeFailed = true;
-        });
-      if (!invokeFailed) {
-        let returnData = JSON.parse(fResp.Payload);
-        if (returnData.status === 200) {
-          setEventList(returnData.body.map(e => { return [e.calData.description, e.calData.id]; }));
-          return;
-        }
-      }
-      setEventList(['No Events Found', '']);
-    }
-  };
-
-  const handleCopyToDateExit = async (event) => {
-    if (event.key === 'Enter' || event.type === 'blur') {
-      let goodDate = makeDate(event_date);
-      setCopyToDate(goodDate.toDateString());
-      setCopyToAsADate((goodDate.getFullYear() * 10000) + ((goodDate.getMonth() + 1) * 100) + (goodDate.getDate()));
-      if (rememberedSelection) {
-        setConfirmMessage(`Confirm copying ${rememberedSelection[0]} from ${copy_from_date} to ${copy_to_date}`);
-        setCopyPending(true);
-      }
-    }
-    setCopyPending(false);
-  };
-
-  const handleSelectEventToCopy = async (pEvent) => {
-    setRememberedSelection(pEvent);
-    if (copyToAsADate) {
-      setConfirmMessage(`Confirm copying ${rememberedSelection[0]} from ${copy_from_date} to ${copy_to_date}`);
-      setCopyPending(true);
-    }
-  };
-
-  const executeCopy = async () => {
-    let invokeFailed = false;
-    var payload = {
-      "action": "copy_events",
-      "clientId": patient.client_id,
-      "request": {
-        "id": rememberedSelection[1],
-        "occ_date": copyFromAsADate,
-        "to_date": copyToAsADate
-      }
-    };
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA couldn't retrieve events.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let returnData = JSON.parse(fResp.Payload);
-      if (returnData.status === 200) {
-        enqueueSnackbar(`Your event has been copied!`, { variant: 'success' });
-        return;
-      }
-    }
-    enqueueSnackbar(`AVA could not copy that event`, { variant: 'error' });
-  };
-
   function makeDate(pDate) {
     let goodDate = new Date(pDate);
     if (isNaN(goodDate)) {
@@ -671,6 +521,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         if (hh_raw > 12) { hh = hh_raw - 12; }
         else if (hh_raw === 0) { hh = 12; };
         intervals.push(`${hh}:${mm < 10 ? '0' + mm : mm}`);
+        intervals24h.push((hh_raw * 100) + mm);
         mm += s;
         if (mm > 59) {
           mm -= 60;
@@ -700,21 +551,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
             <Typography variant='h6' className={classes.title}>
               {'Create a New Event'}
             </Typography>
-            {changes ?
-              <Button
-                onClick={() => {
-                  setChanges(false);
-                  handleUpdate();
-                }}
-                disabled={!changes}
-                hidden={!changes}
-                variant='contained'
-                className={classes.topButton}
-              >
-                {isMobile ? 'Save' : 'Save Changes'}
-              </Button>
-              : null
-            }
           </Toolbar>
         </AppBar>
         <Toolbar />
@@ -739,18 +575,16 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                 <div>
                   <TextField
                     id='description'
-                    value={description}
                     fullWidth
-                    onChange={handleChangeDescription}
+                    onChange={event => (handleChangeDescription(event.target.value))}
                     helperText='Description'
                   />
                 </div>
                 <div>
                   <TextField
                     id='location'
-                    value={location}
                     fullWidth
-                    onChange={handleChangeLocation}
+                    onChange={event => (handleChangeLocation(event.target.value))}
                     helperText='Location'
                   />
                 </div>
@@ -958,7 +792,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                   flexDirection='column'
                   justifyContent="center"
                 >
-                  <Typography className={classes.radioText}>Do you wish to restrict this event to specific people only?</Typography>
+                  <Typography className={classes.radioText}>Do you wish to restrict this event to specific groups only?</Typography>
                   <FormControl className={classes.formControl} component="fieldset">
                     <RadioGroup
                       row
@@ -1000,7 +834,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                           >
                             <Typography
                               className={classes.radioText}>
-                              {restrictionEntry.split('%%')[0]}
+                              {(typeof targetInfo[restrictionEntry].name === 'object')
+                                ? `${targetInfo[restrictionEntry].name.first} ${targetInfo[restrictionEntry].name.last}`
+                                : targetInfo[restrictionEntry].name
+                              }
                             </Typography>
                           </ListItem>
                         )
@@ -1012,8 +849,18 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                         </Typography>
                       )
                     }
-                    <Button className={classes.defaultButton} size='small' variant='contained' onClick={choosePerson}>
-                      {`Choose ${restrictionList.length > 0 ? 'more ' : ''}Attendees?`}
+                    <Button
+                      className={classes.defaultButton}
+                      size='small'
+                      variant='outlined'
+                      onClick={async () => {
+                        let targetObj = await prepareTargets(session.patient_id, session.client_id, { includeGroups: true, includePeople: false });
+                        setMessageTargets(targetObj.responsibleList.sort());
+                        setTargetInfo(targetObj.responsibleObj);
+                        setShowPersonSelect(true); 
+                      }}
+                    >
+                      {`Tap to select`}
                     </Button>
                   </div>
                 }
@@ -1030,134 +877,35 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                 >
                   {'Done'}
                 </Button>
-                <Button
-                  onClick={() => {
-                    setShowCopyFromPrevious(true);
-                  }}
-                  className={classes.rowButton}
-                >
-                  {`Copy`}
-                </Button>
+                {OK2Save() &&
+                  <Button
+                    onClick={() => {                      
+                      handleUpdate();
+                    }}
+                    className={classes.rowButton}
+                  >
+                    {'Save'}
+                  </Button>
+                }
               </DialogActions>
             </Box>
           </Box>
         </Box>
         {showPersonSelect &&
-          <Dialog
-            p={2}
-            height={250}
-            fullWidth
-            variant={'elevation'} elevation={2}
-            open={showPersonSelect}
-            TransitionComponent={Transition}
-          >
-            <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
-              <TextField
-                id='Type a few letters to filter the list'
-                value={person_filter}
-                onChange={handleChangePersonFilter}
-                className={classes.freeInput}
-                label='Type a few letters to filter the list'
-                variant={'standard'}
-                autoComplete='off'
-              />
-              <List component='nav'>
-                {peopleList.map((listEntry, x) => (
-                  (
-                    listEntry.includes(person_filter) ?
-                      <ListItem
-                        key={`${listEntry.split(':')[1]}_select_${x}`}
-                        onClick={() => { handleSelectPerson(listEntry); }}
-                        button>
-                        <Typography
-                          className={classes.listItemAVA}>
-                          {listEntry.split(':')[0]}
-                        </Typography>
-                      </ListItem> : null
-                  )
-                ))}
-              </List>
-            </Paper>
-            <DialogActions style={{ justifyContent: 'center' }}>
-              <Button
-                className={classes.reject}
-                size='small'
-                variant='contained'
-                onClick={() => {
-                  setShowPersonSelect(false);
-                }}>
-                {'Done'}
-              </Button>
-            </DialogActions>
-          </Dialog>
-        }
-        {showCopyFromPrevious &&
-          <Dialog
-            p={2}
-            height={250}
-            fullWidth
-            variant={'elevation'} elevation={2}
-            open={showCopyFromPrevious}
-            TransitionComponent={Transition}
-          >
-            <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
-              <TextField
-                id='Enter the date of the event you are copying from'
-                value={copy_from_date}
-                onKeyPress={handleCopyFromDateExit}
-                onChange={handleChangeCopyFromDate}
-                onBlur={handleCopyFromDateExit}
-                helperText='Copy From'
-              />
-              <TextField
-                id='Enter the date you want for the copy of the event'
-                value={copy_to_date}
-                onKeyPress={handleCopyToDateExit}
-                onChange={handleChangeCopyToDate}
-                onBlur={handleCopyToDateExit}
-                helperText='Copy To'
-              />
-              {eventList && eventList.length > 0 &&
-                <List component='nav'>
-                  {eventList.map((listEntry, x) => (
-                    <ListItem
-                      key={`${listEntry[1]}_select_${x}`}
-                      onClick={() => { handleSelectEventToCopy(listEntry[1]); }}
-                      button>
-                      <Typography
-                        className={classes.listItemAVA}>
-                        {listEntry[0]}
-                      </Typography>
-                    </ListItem>
-                  ))}
-                </List>
-              }
-            </Paper>
-            <DialogActions style={{ justifyContent: 'center' }}>
-              <Button
-                className={classes.reject}
-                size='small'
-                variant='contained'
-                onClick={() => {
-                  setShowPersonSelect(false);
-                }}>
-                {'Done'}
-              </Button>
-            </DialogActions>
-          </Dialog>
-        }
-        {copyPending &&
-          <AVAConfirm
-            promptText={confirmMessage}
+          <PersonFilter
+            prompt={'Restricted to which groups?'}
+            peopleList={message_targets}
+            multiSelect={true}
+            alreadyChecked={restrictionList}
             onCancel={() => {
-              setCopyPending(false);
+              setShowPersonSelect(false);
             }}
-            onConfirm={() => {
-              executeCopy();
-              setCopyPending(false);
+            onSelect={(pChoices) => {
+              setRestrictionList(makeArray(pChoices));
+              setShowPersonSelect(false);
             }}
           >
-          </AVAConfirm>
+          </PersonFilter>
         }
       </Dialog>
       : null
