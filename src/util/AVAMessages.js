@@ -1,5 +1,6 @@
 import { clt, cl, recordExists, uuid, listFromArray, sentenceCase } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
+import { getGroupsBelongTo } from './AVAGroups';
 import { makeDate } from './AVADateTime';
 
 const AWS = require('aws-sdk');
@@ -121,7 +122,17 @@ export async function prepareMessage(inBody) {
       }
       else if (t.test && t.check) {
         let resolved = await resolveMessageVariables(t.check, requestToTest);
-        if (resolved && resolved.toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
+        if (resolved) {
+          if (Array.isArray(t.test)) {
+            passedTest = t.test.some(v => {
+              if (!(resolved.toLowerCase().includes(v.value.toLowerCase()))) { return false; }
+              t.then = v.then;
+              t.else = v.else;
+              return true;
+            });
+          }
+          else if (resolved.toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
+        }
       }
       else { passedTest = false; }
       if (passedTest && ('then' in t)) {
@@ -135,11 +146,13 @@ export async function prepareMessage(inBody) {
       for (let i = 0; i < thenArray.length; i++) {
         let rule = thenArray[i];
         switch (rule.instruction) {
+          case 'add_recipient':
           case 'add_recipients': {
             if (Array.isArray(rule.value)) { results.recipientList.push(...rule.value); }
             else { results.recipientList.push(rule.value); }
             break;
           }
+          case 'replace_recipient':
           case 'replace_recipients': {
             if (Array.isArray(rule.value)) {
               if (rule.value.length === 0) { results.recipientList = []; }
@@ -151,6 +164,7 @@ export async function prepareMessage(inBody) {
             }
             break;
           }
+          case 'remove_recipient':
           case 'remove_recipients': {
             if (Array.isArray(rule.value)) {
               rule.value.forEach(v => {
@@ -223,6 +237,11 @@ export async function resolveMessageVariables(inString, body) {
         workString = `${front}${body.activityName}${back}`;
         break;
       }
+      case 'memberOf': {
+        let gList = await getGroupsBelongTo(body.author);
+        workString = `${front}${Object.keys(gList).join(' ~ ')}${back}`;
+        break;
+      }
       case 'location': {
         let pMe = await getPerson(body.author);
         workString = `${front}${pMe.location}${back}`;
@@ -257,9 +276,20 @@ export async function resolveMessageVariables(inString, body) {
           let [if$, then$] = variable.trim().slice(2).split(':');
           if (body.hasOwnProperty(if$.trim())) { workString = `${front}${then$.trim()}${back}` }
         }
-        else if (body.hasOwnProperty('textInput')) {
+        else if (body.hasOwnProperty('textInput') || body.hasOwnProperty('qualifiers')) {
           if (variable.startsWith('value')) { variable = variable.split(':')[1]; }
-          workString = `${front}${body.textInput[variable]}${back}`;
+          let r = '';
+          if (body.hasOwnProperty('textInput') && (variable in body.textInput)) {
+            r = body.textInput[variable];
+          }
+          else if (body.hasOwnProperty('qualifiers')) {
+            let qObj = {};
+            for (let q in body.qualifiers) {
+              Object.assign(qObj, body.qualifiers[q]);
+            }
+            if (variable in qObj) { r = listFromArray(qObj[variable]); };
+          }
+          workString = `${front}${r}${back}`;
         }
         else {
           let [dDate, dType] = variable.split(':');

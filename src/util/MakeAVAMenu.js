@@ -61,7 +61,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let returnArray = [];
     let [sectionColor, sectionIcon] = await getCustomizations(pSubMenu.menu_name);
     if (pOverrides) {
-      if (pOverrides.color) {sectionColor = pOverrides.color}
+      if (pOverrides.color) { sectionColor = pOverrides.color; }
+      if (pOverrides.icon) { sectionIcon = pOverrides.icon; }
     }
     let subActivities = [];
     if (pActivities) { subActivities.push(...pActivities); }
@@ -212,7 +213,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     });
     // ('** GROUPS **');
     let allowDuplicates = false;
-    let overrideColor = '';
     let gL = groupList.length;
     for (let g = 0; g < gL; g++) {
       let this_group = groupList[g];
@@ -226,7 +226,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       for (let a = 0; a < aL; a++) {
         screenStatus(`Common activities for ${this_group.name}`, ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = this_group.common_activities[a];
-        console.log(this_activity);
+        let overrideColor = '';
+        let overrideIcon = '';
         if (!allowDuplicates && duplicateCheck.includes(this_activity)) {   // this_activity is already loaded
           continue;
         }
@@ -240,7 +241,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           if (this_activity.includes('~[color=')) {
             let [front, oColor, back] = this_activity.split(/~\[color=|\]/g); 
             overrideColor = oColor;
-            this_activity = front + back;
+            this_activity = front;
+            if (back) { this_activity += back; };
+          }
+          if (this_activity.includes('~[icon=')) {
+            let [front, oIcon, back] = this_activity.split(/~\[icon=|\]/g);
+            overrideIcon = oIcon;
+            this_activity = front;
+            if (back) { this_activity += back; };
           }
           let sectionKeys = this_activity.split('~~');
           if (sectionKeys.length > 2) {
@@ -258,6 +266,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             let subName = sectionName.split(/=(.*)/)[1];
             let subOverrides = {};
             if (overrideColor) { subOverrides.color = overrideColor; }
+            if (overrideIcon) { subOverrides.icon = overrideIcon; }
             let currentMenu = menuStructure.length - 1;
             let this_section = menuStructure[currentMenu].currentSection;
             let subMenuObj = {
@@ -322,8 +331,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           }
           if (!(sectionName in sectionDetails)) {
             [sectionColor, sectionIcon] = await getCustomizations(sectionName);
+            if (overrideColor) { sectionColor = overrideColor; }
+            if (overrideIcon) { sectionIcon = overrideIcon; }
             sectionDetails[sectionName] = {
-              color: overrideColor || sectionColor,
+              color: sectionColor,
               icon: sectionIcon,
               sort_key: sectionSort
             };
@@ -332,8 +343,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         else {
           if (!(sectionName in sectionDetails)) {
             [sectionColor, sectionIcon] = await getCustomizations(sectionName);
+            if (overrideColor) { sectionColor = overrideColor; }
+            if (overrideIcon) { sectionIcon = overrideIcon; }
             sectionDetails[sectionName] = {
-              color: overrideColor || sectionColor,
+              color: sectionColor,
               icon: sectionIcon,
               sort_key: sectionSort
             };

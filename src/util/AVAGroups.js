@@ -81,16 +81,18 @@ export async function getGroupsBelongTo(person_id) {
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);
   }
-  for (let g = 0; g < profile.groups.length; g++) {
-    let group = profile.groups[g];
-    if (!(group in returnObject)) {
-      returnObject[group] = {
-        group_name: (groupObj[group] ? groupObj[group].name : null),
-        group_id: group,
-        role: 'member'
-      };
-    }
-  };
+  if (profile && profile.groups) {
+    for (let g = 0; g < profile.groups.length; g++) {
+      let group = profile.groups[g];
+      if (!(group in returnObject)) {
+        returnObject[group] = {
+          group_name: (groupObj[group] ? groupObj[group].name : null),
+          group_id: group,
+          role: 'member'
+        };
+      }
+    };
+  }
   loadedPerson = person_id;
   loadedGroupObj = returnObject;
   return returnObject;
