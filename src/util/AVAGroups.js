@@ -110,7 +110,13 @@ export async function getGroup(pGroup_id, pClient_id) {
       TableName: "Groups"
     })
     .promise()
-    .catch(error => { cl({ 'Error reading Groups': error }); });
+    .catch(error => {
+      cl({
+        'Error reading Groups': error,
+        client_id: `<${pClient_id}>`,
+        group_id: `<${pGroup_id}>`
+      });
+    });
   if (recordExists(groupRec)) {
     groupRecs[cKey] = groupRec.Item;
     return groupRec.Item;
@@ -126,7 +132,7 @@ export async function getRole(pGroup, pPerson) {
   }
   else {
     let gRec = await getGroup(pGroup, pSession.client_id);
-    if (gRec.admin_list.includes(pPerson)) { return 'responsible'; }
+    if (gRec.admin_list && gRec.admin_list.includes(pPerson)) { return 'responsible'; }
   }
   return 'member';
 }
