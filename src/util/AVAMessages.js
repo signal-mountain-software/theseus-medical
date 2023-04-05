@@ -68,9 +68,9 @@ export async function prepareMessage(inBody) {
     results = {};
     if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
     else { results.recipientList = [this_request.recipientList]; }
-    results.recipientList = results.recipientList.map(async (r) => {
-      return await resolveMessageVariables(r, this_request);
-    })
+    for (let i = 0; i < results.recipientList.length; i++) { 
+      results.recipientList[i] = await resolveMessageVariables(results.recipientList[i], this_request);
+    }
     results.client = this_request.client;
     results.author = this_request.author;
     results.preferred_method = this_request.method;
