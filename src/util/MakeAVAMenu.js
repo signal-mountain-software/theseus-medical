@@ -57,9 +57,13 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
 
   // Functions
 
-  async function handleSubMenu(pSubMenu, pActivities = null) {
+  async function handleSubMenu(pSubMenu, pActivities = null, pOverrides = null) {
     let returnArray = [];
     let [sectionColor, sectionIcon] = await getCustomizations(pSubMenu.menu_name);
+    if (pOverrides) {
+      if (pOverrides.color) { sectionColor = pOverrides.color; }
+      if (pOverrides.icon) { sectionIcon = pOverrides.icon; }
+    }
     let subActivities = [];
     if (pActivities) { subActivities.push(...pActivities); }
     else { subActivities = await getSubMenu(pSubMenu.event_id, pSubMenu.client_id); }
@@ -67,13 +71,19 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     if (aL > 0) {
       for (let a = 0; a < aL; a++) {
         let pos = 100 + a;
+        let subClient, subKey;
+        if (subActivities[a].includes('//')) { [subClient, subKey] = subActivities[a].split('//'); }
+        else {
+          subClient = pSubMenu.client_id;
+          subKey = subActivities[a];
+        }
         let this_row =
           await addRow(
-            `${pSubMenu.client_id}//${subActivities[a]}`,   // activity_code
+            `${subClient}//${subKey}`,   // activity_code
             pSubMenu.event_id,                  // this menu_id                      
             pSubMenu.parent,                    // parent menu_id
             pSubMenu.parent_name,               // parent menu name
-            `SUB-${pSubMenu.event_id}-${pos}`,  // sort position
+            `ZZZZ_SUB-${pSubMenu.event_id}-${pos}`,  // sort position
             pSubMenu.menu_name,                 // this menu name
             sectionColor,                       // this menu color
             sectionIcon,                        // this menu icon
@@ -216,15 +226,30 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       for (let a = 0; a < aL; a++) {
         screenStatus(`Common activities for ${this_group.name}`, ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = this_group.common_activities[a];
+        let overrideColor = '';
+        let overrideIcon = '';
         if (!allowDuplicates && duplicateCheck.includes(this_activity)) {   // this_activity is already loaded
           continue;
         }
         if (this_activity.startsWith('~~')) {
-          if (this_activity.includes('~~duplicate=OK')) {
+          if (this_activity.includes('~~duplicate=OK') || this_activity.includes('~[duplicate=OK]')) {
             allowDuplicates = true;
             this_activity = this_activity.replace('~~duplicate=OK', '');
+            this_activity = this_activity.replace('~[duplicate=OK]', '');
           }
           else { allowDuplicates = false; }
+          if (this_activity.includes('~[color=')) {
+            let [front, oColor, back] = this_activity.split(/~\[color=|\]/g); 
+            overrideColor = oColor;
+            this_activity = front;
+            if (back) { this_activity += back; };
+          }
+          if (this_activity.includes('~[icon=')) {
+            let [front, oIcon, back] = this_activity.split(/~\[icon=|\]/g);
+            overrideIcon = oIcon;
+            this_activity = front;
+            if (back) { this_activity += back; };
+          }
           let sectionKeys = this_activity.split('~~');
           if (sectionKeys.length > 2) {
             sectionSort = sectionKeys[1];
@@ -234,8 +259,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             sectionSort = sectionKeys[1];
             sectionName = sectionKeys[1];
           }
+          if (sectionName.startsWith('section=')) { 
+            sectionName = sectionName.split(/=(.*)/)[1];
+          }
           if (sectionName.startsWith('submenu=')) {
-            let subName = sectionName.split('=')[1];
+            let subName = sectionName.split(/=(.*)/)[1];
+            let subOverrides = {};
+            if (overrideColor) { subOverrides.color = overrideColor; }
+            if (overrideIcon) { subOverrides.icon = overrideIcon; }
             let currentMenu = menuStructure.length - 1;
             let this_section = menuStructure[currentMenu].currentSection;
             let subMenuObj = {
@@ -247,7 +278,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             };
             returnArray.push({
               menu_name: menuStructure[currentMenu].menuName,
-              sort_key: sectionDetails[this_section].sort_key,
+              sort_key: `${sectionDetails[this_section].sort_key}-${numberOfRows + 1000}`,
               section_name: this_section,
               section_color: sectionDetails[this_section].color,
               section_icon: sectionDetails[this_section].icon,
@@ -288,7 +319,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
               parent_name: menuStructure[currentMenu].menuName,
               menu_name: subName
             };
-            let subLines = await handleSubMenu(subMenuObj, subActivities);
+            let subLines = await handleSubMenu(subMenuObj, subActivities, subOverrides);
             returnArray.push(...subLines);
             menuStructure.pop();
             sectionName = menuStructure[menuStructure.length - 1].currentSection;
@@ -300,6 +331,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           }
           if (!(sectionName in sectionDetails)) {
             [sectionColor, sectionIcon] = await getCustomizations(sectionName);
+            if (overrideColor) { sectionColor = overrideColor; }
+            if (overrideIcon) { sectionIcon = overrideIcon; }
             sectionDetails[sectionName] = {
               color: sectionColor,
               icon: sectionIcon,
@@ -310,6 +343,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         else {
           if (!(sectionName in sectionDetails)) {
             [sectionColor, sectionIcon] = await getCustomizations(sectionName);
+            if (overrideColor) { sectionColor = overrideColor; }
+            if (overrideIcon) { sectionIcon = overrideIcon; }
             sectionDetails[sectionName] = {
               color: sectionColor,
               icon: sectionIcon,

@@ -447,7 +447,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       else {
         if (defaultValue.includes('.')) { defaultValue = defaultValue.split(/\.(.*)/)[1]; }
         defaultSelections = defaultValue.split(/\s~|~\s/g);
-        setExecutionDefaultValue(defaultSelections[0].trim());     
+        setExecutionDefaultValue(defaultSelections.map(s => { return s.trim(); }));     
       }
       if (defaultSelections.length > 0) {
         defaultSelections.forEach(nfValue => {

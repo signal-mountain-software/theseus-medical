@@ -161,7 +161,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
- 
+
   const classes = useStyles();
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -206,7 +206,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   /* check boxes...
   /* <textOnly>                  | selection/check box                      | Filet Mignon                                              */
-  /*                             |                                          | Club Sandwich                                             */
+
+  /* instructions...
   /* ~[checkbox=off]             | Stop rendering check boxes, render value only
   /* ~[checkbox=on]              | Begin rendering check boxes AND values
   /* ~[display=off]              | Do not display anything until display=on is encountered
@@ -219,10 +220,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   /* ~time:<text>                | prompt for time response with <text>     | ~time:What time would you like your meal?                */
   /* ~date:<text>                | prompt for date response with <text>     | ~date:What date would you like your meal?                */
 
+  /* special cases...
+  /* ~+<key>~<value>             | use value only when <key> is selected    | ~+Filet Mignon~~!How would you like your filet cooked?      */
+
   let displayRowList = [];
   let checkbox = true;
   let ignore = false;
   let required = false;
+  let displayBold = false;
+  let displayItalic = false;
 
   if (!initialLoadComplete) {
     let defaultObj = {};
@@ -257,6 +263,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             required = (oValue.toLowerCase() === 'on');
             break;
           }
+          case 'bold': {
+            displayBold = (oValue.toLowerCase() === 'on');
+            break;
+          }
+          case 'italics':
+          case 'italic': {
+            displayItalic = (oValue.toLowerCase() === 'on');
+            break;
+          }
           case 'default': {
             dValue = oValue;
             break;
@@ -277,7 +292,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           text: instruction[0],
           oKey: getKey(instruction[0]),
           desc: getDescription(instruction[0]),
-          input: false
+          input: false,
+          bold: displayBold,
+          italic: displayItalic
         });
         if (['checked', 'on', 'selected', 'true'].includes(dValue)) { defaultChecked.push(instruction[0]); }
         continue;
@@ -649,7 +666,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     <Typography
                       className={this_item.header ? classes.headerLine : classes.textLine}
                     >
-                      {this_item.text}
+                      {this_item.bold
+                        ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
+                        : (this_item.italic ? <i>{this_item.text}</i> : `${this_item.text}`)}
                     </Typography>
                     {this_item.input &&
                       <TextField
@@ -706,11 +725,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                   handleQualChecked(this_item.text, qR.title, opt.display);
                                 }}
                               >
-                                <Checkbox
-                                  className={classes.radioButton}
-                                  size="small"
-                                  checked={isQChecked(this_item, qR, opt.display)} />
-                                <Typography className={classes.radioText}>{opt.display}</Typography>
+                                {opt.type === 'checkbox' &&
+                                  <React.Fragment>
+                                    <Checkbox
+                                      className={classes.radioButton}
+                                      size="small"
+                                      checked={isQChecked(this_item, qR, opt.display)} />
+                                    <Typography className={classes.radioText}>{opt.display}</Typography>
+                                  </React.Fragment>
+                                }
                               </Box>
                             ))}
                           </Box>
@@ -755,11 +778,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   // if not mentioned in defaultValues, we'll assign values to them
                   let oBo, foreign_key;
                   if (fact.value.freeText) {
-                    if ('onBehalfOf' in fact.value.freeText) { 
+                    if ('onBehalfOf' in fact.value.freeText) {
                       oBo = fact.value.freeText.onBehalfOf;
                       if (textInput && textInput[fact.value.freeText.onBehalfOf]) {
                         oBo = textInput[fact.value.freeText.onBehalfOf];
                         delete textInput[fact.value.freeText.onBehalfOf];
+                        delete fact.value.freeText.onBehalfOf;
+                        delete textInput.onBehalfOf;
                       }
                     }
                     if ('foreignKey' in fact.value.freeText) {
@@ -768,17 +793,19 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         if (textInput[fact.value.freeText.foreignKey]) {
                           foreign_key = textInput[fact.value.freeText.foreignKey];
                           delete textInput[fact.value.freeText.foreignKey];
+                          delete fact.value.freeText.foreignKey;
                         }
-                        else if ('foreignKey' in textInput) { 
+                        else if ('foreignKey' in textInput) {
                           foreign_key = textInput['foreignKey'];
-                          delete textInput['foreignKey'];
                         }
+                        delete textInput['foreignKey'];
                       }
                     }
                   }
                   if (!oBo) { oBo = await makeName(fact.patient_id); }
                   if (!foreign_key) { foreign_key = '*tbd'; }
-                  
+
+                  delete textInput['requestType'];
                   let requestObj = { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual };
                   let messageObj = {};
                   if ('messaging' in fact) {

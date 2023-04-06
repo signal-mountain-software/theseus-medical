@@ -7,6 +7,8 @@ import { getMessages } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
 
+import { useSnackbar } from 'notistack';
+
 import List from '@material-ui/core/List';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -212,6 +214,7 @@ export default ({ session, filter = {}, onClose }) => {
   */
 
   const classes = useStyles();
+  const { enqueueSnackbar } = useSnackbar();
 
   const [dataRows, setDataRows] = React.useState();
 
@@ -433,6 +436,10 @@ export default ({ session, filter = {}, onClose }) => {
             });
         }
       });
+    if (qList.length === 0) { 
+      enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
+      onClose()
+    }
   };
 
   async function buildRequestDetails(i) {

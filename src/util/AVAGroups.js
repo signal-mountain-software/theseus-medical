@@ -81,16 +81,18 @@ export async function getGroupsBelongTo(person_id) {
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);
   }
-  for (let g = 0; g < profile.groups.length; g++) {
-    let group = profile.groups[g];
-    if (!(group in returnObject)) {
-      returnObject[group] = {
-        group_name: (groupObj[group] ? groupObj[group].name : null),
-        group_id: group,
-        role: 'member'
-      };
-    }
-  };
+  if (profile && profile.groups) {
+    for (let g = 0; g < profile.groups.length; g++) {
+      let group = profile.groups[g];
+      if (!(group in returnObject)) {
+        returnObject[group] = {
+          group_name: (groupObj[group] ? groupObj[group].name : null),
+          group_id: group,
+          role: 'member'
+        };
+      }
+    };
+  }
   loadedPerson = person_id;
   loadedGroupObj = returnObject;
   return returnObject;
@@ -110,7 +112,13 @@ export async function getGroup(pGroup_id, pClient_id) {
       TableName: "Groups"
     })
     .promise()
-    .catch(error => { cl({ 'Error reading Groups': error }); });
+    .catch(error => {
+      cl({
+        'Error reading Groups': error,
+        client_id: `<${pClient_id}>`,
+        group_id: `<${pGroup_id}>`
+      });
+    });
   if (recordExists(groupRec)) {
     groupRecs[cKey] = groupRec.Item;
     return groupRec.Item;
@@ -126,7 +134,7 @@ export async function getRole(pGroup, pPerson) {
   }
   else {
     let gRec = await getGroup(pGroup, pSession.client_id);
-    if (gRec.admin_list.includes(pPerson)) { return 'responsible'; }
+    if (gRec.admin_list && gRec.admin_list.includes(pPerson)) { return 'responsible'; }
   }
   return 'member';
 }
