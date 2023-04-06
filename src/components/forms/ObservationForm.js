@@ -802,7 +802,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       }
                     }
                   }
-                  if (!oBo) { oBo = await makeName(fact.patient_id); }
+                  if (checkedToSave.some(s => { return s.toLowerCase().includes('anonymous'); })) {
+                    oBo = 'Anonymous';
+                  }
+                  else if (!oBo) { oBo = await makeName(fact.patient_id); }
                   if (!foreign_key) { foreign_key = '*tbd'; }
 
                   delete textInput['requestType'];

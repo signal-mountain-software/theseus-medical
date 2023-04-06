@@ -214,7 +214,8 @@ export async function prepareMessage(inBody) {
 export async function resolveMessageVariables(inString, body) {
   // extract first variable
   let workString = inString;
-  while (workString.includes('<')) {
+  let loopCount = 0;
+  while (workString.includes('<') && (loopCount < 10)) {
     let [front, rest] = workString.split(/<(.*)/);
     let [variable, back] = rest.split(/>(.*)/);
     switch (variable) {
@@ -263,7 +264,10 @@ export async function resolveMessageVariables(inString, body) {
       case 'patient_id':
       case 'requestor':
       case 'self':
-      case 'user': { workString = `${front}${body.author}${back}`; break; }
+      case 'user': {
+        workString = `${front}${body.author}${back}`;
+        break;
+      }
       case 'selections': {
         workString = `${front}${listFromArray(body.selections)}${back}`;
         break;
@@ -274,7 +278,8 @@ export async function resolveMessageVariables(inString, body) {
         }
         else if (variable.trim().toLowerCase().startsWith('if ')) { 
           let [if$, then$] = variable.trim().slice(2).split(':');
-          if (body.hasOwnProperty(if$.trim())) { workString = `${front}${then$.trim()}${back}` }
+          if (body.selections.includes(if$.trim())) { workString = then$.trim(); }
+          else { workString = ''; }
         }
         else if (body.hasOwnProperty('textInput') || body.hasOwnProperty('qualifiers')) {
           if (variable.startsWith('value')) { variable = variable.split(':')[1]; }
@@ -299,6 +304,7 @@ export async function resolveMessageVariables(inString, body) {
         }
       }
     }
+    loopCount++
   }
   return workString;
 };

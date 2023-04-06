@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { titleCase } from '../../util/AVAUtilities';
+
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
@@ -124,7 +126,7 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
   if (Array.isArray(promptText)) { promptArray = promptText; }
   else {
     promptArray = [promptText];
-    if (!titleText) { titleText = promptText; }
+    if (!titleText) { titleText = titleCase(promptText); }
   }
 
   // **************************
@@ -177,7 +179,6 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
                     id={`prompt-${ndx}`}
                     key={`prompt-${ndx}`}
                     multiline
-                    inputRef={input => (ndx === 0) && input && input.focus()}
                     label={(prompt === titleText) ? '' : prompt}
                     value={textInput[ndx] || ''}
                     onChange={(event) => {

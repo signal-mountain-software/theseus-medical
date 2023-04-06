@@ -3,7 +3,7 @@ import { makeNumber, sentenceCase, titleCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
-import { getMessages } from '../../util/AVAMessages';
+import { getMessages, sendMessages } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
 
@@ -28,7 +28,6 @@ import TextField from '@material-ui/core/TextField';
 
 import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
-import SendMessageDialog from '../dialogs/SendMessageDialog';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
@@ -250,7 +249,8 @@ export default ({ session, filter = {}, onClose }) => {
     meal: 'Meal Order',
     guest_room: 'Guest Room Reservation Request',
     trans: 'Transportation Request',
-    breakfast: 'Breakfast Order'
+    breakfast: 'Breakfast Order',
+    prayer: 'Prayer Request'
   };
 
   const statusWords = {
@@ -285,19 +285,20 @@ export default ({ session, filter = {}, onClose }) => {
       };
       linkWord = ', and';
     }
-    return pM.trim();
+    return titleCase(pM.trim());
   }
 
-  async function handleUpdates([newStatus, checked, newNote]) {
+  async function handleUpdates([newStatus, checked, newMessage]) {
     let historyLine = '';
     if (newStatus) { historyLine += `Status changed to "${newStatus}"`; }
     else if (checked === 'checked') { historyLine += 'Status changed to "Complete"'; }
-    if (newNote) {
-      if (historyLine) { historyLine += ' and '; }
-      historyLine += `Note that said "${newNote.trim()}" added`;
+    if (newMessage) {
+      if (historyLine) { historyLine += ' with the message: '; }
+      historyLine += newMessage.trim();
     }
+    let sendLine = historyLine;
     let thisPerson = await getPerson(session.patient_id, 'name');
-    historyLine += ` by ${thisPerson}`;
+    historyLine += ` added by ${thisPerson}`;
     if (session.patient_id !== session.user_id) { historyLine += ` (proxy=${session.user_id})`; }
     let AVAdate = makeDate(new Date());
     historyLine += ` on ${AVAdate.absolute}`;
@@ -309,11 +310,21 @@ export default ({ session, filter = {}, onClose }) => {
         else if (checked === 'checked') { r.last_status = 'Complete'; }
         r.last_update = AVAdate.timestamp;
         r.workData.update_date = AVAdate.relative;
-        if (newNote) { r.last_note = newNote; }
+        if (newMessage) { r.last_note = newMessage; }
         if (('history' in r) && Array.isArray(r.history)) {
           r.history.unshift(historyLine);
         }
         else { r.history = [historyLine]; }
+        await sendMessages({
+          client: session.client_id,
+          author: session.patient_id,
+          testMode: false,
+          messageText: sendLine,
+          htmlText: sendLine,
+          recipientList: r.requestor,
+          subject: `Response to your ${r.workData.formatted_type} from ${session.patient_display_name}`,
+          thread_id: '1234'
+        });
         updateRows.push(r);
         dataRows[x] = await buildRequestDetails(r);
       }
@@ -436,9 +447,9 @@ export default ({ session, filter = {}, onClose }) => {
             });
         }
       });
-    if (qList.length === 0) { 
+    if (qList.length === 0) {
       enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
-      onClose()
+      onClose();
     }
   };
 
@@ -451,7 +462,7 @@ export default ({ session, filter = {}, onClose }) => {
     let anonymous = false;
     let requestorRec = await getPerson(i.requestor, '*all');
     i.workData.requestor_name = await makeName(i.requestor);
-    i.workData.requestor_location = requestorRec.location; 
+    i.workData.requestor_location = requestorRec.location;
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
     if (makeNumber(i.last_update) > makeNumber(i.request_date)) {
@@ -477,7 +488,7 @@ export default ({ session, filter = {}, onClose }) => {
       i.workData.requestor_location = null;
       i.workData.requestor_image = null;
     }
-    i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name}`
+    i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name}`;
     i.workData.checked = false;
     i.workData.open = false;
     return i;
@@ -734,22 +745,10 @@ export default ({ session, filter = {}, onClose }) => {
             >
             </AVAConfirm>
           }
-          {
-            showAddPrompt &&
-            <SendMessageDialog
-              open={true}
-              onClose={() => {
-                setShowAddPrompt(false);
-              }}
-              onSelect={(selectedPerson) => {
-              }}
-            >
-            </SendMessageDialog>
-          }
           {promptForUpdate &&
             <AVATextInput
               titleText={createMessageText()}
-              promptText={['New Status', '[checkbox]Mark as Complete?', 'Notes']}
+              promptText={['New Status', '[checkbox]Mark as Complete?', 'Message to Requestor']}
               buttonText='Update'
               onCancel={() => { setPromptForUpdate(false); }}
               onSave={async (requestUpdates) => {
@@ -774,18 +773,9 @@ export default ({ session, filter = {}, onClose }) => {
                     onClick={() => {
                       setPromptForUpdate(true);
                     }}
-                    startIcon={<EditIcon size="small" />}
+                    startIcon={<SendIcon size="small" />}
                   >
-                    {'Update Status'}
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      setShowAddPrompt(true);
-                    }}
-                    className={classes.rowButtonGreen}
-                    startIcon={<SendIcon size='small' />}
-                  >
-                    {`New Request`}
+                    {'Reply / Status Update'}
                   </Button>
                 </Box>
               </Box>
