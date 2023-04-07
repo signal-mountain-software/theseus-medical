@@ -1,6 +1,7 @@
 import { resolveVariables, stringToColor, cl, clt, recordExists } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
+import { getGroup } from '../util/AVAGroups';
 
 const AWS = require('aws-sdk');
 const AVAIcon = process.env.REACT_APP_AVA_LOGO;
@@ -39,6 +40,16 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   function makeNumber(inStr) {
     let [vYr, vMo, vDay] = inStr.split(/\./g);
     return (20000000 + ((Number(vYr) % 100) * 10000) + (Number(vMo) * 100) + Number(vDay));
+  }
+
+  let sectionCheck = {};
+  function alreadyInSection(pSec, pAct) {
+    if (sectionCheck[pSec]) {
+      if (sectionCheck[pSec].includes(pAct)) { return true; }
+      else { sectionCheck[pSec].push(pAct); }
+    }
+    else { sectionCheck[pSec] = [pAct]; }
+    return false;
   }
 
   let ava_version_number = makeVersion(process.env.REACT_APP_AVA_VERSION);
@@ -222,8 +233,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       sectionIcon = AVAIcon;
       // (`Checking group ${this_group.group_id} (${this_group.name}): ${(this_group.common_activities || 'no common activities')}`);
       if (!this_group.hasOwnProperty('common_activities')) { continue; }
-      let aL = this_group.common_activities.length;
-      for (let a = 0; a < aL; a++) {
+      for (let a = 0; a < this_group.common_activities.length; a++) {
+        let aL = this_group.common_activities.length;
         screenStatus(`Common activities for ${this_group.name}`, ((a / aL) * 100), ((aL / 40) + .75));
         let this_activity = this_group.common_activities[a];
         let overrideColor = '';
@@ -232,6 +243,18 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           continue;
         }
         if (this_activity.startsWith('~~')) {
+          if (this_activity.includes('~[adopt=')) {
+            let [, oGroup,] = this_activity.split(/~\[adopt=|\]/g);
+            let oClient;
+            if (oGroup.includes('//')) { [oClient, oGroup] = oGroup.split('//'); }
+            else { oClient = masterClient; }
+            let oGroupRec = await getGroup(oGroup, oClient);
+            if (oGroupRec && oGroupRec.common_activities) {
+              this_group.common_activities.splice(a, 1, ...oGroupRec.common_activities);
+              a--;
+            }
+            continue;
+          }
           if (this_activity.includes('~~duplicate=OK') || this_activity.includes('~[duplicate=OK]')) {
             allowDuplicates = true;
             this_activity = this_activity.replace('~~duplicate=OK', '');
@@ -269,6 +292,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             if (overrideIcon) { subOverrides.icon = overrideIcon; }
             let currentMenu = menuStructure.length - 1;
             let this_section = menuStructure[currentMenu].currentSection;
+            if (alreadyInSection(this_section, `submenu.${subName}`)) { continue; }
             let subMenuObj = {
               client_id: masterClient,
               event_id: `submenu.${subName}`,
@@ -352,20 +376,22 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             };
           }
           let currentMenu = menuStructure.length - 1;
-          let this_row = await addRow
-            (this_activity,                                 // pActivity
-              menuStructure[currentMenu].menuName,        // pMenu
-              (currentMenu === 0 ? null : menuStructure[currentMenu - 1].menuName),   // pParent
-              null,                                           // pParentName
-              sectionDetails[sectionName].sort_key,           // pSectionSort
-              sectionName,                                // pSectionName
-              sectionDetails[sectionName].color,          // pSectionColor
-              sectionDetails[sectionName].icon,          // pSectionIcon
-              `Group ${this_group.group_id}`              // pReason
-            );
-          if (this_row) {
-            returnArray.push(this_row);
-            duplicateCheck.push(this_activity);
+          if (!alreadyInSection(sectionName, this_activity)) {
+            let this_row = await addRow
+              (this_activity,                                 // pActivity
+                menuStructure[currentMenu].menuName,        // pMenu
+                (currentMenu === 0 ? null : menuStructure[currentMenu - 1].menuName),   // pParent
+                null,                                           // pParentName
+                sectionDetails[sectionName].sort_key,           // pSectionSort
+                sectionName,                                // pSectionName
+                sectionDetails[sectionName].color,          // pSectionColor
+                sectionDetails[sectionName].icon,          // pSectionIcon
+                `Group ${this_group.group_id}`              // pReason
+              );
+            if (this_row) {
+              returnArray.push(this_row);
+              duplicateCheck.push(this_activity);
+            }
           }
         }
       }

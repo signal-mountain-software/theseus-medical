@@ -12,7 +12,6 @@ import { useSnackbar } from 'notistack';
 import List from '@material-ui/core/List';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
-import EditIcon from '@material-ui/icons/Edit';
 
 import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -222,7 +221,6 @@ export default ({ session, filter = {}, onClose }) => {
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
-  const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [deletePending, setDeletePending] = React.useState(false);
   const showDeleted = false;
   const [confirmMessage, setConfirmMessage] = React.useState('');
