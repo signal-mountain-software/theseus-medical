@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, makeArray, makeNumber, resolveVariables, uuid } from './AVAUtilities';
+import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid } from './AVAUtilities';
 import { makeName } from './AVAPeople';
 import { addDays, makeDate } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
@@ -201,7 +201,7 @@ export async function getCalendarEntries(body) {
   */
   let rC = body.client_id || body.client;
   let rP = body.person_id || body.person || body.filter?.person_id || body.filter?.person;
-  let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
+  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
   let rT = body.type || body.filter?.type;
   let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
   let create_occ = false;
@@ -355,6 +355,7 @@ export async function getSlotList(request) {
   let occRec = {};
   let slotObj = {};
   let event_id, event_occurrence;
+  if (Array.isArray(request.event)) { request.event = makeString(request.event, 1); }
   if (typeof (request.event) === 'string') {
     [event_id, event_occurrence] = request.event.split('#');
     eventRec = await getCalendarEntries({ client: request.client, event: `${event_id}`, type: 'event' });
@@ -646,7 +647,7 @@ export async function writeSlot(body) {
     "status": <"null (=selected), released, reserved, confirmed, attended, no-show, off_campus, left_campus, entered_campus... ">
     "show_this_slot": <boolean>  (assume true if missing or null)
   */
-  let [event_id, occ_id] = body.event.split('#');
+  let [event_id, occ_id] = makeString(body.event, 1).split('#');
   let occurrence = body.occurrence_date || occ_id;
   if (!body.slot && body.id) { body.slot = body.id; }
   let event_key = `${event_id}#${occurrence}#${body.slot}`;
@@ -864,7 +865,7 @@ export async function occurrenceData(body) {
   };
  
   let rC = body.client_id || body.client;
-  let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
+  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
   let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
   if (rO && rV) { rV = rV.split('#')[0] + '#' + rO; }   // both sent in change rV to include passed rO
   else if (rO) { return {}; }    // rO sent without an rV - that's bad; ignore rO
@@ -1124,7 +1125,7 @@ export async function printOccurrenceSheet(body) {
     .fontSize(fSize[2] - 2)
     .text('***** END *****', 36, pageHeight - 36);
   let rC = body.client_id || body.client;
-  let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
+  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
   doc.text('AVA reference: ' + rC + '/' + rV + '/' + body.request_type + '/' + postTime);
   doc.text('Printed: ' + timeString + ' ET');
 

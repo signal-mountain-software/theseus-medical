@@ -26,7 +26,17 @@ export async function getServiceRequests(body) {
   let rP = body.person_id || body.person;
   let rT = body.request_type;
   let qQ = { TableName: 'ServiceRequests' };
-  if (rP) {
+  if (body.local_key) {
+    qQ.IndexName = 'local_key-index';
+    qQ.KeyConditionExpression = 'client_id = :c and local_key = :lK';
+    qQ.ExpressionAttributeValues = { ':c': body.client_id, ':lK': body.local_key };
+  }
+  else if (body.foreign_key) {
+    qQ.IndexName = 'foreign_key-index';
+    qQ.KeyConditionExpression = 'client_id = :c and foreign_key = :fK';
+    qQ.ExpressionAttributeValues = { ':c': body.client_id, ':fK': body.foreign_key };
+  }
+  else if (rP) {
     qQ.IndexName = 'requestor-type-index';
     qQ.KeyConditionExpression = 'requestor = :rP';
     qQ.ExpressionAttributeValues = { ':rP': rP };
@@ -67,29 +77,41 @@ export async function putServiceRequest(body) {
           body: {
               client: <string> (required),
               author: <user ID> (required)
-              requestType: <string> (required)
-              [requestDate: <timestamp>] (optional - defaults to currentTime),
-              [onBehalfOf: <string>] (optional - defaults to author's name)
+              requestID: (required)
+              requestType: <string> (required - maint, dining, transportation, etc....)
+              requestDate: <optional timestamp - defaults to currentTime>,
+              onBehalfOf: <optional - defaults to author's name>
               request: <object> (required)
-              messaging: <messaging object>
+              messaging: <optional messaging object>
+              local_key: <optional AVA key>
+              foreign_key: <optional external key>
+              update_time: <optional, if missing set to current time>
+              requestStatus: <optional - if missing defaults to 'submitted'>,
+              notes: <optional text>
       };
   */
   let now = new Date().getTime();
   if (!body.requestDate) { body.requestDate = now; };
   body.requestID = `${body.author}~${body.requestDate}`;
+  if (!body.local_key) {
+      let sDate = now.toString();
+      body.local_key = sDate.slice(2, 6) + '-' + sDate.slice(6, 10);
+  }
+  if (!body.onBehalfOf) { body.onBehalfOf = await getPerson(body.author, 'name'); }
   let serviceRequestRec = {
     "client_id": body.client,
     "request_id": body.requestID,
     "requestor": body.author,
-    "on_behalf_of": body.onBehalfOf || getPerson(body.author, 'name'),
+    "on_behalf_of": body.onBehalfOf,
     "request_type": body.requestType,
     "request_date": body.requestDate,
     "original_request": body.request,
-    "local_key": body.localKey || body.requestID,
-    "foreign_key": body.foreignKey || '*tbd*',
-    "last_update": now,
-    "last_status": 'Submitted',
-    "last_note": null
+    "history": body.history,
+    "local_key": body.local_key,
+    "foreign_key": body.foreign_key || '*tbd*',
+    "last_update": body.update_time || now,
+    "last_status": body.requestStatus || 'submitted',
+    "last_note": body.notes
   };
   cl({ 'adding ServiceRequestRec as': serviceRequestRec });
   let goodWrite = true;

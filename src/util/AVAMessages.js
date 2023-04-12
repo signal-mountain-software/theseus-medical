@@ -425,6 +425,11 @@ async function formatRequestDetails(body, summaryType) {
 
   // Finish
   htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
+  
+  if (body.local_key) {
+    htmlMessage += `<div>AVA request number:&nbsp;<strong>${body.local_key}</strong></div>`;
+  }
+  
   htmlMessage += `<div>AVA reference:&nbsp;${body.requestID}</div>`;
   htmlMessage += `<div>***** END *****</div></p>`;
   rawMessage += `\n\rAVA reference: ${body.requestID}\n***** END *****`;
