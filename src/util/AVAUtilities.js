@@ -39,6 +39,7 @@ export function listFromArray(inArray) {
 }
 
 export function makeString(inP, pNum = 0, pLink) {
+  if (!inP) { return null; }
   if (!Array.isArray(inP)) { return inP.trim(); }
   if (pNum === 0) { return inP.join(pLink || ' ~ '); }
   let lim = Math.min(pNum, inP.length);
