@@ -661,9 +661,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         {(rowsWritten === 0) &&
           (!isBrowsing ?
             <AVATextInput
-              titleText={`Adding you to the list`}
-              promptText={'Notes or Additional Information'}
-              buttonText='Confirm'
+              titleText={`You are not on the list.`}
+              promptText={'(Optional) Notes or Additional Information'}
+              buttonText='Add me!'
               onCancel={() => {
                 onReset();
               }}

@@ -206,7 +206,7 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
               }}
               startIcon={<CloseIcon size="small" />}
             >
-              {'Back'}
+              {'Cancel/Go Back'}
             </Button>
           }
           <Button

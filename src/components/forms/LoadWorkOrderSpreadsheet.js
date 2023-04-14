@@ -188,6 +188,7 @@ export default ({ pClient, showSheet, session, onClose }) => {
         let rowData = Object.values(sheetData[activeRow]);
         if ((rowData.length >= 4) && (rowData.some(c => { return Object.keys(headers).includes(c); }))) {
           foundHeader = true;
+          // eslint-disable-next-line
           Object.keys(headers).forEach(h => {
             for (let sheetColumn in sheetData[activeRow]) {
               if (sheetData[activeRow][sheetColumn] === h) {

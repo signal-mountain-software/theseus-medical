@@ -243,7 +243,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, filter, peopl
                             <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                               <Typography variant='subtitle2'>
                                 {(this_event.slots && (this_event.slots[0].owner === person_id))
-                                  ? `You are signed-up ${makeSlotName(this_event.slots[0].id)}`
+                                    ? <strong>You are signed-up {makeSlotName(this_event.slots[0].id)}</strong>
                                   : `Tap here to sign-up!`
                                 }
                               </Typography>

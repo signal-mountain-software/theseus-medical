@@ -242,9 +242,9 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
       if (slotRec) {
         tCal.slots = [{
           owner: patient.patient_id,
-          id: slotRec.slotData.id,
-          reminder_minutes: slotRec.slotData.reminder_minutes,
-          name: slotRec.slotData.reminder_minutes
+          id: slotRec.slotData.slot || slotRec.slotData.id,
+          reminder_minutes: 0,
+          name: slotRec.slotData.name
         }];
       }
       theCalendar.push(tCal);
@@ -450,7 +450,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
               size='small'
               className={classes.topButton}
             >
-              {isMobile ? 'More' : 'Show more days'}
+              {isMobile ? 'More' : 'Show more?'}
             </Button>
           }
           {patient.kiosk_mode &&
