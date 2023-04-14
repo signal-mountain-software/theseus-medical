@@ -2,10 +2,13 @@ import React from 'react';
 import { titleCase, cl } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage, getPerson } from '../../util/AVAPeople';
-import { getCalendarEntries,occurrenceData } from '../../util/AVACalendars';
+import { getCalendarEntries, occurrenceData } from '../../util/AVACalendars';
 import { getMessages } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
+
+import { useSnackbar } from 'notistack';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import List from '@material-ui/core/List';
 
@@ -35,6 +38,9 @@ import Avatar from '@material-ui/core/Avatar';
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
+
+import LinearProgress from '@material-ui/core/LinearProgress';
+import CircularProgress from '@material-ui/core/CircularProgress';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -199,9 +205,6 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-let runNumber = 1;
-let scrollCount = 1;
-
 export default ({ session, filter = {}, onClose }) => {
 
   /*
@@ -214,6 +217,8 @@ export default ({ session, filter = {}, onClose }) => {
     }
   */
 
+  const { enqueueSnackbar } = useSnackbar();
+
   const classes = useStyles();
 
   const [dataRows, setDataRows] = React.useState();
@@ -225,7 +230,7 @@ export default ({ session, filter = {}, onClose }) => {
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
-  const [showReactError, ] = React.useState(false);
+  const [showReactError,] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [deletePending, setDeletePending] = React.useState(false);
   const showDeleted = false;
@@ -233,10 +238,15 @@ export default ({ session, filter = {}, onClose }) => {
   const [confirmID, setConfirmID] = React.useState('');
   const [confirmIndex, setConfirmIndex] = React.useState('');
 
+  const [loading, setLoading] = React.useState();
+
   const [promptForUpdate, setPromptForUpdate] = React.useState(false);
 
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
+
+  const [progress, setProgress] = React.useState(0);
+  const [pWidth, setPWidth] = React.useState(60);
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const scrollValue = 5;
@@ -245,6 +255,8 @@ export default ({ session, filter = {}, onClose }) => {
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
+
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const requestNames = {
     maint: 'Maintenance Request',
@@ -350,7 +362,7 @@ export default ({ session, filter = {}, onClose }) => {
     // will mark request as cancelled as send appropriate messages 
   };
 
-  
+
   const onScroll = async (event) => {
     if (dataRows.length < allRows.length) {
       let promiseArr = [];
@@ -358,16 +370,16 @@ export default ({ session, filter = {}, onClose }) => {
       for (let x = dataRows.length; x < stopAt; x++) {
         promiseArr.push(
           await buildCalendarDetails(allRows[x])
-          .then((good, bad) => { 
-            if (good) { dataRows[x] = good; }
-            else { console.log(bad); }
-          })
+            .then((good, bad) => {
+              if (good) { dataRows[x] = good; }
+              else { console.log(bad); }
+            })
         );
       }
       await Promise.all(promiseArr);
       setDataRows(dataRows);
       setRowLimit(dataRows.length);
-      cl(`scroll done - now ${dataRows.length} rows of ${allRows.length} loaded`)
+      cl(`scroll done - now ${dataRows.length} rows of ${allRows.length} loaded`);
       setMoreRows(allRows.length > dataRows.length);
       setForceRedisplay(!forceRedisplay);
     }
@@ -446,25 +458,28 @@ export default ({ session, filter = {}, onClose }) => {
 
   const buildDashboard = async () => {
     let qList = [];
+    setProgress(0);
     qList = await getCalendarEntries({
-      'person': session.patient_id
+      client_id: session.client_id,
+      type: 'occurrence'
     });
-    qList.sort((a, b) => {
-      let [, aSort] = a.event_key.split(/#/g);
-      let [, bSort] = b.event_key.split(/#/g);
-      if (aSort > bSort) { return -1; }
-      else { return 1; }
-    });
+    setProgress(25);
+    if (qList.length === 0) {
+      enqueueSnackbar(`The Calendar is empty!`, { variant: 'error', persist: false });
+      onClose();
+    }
     setAllRows(qList);
     let workingList = [];
     for (let x = 0; x < Math.min(qList.length, scrollValue); x++) {
       workingList.push(await buildCalendarDetails(qList[x]));
+      setProgress(25 + ((x / qList.length) * 75));
     }
-    return { dataRows: workingList, allRows: qList }
+    setDataRows(workingList);
+    return { dataRows: workingList, allRows: qList };
   };
 
   async function buildCalendarDetails(i) {
-    let [e, o, ] = i.event_key.split('#');
+    let [e, o,] = i.event_key.split('#');
     let thisEntry = await occurrenceData({
       'client_id': i.client,
       'type': 'occurrence',
@@ -474,8 +489,6 @@ export default ({ session, filter = {}, onClose }) => {
     i.workData = {};
     i.workData.formatted_type = thisEntry.description;
     i.workData.display_date = thisEntry.date.relative;
-    let owner = i.slotData.owner || i.slot_owner;
-    i.workData.requestor_image = await getImage(owner);
     i.workData.formatted_request = [];
     let location = i.location;
     if (thisEntry.location) {
@@ -487,8 +500,10 @@ export default ({ session, filter = {}, onClose }) => {
     }
     i.workData.start_time = thisEntry.time || i.time_from;
     if (i.slotData) {
+      let owner = i.slotData.owner || i.slot_owner;
+      i.workData.requestor_image = await getImage(owner);
       let this_slot = (i.slotData.slot || i.slotData.id);
-      let list_type = (this_slot === owner)
+      let list_type = (this_slot === owner);
       if (isNaN(Number(this_slot)) && !list_type) { i.workData.formatted_request.push(['detail', this_slot]); }
       else {
         let slot_number = Number(this_slot);
@@ -496,7 +511,7 @@ export default ({ session, filter = {}, onClose }) => {
         else if (this_slot && !list_type) { i.workData.formatted_request.push(['detail', this_slot]); }
       }
       if (i.slotData.status
-        && (typeof(i.slotData.status.current) === 'string')
+        && (typeof (i.slotData.status.current) === 'string')
         && (i.slotData.status.current.toLowerCase() !== 'selected')) {
         i.workData.formatted_request.push(['details', titleCase(i.slotData.status.current)]);
       }
@@ -557,287 +572,321 @@ export default ({ session, filter = {}, onClose }) => {
       return [returnMessage, returnSearch];
     }
   */
-  
+
+  async function initialize() {
+    setPWidth(100);
+    setLoading('loading');
+    await buildDashboard();
+    setLoading('complete');
+  }
+
+  if (!loading) {
+    initialize();
+  }
+
+  if (loading === 'complete') {
+    return reactScreen();
+  }
+  else {
+    return loadingScreen();
+  }
+
+  /*
   React.useEffect(() => {
     async function initialize() {
-      let myPromise = buildDashboard()
-        .then((returnedData, bad) => {
-          if (!bad) {
-            setDataRows(returnedData.dataRows);
-            setMoreRows(returnedData.allRows.length > returnedData.dataRows.length);
-            cl(`initialize done - ${returnedData.dataRows.length} rows of ${returnedData.allRows.length} loaded`)
-          }
-          else { console.log(bad); }
-        })
-      await Promise.all([myPromise]);
-  }
-  
-    cl(`initializing dashboard (run #${runNumber})`);
-    if (runNumber === 1) {
-      scrollCount = 1;
-      runNumber++;
-      initialize();
+      await buildDashboard();
     }
-    else {cl(`ignoring CalendarDashboard request #${runNumber++}`)}
-}, [session]);  // eslint-disable-line react-hooks/exhaustive-deps
-
+    initialize();
+  }, [session]);  // eslint-disable-line react-hooks/exhaustive-deps
+  */
 
   // ******************
-
-  return (
-    <Dialog
-      open={true || forceRedisplay}
-      p={2}
-      fullScreen
-    >
-      {dataRows && dataRows.length > 0 &&
-        <React.Fragment>
-          {/* Header with Avatar, Message, and VertMenu */}
-          <Box
-            display='flex' flexDirection='row'
-            className={classes.messageArea}
-            key={'topBox'}
-          >
-            <Box display='flex' flexDirection='column' key={'titlesection'}>
-              <Typography
-                className={classes.title}
-              >
-                Recent Requests
-              </Typography>
-            </Box>
+  function reactScreen() {
+    return (
+      <Dialog
+        open={true || forceRedisplay}
+        p={2}
+        fullScreen
+      >
+        {dataRows && dataRows.length > 0 &&
+          <React.Fragment>
+            {/* Header with Avatar, Message, and VertMenu */}
             <Box
-              paddingRight={2}
-              marginTop={1}
-              aria-controls='hidden-menu'
-              aria-haspopup='true'
-              onClick={(event) => {
-                handleClick(event);
-                setPopupMenuOpen(true);
-              }}>
-              <Avatar src={process.env.REACT_APP_AVA_LOGO} />
+              display='flex' flexDirection='row'
+              className={classes.messageArea}
+              key={'topBox'}
+            >
+              <Box display='flex' flexDirection='column' key={'titlesection'}>
+                <Typography
+                  className={classes.title}
+                >
+                  Upcoming Events
+                </Typography>
+              </Box>
+              <Box
+                paddingRight={2}
+                marginTop={1}
+                aria-controls='hidden-menu'
+                aria-haspopup='true'
+                onClick={(event) => {
+                  handleClick(event);
+                  setPopupMenuOpen(true);
+                }}>
+                <Avatar src={process.env.REACT_APP_AVA_LOGO} />
+              </Box>
+              <Menu
+                id='hidden-menu'
+                anchorEl={anchorEl}
+                open={popupMenuOpen}
+                onClose={() => { setPopupMenuOpen(false); }}
+                keepMounted>
+                <MenuList className={classes.popUpMenu}>
+                  <MenuItem
+                    onClick={() => {
+                      onClose();
+                    }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowHome'}
+                    >
+                      <HomeIcon />
+                      <Typography className={classes.popUpMenuRow} >{'Go to AVA Menu'}</Typography>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      let jumpTo = window.location.origin;
+                      window.location.replace(jumpTo);
+                    }}>
+                    <Box
+                      display='flex' flexDirection='row' alignItems={'center'}
+                      key={'vRowRefresh'}
+                    >
+                      <AutorenewIcon />
+                      <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
+                    </Box>
+                  </MenuItem>
+                  <MenuItem>
+                    <Box
+                      display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                      key={'vRowRefresh'}
+                    >
+                      <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                      <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
+                      <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
+                    </Box>
+                  </MenuItem>
+                </MenuList>
+              </Menu>
             </Box>
-            <Menu
-              id='hidden-menu'
-              anchorEl={anchorEl}
-              open={popupMenuOpen}
-              onClose={() => { setPopupMenuOpen(false); }}
-              keepMounted>
-              <MenuList className={classes.popUpMenu}>
-                <MenuItem
-                  onClick={() => {
-                    runNumber = 1;
-                    onClose();
-                  }}>
-                  <Box
-                    display='flex' flexDirection='row' alignItems={'center'}
-                    key={'vRowHome'}
-                  >
-                    <HomeIcon />
-                    <Typography className={classes.popUpMenuRow} >{'Go to AVA Menu'}</Typography>
-                  </Box>
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    let jumpTo = window.location.origin;
-                    window.location.replace(jumpTo);
-                  }}>
-                  <Box
-                    display='flex' flexDirection='row' alignItems={'center'}
-                    key={'vRowRefresh'}
-                  >
-                    <AutorenewIcon />
-                    <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
-                  </Box>
-                </MenuItem>
-                <MenuItem>
-                  <Box
-                    display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
-                    key={'vRowRefresh'}
-                  >
-                    <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                    <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
-                    <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
-                  </Box>
-                </MenuItem>
-              </MenuList>
-            </Menu>
-          </Box>
-          <TextField
-            id='List Filter'
-            value={request_filter}
-            onChange={handleChangeRequestFilter}
-            className={classes.freeInput}
-            label={'Filter/Search'}
-            variant={'standard'}
-            autoComplete='off'
-          />
-          <Paper
-            component={Box}
-            onScroll={moreRows ? onScroll : null}
-            className={classes.page}
-            variant='outlined'
-            overflow='auto'
-            square
-          >
-            <List  >
-              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                {rowsWritten = 0}
-              </Typography>
-              {dataRows.map((this_item, index) => (
-                ((rowsWritten <= rowLimit)
-                  && (!request_filter || filteredRequest(this_item, request_filter))
-                  && (!this_item.workData.delete_flag || showDeleted) &&
-                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
-                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      {rowsWritten++}
-                    </Typography>
-                    <Box display='flex' flexDirection='column'>
-                      <Box
-                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                        key={this_item.message_id + 'r' + index}
-                        className={classes.listItem}
-                      >
-                        <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                          <Box display='flex' flexDirection='column'>
-                            <Box display='flex' flexDirection='row'>
-                              <Box
-                                className={classes.imageArea}
-                                component="img"
-                                alt={''}
-                                src={this_item.workData.requestor_image}
-                              />
-                              <Box display='flex' flexDirection='column'>
-                                <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
-                                <Typography variant='h5' className={classes.firstName}>{this_item.workData.requestor_name}</Typography>
-                                <Typography variant='h5' className={classes.timeLine}>{`${this_item.workData.display_date}${this_item.workData.start_time ? (' - ' + this_item.workData.start_time) : ''}`}</Typography>
+            <TextField
+              id='List Filter'
+              value={request_filter}
+              onChange={handleChangeRequestFilter}
+              className={classes.freeInput}
+              label={'Filter/Search'}
+              variant={'standard'}
+              autoComplete='off'
+            />
+            <Paper
+              component={Box}
+              onScroll={moreRows ? onScroll : null}
+              className={classes.page}
+              variant='outlined'
+              overflow='auto'
+              square
+            >
+              <List  >
+                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                  {rowsWritten = 0}
+                </Typography>
+                {dataRows.map((this_item, index) => (
+                  ((rowsWritten <= rowLimit)
+                    && (!request_filter || filteredRequest(this_item, request_filter))
+                    && (!this_item.workData.delete_flag || showDeleted) &&
+                    <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
+                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                        {rowsWritten++}
+                      </Typography>
+                      <Box display='flex' flexDirection='column'>
+                        <Box
+                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                          key={this_item.message_id + 'r' + index}
+                          className={classes.listItem}
+                        >
+                          <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                            <Box display='flex' flexDirection='column'>
+                              <Box display='flex' flexDirection='row'>
+                                <Box
+                                  className={classes.imageArea}
+                                  component="img"
+                                  alt={''}
+                                  src={this_item.workData.requestor_image}
+                                />
+                                <Box display='flex' flexDirection='column'>
+                                  <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
+                                  <Typography variant='h5' className={classes.firstName}>{this_item.workData.requestor_name}</Typography>
+                                  <Typography variant='h5' className={classes.timeLine}>{`${this_item.workData.display_date}${this_item.workData.start_time ? (' - ' + this_item.workData.start_time) : ''}`}</Typography>
+                                </Box>
                               </Box>
-                            </Box>
-                            {this_item && this_item.workData && this_item.workData.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
-                              <Typography
-                                key={`prefLine-${mIndex}`}
-                                className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                              >
-                                {mLine[1]}
-                              </Typography>
-                            ))}
-                            {this_item.workData.open &&
-                              this_item.workData.messageRecs.map((mLine, dX) => (
+                              {this_item && this_item.workData && this_item.workData.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
                                 <Typography
-                                  key={('mrow_out' + dX)}
+                                  key={`prefLine-${mIndex}`}
                                   className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
                                 >
                                   {mLine[1]}
                                 </Typography>
-                              ))
-                            }
+                              ))}
+                              {this_item.workData.open &&
+                                this_item.workData.messageRecs.map((mLine, dX) => (
+                                  <Typography
+                                    key={('mrow_out' + dX)}
+                                    className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                  >
+                                    {mLine[1]}
+                                  </Typography>
+                                ))
+                              }
+                            </Box>
                           </Box>
+                          <Checkbox
+                            edge='start'
+                            checked={this_item.workData.checked}
+                            disableRipple
+                            key={'checkbox' + index}
+                            onClick={() => { toggleCheck(index); }}
+                          />
+                          <DeleteIcon
+                            onClick={() => {
+                              setConfirmMessage(`Cancel this request`);
+                              setConfirmID(this_item.message_id);
+                              setConfirmIndex(index);
+                              setDeletePending(true);
+                              setForceRedisplay(false);
+                            }}
+                          />
                         </Box>
-                        <Checkbox
-                          edge='start'
-                          checked={this_item.workData.checked}
-                          disableRipple
-                          key={'checkbox' + index}
-                          onClick={() => { toggleCheck(index); }}
-                        />
-                        <DeleteIcon
-                          onClick={() => {
-                            setConfirmMessage(`Cancel this request`);
-                            setConfirmID(this_item.message_id);
-                            setConfirmIndex(index);
-                            setDeletePending(true);
-                            setForceRedisplay(false);
-                          }}
-                        />
                       </Box>
-                    </Box>
-                  </Paper>
-                )
-              ))}
-            </List>
-          </Paper>
-          {
-            deletePending &&
-            <AVAConfirm
-              promptText={confirmMessage}
-              onCancel={() => {
-                setDeletePending(false);
-              }}
-              onConfirm={() => {
-                handleRemoveMessage(confirmID, confirmIndex);
-                setDeletePending(false);
-              }}
-            >
-            </AVAConfirm>
-          }
-          {
-            showAddPrompt &&
-            <SendMessageDialog
-              open={true}
-              onClose={() => {
-                setShowAddPrompt(false);
-              }}
-              onSelect={(selectedPerson) => {
-              }}
-            >
-            </SendMessageDialog>
-          }
-          {promptForUpdate &&
-            <AVATextInput
-              titleText={createMessageText()}
-              promptText={['New Status', '[checkbox]Mark as Complete?', 'Notes']}
-              buttonText='Update'
-              onCancel={() => { setPromptForUpdate(false); }}
-              onSave={async (requestUpdates) => {
-                setPromptForUpdate(false);
-                await handleUpdates(requestUpdates);
-              }}
-            />
-          }
-          { // Command Area
-            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-              <Box display='flex' flexDirection='column'>
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                  <Button
-                    className={classes.rowButtonGreen}
-                    onClick={() => {
-                      runNumber = 1;
-                      onClose();
-                    }}
-                    startIcon={<CloseIcon size="small" />}
-                  >
-                    {'Close'}
-                  </Button>
-                  <Button
-                    className={classes.rowButtonDefault}
-                    onClick={() => {
-                      setPromptForUpdate(true);
-                    }}
-                    startIcon={<EditIcon size="small" />}
-                  >
-                    {'Update Status'}
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      setShowAddPrompt(true);
-                    }}
-                    className={classes.rowButtonGreen}
-                    startIcon={<SendIcon size='small' />}
-                  >
-                    {`New Request`}
-                  </Button>
+                    </Paper>
+                  )
+                ))}
+              </List>
+            </Paper>
+            {
+              deletePending &&
+              <AVAConfirm
+                promptText={confirmMessage}
+                onCancel={() => {
+                  setDeletePending(false);
+                }}
+                onConfirm={() => {
+                  handleRemoveMessage(confirmID, confirmIndex);
+                  setDeletePending(false);
+                }}
+              >
+              </AVAConfirm>
+            }
+            {
+              showAddPrompt &&
+              <SendMessageDialog
+                open={true}
+                onClose={() => {
+                  setShowAddPrompt(false);
+                }}
+                onSelect={(selectedPerson) => {
+                }}
+              >
+              </SendMessageDialog>
+            }
+            {promptForUpdate &&
+              <AVATextInput
+                titleText={createMessageText()}
+                promptText={['New Status', '[checkbox]Mark as Complete?', 'Notes']}
+                buttonText='Update'
+                onCancel={() => { setPromptForUpdate(false); }}
+                onSave={async (requestUpdates) => {
+                  setPromptForUpdate(false);
+                  await handleUpdates(requestUpdates);
+                }}
+              />
+            }
+            { // Command Area
+              <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+                <Box display='flex' flexDirection='column'>
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                    <Button
+                      className={classes.rowButtonGreen}
+                      onClick={() => {
+                        onClose();
+                      }}
+                      startIcon={<CloseIcon size="small" />}
+                    >
+                      {'Close'}
+                    </Button>
+                    <Button
+                      className={classes.rowButtonDefault}
+                      onClick={() => {
+                        setPromptForUpdate(true);
+                      }}
+                      startIcon={<EditIcon size="small" />}
+                    >
+                      {'Update Status'}
+                    </Button>
+                    <Button
+                      onClick={async () => {
+                        setShowAddPrompt(true);
+                      }}
+                      className={classes.rowButtonGreen}
+                      startIcon={<SendIcon size='small' />}
+                    >
+                      {`New Request`}
+                    </Button>
+                  </Box>
                 </Box>
-              </Box>
-            </DialogActions>
-          }
-        </React.Fragment >
-      }
-      {(showReactError) &&
+              </DialogActions>
+            }
+          </React.Fragment >
+        }
+        {(showReactError) &&
+          <React.Fragment>
+            <Typography className={classes.title}>
+              {dataRows[dataRows.length + 10].person_id}
+            </Typography>
+          </React.Fragment>
+        }
+      </Dialog >
+    );
+  }
+
+  function loadingScreen() {
+    return (
+      <Box
+        display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+        key={'loadingBox'}
+        ml={2} mr={2} mb={2} mt={8}
+      >
+        <Box
+          component="img"
+          mb={2}
+          minWidth={isMobile ? 150 : 175}
+          maxWidth={isMobile ? 150 : 175}
+          alt=''
+          src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
+        />
         <React.Fragment>
-          <Typography className={classes.title}>
-            {dataRows[dataRows.length + 10].person_id}
-          </Typography>
+          <Box
+            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+            flexWrap='wrap' textOverflow='ellipsis' width='100%'
+            key={'loadingBox'}
+            mb={2}
+          >
+            <Typography variant='h5' className={classes.lastName} >{`Loading your Calendar`}</Typography>
+            <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+          </Box>
+          <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
+          <CircularProgress />
         </React.Fragment>
-      }
-    </Dialog >
-  );
+      </Box>
+    );
+  }
 };

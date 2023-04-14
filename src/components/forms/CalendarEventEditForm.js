@@ -439,7 +439,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
 
   function makeSlotName(pSlot) {
     let nSlot = Number(pSlot);
-    if (isNaN(nSlot) || (nSlot < 100) || (nSlot > 2359) || ((nSlot % 100) > 59)) { return pSlot; }
+    if (isNaN(nSlot)) { return pSlot; }
+    if ((nSlot < 100) || (nSlot > 2359) || ((nSlot % 100) > 59)) { return nSlot.toString(); }
     else { return makeReadableTime(pSlot, false); }
   }
 
@@ -618,8 +619,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                                 setSelectNewSlotOwner(true);
                               }
                               else {
+                                let pName = await makeName(pPatient);
                                 await handleAllocateSlot({
-                                  person: `${pPatientRec.patient_display_name}:${pPatient}`,
+                                  person: `${pName}:${pPatient}`,
                                   slot: this_item.slotData.id,
                                   index: (index || 0)
                                 });
@@ -666,7 +668,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 onReset();
               }}
               onSave={async (myNotes) => {
-                let slotObj = { person: `${pPatientRec ? pPatientRec.patient_display_name : ''}:${pPatient}` };
+                let pName = await makeName(pPatient);
+                let slotObj = { person: `${pName}:${pPatient}` };
                 slotObj.slot = pPatient;
                 if (myNotes) { slotObj.notes = myNotes; }
                 await handleAllocateSlot(slotObj);
@@ -722,7 +725,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         setSelectNewSlotOwner(true);
                       }
                       else {
-                        await handleAllocateSlot({ person: `${pPatientRec.patient_display_name}:${pPatient}` });
+                        let pName = await makeName(pPatient);
+                        await handleAllocateSlot({ person: `${pName}:${pPatient}` });
                       }
                     }}
                     startIcon={<PersonAddIcon size="small" />}

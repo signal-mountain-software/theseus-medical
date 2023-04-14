@@ -1,7 +1,6 @@
 import React from 'react';
 
 import { API, graphqlOperation } from 'aws-amplify';
-import { Lambda } from 'aws-sdk';
 import { getCalendarEntries } from '../../util/AVACalendars';
 
 import Box from '@material-ui/core/Box';
@@ -141,8 +140,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
   const [filterText, setFilterText] = React.useState('');
   const [myFilter, setMyFilter] = React.useState('');
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
-
   const [showAll, setShowAll] = React.useState(true);
+  const [loading, setLoading] = React.useState(false);
 
   const [lastEndDate, setLastEndDate] = React.useState();
 
@@ -157,61 +156,46 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
-
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
   const setCalendar = async () => {
-    let invokeFailed = false;
+  
     let rightNow = new Date();
-    let this_year = rightNow.getFullYear();
-    let this_month = rightNow.getMonth() + 1;
     let this_date = rightNow.getDate();
     let twoWeeksFromNow = new Date(rightNow.setDate(this_date + 14));
-    let fortnight_year = twoWeeksFromNow.getFullYear();
-    let fortnight_month = twoWeeksFromNow.getMonth() + 1;
-    let fortnight_date = twoWeeksFromNow.getDate();
     let theCalendar = [];
+    let oRecs;
+    let checkClient = eventClient || (patient.adopted_client || patient.client_id);
     if (currentEvent && currentEvent.length > 0) {
-      let oResp = await getCalendarEntries({
-        client_id: eventClient || (patient.adopted_client || patient.client_id),
+      setShowAll(false);
+      oRecs = await getCalendarEntries({
+        client_id: checkClient,
         person_id: patient.patient_id,
         event_id: currentEvent,
-        type: 'occurrence',
+        type: ['occurrence'],
         allow_create: true
       });
-      let eventRec, occRec;
-      if (Array.isArray(oResp)) {
-        eventRec = oResp[0];
-        occRec = oResp[1];
-      }
-      else {
-        eventRec = await getCalendarEntries({
-          client_id: eventClient || (patient.adopted_client || patient.client_id),
-          person_id: patient.patient_id,
-          event_id: currentEvent,
-          type: 'event'
-        });
-        occRec = oResp;
-      }
+    }
+    else {
+      setShowAll(true);
+      oRecs = await getCalendarEntries({
+        client_id: checkClient,
+        type: ['occurrence']
+      })
+    }
+    for (let o = 0; o < oRecs.length; o++) {
+      let occRec = oRecs[o];
+      let [eventRec] = await getCalendarEntries({
+        client_id: checkClient,
+        event_id: occRec.event_key,
+        type: ['event']
+      })
       let description, location, owner, signup_type, time$;
       if (eventRec.eventData) {
         description = eventRec.eventData.event_data.description;
-        
         owner = eventRec.eventData.event_data.owner;
         signup_type = eventRec.eventData.event_data.type;
         if (eventRec.eventData.event_data.time) {
           time$ = eventRec.eventData.event_data.time.from;
-          if (eventRec.eventData.event_data.time.to) { 
+          if (eventRec.eventData.event_data.time.to) {
             time$ += ' to ' + eventRec.eventData.event_data.time.to;
           }
         }
@@ -234,10 +218,16 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
       let oDate;
       if (occRec.occData && occRec.occData.date) { oDate = occRec.occData.date; }
       else { oDate = occRec.occurrence_date; }
-      theCalendar.push({
+      let [slotRec] = await getCalendarEntries({
+        client_id: checkClient,
+        event_id: occRec.event_key,
+        person_id: patient.patient_id,
+        type: ['slot']
+      })
+      let tCal = {
         client: occRec.client,
         event_key: occRec.event_key,
-        id: occRec.event_id,
+        id: occRec.event_id || occRec.id,
         // list_key: 'occurrence_master',
         schedule_key: `${oDate}`,
         occData: {
@@ -246,35 +236,18 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
           description,
           location,
           time$,
-          owner 
+          owner
         }
-      });
-      setShowAll(false);
-    }
-    else {
-      params.Payload = JSON.stringify({
-        action: "list_events",
-        clientId: eventClient || (patient.adopted_client || patient.client_id),
-        list_start: ((this_year * 10000) + (this_month * 100) + this_date).toString(),
-        list_end: ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
-        person_id: patient.patient_id
-      });
-      setShowAll(true);
-      let fResp = await lambda
-        .invoke(params)
-        .promise()
-        .catch(err => {
-          console.log("AVA couldn't complete the query.  Error is", JSON.stringify(err));
-          invokeFailed = true;
-        });
-      if (!invokeFailed) {
-        let fullResponse = JSON.parse(fResp.Payload);
-        if (fullResponse.status === 200) {
-          fullResponse.body.forEach(cEv => {
-            theCalendar.push(cEv);
-          });
-        };
-      };
+      }
+      if (slotRec) {
+        tCal.slots = [{
+          owner: patient.patient_id,
+          id: slotRec.slotData.id,
+          reminder_minutes: slotRec.slotData.reminder_minutes,
+          name: slotRec.slotData.reminder_minutes
+        }];
+      }
+      theCalendar.push(tCal);
     }
     setMyCalendar(theCalendar);
     setLastEndDate(twoWeeksFromNow);
@@ -368,9 +341,13 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
   // **************************
   React.useEffect(() => {
     async function buildIt() {
+      setLoading(true);
       await setCalendar();
+      setLoading(false);
     }
-    buildIt();
+    if (!loading) {
+      buildIt();
+    }
   }, [currentEvent]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -401,11 +378,17 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
               {(patient.kiosk_mode || !patient.patient_display_name) ? `Calendar of Events` : `${patient.patient_display_name.split(',').pop()}'s Calendar`}
             </DialogContentText>
-            {(myCalendar.length > 0) ?
+            {!loading && (myCalendar.length > 0) &&
               <DialogContentText className={classes.subDescriptionText}>
                 {formatDate(myCalendar[0].occData.date)} to {formatDate(myCalendar[myCalendar.length - 1].occData.date)}
               </DialogContentText>
-              :
+            }
+            {!loading && (myCalendar.length === 0) &&
+              <DialogContentText className={classes.subDescriptionText}>
+                This Calendar is empty!
+              </DialogContentText>
+            }
+            {loading &&
               <DialogContentText className={classes.subDescriptionText}>
                 Building your Calendar
               </DialogContentText>
