@@ -1165,6 +1165,7 @@ export default ({
           pMessageList={[]}
           pSession={session}
           onReset={onSave}
+          defaultValue={defaultValue}
         />
       );
     case 'make_message':

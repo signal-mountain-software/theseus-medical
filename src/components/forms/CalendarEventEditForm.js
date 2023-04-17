@@ -6,6 +6,7 @@ import { getSlotList, writeSlot } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
 import { cl, makeArray } from '../../util/AVAUtilities';
 import { makeName, getImage } from '../../util/AVAPeople';
+import { sendMessages } from '../../util/AVAMessages';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -306,25 +307,22 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   };
 
   const handleSendMessage = async (pMessage, pRecipient = null) => {
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-    params.Payload = JSON.stringify({
-      "body": {
-        "client": pClient,
-        "author": pPatient,
-        "values": pRecipient + ' ~ MessageText = ' + pMessage
-      }
+    await sendMessages({
+      client: pClient,
+      author: pPatient,
+      messageText: pMessage,
+      recipientList: pRecipient,
+      subject: pOccData.description
     });
-    lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
-    enqueueSnackbar(`Sent "${pMessage}" to everyone.`, {
-      variant: 'success'
-    });
+    let sentTo;
+    if (typeof pRecipient === 'string') { sentTo = await makeName(pRecipient); }
+    else if (pRecipient.length === 1) { sentTo = await makeName(pRecipient[0]); }
+    else {
+      let random = Math.floor(Math.random() * pRecipient.length);
+      let randomName = await makeName(pRecipient[random]);
+      sentTo = `${pRecipient.length} people, including ${randomName}`;
+    };
+    enqueueSnackbar(`Your message was sent to ${sentTo}`, { variant: 'success' });
   };
 
   const handleAllocateSlot = async (body) => {
@@ -439,7 +437,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
 
   function makeSlotName(pSlot) {
     let nSlot = Number(pSlot);
-    if (isNaN(nSlot) || (nSlot < 100) || (nSlot > 2359) || ((nSlot % 100) > 59)) { return pSlot; }
+    if (isNaN(nSlot)) { return pSlot; }
+    if ((nSlot < 100) || (nSlot > 2359) || ((nSlot % 100) > 59)) { return nSlot.toString(); }
     else { return makeReadableTime(pSlot, false); }
   }
 
@@ -618,8 +617,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                                 setSelectNewSlotOwner(true);
                               }
                               else {
+                                let pName = await makeName(pPatient);
                                 await handleAllocateSlot({
-                                  person: `${pPatientRec.patient_display_name}:${pPatient}`,
+                                  person: `${pName}:${pPatient}`,
                                   slot: this_item.slotData.id,
                                   index: (index || 0)
                                 });
@@ -656,36 +656,57 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
           >
           </PersonFilter>
         }
-        {(rowsWritten === 0) &&
-          (!isBrowsing ?
-            <AVATextInput
-              titleText={`Adding you to the list`}
-              promptText={'Notes or Additional Information'}
-              buttonText='Confirm'
-              onCancel={() => {
-                onReset();
-              }}
-              onSave={async (myNotes) => {
-                let slotObj = { person: `${pPatientRec ? pPatientRec.patient_display_name : ''}:${pPatient}` };
-                slotObj.slot = pPatient;
-                if (myNotes) { slotObj.notes = myNotes; }
-                await handleAllocateSlot(slotObj);
-              }}
-            />
-            :
-            <AVATextInput
-              titleText={`The list is empty`}
-              promptText={[]}
-              buttonText='Add Myself'
-              onCancel={() => {
-                onReset();
-              }}
-              onSave={() => {
-                setIsBrowsing(false);
-                setForceRedisplay(!forceRedisplay);
-              }}
-            />
-          )
+        {(rowsWritten === 0) && isBrowsing &&
+          <AVATextInput
+            titleText={`The list is empty`}
+            promptText={[]}
+            buttonText='Add Myself'
+            onCancel={() => {
+              onReset();
+            }}
+            onSave={() => {
+              setIsBrowsing(false);
+              setForceRedisplay(!forceRedisplay);
+            }}
+          />
+        }
+        {(rowsWritten === 0)
+          && !isBrowsing
+          && ((pOccData.signup_type === 'time') || (pOccData.signup_type === 'seats'))
+          &&
+          <AVATextInput
+            titleText={`You are not on the list yet.  Tap "Add me" below.`}
+            promptText={'(Optional) Notes or Additional Information'}
+            buttonText='Add me!'
+            onCancel={() => {
+              onReset();
+            }}
+            onSave={async (myNotes) => {
+              let pName = await makeName(pPatient);
+              let slotObj = { person: `${pName}:${pPatient}` };
+              slotObj.slot = pPatient;
+              if (myNotes) { slotObj.notes = myNotes; }
+              await handleAllocateSlot(slotObj);
+            }}
+          />
+        }
+        {(rowsWritten === 0)
+          && !isBrowsing
+          && (pOccData.signup_type !== 'time')
+          && (pOccData.signup_type !== 'seats')
+          &&
+          <AVATextInput
+            titleText={`Want to learn more?  Send a message to the event sponsor...`}
+            promptText={'Message Text'}
+            buttonText='Send'
+            onCancel={() => {
+              onReset();
+            }}
+            onSave={async (myMessage) => {
+              await handleSendMessage(myMessage, pOccData.owner);
+              onReset();
+            }}
+          />
         }
         {promptForMessage &&
           <AVATextInput
@@ -722,7 +743,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         setSelectNewSlotOwner(true);
                       }
                       else {
-                        await handleAllocateSlot({ person: `${pPatientRec.patient_display_name}:${pPatient}` });
+                        let pName = await makeName(pPatient);
+                        await handleAllocateSlot({ person: `${pName}:${pPatient}` });
                       }
                     }}
                     startIcon={<PersonAddIcon size="small" />}

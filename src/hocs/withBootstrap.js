@@ -277,7 +277,7 @@ export default Component => props => {
   }
 
   function testModeErrorTrap() {
-    return (doneTrying && (messageList.length > 0) && (['L', 'T'].includes(AVA_environment)));
+    return (doneTrying && (messageList.length > 0));
   }
 
   if (!AVAReady && !localAVAReady) {
@@ -316,7 +316,7 @@ export default Component => props => {
             key={'loadingBox'}
             mb={2}
           >
-            <Typography variant='h5' >{`AVA Testing Assistant`}</Typography>
+            <Typography variant='h5' >{`AVA Assistant`}</Typography>
             {messageList.map((pLine, index) => (
               <Typography
                 className={classes.notTitle}

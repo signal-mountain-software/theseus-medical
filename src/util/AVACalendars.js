@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, makeArray, makeNumber, resolveVariables, uuid } from './AVAUtilities';
+import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid } from './AVAUtilities';
 import { makeName } from './AVAPeople';
 import { addDays, makeDate } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
@@ -12,6 +12,8 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   accessKeyId: process.env.REACT_APP_AVA_ID,
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
+
+let eventCache = {};
 
 // Functions
 
@@ -33,6 +35,7 @@ export async function addEvent(body) {
         "owner"
         "restrictions"
         "signup_type"
+        "slots"  (24h based time slots)
         "slot_max_seats": slot_max_seats,
         "slot_interval": slot_interval,
         "slot_visibility":
@@ -73,10 +76,9 @@ export async function addEvent(body) {
         name_security: (body.calendar_info.slot_visibility && (body.calendar_info.slot_visibility !== 'show_name')),
         type: body.calendar_info.signup_type,
       },
-      slotPattern: body.calendar_info.slot_max_seats ? setSeatNames(body.calendar_info.slot_max_seats) : body.calendar_info.slots
+      slotPattern: setSlots(body.calendar_info)
     }
   };
-
   await dbClient
     .put({
       Item: eventRec,
@@ -87,7 +89,13 @@ export async function addEvent(body) {
       cl(`caught error updating Calendar; error is:`, error);
       return false;
     });
-
+  eventCache[eventID] = eventRec;
+  await getOccurenceList({
+    client: body.clientId,
+    event: eventID,
+    from_date: eventRec.eventData.occPattern.first_date,
+    number_of_occurrences: 1
+  });
   return eventRec;
 
   // **********
@@ -99,7 +107,10 @@ export async function addEvent(body) {
 
   function setRecurrence(inR) {
     let first_date = makeDate(body.calendar_info.event_date);
-    let last_date = body.calendar_info.last_date ? makeDate(body.calendar_info.last_date).numeric : null;
+    if (!body.calendar_info.last_date) {
+      body.calendar_info.last_date = addDays(first_date.date, 365);
+    }
+    let last_date = makeDate(body.calendar_info.last_date).numeric;
     switch (inR) {
       case 'yearly':
       case 'annually_on': {
@@ -139,7 +150,7 @@ export async function addEvent(body) {
           recurrence: 'daily',
           first_date: first_date.numeric,
           last_date,
-          day_of_week: [first_date.date.getDay()]
+          day_of_week: body.calendar_info.occDays
         };
       }
       case 'monthly_by_dayOfWeek': {
@@ -172,22 +183,35 @@ export async function addEvent(body) {
     }
   }
 
+  function setSlots(inCalInfo) {
+    if (inCalInfo.slots) { return inCalInfo.slots; }
+    else if (inCalInfo.slot_max_seats) { return setSeatNames(inCalInfo.slot_max_seats); }
+    else { return null; }
+  }
+
   function setSeatNames(inNum) {
+    let digits, starter, lastSeat;
+    if (inNum < 10) { digits = 1; starter = 11; lastSeat = 10 + inNum; }
+    else if (inNum < 100) { digits = 2; starter = 101; lastSeat = 100 + inNum; }
+    else if (inNum < 1000) { digits = 3; starter = 1001; lastSeat = 1000 + inNum; }
+    else return [];
     let returnArr = [];
-    for (let i = 0; i < inNum; i++) {
-      returnArr.push(i.toString());
+    for (let i = starter; i <= lastSeat; i++) {
+      returnArr.push((i.toString().slice(-digits)));
     }
     return returnArr;
   }
 };
 
-export async function getCalendarEntries(body) {
+export async function getCalendarEntries(body, statusUpdate) {
   /*  
   body: {
     client_id  (alt client)
     person_id  (alt person)
     event_id  (form event#occurrence OK) (alt event)
     occurrence_id  (if present, replaces occurrence in event_id) (alt occurrence)
+    start_date (find occurrences starting on this date)
+    end_date (find occurrences up to this date)
     type ('event', 'occurrence', 'slot', 'all', 'exact', 'structure')
     allow_create  (boolean - if type = occurrence AND record does not exist AND occurrence_id is a valid eccurrence for this event )
     return_event (boolean - when allow_create adds an occerrence, also return the associated event record)
@@ -199,10 +223,22 @@ export async function getCalendarEntries(body) {
     }
   }
   */
+  let start_Date, end_Date;
+  if (body.startDate) { start_Date = makeDate(body.startDate).numeric; }
+  else { start_Date = makeDate('today').numeric; }
+  if (body.endDate) { end_Date = makeDate(body.endDate).numeric; }
+  if (!end_Date || (end_Date < start_Date)) { end_Date = makeDate(addDays(makeDate(start_Date).date, 7)).numeric; }
+  let returnArr = [];
   let rC = body.client_id || body.client;
   let rP = body.person_id || body.person || body.filter?.person_id || body.filter?.person;
-  let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
-  let rT = body.type || body.filter?.type;
+  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
+  let rTin = body.type || body.filter?.type;
+  let rT = [];
+  if (!Array.isArray(rTin)) {
+    if (!rTin) { rT = ['occurrence', 'event']; }
+    else { rT = [rTin]; }
+  }
+  else { rT = [...rTin]; }
   let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
   let create_occ = false;
   if (body.allow_create) { create_occ = body.allow_create; }
@@ -211,77 +247,164 @@ export async function getCalendarEntries(body) {
   else if (rV) { rO = rV.split('#')[1]; }     // rV sent without an rO; try to set rO from the rV value
   else { }   // netiher sent;  that's OK
   let qQ = { TableName: 'Calendar' };
-  let returnValueIfNotFound = false;
-  if (rV) {
-    qQ.KeyConditionExpression = 'client = :c';
-    qQ.ExpressionAttributeValues = { ':c': rC };
-    if (rT) {
-      switch (rT) {
-        case 'all': {
-          qQ.KeyConditionExpression += ' and begins_with(event_key, :rP)';
-          qQ.ExpressionAttributeValues[':rP'] = `${rV.split('#')[0]}#`;
-          returnValueIfNotFound = [];
-          break;
-        }
-        case 'event': {
-          qQ.KeyConditionExpression += ' and event_key = :rP';
-          qQ.ExpressionAttributeValues[':rP'] = `${rV.split('#')[0]}`;
-          break;
-        }
-        case 'occurrence': {
-          qQ.KeyConditionExpression += ' and event_key = :rP';
-          let rParts = rV.split('#');
-          qQ.ExpressionAttributeValues[':rP'] = `${rParts[0]}#${rParts[1]}`;
-          break;
-        }
-        case 'structure': {
-          qQ.KeyConditionExpression += ' and begins_with(event_key, :rP)';
-          qQ.ExpressionAttributeValues[':rP'] = rV;
-          returnValueIfNotFound = [];
-          break;
-        }
-        case 'slot':
-        case 'exact':
-        default: {
-          qQ.KeyConditionExpression += ' and event_key = :rP';
-          qQ.ExpressionAttributeValues[':rP'] = rV;
-          break;
+  for (let t = 0; t < rT.length; t++) {
+    if (rV) {
+      qQ.KeyConditionExpression = 'client = :c';
+      qQ.ExpressionAttributeValues = { ':c': rC };
+      if (rT[t]) {
+        switch (rT[t]) {
+          case 'all': {
+            qQ.KeyConditionExpression += ' and begins_with(event_key, :rV)';
+            qQ.ExpressionAttributeValues[':rV'] = `${rV.split('#')[0]}#`;
+            break;
+          }
+          case 'event': {
+            qQ.KeyConditionExpression += ' and event_key = :rV';
+            qQ.ExpressionAttributeValues[':rV'] = `${rV.split('#')[0]}`;
+            break;
+          }
+          case 'occurrence': {
+            qQ.KeyConditionExpression += ' and event_key = :rV';
+            let rParts = rV.split('#');
+            qQ.ExpressionAttributeValues[':rV'] = `${rParts[0]}#${rParts[1]}`;
+            break;
+          }
+          case 'structure': {
+            qQ.KeyConditionExpression += ' and begins_with(event_key, :rV)';
+            qQ.ExpressionAttributeValues[':rV'] = rV;
+            break;
+          }
+          case 'slot': {
+            if (rP) {
+              qQ.KeyConditionExpression += ' and begins_with(event_key, :rV)';
+              qQ.ExpressionAttributeValues[':rV'] = rV;
+              qQ.FilterExpression = 'begins_with(list_key, :rP)';
+              qQ.ExpressionAttributeValues[':rP'] = `${rP}#`;
+              break;
+            }
+            // fall through is intentional
+          }
+          // eslint-disable-next-line
+          case 'exact':
+          default: {
+            qQ.KeyConditionExpression += ' and event_key = :rV';
+            qQ.ExpressionAttributeValues[':rV'] = rV;
+            break;
+          }
         }
       }
     }
-  }
-  else if (rP) {
-    qQ.IndexName = 'sign_up-index';
-    qQ.KeyConditionExpression = 'schedule_key = :s and begins_with(list_key, :rP)';
-    qQ.ExpressionAttributeValues = { ':rP': `${rP}#`, ':s': 'slot_data' };
-    returnValueIfNotFound = [];
-  }
-
-  let qR = await dbClient
-    .query(qQ)
-    .promise()
-    .catch(error => {
-      if (error.code === 'NetworkingError') {
-        cl(`Security Violation or no Internet Connection`);
-      }
-      cl(`Error reading ${qQ.TableName} id ${error}`);
-    });
-  if (recordExists(qR)) {
-   if (qR.Items.length === 1) { return qR.Items[0]; }
+    else if (rP) {
+      qQ.IndexName = 'sign_up-index';
+      qQ.KeyConditionExpression = 'schedule_key = :s and begins_with(list_key, :rP)';
+      qQ.ExpressionAttributeValues = { ':rP': `${rP}#`, ':s': 'slot_data' };
+    }
     else {
-      // return the list of calendar entries sorted by date in event key (most recent first)
-      return qR.Items.sort((a, b) => {
-        if ((a.event_key.split(/#(.*)/)[1] || null) > (b.event_key.split(/#(.*)/)[1] || null)) { return -1; }
-        else { return 1; }
+      // when falling through to here, no event or person was passed in
+      // we assume they want all entries in the calendar moving forward from this date
+      qQ.IndexName = 'occurrence_date-index';
+      qQ.KeyConditionExpression = 'client = :c and occurrence_date between :go and :stop';
+      qQ.ExpressionAttributeValues = { ':c': rC, ':go': start_Date.toString(), ':stop': end_Date.toString() };
+      if (rT[t]) {
+        switch (rT[t]) {
+          case 'all': {
+            // later, code to fetch events that go with the occurrences and slots found
+            break;
+          }
+          case 'event': {
+            // later, code to fetch events that go with the occurrences found (remove occurrences from results)
+            break;
+          }
+          case 'exact':
+          case 'occurrence': {
+            qQ.FilterExpression = 'attribute_not_exists(slotData)';
+            break;
+          }
+          case 'structure': {
+            break;
+          }
+          case 'slot':
+          default: {
+            qQ.FilterExpression = 'attribute_exists(slotData) and slotData <> :null';
+            qQ.ExpressionAttributeValues[':null'] = null;
+            break;
+          }
+        }
+      }
+    }
+    if (statusUpdate) { statusUpdate('Retrieving events', 100, 10); }
+    let qR;
+    if ((rT === 'event') && eventCache && (eventCache[rV.split('#')[0]])) {
+      qR = { Items: [eventCache[rV.split('#')[0]]] };
+    }
+    else {
+      qR = await dbClient
+        .query(qQ)
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            cl(`Security Violation or no Internet Connection`);
+          }
+          cl(`Error reading ${qQ.TableName} id ${error}`);
+        });
+      if ((rT === 'event') && recordExists(qR)) {
+        eventCache[rV.split('#')[0]] = qR.Items[0];
+      }
+    }
+    if (recordExists(qR)) {
+      if (statusUpdate) {
+        let count = qR.Items.length;
+        statusUpdate(`Found ${count} events`, count, ((100 + count) * .10) / 100);
+      }
+      returnArr.push(...qR.Items);
+    }
+    else {
+      if ((rT[t] === 'occurrence') && (create_occ)) {
+        // occurrence not found... 
+        // asked to create the entry if not found(create_occ = true), so...
+        let newOcc = await validateOccurrence(rC, rV, rO);  // will not create if it is an invalid occurrence
+        if (newOcc && Array.isArray(newOcc)) { returnArr.push(...newOcc); }
+      }
+    }
+  }  // end of loop for requested types
+  // for every entry found, look for the next occurrence of that same event (if any)
+  // add that entry to the array
+  let prevDate, showDate;
+  for (let a = 0; a < returnArr.length; a++) {
+    if (returnArr[a].occurrence_date < end_Date) {
+      if (statusUpdate) {
+        if (returnArr[a].occurrence_date !== prevDate) {
+          showDate = makeDate(returnArr[a].occurrence_date).relative;
+          prevDate = returnArr[a].occurrence_date;
+        }
+        statusUpdate(showDate, returnArr.length, ((a / returnArr.length) * 100));
+      }
+      let nextOcc = await getOccurenceList({
+        client: returnArr[a].client,
+        event: returnArr[a].event_id,
+        from_date: Number(returnArr[a].occurrence_date) + 1,
+        to_date: end_Date,
+        number_of_occurrences: 1
       });
+      if (nextOcc && nextOcc.occArray && (nextOcc.occArray.length > 0) && nextOcc.occArray[0]) {
+        let newKey = `${returnArr[a].event_id}#${nextOcc.occArray[0]}`;
+        if (returnArr.some(a => { return (a.event_key === newKey); })) { continue; }
+        else {
+          returnArr.push({
+            client: returnArr[a].client,
+            event_id: returnArr[a].event_id,
+            event_key: `${returnArr[a].event_id}#${nextOcc.occArray[0]}`,
+            occurrence_date: nextOcc.occArray[0]
+          });
+        }
+      }
     }
   }
-  else {
-    if ((rT !== 'occurrence') || (!create_occ)) { return returnValueIfNotFound; }
-    // occurrence not found... 
-    // asked to create the entry if not found(create_occ = true), so...
-    return await validateOccurrence(rC, rV, rO, true);  // will not create if it is an invalid occurrence
-  }
+  // return the list of calendar entries sorted by date/slot in event key (oldest first)
+  return returnArr.sort((a, b) => {
+    if ((a.event_key.split(/#(.*)/)[1] || null) > (b.event_key.split(/#(.*)/)[1] || null)) { return 1; }
+    else { return -1; }
+  });
 }
 
 export async function updateCalendarEntry(body) {
@@ -354,19 +477,15 @@ export async function getSlotList(request) {
   let eventRec = {};
   let occRec = {};
   let slotObj = {};
-  let event_id, event_occurrence;
-  if (typeof (request.event) === 'string') {
-    [event_id, event_occurrence] = request.event.split('#');
-    eventRec = await getCalendarEntries({ client: request.client, event: `${event_id}`, type: 'event' });
-    if (!event_occurrence) { event_occurrence = request.occurrence; }
-    occRec = await getCalendarEntries({ client: request.client, event: `${event_id}#${event_occurrence}`, type: 'occurrence' });
+  if (Array.isArray(request.event)) { request.event = makeString(request.event, 1); }
+  let cRecs = await getCalendarEntries({ client: request.client, event: request.event, type: ['event', 'occurrence'] });
+  if (cRecs[0].eventData || cRecs[0].calData) {
+    eventRec = cRecs[0];
+    if (cRecs[1]) { occRec = cRecs[1]; }
   }
   else {
-    if (typeof (request.event) === 'object') { eventRec = request.event; }
-    if (typeof (request.occurrence) === 'object') { occRec = request.occurrence; }
-    else {
-      occRec = await getCalendarEntries({ client: request.client, event: `${eventRec.event_id}#${request.occurrence}`, type: 'occurrence' });
-    }
+    occRec = cRecs[0];
+    if (cRecs[1]) { eventRec = cRecs[1]; }
   }
   if (eventRec && ('eventData' in eventRec) && (eventRec.eventData.slotPattern)) {
     let slotArray = eventRec.eventData.slotPattern;
@@ -378,7 +497,7 @@ export async function getSlotList(request) {
       };
     });
   }
-  let slotRecs = await getCalendarEntries({ client: request.client, event: `${occRec.event_key}`, type: 'structure' });
+  let slotRecs = await getCalendarEntries({ client: request.client, event: occRec.event_key, type: 'structure' });
   if (slotRecs.length > 0) {
     slotRecs.forEach(r => {
       if (r.slotData) {
@@ -397,6 +516,7 @@ export async function getSlotList(request) {
 
 export async function getOccurenceList(request) {
   /* 
+  takes the request and builds an array of valid occurrence dates for the requested events
   request
     client - client
     event - use this event 
@@ -414,10 +534,11 @@ export async function getOccurenceList(request) {
   let event_id, event_occurrence;
   if (typeof (request.event) === 'string') {
     [event_id, event_occurrence] = request.event.split('#');
-    eventRec = await getCalendarEntries({ client: request.client, event: event_id, type: 'event' });
+    [eventRec] = await getCalendarEntries({ client: request.client, event: event_id, type: 'event' });
   }
   else { eventRec = request.event; }
   let response = { eventRec, occArray: [], occRec: {} };
+  if (!eventRec) { return response; }
   let from_date, from_numeric, to_date, to_numeric;
   if (request.from_date
     || (('date' in request) &&
@@ -431,7 +552,7 @@ export async function getOccurenceList(request) {
   if (request.to_date
     || (('date' in request) &&
       ((request.date.hasOwnProperty('to')) || (request.date.hasOwnProperty('to_date'))))) {
-    let tDate = makeDate(request.to_date || request.date.to || request.date.to_date).date;
+    let tDate = makeDate(request.to_date || request.date.to || request.date.to_date);
     to_date = tDate.date;
     to_numeric = tDate.numeric;
   }
@@ -546,6 +667,8 @@ export async function getOccurenceList(request) {
   }
 
   async function goodCandidate(inDate) {
+    // determines if a specific date is between the first and last dates, and not excluded
+    // will return false or the date in yyyymmdd numeric format
     let numericDate, stringDate;
     if (typeof inDate === 'string') { stringDate = inDate; numericDate = Number(inDate); }
     else { stringDate = inDate.toString(); numericDate = inDate; }
@@ -556,39 +679,39 @@ export async function getOccurenceList(request) {
       }
       else { return false; } // found a date specifically excluded
     }
-    if (('first_date' in occPattern) && (numericDate < occPattern.first_date)) { return false; }
+    if (occPattern['first_date'] && (numericDate < occPattern.first_date)) { return false; }
     if (numericDate < from_numeric) { return false; }
-    if (('last_date' in occPattern) && (numericDate > occPattern.last_date)) { return false; }
+    if (occPattern['last_date'] && (numericDate > occPattern.last_date)) { return false; }
     if (numericDate > to_numeric) { return false; }
     // All good if we get this far
     response.occArray.push(numericDate);
-    let oRec = await getCalendarEntries({ client: request.client, event: `${event_id}#${stringDate}`, type: 'occurrence' });
-    if (recordExists.oRec) { response.occRec[stringDate] = oRec.occData; }
+    let oResp = await validateOccurrence(request.client, event_id, stringDate);
+    if (Array.isArray(oResp)) { response.occRec[stringDate] = oResp[1]; }
     return numericDate;
   }
 }
 
-export async function validateOccurrence(client, inEvent, inDate, addRec = false) {
+export async function validateOccurrence(client, inEvent, inDate) {
+  // return occurrence and event records for a specific event/date occurrence;  create the occurrence if it doesn't exist
+  let eventRec, occRec;
   let cDate = makeDate(inDate);
-  let result = await getOccurenceList({
-    client,
-    event: inEvent,
-    from_date: cDate.date,
-    to_date: cDate.date
-  });
-  if (result.occArray.length > 0) {
-    if (result.occRec.hasOwnProperty[result.occArray[0]]) { return result.occRec[result.occArray[0]]; }
-    else { return true; }
+  let reqEvent = `${inEvent.split('#')[0]}#${cDate.numeric}`;
+  let cRecs = await getCalendarEntries({ client: client, event: reqEvent, type: ['event', 'occurrence'] });
+  if (cRecs[0].eventData || cRecs[0].calData) {
+    eventRec = cRecs[0];
+    if (cRecs[1]) { occRec = cRecs[1]; }
   }
   else {
-    if (!addRec) { return false; }
-    let occRec = await addOccurrence({
-      client,
-      event: result.eventRec,
-      occurrence_date: cDate.numeric
-    });
-    return [result.eventRec, occRec];
+    occRec = cRecs[0];
+    if (cRecs[1]) { eventRec = cRecs[1]; }
   }
+  if (cRecs[1]) { return [eventRec, occRec]; }
+  occRec = await addOccurrence({
+    client,
+    event: eventRec,
+    occurrence_date: cDate.numeric
+  });
+  return [eventRec, occRec];
 }
 
 export async function addOccurrence(body) {
@@ -646,11 +769,11 @@ export async function writeSlot(body) {
     "status": <"null (=selected), released, reserved, confirmed, attended, no-show, off_campus, left_campus, entered_campus... ">
     "show_this_slot": <boolean>  (assume true if missing or null)
   */
-  let [event_id, occ_id] = body.event.split('#');
+  let [event_id, occ_id] = makeString(body.event, 1).split('#');
   let occurrence = body.occurrence_date || occ_id;
   if (!body.slot && body.id) { body.slot = body.id; }
   let event_key = `${event_id}#${occurrence}#${body.slot}`;
-  let slotRec = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'slot' });
+  let [slotRec] = await getCalendarEntries({ client: body.client, event: event_key, type: 'slot' });
   let slotHistory = [];
   if (slotRec) {
     if (slotRec.slotData.status) { slotHistory = slotRec.slotData.status.history; }
@@ -662,6 +785,7 @@ export async function writeSlot(body) {
       }];
     }
   }
+  else { slotRec = {}; }
 
   let slotDataObj = Object.assign(
     {},
@@ -815,7 +939,7 @@ export async function updateSlotStatus(request) {
     }
     let peopleArray = makeArray(this_request.person);
     for (let o = 0; o < occArray.length; o++) {
-      await validateOccurrence(request.client, this_request.event, occArray[o], true);
+      await validateOccurrence(request.client, this_request.event, occArray[o]);
       for (let p = 0; p < peopleArray.length; p++) {
         let [pID, pName] = peopleArray[p].split(':');
         await writeSlot({
@@ -862,18 +986,18 @@ export async function occurrenceData(body) {
     time: '',
     slots: {}
   };
- 
+
   let rC = body.client_id || body.client;
-  let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
+  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
   let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
   if (rO && rV) { rV = rV.split('#')[0] + '#' + rO; }   // both sent in change rV to include passed rO
   else if (rO) { return {}; }    // rO sent without an rV - that's bad; ignore rO
   else if (rV) { rO = rV.split('#')[1]; }     // rV sent without an rO; try to set rO from the rV value
   else { return {}; }   // netiher sent;  return void
   // if no rO was set, use the event only (all slots will be empty)
-  let eventInfoArray = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'event' });
+  let [eventInfo] = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'event' });
   let occInfoArray = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'structure' });
-  occInfoArray.unshift(eventInfoArray);
+  occInfoArray.unshift(eventInfo);
   occInfoArray.forEach((rec, x) => {
     if (!returnObj.date && (rec.occurrence_date || (makeNumber(rec.schedule_key) > 0))) {
       returnObj.date = makeDate(rec.occurrence_date || makeNumber(rec.schedule_key));
@@ -929,7 +1053,7 @@ export async function occurrenceData(body) {
           });
         }
       }
-      else { 
+      else {
         if ('description' in rec.occData) {
           returnObj.description = rec.occData.description;
         };
@@ -1124,7 +1248,7 @@ export async function printOccurrenceSheet(body) {
     .fontSize(fSize[2] - 2)
     .text('***** END *****', 36, pageHeight - 36);
   let rC = body.client_id || body.client;
-  let rV = body.event_id || body.event || body.filter?.event_id || body.filter?.event;
+  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
   doc.text('AVA reference: ' + rC + '/' + rV + '/' + body.request_type + '/' + postTime);
   doc.text('Printed: ' + timeString + ' ET');
 

@@ -1,4 +1,4 @@
-import { isPromise, cl, recordExists } from '../util/AVAUtilities';
+import { isPromise, cl, recordExists, sentenceCase } from '../util/AVAUtilities';
 
 const AWS = require('aws-sdk');
 
@@ -49,6 +49,95 @@ export async function makeName(pRec) {
 export function getImage(pPerson) {
     return `https://d3sds9ybtm36gy.cloudfront.net/${pPerson}.jpg`;
 };
+
+export async function getPersonFromPartialID(pClient, pID) {
+    let qQ = { TableName: 'People' };
+    qQ.IndexName = 'client_id-index';
+    qQ.KeyConditionExpression = 'client_id = :c';
+    qQ.FilterExpression = 'contains(#p, :pID)';
+    qQ.ExpressionAttributeNames = { '#p': 'person_id' };
+    qQ.ExpressionAttributeValues = { ':c': pClient, ':pID': pID };
+    let qR = await dbClient
+        .query(qQ)
+        .promise()
+        .catch(error => {
+            if (error.code === 'NetworkingError') {
+                console.log(`Security Violation or no Internet Connection`);
+            }
+            console.log({ 'Error reading ServiceRequests by Person': error });
+        });
+    if (recordExists(qR)) {
+        for (let p = 0; p < qR.Items.length; p++) {
+            foundPeople[qR.Items[p].person_id] = qR.Items[p];
+        }
+        return qR.Items;
+    }
+    else { return []; }
+}
+
+export async function getPersonFromLocation(pClient, pLoc) {
+    let replacements = {
+        East: 'E',
+        West: 'W',
+        North: 'N',
+        South: 'S',
+        Unit: ' '
+    }
+    for (let v in replacements) {
+        pLoc = pLoc.replace(v, replacements[v]);
+        pLoc = pLoc.replace(v.toLowerCase(), replacements[v]);
+        pLoc = pLoc.replace(v.toUpperCase(), replacements[v]);
+    }
+    pLoc = pLoc.replace(/\s+/g, '-');
+    let qQ = { TableName: 'People' };
+    qQ.IndexName = 'client_id-index';
+    qQ.KeyConditionExpression = 'client_id = :c';
+    qQ.FilterExpression = 'contains(#l, :pL) or contains(#l, :pLup) or contains(#l, :pLow)';
+    qQ.ExpressionAttributeNames = { '#l': 'location' };
+    qQ.ExpressionAttributeValues = { ':c': pClient, ':pL': pLoc, ':pLup': pLoc.toUpperCase(), ':pLow': pLoc.toLowerCase() };
+    let qR = await dbClient
+        .query(qQ)
+        .promise()
+        .catch(error => {
+            if (error.code === 'NetworkingError') {
+                console.log(`Security Violation or no Internet Connection`);
+            }
+            console.log({ 'Error reading ServiceRequests by Person': error });
+        });
+    if (recordExists(qR)) {
+        for (let p = 0; p < qR.Items.length; p++) {
+            foundPeople[qR.Items[p].person_id] = qR.Items[p];
+        }
+        return qR.Items;
+    }
+    else { return []; }
+}
+
+export async function getPersonByName(pClient, pFirstName, pLastName) {
+    if (!pLastName) { [pFirstName, pLastName] = pFirstName.split(' '); }
+    let qQ = { TableName: 'People' };
+    qQ.IndexName = 'display_name-index';
+    qQ.KeyConditionExpression = 'client_id = :c';
+    qQ.FilterExpression = 'contains(#f, :f) and contains(#f, :l)';
+    qQ.ExpressionAttributeValues = { ':c': pClient, ':f': sentenceCase(pFirstName), ':l': sentenceCase(pLastName) };
+    qQ.ExpressionAttributeNames = { '#f': 'display_name' }
+    let qR = await dbClient
+        .query(qQ)
+        .promise()
+        .catch(error => {
+            if (error.code === 'NetworkingError') {
+                console.log(`Security Violation or no Internet Connection`);
+            }
+            console.log({ 'Error reading ServiceRequests by Person': error });
+        });
+    if (recordExists(qR)) {
+        for (let p = 0; p < qR.Items.length; p++) {
+            foundPeople[qR.Items[p].person_id] = qR.Items[p];
+        }
+        return qR.Items;
+    }
+    else { return []; }
+}
 
 export async function getPerson(pID, pElement = '*all', override = false) {
     if (!foundPeople || (!(pID in foundPeople)) || override) {

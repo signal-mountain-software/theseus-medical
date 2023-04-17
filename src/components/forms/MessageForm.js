@@ -1,7 +1,7 @@
 import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
-import { getImage, getPerson } from '../../util/AVAPeople';
+import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 
 import List from '@material-ui/core/List';
 
@@ -167,7 +167,7 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: process.env.REACT_APP_AVA_KEY
 });
 
-export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
+export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValue }) => {
 
   const classes = useStyles();
 
@@ -191,7 +191,14 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
   const [recipientIndex, setRecipientIndex] = React.useState(-1);
   const [open, setOpen] = React.useState([]);
 
-  const [inOut_mode, setinOut] = React.useState('in');
+  let setDefault = 'in';
+  if (defaultValue) {
+    if (Array.isArray(defaultValue)) {
+      defaultValue = defaultValue[0];
+    }
+    if (['sent', 'out'].includes(defaultValue)) { setDefault = 'out'; }
+  }
+  const [inOut_mode, setinOut] = React.useState(setDefault);
 
   const [rowLimit, setRowLimit] = React.useState(20);
   const [previousY, setCurrentY] = React.useState(0);
@@ -552,9 +559,10 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset }) => {
             this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
           }
           else {
-            this_message.sender_image = await getImage('AVA Logo');
-            this_message.toLine = (`${m.recipient_list[rArray[0]].name.first} ${m.recipient_list[rArray[0]].name.last}`).trim();
-            this_message.toLine += ` and ${rArray.length - 1} others`;
+            let random = Math.floor(Math.random() * rArray.length);
+            let randomName = await makeName(m.recipient_list[rArray[random]].id);
+            this_message.toLine = `${rArray.length} people, including ${randomName}`;
+            this_message.sender_image = await getImage(m.recipient_list[rArray[random]].id);
           }
           messageArray.push(this_message);
         };

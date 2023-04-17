@@ -19,6 +19,8 @@ import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import Checkbox from '@material-ui/core/Checkbox';
+import FormGroup from '@material-ui/core/FormGroup';
 
 import TextField from '@material-ui/core/TextField';
 import Button from '@material-ui/core/Button';
@@ -36,6 +38,28 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     flexGrow: 1
+  },
+  formControlDays: {
+    margin: 0,
+    marginLeft: '-8px',
+    marginRight: '2px',
+    paddingTop: 0,
+    height: 1,
+    fontSize: theme.typography.fontSize * 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: '10px',
+    marginBottom: '25px',
+  },
+  centerCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: -12
+  },
+  radioDays: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginTop: 2,
+    marginLeft: 0,
   },
   titlePersonSelect: {
     marginTop: theme.spacing(3),
@@ -160,6 +184,8 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const { session } = state;
   const [message_targets, setMessageTargets] = React.useState();
   const [targetInfo, setTargetInfo] = React.useState();
+  const [owner_targets, setOwnerTargets] = React.useState();
+  const [ownerTargetInfo, setOwnerTargetInfo] = React.useState();
   const [description, setDescription] = React.useState(' ');
   const [event_date, setEventDate] = React.useState(' ');
 
@@ -168,17 +194,23 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const [lastAsADate, setLastAsADate] = React.useState();
   const [prefMethod, setMethod] = React.useState();
   const [specificPeople, setSpecificPeople] = React.useState();
+  const [specificOwners, setSpecificOwners] = React.useState();
   const [signup_type, setSignUpType] = React.useState('none');
   const [slot_max_seats, setSlotMaxSeats] = React.useState();
   const [slot_interval, setSlotInterval] = React.useState();
   const [time_from_display_string, setTimeFromAsDisplayString] = React.useState();
   const [timeFromAs24HourNumber, setTimeFromAs24HourNumber] = React.useState();
   const [displayTimes, setIntervalDisplay] = React.useState([]);
+  const [displayTimes24, setDisplayTimes24] = React.useState([]);
   const [time_to_display_string, setTimeToAsDisplayString] = React.useState();
   const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [location, setLocation] = React.useState();
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
+  const [showOwnerSelect, setShowOwnerSelect] = React.useState(false);
   const [restrictionList, setRestrictionList] = React.useState([]);
+  const [ownerList, setOwnerList] = React.useState([patient.patient_id]);
+
+  const [checkedDays, setCheckedDays] = React.useState({});
 
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
@@ -204,6 +236,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
 
   const handleUpdate = async () => {
     enqueueSnackbar(`AVA is creating your new event!  Stand by...`, { variant: 'warning' });
+    let oDays = [];
+    Object.keys(checkedDays).forEach(a => {
+      if (checkedDays[a]) { oDays.push(Number(a))};
+    })
     var payload = {
       "clientId": patient.client_id,
       "calendar_info": {
@@ -215,9 +251,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         "schedule_type": prefMethod,
         "time_from": time_from_display_string,
         "time_to": time_to_display_string,
-        "slotArr": (intervals24h.length > 0 ? intervals24h : null),
+        "slots": setSlots(signup_type),
+        "occDays": oDays,
         "location": location,
-        "owner": patient.patient_id,
+        "owner": ownerList,
         "restrictions": restrictionList,
         "signup_type": signup_type,
         "slot_max_seats": slot_max_seats,
@@ -239,6 +276,27 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   };
 
   // **************************
+
+  function setSlots(inType) {
+    if ((inType === 'time') && (displayTimes24.length > 0)) { return displayTimes24; }
+    else if ((inType === 'seats') && (slot_max_seats)) { return setSeatNames(slot_max_seats); }
+    else { return null; }
+  }
+
+  function setSeatNames(pNum) {
+    let inNum = Number(pNum);
+    let digits, starter, lastSeat;
+    if (isNaN(inNum)) { return []; }
+    else if (inNum < 10) { digits = 1; starter = 11; lastSeat = 10 + inNum; }
+    else if (inNum < 100) { digits = 2; starter = 101; lastSeat = 100 + inNum; }
+    else if (inNum < 1000) { digits = 3; starter = 1001; lastSeat = 1000 + inNum; }
+    else return [];
+    let returnArr = [];
+    for (let i = starter; i <= lastSeat; i++) {
+      returnArr.push((i.toString().slice(-digits)));
+    }
+    return returnArr;
+  }
 
   function OK2Save() {
     return ((description.trim() !== '') && (event_date.trim() !== ''));
@@ -402,7 +460,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
 
   const handleDateExit = event => {
     if (event.key === 'Enter' || event.type === 'blur') {
-      let goodDate = makeDate(event_date);
+      let goodDate = makeDate(event_date.trim());
       setEventAsADate(goodDate);
       if (!prefMethod) { setMethod('specific_date'); };
       setEventDate(goodDate.toDateString());
@@ -472,6 +530,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   };
 
 
+  const handleChangeOwnersToggle = event => {
+    setSpecificOwners(event.target.value);
+  };
+
   const handleChangePeopleToggle = event => {
     setSpecificPeople(event.target.value);
   };
@@ -530,6 +592,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         t = (hh_raw * 100) + mm;
       }
       setIntervalDisplay(intervals);
+      setDisplayTimes24(intervals24h);
     }
   };
 
@@ -638,7 +701,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                           control={<Radio disableRipple className={classes.radioButton} size='small' />}
                           label={
                             <Typography className={classes.radioText}>
-                              {`Every ${eventAsADate.toLocaleDateString(undefined, { weekday: 'long' })}`}
+                              {`Every week`}
                             </Typography>}
                         />
                         <FormControlLabel
@@ -662,6 +725,155 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                           />
                         }
                       </RadioGroup>
+                    </FormControl>
+                  </Box>
+                }
+                {(prefMethod && prefMethod === 'weekly_on') &&
+                  <Box display={'flex'} flexDirection={'row'} className={classes.formControlDayRow} flexWrap={'wrap'} >
+                    <Typography className={classes.radioText}>
+                      {`Which days?`}
+                    </Typography>
+                    <FormControl className={classes.formControl} component="fieldset">
+                      <FormGroup row aria-label={`message_routedays_method`} name="method">
+                        <FormControlLabel
+                          className={classes.formControlDays}
+                          control={
+                            <Checkbox
+                              className={classes.centerCenter}
+                              value={checkedDays['0']}
+                              name={`message_routing_0`}
+                              onClick={() => {
+                                if (checkedDays[0]) { checkedDays[0] = false; }
+                                else { checkedDays[0] = true; }
+                                setCheckedDays(checkedDays);
+                              }}
+                              disableRipple
+                              inputProps={{ 'aria-labelledby': `message_routing_0` }}
+                            />
+                          }
+                          label={<Typography className={classes.radioDays}>Sun</Typography>}
+                          labelPlacement='bottom'
+                        />
+                        <FormControlLabel
+                          className={classes.formControlDays}
+                          control={
+                            <Checkbox
+                              className={classes.centerCenter}
+                              value={checkedDays['1']}
+                              name={`message_routing_1`}
+                              onClick={() => {
+                                if (checkedDays[1]) { checkedDays[1] = false; }
+                                else { checkedDays[1] = true; }
+                                setCheckedDays(checkedDays);
+                              }}
+                              disableRipple
+                              inputProps={{ 'aria-labelledby': `message_routing_1` }}
+                            />
+                          }
+                          label={<Typography className={classes.radioDays}>Mon</Typography>}
+                          labelPlacement='bottom'
+                        />
+                        <FormControlLabel
+                          className={classes.formControlDays}
+                          value="AVA"
+                          control={
+                            <Checkbox
+                              className={classes.centerCenter}
+                              value={checkedDays['2']}
+                              name={`message_routing_2`}
+                              onClick={() => {
+                                if (checkedDays[2]) { checkedDays[2] = false; }
+                                else { checkedDays[2] = true; }
+                                setCheckedDays(checkedDays);
+                              }}
+                              disableRipple
+                              inputProps={{ 'aria-labelledby': `message_routing_2` }}
+                            />
+                          }
+                          label={<Typography className={classes.radioDays}>Tue</Typography>}
+                          labelPlacement='bottom'
+                        />
+                        <FormControlLabel
+                          className={classes.formControlDays}
+                          value="AVA"
+                          control={
+                            <Checkbox
+                              className={classes.centerCenter}
+                              value={checkedDays['3']}
+                              name={`message_routing_3`}
+                              onClick={() => {
+                                if (checkedDays[3]) { checkedDays[3] = false; }
+                                else { checkedDays[3] = true; }
+                                setCheckedDays(checkedDays);
+                              }}
+                              disableRipple
+                              inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                            />
+                          }
+                          label={<Typography className={classes.radioDays}>Wed</Typography>}
+                          labelPlacement='bottom'
+                        />
+                        <FormControlLabel
+                          className={classes.formControlDays}
+                          value="AVA"
+                          control={
+                            <Checkbox
+                              className={classes.centerCenter}
+                              value={checkedDays['4']}
+                              name={`message_routing_4`}
+                              onClick={() => {
+                                if (checkedDays[4]) { checkedDays[4] = false; }
+                                else { checkedDays[4] = true; }
+                                setCheckedDays(checkedDays);
+                              }}
+                              disableRipple
+                              inputProps={{ 'aria-labelledby': `message_routing_4` }}
+                            />
+                          }
+                          label={<Typography className={classes.radioDays}>Thu</Typography>}
+                          labelPlacement='bottom'
+                        />
+                        <FormControlLabel
+                          className={classes.formControlDays}
+                          value="AVA"
+                          control={
+                            <Checkbox
+                              className={classes.centerCenter}
+                              value={checkedDays['5']}
+                              name={`message_routing_5`}
+                              onClick={() => {
+                                if (checkedDays[5]) { checkedDays[5] = false; }
+                                else { checkedDays[5] = true; }
+                                setCheckedDays(checkedDays);
+                              }}
+                              disableRipple
+                              inputProps={{ 'aria-labelledby': `message_routing_5` }}
+                            />
+                          }
+                          label={<Typography className={classes.radioDays}>Fri</Typography>}
+                          labelPlacement='bottom'
+                        />
+                        <FormControlLabel
+                          className={classes.formControlDays}
+                          value="AVA"
+                          control={
+                            <Checkbox
+                              className={classes.centerCenter}
+                              value={checkedDays['6']}
+                              name={`message_routing_6`}
+                              onClick={() => {
+                                if (checkedDays[6]) { checkedDays[6] = false; }
+                                else { checkedDays[6] = true; }
+                                setCheckedDays(checkedDays);
+                              }}
+                              disableRipple
+                              inputProps={{ 'aria-labelledby': `message_routing_6` }}
+                            />
+                          }
+                          label={<Typography className={classes.radioDays}>Sat</Typography>}
+                          labelPlacement='bottom'
+                        />
+                      </FormGroup>
                     </FormControl>
                   </Box>
                 }
@@ -854,10 +1066,91 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       size='small'
                       variant='outlined'
                       onClick={async () => {
-                        let targetObj = await prepareTargets(session.patient_id, session.client_id, { includeGroups: true, includePeople: false });
+                        let targetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: true, includePeople: false });
                         setMessageTargets(targetObj.responsibleList.sort());
                         setTargetInfo(targetObj.responsibleObj);
                         setShowPersonSelect(true); 
+                      }}
+                    >
+                      {`Tap to select`}
+                    </Button>
+                  </div>
+                }
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <Typography className={classes.radioText}>Show someone other than you be listed as an event owner?</Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup
+                      row
+                      defaultValue={'no'}
+                      aria-label="ownership"
+                      name="ownership"
+                      value={specificOwners}
+                      onChange={handleChangeOwnersToggle}
+                    >
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="no"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            No
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="yes"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Yes
+                          </Typography>}
+                      />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+                {(specificOwners === 'yes') &&
+                  <div>
+                    {ownerList.length > 0 ?
+                      ownerList.map((ownerEntry, x) => (
+                        (
+                          <ListItem
+                            key={`${ownerEntry}_selected_${x}`}
+                            className={classes.noRow}
+                          >
+                            <Typography
+                              className={classes.radioText}>
+                              {ownerTargetInfo && ownerTargetInfo[ownerEntry] &&
+                                ((typeof ownerTargetInfo[ownerEntry].name === 'object')
+                                ? `${ownerTargetInfo[ownerEntry].name.first} ${ownerTargetInfo[ownerEntry].name.last}`
+                                : ownerTargetInfo[ownerEntry].name
+                                )
+                              }
+                            </Typography>
+                          </ListItem>
+                        )
+                      ))
+                      : (
+                        <Typography
+                          className={classes.radioText}>
+                          {'Tap the button below to choose...'}
+                        </Typography>
+                      )
+                    }
+                    <Button
+                      className={classes.defaultButton}
+                      size='small'
+                      variant='outlined'
+                      onClick={async () => {
+                        let ownerTargetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: false, includePeople: true });
+                        setOwnerTargets(ownerTargetObj.responsibleList.sort());
+                        setOwnerTargetInfo(ownerTargetObj.responsibleObj);
+                        setShowOwnerSelect(true);
                       }}
                     >
                       {`Tap to select`}
@@ -903,6 +1196,22 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
             onSelect={(pChoices) => {
               setRestrictionList(makeArray(pChoices));
               setShowPersonSelect(false);
+            }}
+          >
+          </PersonFilter>
+        }
+        {showOwnerSelect &&
+          <PersonFilter
+            prompt={`Who else should be listed as an owner for ${description}?`}
+            peopleList={owner_targets}
+            multiSelect={true}
+            alreadyChecked={ownerList}
+            onCancel={() => {
+              setShowOwnerSelect(false);
+            }}
+            onSelect={(pChoices) => {
+              setOwnerList(makeArray(pChoices));
+              setShowOwnerSelect(false);
             }}
           >
           </PersonFilter>

@@ -38,6 +38,18 @@ export function listFromArray(inArray) {
   return makeList$;
 }
 
+export function makeString(inP, pNum = 0, pLink) {
+  if (!inP) { return null; }
+  if (!Array.isArray(inP)) { return inP.trim(); }
+  if (pNum === 0) { return inP.join(pLink || ' ~ '); }
+  let lim = Math.min(pNum, inP.length);
+  let return$ = inP[0];
+  for (let a = 1; a < lim; a++) {
+    return$ += pLink + inP[a];
+  }
+  return return$;
+}
+
 export function stringToColor(string) {
   let hash = 0;
   let i;
@@ -281,4 +293,22 @@ export async function resolveVariables(pKey, pSession) {
     }
   } while (pKey.includes('['));
   return pKey;
-};
+}
+
+export function parseSpreadsheet(pWorkbook) {
+  // take pWorkbook as raw XLSX data and return an array as returnObj[row] = { column: cellValue, ...}
+  let returnObj = [];
+  let cellValue, cellColumn, cellRow;
+  pWorkbook.SheetNames.forEach((sheetName) => {
+    let currentSheet = pWorkbook.Sheets[sheetName];
+    for (const currentCell in currentSheet) {
+      if (!currentSheet[currentCell].w) { continue; }
+      cellValue = currentSheet[currentCell].w.trim();
+      cellColumn = currentCell.replace(/[^A-Z]+/, '');
+      cellRow = Number(currentCell.replace(cellColumn, ''));
+      if (!returnObj[cellRow]) { returnObj[cellRow] = {}; }
+      returnObj[cellRow][cellColumn] = cellValue;
+    }
+  });
+  return returnObj;
+}
