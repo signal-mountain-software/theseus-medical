@@ -58,6 +58,7 @@ export async function prepareMessage(inBody) {
     client: inBody.client,
     author: inBody.author,
     onBehalfOf: inBody.onBehalfOf,
+    local_key: inBody.local_key,
     requestType: inBody.requestType,
     requestDate: inBody.requestDate,
     requestID: inBody.requestID
@@ -428,11 +429,12 @@ async function formatRequestDetails(body, summaryType) {
   
   if (body.local_key) {
     htmlMessage += `<div>AVA request number:&nbsp;<strong>${body.local_key}</strong></div>`;
+    rawMessage += `\n\rAVA request number: ${body.local_key}`;
   }
   
-  htmlMessage += `<div>AVA reference:&nbsp;${body.requestID}</div>`;
+  htmlMessage += `<div>AVA reference:&nbsp;${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})</div>`;
   htmlMessage += `<div>***** END *****</div></p>`;
-  rawMessage += `\n\rAVA reference: ${body.requestID}\n***** END *****`;
+  rawMessage += `\n\rAVA reference: ${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})\n***** END *****`;
 
   return [htmlMessage, rawMessage];
 }
