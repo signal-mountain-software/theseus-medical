@@ -106,6 +106,7 @@ export async function getGroup(pGroup_id, pClient_id) {
   }
   let cKey = `${pClient_id}//${pGroup_id}`;
   if (cKey in groupRecs) { return groupRecs[cKey]; }
+  if (!pClient_id || !pGroup_id) { return {}; }
   let groupRec = await dbClient
     .get({
       Key: { client_id: pClient_id, group_id: pGroup_id },

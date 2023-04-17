@@ -229,6 +229,7 @@ export function makeTime(pTime) {
             else if (inTime.includes('a')) { ampm = 'am'; };
             [hh$, mm$] = inTime.split(':');
             hh = Number(hh$.replace(/\D+/g, ''));
+            if ((ampm === 'pm') && (hh < 12)) { hh += 12; }
         }
         else { hh = pTime; }
         if (hh > 100) {
@@ -254,6 +255,9 @@ export function makeTime(pTime) {
         }
     }
     if (!ampm) { ampm = ((hh >= 0) && (hh < 12)) ? 'am' : 'pm'; }
+    let numeric24;
+    if ((ampm === 'pm') && (hh < 12)) { numeric24 = ((hh + 12) * 100) + mm; }
+    else { numeric24 = ( hh * 100) + mm; }
     let dayPart;
     if (hh < 12) { dayPart = "morning"; }
     else if (hh < 17) { dayPart = "afternoon"; }
@@ -261,6 +265,7 @@ export function makeTime(pTime) {
     return {
         'time': `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`,
         'hhmm': `${hh}${mm}`,
-        'dayPart': dayPart
+        numeric24,
+        dayPart
     };
 }

@@ -2,32 +2,38 @@ import React from 'react';
 
 import { API, graphqlOperation } from 'aws-amplify';
 import { getCalendarEntries } from '../../util/AVACalendars';
+import { makeTime } from '../../util/AVADateTime';
+import { getCalendar } from '../../graphql/queries';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogContent from '@material-ui/core/DialogContent';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContentText from '@material-ui/core/DialogContentText';
-import IconButton from '@material-ui/core/IconButton';
 import Button from '@material-ui/core/Button';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-
-import Input from '@material-ui/core/Input';
-import SearchIcon from '@material-ui/icons/Search';
-import InputAdornment from '@material-ui/core/InputAdornment';
 
 import CalendarForm from '../forms/CalendarForm';
 import PersonFilter from '../forms/PersonFilter';
 import CalendarEventEditForm from '../forms/CalendarEventEditForm';
 
-import { getCalendar } from '../../graphql/queries';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+import Typography from '@material-ui/core/Typography';
+import CircularProgress from '@material-ui/core/CircularProgress';
+import LinearProgress from '@material-ui/core/LinearProgress';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
     margin: 0,
     paddingTop: 0,
+  },
+  progressBar: {
+    marginBottom: theme.spacing(3),
+    backgroundColor: '#a3a0a0',
+    color: '#000000',
+    transition: 'none',
+    height: '5px'
   },
   formControlLbl: {
     margin: 0,
@@ -137,13 +143,16 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, showCalendar, onClose }) => {
   const [myCalendar, setMyCalendar] = React.useState([]);
-  const [filterText, setFilterText] = React.useState('');
-  const [myFilter, setMyFilter] = React.useState('');
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showAll, setShowAll] = React.useState(true);
   const [loading, setLoading] = React.useState(false);
 
   const [lastEndDate, setLastEndDate] = React.useState();
+
+  const [statusMessage, setStatusMessage] = React.useState('Initializing');
+  const [progress, setProgress] = React.useState(100);
+  const [pWidth, setPWidth] = React.useState(60);
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const classes = useStyles();
 
@@ -156,8 +165,14 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
+  const onStatusUpdate = (statusMessage, progressWidth, progressPct) => {
+    setStatusMessage(statusMessage);
+    setProgress(progressPct);
+    setPWidth(progressWidth);
+    setForceRedisplay(!forceRedisplay);
+  };
+
   const setCalendar = async () => {
-  
     let rightNow = new Date();
     let this_date = rightNow.getDate();
     let twoWeeksFromNow = new Date(rightNow.setDate(this_date + 14));
@@ -178,22 +193,27 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
       setShowAll(true);
       oRecs = await getCalendarEntries({
         client_id: checkClient,
+        start_date: 'today',
+        end_date: 'today + 7',
         type: ['occurrence']
-      })
+      }, onStatusUpdate);
     }
     for (let o = 0; o < oRecs.length; o++) {
+      onStatusUpdate('Checking sign-ups', oRecs.length, ((o / oRecs.length) * 100));
       let occRec = oRecs[o];
       let [eventRec] = await getCalendarEntries({
         client_id: checkClient,
         event_id: occRec.event_key,
         type: ['event']
-      })
+      });
       let description, location, owner, signup_type, time$;
+      let time24 = 0;
       if (eventRec.eventData) {
         description = eventRec.eventData.event_data.description;
         owner = eventRec.eventData.event_data.owner;
         signup_type = eventRec.eventData.event_data.type;
         if (eventRec.eventData.event_data.time) {
+          time24 = makeTime(eventRec.eventData.event_data.time.from).numeric24;
           time$ = eventRec.eventData.event_data.time.from;
           if (eventRec.eventData.event_data.time.to) {
             time$ += ' to ' + eventRec.eventData.event_data.time.to;
@@ -223,7 +243,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
         event_id: occRec.event_key,
         person_id: patient.patient_id,
         type: ['slot']
-      })
+      });
       let tCal = {
         client: occRec.client,
         event_key: occRec.event_key,
@@ -236,9 +256,10 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
           description,
           location,
           time$,
+          time24,
           owner
         }
-      }
+      };
       if (slotRec) {
         tCal.slots = [{
           owner: patient.patient_id,
@@ -249,6 +270,13 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
       }
       theCalendar.push(tCal);
     }
+    // final sort
+    theCalendar.sort((a, b) => {
+      if (a.occData.date > b.occData.date) { return 1; }
+      else if (a.occData.date < b.occData.date) { return -1; }
+      else if (a.occData.time24 > b.occData.time24) { return 1; }
+      else { return -1; } 
+    })
     setMyCalendar(theCalendar);
     setLastEndDate(twoWeeksFromNow);
     return theCalendar;
@@ -300,34 +328,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
     setShowPersonSelect(true);
   };
 
-  const onCheckEnter = event => {
-    if (event.key === 'Enter' || event.type === 'blur') {
-      handleFilterText(event.target.value);
-    }
-  };
-
-  const onChangeFilterText = event => {
-    setFilterText(event.target.value);
-    // var resetter = formState + 1;
-    // setFormState(resetter);
-  };
-
-  const handleFilterText = event => {
-    setMyFilter(filterText);
-    // var resetter = formState + 1;
-    // setFormState(resetter);
-  };
-
-  function formatDate(pDate$) {
-    let pDate = pDate$.toString() || '19591021';
-    let yyyy = pDate.substr(0, 4);
-    let mm = pDate.substr(4, 2);
-    let dd = pDate.substr(6, 2);
-    let dDate = new Date(yyyy, Number(mm) - 1, dd);
-    let rString = dDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    return rString;
-  }
-
   const handleAbort = () => {
     if (OGpatient.patient_id !== patient.patient_id) {
       patient.patient_display_name = OGpatient.patient_display_name;
@@ -352,156 +352,142 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
 
 
   return (
-    showAll ?
-      <Dialog
-        open={!!showCalendar}
-        onClose={handleAbort}
-        TransitionComponent={Transition}
-        fullScreen
-      >
-        <Box
-          display='flex'
-          mb={0}
-          flexDirection='row'
-          justifyContent='flex-start'
-          alignItems='center'
+    <React.Fragment>
+      {showAll && (forceRedisplay || true) &&
+        <Dialog
+          open={!!showCalendar}
+          onClose={handleAbort}
+          TransitionComponent={Transition}
+          fullScreen
         >
           <Box
             display='flex'
-            grow={1}
-            style={{ width: '90%' }}
             mb={0}
-            flexDirection='column'
-            justifyContent='center'
-            alignItems='flex-start'
+            flexDirection='row'
+            justifyContent='flex-start'
+            alignItems='center'
           >
-            <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {(patient.kiosk_mode || !patient.patient_display_name) ? `Calendar of Events` : `${patient.patient_display_name.split(',').pop()}'s Calendar`}
-            </DialogContentText>
-            {!loading && (myCalendar.length > 0) &&
-              <DialogContentText className={classes.subDescriptionText}>
-                {formatDate(myCalendar[0].occData.date)} to {formatDate(myCalendar[myCalendar.length - 1].occData.date)}
-              </DialogContentText>
-            }
-            {!loading && (myCalendar.length === 0) &&
-              <DialogContentText className={classes.subDescriptionText}>
-                This Calendar is empty!
-              </DialogContentText>
-            }
-            {loading &&
-              <DialogContentText className={classes.subDescriptionText}>
-                Building your Calendar
-              </DialogContentText>
+            {patient.kiosk_mode &&
+              <Box mr={3} justifySelf={'flex-end'} alignSelf={'center'}>
+                <Button className={classes.defaultButton} size='small' variant='contained' onClick={choosePerson}>
+                  {'Resident?'}
+                </Button>
+              </Box>
             }
           </Box>
-          <Box mr={2}>
-            <Input
-              id='event_search'
-              type='text'
-              variant={'contained'}
-              style={{ marginRight: 5 }}
-              onKeyPress={onCheckEnter}
-              onBlur={onCheckEnter}
-              onChange={onChangeFilterText}
-              label={'Search'}
-              startAdornment={
-                <InputAdornment position="start">
-                  Search
-                </InputAdornment>
-              }
-              endAdornment={
-                <InputAdornment position="end">
-                  <IconButton
-                    aria-label="search_icon"
-                    onClick={() => { handleFilterText(filterText); }}
-                    edge="end"
+          {/* Loading spinner */}
+          {loading &&
+            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+              <Box
+                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                key={'loadingBox'}
+                ml={2} mr={2} mb={2} mt={8}
+              >
+                <Box
+                  component="img"
+                  mb={2}
+                  minWidth={isMobile ? 150 : 175}
+                  maxWidth={isMobile ? 150 : 175}
+                  alt=''
+                  src={patient.client_logo || process.env.REACT_APP_AVA_LOGO}
+                />
+                <React.Fragment>
+                  <Box
+                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                    key={'loadingBox'}
+                    mb={2}
                   >
-                    {<SearchIcon />}
-                  </IconButton>
-                </InputAdornment>
-              }
-              autoComplete='off'
-              value={filterText}
-            />
-          </Box>
-          {patient.kiosk_mode &&
-            <Box mr={3} justifySelf={'flex-end'} alignSelf={'center'}>
-              <Button className={classes.defaultButton} size='small' variant='contained' onClick={choosePerson}>
-                {'Resident?'}
+                    <Typography variant='h5' className={classes.lastName} >{`Building your Calendar`}</Typography>
+                    <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Box
+                      display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                      flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                      key={'loadingWordBox'}
+                    >
+                      <Typography>{statusMessage}</Typography>
+                    </Box>
+                  </Box>
+                  <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
+                  <CircularProgress />
+                </React.Fragment>
+              </Box>
+            </DialogContent>
+          }
+          {!loading &&
+            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+              <CalendarForm
+                myCalendar={myCalendar}
+                person_id={patient.patient_id}
+                kiosk_mode={patient.kiosk_mode}
+                display_name={patient.patient_display_name}
+                peopleList={peopleList}
+                session={patient}
+                onClose={onClose}
+              />
+            </DialogContent>
+          }
+          <DialogActions style={{ justifyContent: 'center' }}>
+            {myCalendar && myCalendar.length > 0 &&
+              <Button
+                onClick={extendDates}
+                variant='contained'
+                size='small'
+                className={classes.topButton}
+              >
+                {isMobile ? 'More' : 'Show more?'}
               </Button>
-            </Box>
-          }
-        </Box>
-        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-          <CalendarForm
-            myCalendar={myCalendar}
-            person_id={patient.patient_id}
-            kiosk_mode={patient.kiosk_mode}
-            display_name={patient.patient_display_name}
-            filter={myFilter}
-            peopleList={peopleList}
-          />
-        </DialogContent>
-        <DialogActions style={{ justifyContent: 'center' }}>
-          {myCalendar && myCalendar.length > 0 &&
-            <Button
-              onClick={extendDates}
-              variant='contained'
-              size='small'
-              className={classes.topButton}
+            }
+            {patient.kiosk_mode &&
+              <Button
+                className={classes.defaultButton}
+                size='small'
+                variant='contained'
+                onClick={choosePerson}>
+                {'Sign-up?'}
+              </Button>
+            }
+            <Button className={classes.reject} size='small' variant='contained' onClick={handleAbort}>
+              {'Done'}
+            </Button>
+          </DialogActions>
+          {showPersonSelect &&
+            <PersonFilter
+              prompt={'Whose Calendar do you wish to view?'}
+              peopleList={peopleList}
+              onCancel={async () => {
+                setShowPersonSelect(false);
+                patient.kiosk_mode = false;
+                await setCalendar();
+              }}
+              onSelect={async (selectedPerson) => {
+                [patient.patient_display_name, patient.patient_id,] = selectedPerson.split(':');
+                setShowPersonSelect(false);
+                patient.kiosk_mode = false;
+                await setCalendar();
+              }}
             >
-              {isMobile ? 'More' : 'Show more?'}
-            </Button>
+            </PersonFilter>
           }
-          {patient.kiosk_mode &&
-            <Button
-              className={classes.defaultButton}
-              size='small'
-              variant='contained'
-              onClick={choosePerson}>
-              {'Sign-up?'}
-            </Button>
-          }
-          <Button className={classes.reject} size='small' variant='contained' onClick={handleAbort}>
-            {'Done'}
-          </Button>
-        </DialogActions>
-        {showPersonSelect &&
-          <PersonFilter
-            prompt={'Whose Calendar do you wish to view?'}
-            peopleList={peopleList}
-            onCancel={async () => {
-              setShowPersonSelect(false);
-              patient.kiosk_mode = false;
-              await setCalendar();
-            }}
-            onSelect={async (selectedPerson) => {
-              [patient.patient_display_name, patient.patient_id,] = selectedPerson.split(':');
-              setShowPersonSelect(false);
-              patient.kiosk_mode = false;
-              await setCalendar();
-            }}
-          >
-          </PersonFilter>
-        }
-      </Dialog>
-      :
-      (
-        (myCalendar.length > 0) ?
-          <CalendarEventEditForm
-            pEventCode={currentEvent}
-            peopleList={peopleList}
-            pPatient={patient.patient_id}
-            pClient={eventClient || (patient.adopted_client || patient.client_id)}
-            pOccData={myCalendar[0].occData}
-            pPatientRec={patient}
-            onReset={() => { handleAbort(); }}
-            pInstruction={showCalendar}
-          />
-          :
-          <DialogContentText className={classes.subDescriptionText}>
-            Getting your Event Info
-          </DialogContentText>
-      )
+        </Dialog>
+      }
+      {!showAll && (myCalendar.length > 0) &&
+        <CalendarEventEditForm
+          pEventCode={currentEvent}
+          peopleList={peopleList}
+          pPatient={patient.patient_id}
+          pClient={eventClient || (patient.adopted_client || patient.client_id)}
+          pOccData={myCalendar[0].occData}
+          pPatientRec={patient}
+          onReset={() => { handleAbort(); }}
+          pInstruction={showCalendar}
+        />
+      }
+      {!showAll && (myCalendar.length === 0) &&
+        <DialogContentText className={classes.subDescriptionText}>
+          Getting your Event Info
+        </DialogContentText>
+      }
+    </React.Fragment>
   );
 };

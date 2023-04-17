@@ -437,6 +437,8 @@ async function formatRequestDetails(body, summaryType) {
   return [htmlMessage, rawMessage];
 }
 
+export async function sendMessage(body) { return await sendMessages(body); }
+
 export async function sendMessages(body) {
   /*  Expect body as an object or array of objects with the following structure
           client: <client_id>,
