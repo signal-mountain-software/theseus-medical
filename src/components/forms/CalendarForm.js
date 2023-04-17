@@ -25,6 +25,9 @@ import MenuItem from '@material-ui/core/MenuItem';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import DialogContent from '@material-ui/core/DialogContent';
 import Dialog from '@material-ui/core/Dialog';
+import DialogActions from '@material-ui/core/DialogActions';
+
+import Button from '@material-ui/core/Button';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -470,6 +473,11 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
           </DialogContent>
         </React.Fragment>
       }
+      <DialogActions style={{ justifyContent: 'center' }}>
+        <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
+          {'Done'}
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 };
