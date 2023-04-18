@@ -422,6 +422,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setForceRedisplay(!forceRedisplay);
     makeGreeting();
     let activityRow = mainMenu[activityRowIndex];
+    let activityLine = activityRow.activity_code;
+    if (activityRow.default_value) { activityLine += `~[default=${activityRow.default_value}]`; }
+    if (activityRow.activity_name) { activityLine += `~[title=${activityRow.activity_name}]`; }
     let changeMade = false;
     let personRec = await dbClient
       .get({
@@ -441,15 +444,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if ('favorite_activities' in personRec.Item) {
         favoriteList = personRec.Item.favorite_activities;
       }
-      if (!favoriteList.includes(activityRow.activity_code)) {
+      if (!favoriteList.includes(activityLine)) {
         if (pType === 'add') {
-          favoriteList.unshift(activityRow.activity_code);
+          favoriteList.unshift(activityLine);
           changeMade = true;
         }
       }
       else {
         if (pType === 'remove') {
-          let indexAt = favoriteList.findIndex(r => { return (r === activityRow.activity_code); });
+          let indexAt = favoriteList.findIndex(r => { return (r === activityLine); });
           if (indexAt > -1) {
             favoriteList.splice(indexAt, 1);
             changeMade = true;
@@ -461,15 +464,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if ('favorite_blocked' in personRec.Item) {
         favoriteBlocked = personRec.Item.favorite_blocked;
       }
-      if (!favoriteBlocked.includes(activityRow.activity_code)) {
+      if (!favoriteBlocked.includes(activityLine)) {
         if (pType === 'remove') {
-          favoriteBlocked.push(activityRow.activity_code);
+          favoriteBlocked.push(activityLine);
           changeMade = true;
         }
       }
       else {
         if (pType === 'add') {
-          let indexAt = favoriteBlocked.findIndex(r => { return (r === activityRow.activity_code); });
+          let indexAt = favoriteBlocked.findIndex(r => { return (r === activityLine); });
           if (indexAt > -1) {
             favoriteBlocked.splice(indexAt, 1);
             changeMade = true;
@@ -502,7 +505,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             sort_key: `**2-0000`,
             section_name: (mainMenu[0].section_name.includes('favorites')
               ? mainMenu[0].section_name
-              : `${personRec.name.first.trim()}'${personRec.name.first.trim().slice(-1) === 's' ? '' : 's'} favorites`
+              : `My Favorites`
             ),
             section_color: '#6bb44b',
             section_icon: 'https://ava-icons.s3.amazonaws.com/icons8-favorite-50.png',
@@ -521,10 +524,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         }
         else {
           mainMenu.splice(activityRowIndex, 1);
-          let bIndex = mainMenu.findIndex(m => {
-            return (m.activity_code === activityRow.activity_code);
-          });
-          if (bIndex > -1) { mainMenu[bIndex].is_favorite = false; }
         };
       }
       setMainMenu(mainMenu);
