@@ -152,15 +152,17 @@ export async function getMemberList(pGroups, pClient_id, options) {
   }
   let defaultClient = pClient_id || session.client_id;
   let gList = [];
-  if (Array.isArray(pGroups)) { gList = [...pGroups]; }
-  else if (pGroups.includes('[')) { gList = pGroups.replace(/[[\]]/g, '').split(','); }
+  if (Array.isArray(pGroups)) {
+    pGroups.forEach(grp => { gList.push(...(grp.replace(/[[\]]/g, '').split(/,|~/g))); });
+  }
+  else if (pGroups.includes('[')) { gList = pGroups.replace(/[[\]]/g, '').split(/,|~/g); }
   else { gList = [pGroups]; }
   if (gList.some(g => g.toLowerCase().includes('*all'))) { gList = ['*all']; }
   for (let g = 0; g < gList.length; g++) {
     let grp, client;
     if (gList[g].includes(':')) { grp = gList[g].split(':')[1].trim(); }  // some arrays send '~group:group_id' in an element
     else if (gList[g].includes('~')) { grp = gList[g].split('~')[0].trim(); }   // some arrays send 'group_id ~ group_name' in an element
-    else { grp = gList[g]; }
+    else { grp = gList[g].trim(); }
     if (grp.includes('//')) { [client, grp] = grp.split('//'); }
     else { client = defaultClient; }
     let qParm = {

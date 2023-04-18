@@ -141,7 +141,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, showCalendar, onClose }) => {
+export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, calendarMode, onClose }) => {
   const [myCalendar, setMyCalendar] = React.useState([]);
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showAll, setShowAll] = React.useState(true);
@@ -355,7 +355,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
     <React.Fragment>
       {showAll && (forceRedisplay || true) &&
         <Dialog
-          open={!!showCalendar}
+          open={!!calendarMode}
           onClose={handleAbort}
           TransitionComponent={Transition}
           fullScreen
@@ -480,7 +480,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, sho
           pOccData={myCalendar[0].occData}
           pPatientRec={patient}
           onReset={() => { handleAbort(); }}
-          pInstruction={showCalendar}
+          pMode={calendarMode}
         />
       }
       {!showAll && (myCalendar.length === 0) &&

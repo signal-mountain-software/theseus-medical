@@ -577,14 +577,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let parts = pActivityCode.split('~[');
     let pActivity = parts[0];
     for (let p = 1; p < parts.length; p++) {
-      let [iType, iData] = parts[p].split(/[=<>\]]/);
+      let [iType, iData] = parts[p].split(/[=\]]/);
       switch (iType) {
         case 'default': {
-          overrideDefault = iData;
+          overrideDefault = await resolveVariables(iData, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });
           break;
         }
         case 'title': {
-          overrideTitle = iData;
+          overrideTitle = await resolveVariables(iData, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });;
           break;
         }
         case 'version':

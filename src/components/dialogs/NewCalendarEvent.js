@@ -583,7 +583,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         if (hh_raw > 12) { hh = hh_raw - 12; }
         else if (hh_raw === 0) { hh = 12; };
         intervals.push(`${hh}:${mm < 10 ? '0' + mm : mm}`);
-        intervals24h.push((hh_raw * 100) + mm);
+        intervals24h.push((10000 + (hh_raw * 100) + mm).toString().slice(-4));
         mm += s;
         if (mm > 59) {
           mm -= 60;
