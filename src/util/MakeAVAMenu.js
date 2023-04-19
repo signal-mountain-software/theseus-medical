@@ -53,6 +53,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   let ava_version_number = makeVersion(process.env.REACT_APP_AVA_VERSION);
+  let ava_env = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
   let todays_numeric_date = makeDate(new Date()).numeric;
 
   // Main line
@@ -587,9 +588,17 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           overrideTitle = await resolveVariables(iData, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });;
           break;
         }
+        case 'env': {
+          if ((parts[p].toLowerCase() === 'test') && (!['T', 'L'].includes(ava_env))) { return {}; }
+          else if ((parts[p].toLowerCase() === 'dev') && (ava_env !== 'D')) { return {}; }
+          break;
+        }
+        case 'vers':
+        case 'rel':
         case 'version':
         case 'release': {
           let checkVer = makeVersion(iData);
+          if ((checkVer >= 9999) && (!['T', 'L'].includes(ava_env))) { return {}; }
           if ((parts[p].includes('<') && (ava_version_number >= checkVer))
             || (parts[p].includes('>') && (ava_version_number <= checkVer))
             || (parts[p].includes('=') && (checkVer !== ava_version_number))) {
