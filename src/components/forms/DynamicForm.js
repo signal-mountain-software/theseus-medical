@@ -1264,7 +1264,7 @@ export default ({
           peopleList={values}
           currentEvent={defaultValue || []}
           eventClient={newFact.client_id || session.client_id}
-          showCalendar={type.split('_')[0]}
+          calendarMode={(type === 'show_calendar') ? 'view' : 'signUp'}
           onClose={onSave}
         />
       );

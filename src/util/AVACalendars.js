@@ -1,6 +1,6 @@
 import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid } from './AVAUtilities';
 import { makeName } from './AVAPeople';
-import { addDays, makeDate } from './AVADateTime';
+import { addDays, makeDate, makeTime } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
 
 // const PDFDocument = require('pdfkit');
@@ -758,6 +758,13 @@ export async function addOccurrence(body) {
   return putCalendar;
 }
 
+export function makeSlotName(pSlot) {
+  let nSlot = Number(pSlot);
+  if (isNaN(nSlot)) { return pSlot; }
+  if ((nSlot < 100) || (nSlot > 2359) || ((nSlot % 100) > 59)) { return nSlot.toString(); }
+  else { return makeTime(pSlot).short; }
+}
+
 export async function writeSlot(body) {
   /*  
     "client": <client>,
@@ -843,7 +850,57 @@ export async function writeSlot(body) {
     });
 
   // messaging
-  let eventRec = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'event' });
+  let [eventRec] = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'event' });
+  if (eventRec.eventData && (!eventRec.eventData.messaging || (eventRec.eventData.messaging.length === 0))) {
+    let subjectLine = '';
+    let messageText = '';
+    let locationLine = '';
+    let notesLine = '';
+    if (eventRec.eventData.event_data) {
+      subjectLine = eventRec.eventData.event_data.description;
+      locationLine = ` (${eventRec.eventData.event_data.location.description})`;
+      if (slotDataObj.notes) { notesLine = `  \r\n\nNotes - ${slotDataObj.notes}`; }
+    }
+    else if (eventRec.calData) {
+      subjectLine = eventRec.calData.description;
+      locationLine = ` (${eventRec.calData.location})`;
+    }
+    else { subjectLine = 'Your event'; }
+    subjectLine += ` on ${makeDate(occurrence).absolute}`;
+    messageText += `With regard to ${subjectLine}${locationLine}...  `;
+    messageText += `${slotDataObj.name} was`;
+    subjectLine += ` - ${slotDataObj.name}`
+    if (body.status === 'released') {
+      messageText += ` removed from this event.`;
+      subjectLine += ` removed`;
+    }
+    else { 
+      messageText += ` added to this event`;
+      if (slotDataObj.slot) {
+        let maybeTime = makeSlotName(slotDataObj.slot);
+        if (maybeTime.includes(':')) {
+          messageText += `, and selected the ${makeTime(slotDataObj.slot).time} time slot.`;
+        }
+        else { 
+          messageText += `.`;
+        }
+        messageText += notesLine;
+      }
+      subjectLine += ` added`;
+    }
+    messageText += `  \r\n\nThe current sign-up sheet is available in AVA.`;
+    let ownerList;
+    if (eventRec.eventData.event_data) { ownerList = makeArray(eventRec.eventData.event_data.owner); }
+    else if (eventRec.calData) { ownerList = eventRec.calData.owner; }
+    eventRec.eventData.messaging = {
+      action: "selected",
+      format: {
+        subject: subjectLine,
+        text: messageText
+      },
+      recipientList: ownerList
+    };
+  }
   if (eventRec.eventData && eventRec.eventData.messaging) {
     let messageList = [];
     let msgObject = {
@@ -858,13 +915,13 @@ export async function writeSlot(body) {
     else { messageList.push(eventRec.eventData.messaging); }
     for (let m = 0; m < messageList.length; m++) {
       let this_message = messageList[m];
-      if (!this_message.action || (this_message.action === body.status.current)) {
+  //    if (!this_message.action || (this_message.action !== body.status.current)) {
         if ('subject' in this_message.format) { msgObject.subject = await resolveMessageVariables(this_message.format.subject, body); }
         if (Array.isArray(this_message.recipientList)) { msgObject.recipientList = [...this_message.recipientList]; }
         else { msgObject.recipientList = [this_message.recipientList]; }
         msgObject.messageText = await resolveMessageVariables(this_message.format.text, body);
         sendMessages(msgObject);
-      }
+  //    }
     }
   }
   /*

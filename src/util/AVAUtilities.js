@@ -277,13 +277,14 @@ export async function resolveVariables(pKey, pSession) {
             else { instruction = 'today'; }
           }
           else if (instruction.startsWith('next_event~')) { 
+            let splitInstruction = instruction.split(/~/g);
             let oResponse = await getOccurenceList({
               client: pSession.client_id,
-              event: instruction.split(/~/g)[1],
+              event: splitInstruction[1],
               from_date: new Date(),
-              number_of_occurrences: 1
+              number_of_occurrences: splitInstruction[2] || 1
             });
-            instruction = oResponse.occArray[0];
+            instruction = oResponse.occArray[oResponse.occArray.length - 1];
           }
           let keyDate = makeDate(instruction);
           if (!keyDate.error) { pKey = `${front}${keyDate[dType || 'obs']}${back}`; }

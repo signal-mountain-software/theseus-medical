@@ -264,6 +264,7 @@ export function makeTime(pTime) {
     else (dayPart = "evening");
     return {
         'time': `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`,
+        'short': `${hh}:${mm < 10 ? ('0' + mm) : mm}`,
         'hhmm': `${hh}${mm}`,
         numeric24,
         dayPart
