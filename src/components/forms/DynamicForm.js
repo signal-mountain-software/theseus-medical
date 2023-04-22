@@ -14,6 +14,7 @@ import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import ObservationForm from '../forms/ObservationForm';
+import MultiObservationForm from '../forms/MultiObservationForm';
 import RequestDashboard from '../dialogs/RequestDashboard';
 import CalendarDashboard from '../dialogs/CalendarDashboard';
 import ShowCalendar from '../dialogs/ShowCalendar';
@@ -1204,6 +1205,20 @@ export default ({
             setNewFact(newFact);
             onSave();
           }}
+          onClose={onClose}
+        />
+      );
+    case 'multi_observation':
+      return (
+        <MultiObservationForm
+          fact={newFact}
+          factName={factName}
+          defaultValue={defaultValue}
+          prompt={message}
+          pClient={session.client_id}
+          qualifiers={qualifierTable}
+          listValues={values}
+          onSave={onSave}
           onClose={onClose}
         />
       );

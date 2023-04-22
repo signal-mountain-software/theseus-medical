@@ -18,33 +18,33 @@ export async function makeName(pRec) {
     else if ('Item' in pRec) { return AVAname(pRec.Item); }
     else if ('Items' in pRec) { return pRec.Items.map(p => AVAname(p)); }
     else { return AVAname(pRec); }
+};
 
-    function AVAname(pRec) {
-        if (isPromise(pRec)) {
-            return 'Unresolved';
+export function AVAname(pRec) {
+    if (isPromise(pRec)) {
+        return 'Unresolved';
+    }
+    else if (!pRec) { return 'No name'; }
+    else if ('name' in pRec) {
+        return (`${pRec.name.first || ''} ${pRec.name.last || ''}`).trim();
+    }
+    else if ('displayName' in pRec) { return pRec.displayName; }
+    else if ('messaging' in pRec) {
+        if (('preferred_method' in pRec) &&
+            pRec.messaging.hasOwnProperty(pRec.preferred_method)) {
+            return `${pRec.messaging[pRec.preferred_method]} (${pRec.person_id})`;
         }
-        else if (!pRec) { return 'No name'; }
-        else if ('name' in pRec) {
-            return (`${pRec.name.first || ''} ${pRec.name.last || ''}`).trim();
-        }
-        else if ('displayName' in pRec) { return pRec.displayName; }
-        else if ('messaging' in pRec) {
-            if (('preferred_method' in pRec) &&
-                pRec.messaging.hasOwnProperty(pRec.preferred_method)) {
-                return `${pRec.messaging[pRec.preferred_method]} (${pRec.person_id})`;
-            }
-            else {
-                let destinations = Object.keys(pRec.messaging);
-                for (let k = 0; k < destinations.length; k++) {
-                    if (typeof destinations[k] !== 'boolean') {
-                        return `${pRec.messaging[destinations[k]]} (${pRec.person_id})`;
-                    }
+        else {
+            let destinations = Object.keys(pRec.messaging);
+            for (let k = 0; k < destinations.length; k++) {
+                if (typeof destinations[k] !== 'boolean') {
+                    return `${pRec.messaging[destinations[k]]} (${pRec.person_id})`;
                 }
             }
         }
-        else { return pRec.person_id; }
     }
-};
+    else { return pRec.person_id; }
+}
 
 export function getImage(pPerson) {
     return `https://d3sds9ybtm36gy.cloudfront.net/${pPerson}.jpg`;

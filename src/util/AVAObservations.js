@@ -40,14 +40,7 @@ export async function makeObservationList(pObs, pSession) {
   if (activityRec?.validation?.values) {
     let listLength = activityRec.validation.values.length;
     for (let v = 0; v < listLength; v++) {
-      let this_entry = activityRec.validation.values[v];
-      let strings = this_entry.split(/[[\]]/g);
-      if (strings.length > 1) {
-        for (let s = 1; s < strings.length; s += 2) {
-          strings[s] = `[${await resolveVariables(strings[s], pSession)}]`;
-        }
-        this_entry = strings.join('');
-      }
+      let this_entry = await resolveVariables(activityRec.validation.values[v], pSession);
       if (!this_entry.startsWith('~')) { returnList.push(this_entry); }
       else {
         // deconstruct this_entry as ~<oType>.<oKey>  

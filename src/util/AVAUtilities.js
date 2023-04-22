@@ -20,9 +20,9 @@ export function recordExists(recordId) {
   else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
 }
 
-export function listFromArray(inArray) { 
+export function listFromArray(inArray) {
   if (!Array.isArray(inArray)) {
-    if (!inArray || (inArray.trim() === '')) { return 'None'}
+    if (!inArray || (inArray.trim() === '')) { return 'None'; }
     return inArray;
   }
   let makeList$ = '';
@@ -88,10 +88,11 @@ export function sentenceCase(pString) {
   return (!pString ? '' : pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase());
 }
 
-export function makeArray(input) {
+export function makeArray(input, delimiter = null) {
   let response = [];
   if (Array.isArray(input)) { response.push(...input); }
   else if (typeof input === 'object') { response = Object.keys(input); }
+  else if (delimiter) { response = input.split(delimiter).map(e => { return e.trim(); }); }
   else { response.push(input); }
   return response;
 }
@@ -164,7 +165,7 @@ export async function getObject(pObjIn, pTyp) {
     default: {
       imageBucket = 'theseus-medical-storage';
       imageURI = pObjIn;
-      }
+    }
   }
   try {
     let gotObject =
@@ -174,10 +175,10 @@ export async function getObject(pObjIn, pTyp) {
         Expires: 3600
       });
     if (gotObject) { return gotObject; }
-    else { throw new Error('No object returned') }
+    else { throw new Error('No object returned'); }
   }
   catch (error) {
-    cl({'error getting object': { pObjIn, pTyp, imageBucket, imageURI, pObj, fExt, error }});
+    cl({ 'error getting object': { pObjIn, pTyp, imageBucket, imageURI, pObj, fExt, error } });
     return null;
   }
 };
@@ -209,7 +210,7 @@ export async function updateACL(pObjIn, pTyp) {
     })
     .promise()
     .catch(err => {
-      cl(`ACL for ${imageURI} not updated in ${imageBucket}.  Error is ${err}`)
+      cl(`ACL for ${imageURI} not updated in ${imageBucket}.  Error is ${err}`);
     });
 };
 
@@ -233,67 +234,69 @@ export function uuid(pLen) {
   return ans.join('');
 }
 
-export async function resolveVariables(pKey, pSession) {
+
+export async function resolveVariables(pKey, pSession, options = {}) {
   if (!pKey) { return ''; }
   // look for brackets in the key and deal with what's between them
+  let response = [];
   do {
-    let [front, rest] = pKey.split(/[[<](.*)/);
-    if (!rest) { return front; }
-    let [middle, back] = rest.split(/[\]>](.*)/);
-    if (middle) {
-      // if there is a middle, but no front or back, this is an ARRAY...
-      if (!front && !back) { return middle.split(","); }
-      let [instruction, dType] = middle.split(':');
-      instruction = instruction.toLowerCase();
-      switch (instruction) {
-        case 'client': {
-          pKey = `${front}${pSession.client_id}${back}`;
-          break;
+    let result = pKey.match(/(.*?)([<[])(.*?)([>\]])(.*)/);
+    if (!result) {
+      response.push(pKey);
+      break;
+    }
+    let [, front, d1, middle, d2, back] = result;
+    let [instruction, dType] = middle.split(':');
+    instruction = instruction.toLowerCase();
+    switch (instruction) {
+      case 'client': {
+        response.push(front, pSession.client_id);
+        break;
+      }
+      case 'name': {
+        response.push(front, await makeName(pSession.patient_id));
+        break;
+      }
+      case 'location': {
+        let pMe = await getPerson(pSession.patient_id);
+        response.push(front, pMe.location);
+        break;
+      }
+      case 'person':
+      case 'patient': {
+        response.push(front, pSession.patient_id);
+        break;
+      }
+      case 'user': {
+        response.push(front, pSession.user_id);
+        break;
+      }
+      default: {
+        if (instruction.startsWith('today~')) {
+          let now = new Date();
+          let ttime = Number(instruction.split(/~/g)[1]);
+          let tnow = (now.getHours() * 100) + now.getMinutes();
+          if (tnow > ttime) { instruction = 'tomorrow'; }
+          else { instruction = 'today'; }
         }
-        case 'name': {
-          pKey = `${front}${await makeName(pSession.patient_id)}${back}`;
-          break;
+        else if (instruction.startsWith('next_event~')) {
+          let splitInstruction = instruction.split(/~/g);
+          let oResponse = await getOccurenceList({
+            client: pSession.client_id,
+            event: splitInstruction[1],
+            from_date: new Date(),
+            number_of_occurrences: splitInstruction[2] || 1
+          });
+          instruction = oResponse.occArray[oResponse.occArray.length - 1];
         }
-        case 'location': {
-          let pMe = await getPerson(pSession.patient_id);
-          pKey = `${front}${pMe.location}${back}`;
-          break;
-        }
-        case 'person':
-        case 'patient': {
-          pKey = `${front}${pSession.patient_id}${back}`;
-          break;
-        }
-        case 'user': {
-          pKey = `${front}${pSession.user_id}${back}`;
-          break;
-        }
-       default: {
-          if (instruction.startsWith('today~')) {
-            let now = new Date();
-            let ttime = Number(instruction.split(/~/g)[1]);
-            let tnow = (now.getHours() * 100) + now.getMinutes();
-            if (tnow > ttime) { instruction = 'tomorrow'; }
-            else { instruction = 'today'; }
-          }
-          else if (instruction.startsWith('next_event~')) { 
-            let splitInstruction = instruction.split(/~/g);
-            let oResponse = await getOccurenceList({
-              client: pSession.client_id,
-              event: splitInstruction[1],
-              from_date: new Date(),
-              number_of_occurrences: splitInstruction[2] || 1
-            });
-            instruction = oResponse.occArray[oResponse.occArray.length - 1];
-          }
-          let keyDate = makeDate(instruction);
-          if (!keyDate.error) { pKey = `${front}${keyDate[dType || 'obs']}${back}`; }
-          else { pKey = `${front}"${instruction}"${back}`; }
-        }
+        let keyDate = makeDate(instruction);
+        if (!keyDate.error) { response.push(front, keyDate[dType || 'obs']); }
+        else { response.push(front, d1, middle, d2); }
       }
     }
-  } while (pKey.includes('['));
-  return pKey;
+    pKey = back;
+  } while (pKey);
+  return response.join('');
 }
 
 export function parseSpreadsheet(pWorkbook) {

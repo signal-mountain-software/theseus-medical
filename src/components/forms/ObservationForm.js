@@ -505,12 +505,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function makeConfirm(pDisplayRows, pChecked, textInput = { 'empty': true }) {
     let workChecked = [];
     let errorsExist = false;
-    let errorMessage = ['Please correct these errors', '----'];
-    let responseArray = [`Please confirm your selections`, '----'];
+    let errorMessage = ['Please correct these errors', ''];
+    let responseArray = [`Please confirm your selections`, ''];
     pDisplayRows.forEach(r => {
       if (r.required && (!textInput.hasOwnProperty(r.text) || textInput[r.text] === '')) {
         errorsExist = true;
-        errorMessage.push(`You left "${r.text}" blank!`);
+        errorMessage.push(`[italic]You left "${r.text}" blank!`);
       }
       if (r.checkbox || textInput.hasOwnProperty(r.text)) {
         let rText = '';

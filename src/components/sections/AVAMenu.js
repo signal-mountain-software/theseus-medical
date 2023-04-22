@@ -2,9 +2,10 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, cl, resolveVariables } from '../../util/AVAUtilities';
+import { recordExists, cl, resolveVariables, makeArray } from '../../util/AVAUtilities';
 import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
+import { getMemberList } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -281,7 +282,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 5 * oneMinute;
 
-  let idleTimer = React.createRef()
+  let idleTimer = React.createRef();
 
   let nowTime = new Date().getTime();
 
@@ -321,7 +322,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         return menuRec.Item.AVA_main_menu;
       }
     }
-    
+
     let forceRefresh = true;
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
 
@@ -737,10 +738,52 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   async function getActivityDetail(pActRec) {
     let resolvedActivity = await makeObservationList(pActRec.activity_rec || pActRec.activity_code, session);
     resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
-    resolvedActivity.activityRec.default_value = await resolveVariables(pActRec.default_value, session);
+    resolvedActivity.activityRec.default_value = await prepareDefaults(pActRec);
     setSelected(resolvedActivity.activityRec);
     return resolvedActivity;
   };
+
+  async function prepareDefaults(fact) {
+    let excludeList = ['reservation', 'play_video', 'make_message'];
+    if (!fact.default_value) { return; }
+    if (excludeList.includes(fact.activity_rec?.type)  || excludeList.includes(fact.type)) { return fact.default_value; }
+    let returnArray = [];
+    let factClient;
+    let defaultValues = makeArray(fact.default_value, /\s~|~\s/g);
+    for (let d = 0; d < defaultValues.length; d++) {
+      let dField, dValue;
+      if (defaultValues[d].includes('=')) { [dField, dValue] = defaultValues[d].split('='); }
+      else { dValue = defaultValues[d]; }
+      let dInstr, dPart;
+      if (dValue.includes('.')) { [dInstr, dPart] = dValue.split('.'); }
+      else { dPart = dValue; }
+      dPart = await resolveVariables(dPart, session, { ignoreArrayCheck: true });
+      switch (dInstr) {
+        case 'people': {
+          if (!factClient) {
+            if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
+            else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//'); }
+            else { factClient = defaultClient; }
+          }
+          dPart = await getMemberList(makeArray(dPart, ','), factClient, { sort: true });
+          break;
+        }
+        default: { }
+      }
+      let returnValue;
+      if (dField) { 
+        if (dField.includes('.')) { dField = dField.split('.')[1]; }
+        if (typeof dPart !== 'string') { returnValue = {}; returnValue[dField] = dPart; }
+        else { returnValue = `${dField}=${dPart}`; }
+      }
+      else { 
+        if (typeof dPart !== 'string') { returnValue = {}; returnValue[`d${d}`] = dPart; }
+        else { returnValue = dPart; }
+      }
+      returnArray.push(returnValue);
+    }
+    return returnArray;
+  }
 
   const getActivityHistory = async (pActivity) => {
     let invokeFailed = false;
@@ -863,7 +906,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             if ((now.getTime() - idleTimer.current.state.lastIdle) > oneHour) {
               window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
             }
-          }}          
+          }}
           onIdle={async () => {
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
             await updateAVA(sectionOpen, mainMenu);
@@ -1099,7 +1142,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           </Box>
         }
 
-    {/* AVA Menu */}
+        {/* AVA Menu */}
         {mainMenu && mainMenu.length > 0 && !loading &&
           <Paper component={Box} variant='outlined' overflow='auto'>
             <List >
@@ -1445,7 +1488,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           >
           </AVAConfirm>
         }
-        </React.Fragment >
+      </React.Fragment >
     </Dialog >
   );
 };
