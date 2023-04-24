@@ -502,6 +502,10 @@ export default ({ session, filter = {}, onClose }) => {
       mHist.map(h => { return i.workData.formatted_request.push(['detail', h]); });
     }
     i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name}`;
+    if (['closed', 'completed', 'cancelled'].includes(i.last_status.toLowerCase())) {
+      i.workData.search_data += ` ~ closed`;
+    }
+    else { i.workData.search_data += ` ~ open`; }
     i.workData.checked = false;
     i.workData.open = false;
     return i;
