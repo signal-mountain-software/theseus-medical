@@ -1296,6 +1296,7 @@ export default ({
         <LoadWorkOrderSpreadsheet
           pClient={session.client_id}
           showSheet={true}
+          defaults={defaultValue}
           session={session}
           onClose={onSave}
         />
