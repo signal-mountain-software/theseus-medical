@@ -2,6 +2,7 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
+import { messageHistory } from '../../util/AVAMessages';
 
 import List from '@material-ui/core/List';
 
@@ -287,7 +288,13 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   };
 
   async function getMessageResults(pCommonKey) {
-    let returnArray = [];
+    let requestBody = {
+      thread_id: pCommonKey.split('~')[0].slice(2),
+      composite_key: pCommonKey,
+      record_type: 'delivery'
+    }
+    let returnArray = await messageHistory(requestBody);
+    /*
     let mRecs = await dbClient
       .query({
         KeyConditionExpression: 'thread_id = :k AND begins_with(composite_key, :c)',
@@ -391,8 +398,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
         mLine += mInfo;
         returnArray.push(mLine);
       });
-      return ['~~~', 'Results:', ...returnArray];
-    }
+    */  
+    return ['~~~', 'Results:', ...returnArray];
   };
 
   async function getReceiptDetails(pCommonKey) {

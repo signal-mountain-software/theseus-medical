@@ -17,6 +17,7 @@ export function makeDate(pInput) {
             'error': true,
             'relative': '',
             'absolute': '',
+            'oaDate': '',
             'date': null,
             'timestamp': 0,
             'ymd': '2099.01.01',
@@ -65,6 +66,7 @@ export function makeDate(pInput) {
                 'error': true,
                 'relative': `${pInput} is not a valid date`,
                 'absolute': `${pInput} is not a valid date`,
+                'oaDate': `${pInput} is not a valid date`,
                 'date': null,
                 'timestamp': 0,
                 'ymd': '2099.01.01',
@@ -74,7 +76,7 @@ export function makeDate(pInput) {
         }
     }
     let currentDate = new Date();
-    let relDate, absDate;
+    let relDate, absDate, oaDate;
     // Make relative date
     let hours = 60 * 60 * 1000;
     let beginningOfCurrentDay = currentDate.setHours(0, 0, 0, 0);
@@ -117,9 +119,11 @@ export function makeDate(pInput) {
         absDate += ` ${targetDate.getFullYear()}`;
         if (daysDiff(targetDate, new Date()) > 21) { relDate += ` ${targetDate.getFullYear()}`; }
     }
+    oaDate = `on ${absDate}`;
     if ((targetDate.getHours() > 0) || (targetDate.getMinutes() > 0)) {
         let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
         absDate += tOfDay;
+        oaDate += tOfDay;
         relDate += tOfDay;
     }
     let targetDateYMD = targetDate.getFullYear()
@@ -130,6 +134,7 @@ export function makeDate(pInput) {
         'error': false,
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
+        'oaDate': titleCase(oaDate),
         'date': targetDate,
         'timestamp': targetDateStamp,
         'ymd': targetDateYMD,

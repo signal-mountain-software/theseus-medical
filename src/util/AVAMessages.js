@@ -14,24 +14,22 @@ const dbClient = new AWS.DynamoDB.DocumentClient({
 
 // Functions
 
-/*
-export function putMessage_nonAsync(body) {
-    const goFunction = async () => {
-        returnArray = await putMessage(...arguments);
-    };
-    let returnArray = [];
-    goFunction();
-    return returnArray;
-}
-*/
-
 export async function getMessages(body) {
   let qT = body.thread_id || body.thread;
   let qQ = {
     TableName: 'TheseusMessages',
     KeyConditionExpression: 'thread_id = :t',
-    ExpressionAttributeValues: { ':t': qT }
+    ExpressionAttributeValues: { ':t': qT },
+    ScanIndexForward: false
   };
+  if (body.hasOwnProperty('key') || body.hasOwnProperty('composite_key')) {
+    qQ.KeyConditionExpression += ' AND begins_with(composite_key, :c)';
+    qQ.ExpressionAttributeValues[':c'] = body.key || body.composite_key;
+  }
+  if (body.hasOwnProperty('type') || body.hasOwnProperty('record_type')) {
+    qQ.FilterExpression = 'record_type = :y';
+    qQ.ExpressionAttributeValues[':y'] = body.type || body.record_type;
+  }
   let qR = await dbClient
     .query(qQ)
     .promise()
@@ -70,7 +68,7 @@ export async function prepareMessage(inBody) {
     results = {};
     if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
     else { results.recipientList = [this_request.recipientList]; }
-    for (let i = 0; i < results.recipientList.length; i++) { 
+    for (let i = 0; i < results.recipientList.length; i++) {
       results.recipientList[i] = await resolveMessageVariables(results.recipientList[i], this_request);
     }
     results.client = this_request.client;
@@ -277,7 +275,7 @@ export async function resolveMessageVariables(inString, body) {
         if (body.hasOwnProperty(variable)) {
           workString = `${front}${body[variable]}${back}`;
         }
-        else if (variable.trim().toLowerCase().startsWith('if ')) { 
+        else if (variable.trim().toLowerCase().startsWith('if ')) {
           let [if$, then$] = variable.trim().slice(2).split(':');
           if (body.selections.includes(if$.trim())) { workString = then$.trim(); }
           else { workString = ''; }
@@ -305,7 +303,7 @@ export async function resolveMessageVariables(inString, body) {
         }
       }
     }
-    loopCount++
+    loopCount++;
   }
   return workString;
 };
@@ -426,12 +424,12 @@ async function formatRequestDetails(body, summaryType) {
 
   // Finish
   htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
-  
+
   if (body.local_key) {
     htmlMessage += `<div>AVA request number:&nbsp;<strong>${body.local_key}</strong></div>`;
     rawMessage += `\n\rAVA request number: ${body.local_key}`;
   }
-  
+
   htmlMessage += `<div>AVA reference:&nbsp;${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})</div>`;
   htmlMessage += `<div>***** END *****</div></p>`;
   rawMessage += `\n\rAVA reference: ${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})\n***** END *****`;
@@ -467,16 +465,18 @@ export async function sendMessages(body) {
     mCount = 1;
   }
   for (let m = 0; m < mCount; m++) {
+    let currentTime = makeDate(new Date());
     let env = toSend[m];
     if (!('thread_id' in env)) { env.thread_id = `${postTime}.${uuid(6)}`; }
     // clean up recipientList before proceeding
     if (!('recipientList' in env)) {  // skip this, no recipients
-      results.push(`failed - no recipients specified`);
+      results.push({ sent: false, message: `failed - no recipients specified` });
       continue;
     }
     var PostOfficeRec = {
       Item: {
         'client_id': env.client,
+        'thread_id': env.thread_id,
         'message_id': `${postTime}~AVAMessages`,
         'deliver_time': postTime,
         'patient_id': env.author,
@@ -501,23 +501,107 @@ export async function sendMessages(body) {
         let gCode = to[r].split('//')[1];
         PostOfficeRec.Item["recipient_base"] = 'group';
         PostOfficeRec.Item["recipient_key"] = gCode;
+        let goodSend = true;
         await dbClient
           .put(PostOfficeRec)
           .promise()
-          .catch(error => { console.log(`Message Engine caught error at 268 adding a Message; error is ${error}`); });
-        results.push(`sent to group ${gCode}`);
+          .catch(error => {
+            console.log(`Message Engine caught error at 268 adding a Message; error is ${error}`);
+            results.push({ sent: false, message: `Unable to send message to group ${gCode} ${currentTime.oaDate}.  Error was ${error}` });
+            goodSend = false;
+          });
+        if (goodSend) { results.push({ sent: true, message: `Sent message to group ${gCode} ${currentTime.oaDate}` }); }
       }
       else { ind.push(to[r]); }
     }
     if (ind.length > 0) {
       PostOfficeRec.Item["recipient_base"] = 'list';
       PostOfficeRec.Item["recipient_key"] = ind;
+      let goodPost = true;
       await dbClient
         .put(PostOfficeRec)
         .promise()
-        .catch(error => { cl(`Error writing to Post Office; error is ${error}`); });
-      results.push(`sent ${ind.length} message${(ind.length > 1) ? 's' : ''}. To: ${ind.join(', ')}`);
+        .catch(error => {
+          cl(`Error writing to Post Office; error is ${error}`);
+          results.push({ sent: false, message: `Unable to send message ${currentTime.oaDate}.  Error was ${error}` });
+          goodPost = false;
+        });
+      if (goodPost) {
+        let nList = [];
+        for (let p = 0; p < ind.length; p++) {
+          nList.push(await makeName(ind[p]));
+        }
+        results.push({ sent: true, message: `Sent message to ${listFromArray(nList)} ${currentTime.oaDate}` });
+      }
     }
   }
   return results;
+}
+
+export async function messageHistory(body) {
+  // body should include thread_id
+  let mRecs = await getMessages(body);
+  let returnArray = [];
+  if (!mRecs) { returnArray.push(`No message history`); }
+  else {
+    mRecs.forEach(mR => {
+      let mTime = mR.posted_time || mR.created_time;
+      let mInfo = '';
+      let mLine = `Sent to ${mR.recipient_list.name.first} ${mR.recipient_list.name.last}`;
+      switch (mR.deliver_method) {
+        case 'sms': {
+          mLine += ' via text message';
+          break;
+        }
+        case 'voice':
+        case 'office': {
+          mLine += ' via phone call';
+          break;
+        }
+        case 'email': {
+          mLine += ' via e-Mail';
+          break;
+        }
+        case 'hold': {
+          mLine += " held for later delivery per recipient's instructions";
+          break;
+        }
+        default: { mLine += ` via ${mR.deliver_method}`; }
+      }
+      if (mR.results) {
+        let mRLast = mR.results[0];
+        mTime = mRLast.posted_time;
+        switch (mRLast.result) {
+          case 'reply': {
+            mLine += '.  Reply received';
+            mInfo = ` Reply is "${mRLast.update_contents.replace(':', ' -')}"`;
+            break;
+          }
+          case 'submitted': {
+            break;
+          }
+          case 'replyReceived': {
+            mLine += '.  Reply received';
+            break;
+          }
+          case 'delivery':
+          case 'delivered': {
+            mLine += '.  Delivered';
+            break;
+          }
+          case 'open': {
+            mLine += '.  Opened';
+            break;
+          }
+          default: {
+            mLine += `. ${mRLast.result}`;
+          }
+        }
+      }
+      mLine += ` ${makeDate(mTime).oaDate}`;
+      mLine += mInfo;
+      returnArray.push(mLine);
+    });
+    return returnArray;
+  }
 }

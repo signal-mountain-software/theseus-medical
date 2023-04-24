@@ -449,7 +449,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         responseArray.push(`[indent=1]${listFromArray(radioChecked)}`);
       }
       let noText = true;
-      if (pData.textValue.hasOwnProperty(c.person_id)) {
+      if (pData.textValue && pData.textValue.hasOwnProperty(c.person_id)) {
         Object.keys(pData.textValue[c.person_id]).forEach(textIn => {
           if (pData.textValue[c.person_id][textIn].trim() !== '') {
             dataExists = true;
@@ -858,9 +858,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       {
                         client: pClient,
                         author: c.person_id,
+                        proxy_user: fact.session.user_id,
                         requestType: request_type,
                         onBehalfOf: oBo,
-                        foreignKey: foreign_key,
+                        foreign_key,
                         request: requestObj,
                         messaging: fact.messaging
                       });

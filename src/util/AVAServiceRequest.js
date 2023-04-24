@@ -1,5 +1,6 @@
 import { clt, cl, recordExists } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
+import { makeDate } from '../util/AVADateTime';
 import { prepareMessage, sendMessages } from '../util/AVAMessages';
 
 const AWS = require('aws-sdk');
@@ -76,8 +77,8 @@ export async function putServiceRequest(body) {
   /* request is an object with...
           body: {
               client: <string> (required),
-              author: <user ID> (required)
-              requestID: (required)
+              author: <user ID> (required),
+              proxy_user: <user ID> (optional - if present, this is the actual user that created the request)
               requestType: <string> (required - maint, dining, transportation, etc....)
               requestDate: <optional timestamp - defaults to currentTime>,
               onBehalfOf: <optional - defaults to author's name>
@@ -90,14 +91,21 @@ export async function putServiceRequest(body) {
               notes: <optional text>
       };
   */
-  let now = new Date().getTime();
+  let currentTime = makeDate(new Date());
+  let now = currentTime.timestamp;
   if (!body.requestDate) { body.requestDate = now; };
-  body.requestID = `${body.author}~${body.requestDate}`;
+  body.requestID = `${body.proxy_user || body.author}~${body.requestDate}`;
   if (!body.local_key) {
-      let sDate = now.toString();
-      body.local_key = sDate.slice(2, 6) + '-' + sDate.slice(6, 10);
+    let sDate = now.toString();
+    body.local_key = sDate.slice(2, 6) + '-' + sDate.slice(6, 10);
   }
   if (!body.onBehalfOf) { body.onBehalfOf = await getPerson(body.author, 'name'); }
+  let historyArray = [];
+  if (body.history) {
+    if (Array.isArray(body.history)) { historyArray.push(...(body.history)); }
+    else { historyArray.push(body.history); }
+  }
+  else { historyArray.push(`Request submitted ${currentTime.oaDate}`); }
   let serviceRequestRec = {
     "client_id": body.client,
     "request_id": body.requestID,
@@ -106,7 +114,7 @@ export async function putServiceRequest(body) {
     "request_type": body.requestType,
     "request_date": body.requestDate,
     "original_request": body.request,
-    "history": body.history,
+    "history": historyArray,
     "local_key": body.local_key,
     "foreign_key": body.foreign_key || '*tbd*',
     "last_update": body.update_time || now,
@@ -127,7 +135,22 @@ export async function putServiceRequest(body) {
     });
   if (body.messaging) {
     let preparedMessages = await prepareMessage(body);
-    if (preparedMessages.length > 0) { sendMessages(preparedMessages); }
+    if (preparedMessages.length > 0) {
+      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
+      let sendResults = (await sendMessages(preparedMessages)).pop();
+      if (!sendResults.sent) { serviceRequestRec.last_status = 'Failed to send'; }
+      else {
+        let rTime = makeDate(new Date().getTime());
+        serviceRequestRec.last_status = 'Sent';
+        serviceRequestRec.last_update = rTime.timestamp;
+        let rMsg = `Sent for processing ${rTime.oaDate}`;
+        if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
+          serviceRequestRec.history.unshift(rMsg);
+        }
+        else { serviceRequestRec.history = [rMsg]; }
+        updateServiceRequest(serviceRequestRec);
+      }
+    }
   }
   return {
     'request_id': serviceRequestRec.request_id,

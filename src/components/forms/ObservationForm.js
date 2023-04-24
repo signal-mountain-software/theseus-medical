@@ -819,9 +819,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     {
                       client: pClient,
                       author: fact.patient_id,
+                      proxy_user: fact.session.user_id,
                       requestType: fact.value.freeText.requestType,
                       onBehalfOf: oBo,
-                      foreignKey: foreign_key,
+                      foreign_key,
                       request: requestObj,
                       messaging: fact.messaging
                     });

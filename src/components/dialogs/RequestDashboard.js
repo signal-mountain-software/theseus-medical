@@ -3,7 +3,7 @@ import { makeNumber, sentenceCase, titleCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
-import { getMessages, sendMessages } from '../../util/AVAMessages';
+import { getMessages, sendMessages, messageHistory } from '../../util/AVAMessages';
 import AVAConfirm from '../forms/AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
 
@@ -485,6 +485,21 @@ export default ({ session, filter = {}, onClose }) => {
       i.workData.requestor_name = 'Anonymous';
       i.workData.requestor_location = null;
       i.workData.requestor_image = null;
+    }
+    if (('history' in i) && (typeof (i.history) !== 'string')) {
+      i.workData.formatted_request.push(['head', 'History']);
+      i.history.map(h => { return i.workData.formatted_request.push(['detail', h]); })
+    }
+    else {
+      i.workData.formatted_request.push(['detail', i.history]);
+    }
+    let mHist = await messageHistory({
+      thread_id: `svc_${i.request_type}/${i.request_id}`,
+      type: 'delivery'
+    });
+    if (mHist && (mHist.length > 0)) {
+      i.workData.formatted_request.push(['head', 'Messages']);
+      mHist.map(h => { return i.workData.formatted_request.push(['detail', h]); });
     }
     i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name}`;
     i.workData.checked = false;
