@@ -506,7 +506,8 @@ export async function getSlotList(request) {
           status: (r.slotData.status ? r.slotData.status.current : "undefined"),
           show_this_slot: (r.slotData.hasOwnProperty('show_this_slot') ? r.slotData.show_this_slot : true),
           owner: r.slotData.owner,
-          display_name: r.slotData.display_name || r.slotData.name
+          display_name: r.slotData.display_name || r.slotData.name,
+          marked: r.marked
         });
       }
     });

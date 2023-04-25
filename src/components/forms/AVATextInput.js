@@ -129,6 +129,13 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
     if (!titleText) { titleText = titleCase(promptText); }
   }
 
+  let buttonArray = [];
+  if (Array.isArray(buttonText)) { buttonArray = buttonText; }
+  else {
+    buttonArray = [buttonText, 'Cancel/Go Back'];
+  }
+
+
   // **************************
 
   return (
@@ -206,7 +213,7 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
               }}
               startIcon={<CloseIcon size="small" />}
             >
-              {'Cancel/Go Back'}
+              {buttonArray[1]}
             </Button>
           }
           <Button
@@ -215,7 +222,7 @@ export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCanc
             onClick={handleSave}
             startIcon={<LoadIcon size="small" />}
           >
-            {buttonText}
+            {buttonArray[0]}
           </Button>
         </Box>
       </DialogActions>
