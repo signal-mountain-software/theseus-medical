@@ -216,9 +216,12 @@ export default ({ session, filter = {}, onClose }) => {
 
   const [dataRows, setDataRows] = React.useState();
 
-  const [request_filter, setRequestFilter] = React.useState('');
-  const [request_filter_lower, setRequestFilterLower] = React.useState('');
-  const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
+  // const [request_filter, setRequestFilter] = React.useState('');
+  // const [request_filter_lower, setRequestFilterLower] = React.useState('');
+  // const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
+  const [filters, setFilters] = React.useState({
+    rowLimit: 5
+  });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const [deletePending, setDeletePending] = React.useState(false);
@@ -232,11 +235,8 @@ export default ({ session, filter = {}, onClose }) => {
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
-  const [rowLimit, setRowLimit] = React.useState(5);
-
   const scrollValue = 5;
   var rowsWritten;
-  const [scrollTime, setScrollTime] = React.useState(0);
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
@@ -336,16 +336,44 @@ export default ({ session, filter = {}, onClose }) => {
     setForceRedisplay(!forceRedisplay);
   }
 
-  const handleChangeRequestFilter = event => {
-    if (event.target.value.length === 0) {
-      setRequestFilter(null);
-      setRequestFilterLower(null);
-    }
-    else {
-      setRequestFilter(event.target.value);
-      setRequestFilterLower(event.target.value.toLowerCase());
-      setSingleFilterDigit(event.target.value.length === 1);
-    }
+  let scrollTimeOut;
+  function handleScroll() {
+    clearTimeout(scrollTimeOut);
+    scrollTimeOut = setTimeout(() => {
+      setFilters({
+        request_filter: filters.request_filter,
+        request_filter_lower: filters.request_filter_lower,
+        singleFilterDigit: filters.singleFilterDigit,
+        rowLimit: (filters.rowLimit + scrollValue),
+        forceRedisplay: !forceRedisplay
+      });
+    }, 500);
+  };
+
+  let filterTimeOut;
+  const handleChangeRequestFilter = vCheck => {
+    clearTimeout(filterTimeOut);
+    filterTimeOut = setTimeout(() => {
+      if (vCheck.length === 0) {
+        setFilters({
+          request_filter: '',
+          request_filter_lower: '',
+          singleFilterDigit: false,
+          rowLimit: filters.rowLimit,
+          forceRedisplay: !forceRedisplay
+        });
+      }
+      else {
+        setFilters({
+          request_filter: vCheck || '',
+          request_filter_lower: vCheck.toLowerCase() || '',
+          singleFilterDigit: (vCheck.length === 1),
+          rowLimit: filters.rowLimit,
+          forceRedisplay: !forceRedisplay
+        });
+      }
+    }, 500);
+
   };
 
   const handleRemoveMessage = async (pMessage_id, pIndex) => {
@@ -416,9 +444,9 @@ export default ({ session, filter = {}, onClose }) => {
   };
 
   function filteredRequest(pRec) {
-    if (singleFilterDigit) { return true; }
+    if (filters.singleFilterDigit) { return true; }
     else {
-      return (`${pRec.workData.search_data} ${pRec.workData.formatted_type}`).toLowerCase().includes(request_filter_lower);
+      return (`${pRec.workData.search_data} ${pRec.workData.formatted_type}`).toLowerCase().includes(filters.request_filter_lower);
     }
   }
 
@@ -426,7 +454,7 @@ export default ({ session, filter = {}, onClose }) => {
     let qList = [];
     if (filter) { filter.client_id = session.client_id; }
     else { filter = { 'person': session.patient_id }; }
-    filter.limit = rowLimit * 3;
+    filter.limit = Math.min(filters.rowLimit, 5) * 3;
     qList = await getServiceRequests(filter);
     let limit = Math.min(filter.limit, qList.length);
     for (let x = 0; x < limit; x++) {
@@ -486,12 +514,17 @@ export default ({ session, filter = {}, onClose }) => {
       i.workData.requestor_location = null;
       i.workData.requestor_image = null;
     }
-    if (('history' in i) && (typeof (i.history) !== 'string')) {
+    if ('history' in i) {
       i.workData.formatted_request.push(['head', 'History']);
-      i.history.map(h => { return i.workData.formatted_request.push(['detail', h]); })
-    }
-    else {
-      i.workData.formatted_request.push(['detail', i.history]);
+      if (typeof (i.history) === 'string') { i.workData.formatted_request.push(['detail', i.history]); }
+      else if (Array.isArray(i.history)) {
+        i.history.forEach(h => {
+          if (typeof h === 'string') { i.workData.formatted_request.push(['detail', h]); }
+        });
+      }
+      else {
+        Object.values(i.history).forEach(h => { i.workData.formatted_request.push(['detail', h]); });
+      }
     }
     let mHist = await messageHistory({
       thread_id: `svc_${i.request_type}/${i.request_id}`,
@@ -650,22 +683,14 @@ export default ({ session, filter = {}, onClose }) => {
           </Box>
           <TextField
             id='List Filter'
-            value={request_filter}
-            onChange={handleChangeRequestFilter}
+            onChange={event => (handleChangeRequestFilter(event.target.value))}
             className={classes.freeInput}
             label={'Filter/Search'}
             variant={'standard'}
             autoComplete='off'
           />
           <Paper
-            onScroll={() => {
-              var now = new Date().getTime();
-              if (((now - scrollTime) > 1000)) {
-                setScrollTime(now);
-                setRowLimit(rowLimit + scrollValue);
-                setForceRedisplay(!forceRedisplay);
-              }
-            }}
+            onScroll={() => (handleScroll())}
             component={Box}
             // className={classes.page}
             variant='outlined'
@@ -677,8 +702,8 @@ export default ({ session, filter = {}, onClose }) => {
                 {rowsWritten = 0}
               </Typography>
               {dataRows.map((this_item, index) => (
-                ((rowsWritten <= rowLimit) && this_item.workData
-                  && (!request_filter || filteredRequest(this_item, request_filter))
+                ((rowsWritten <= filters.rowLimit) && this_item.workData
+                  && (!filters.request_filter || filteredRequest(this_item, filters.request_filter))
                   && (!this_item.workData.delete_flag || showDeleted) &&
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -705,12 +730,12 @@ export default ({ session, filter = {}, onClose }) => {
                                 <Typography variant='h5' className={classes.timeLine}>{this_item.workData.display_date}</Typography>
                               </Box>
                             </Box>
-                            {this_item && this_item.workData && this_item.workData.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                            {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
                               <Typography
                                 key={`prefLine-${mIndex}`}
                                 className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
                               >
-                                {mLine[1]}
+                                {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
                               </Typography>
                             ))}
                             {this_item.workData.open &&
