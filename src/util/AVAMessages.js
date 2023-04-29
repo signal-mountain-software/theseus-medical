@@ -115,11 +115,14 @@ export async function prepareMessage(inBody) {
       }
       let thenArray = [];
       let passedTest = false;
-      if (requestToTest.selections && requestToTest.selections.includes(t.check) && !t.test) { passedTest = true; }
-      else if (t.check in requestToTest.textInput) {
+      if (!t.test) {   // No test condition?  Testing to see if the t.check was selected
+        if (requestToTest.selections && requestToTest.selections.includes(t.check)) { passedTest = true; }
+      }
+      // there is a test condition
+      else if (t.check in requestToTest.textInput) {  // checking text input against t.test
         if (requestToTest.textInput[t.check].toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
       }
-      else if (t.test && t.check) {
+      else if (t.check) {    // resolve whatever is being checked and test it against t.test (or array of t.tests)
         let resolved = await resolveMessageVariables(t.check, requestToTest);
         if (resolved) {
           if (Array.isArray(t.test)) {
