@@ -386,6 +386,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   }
 
   function handleQualChecked(pOrderOption, pQualifier, pQualChoice) {
+    if (!pQualChoice) { return; }
     let qRule = dataRows[pOrderOption].find(r => { return (r.title === pQualifier); });
     let workChosenQ = dataRows.chosenQual;
     if (!workChosenQ) {
@@ -725,13 +726,32 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                   handleQualChecked(this_item.text, qR.title, opt.display);
                                 }}
                               >
-                                {opt.type === 'checkbox' &&
+                                {(!opt.type || (opt.type === 'checkbox')) &&
                                   <React.Fragment>
                                     <Checkbox
                                       className={classes.radioButton}
                                       size="small"
                                       checked={isQChecked(this_item, qR, opt.display)} />
                                     <Typography className={classes.radioText}>{opt.display}</Typography>
+                                  </React.Fragment>
+                                }
+                                {opt.type === 'prompt' &&
+                                  <React.Fragment>
+                                    <Checkbox
+                                      className={classes.radioButton}
+                                      size="small"
+                                      checked={isQChecked(this_item, qR, opt.display)} />
+                                    <TextField
+                                      className={classes.radioText}
+                                      id={'text' + this_index + oX}
+                                      variant={'standard'}
+                                      key={'text' + this_index + oX}
+                                      multiline
+                                      onChange={(event) => {
+                                        qR.option[oX].display = event.target.value;
+                                      }}
+                                      autoComplete='off'
+                                    />
                                   </React.Fragment>
                                 }
                               </Box>
