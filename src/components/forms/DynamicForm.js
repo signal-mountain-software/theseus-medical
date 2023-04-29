@@ -915,7 +915,7 @@ export default ({
         if (
           !searching ||
           searchTerms.every(searchTerm => {
-            if (searchTerm.length === 1) { 
+            if (searchTerm.length === 1) {
               return (lowerListEntry.startsWith(searchTerm) || lowerListEntry.includes(searchTerm + '-'));
             }
             return lowerListEntry.includes(searchTerm);
@@ -941,7 +941,7 @@ export default ({
   }, [checked, filterPromptValue, searchTextFromParent, values, session.search_terms]);
 
   switch (type) {
-     case 'characteristic_num':
+    case 'characteristic_num':
       return (
         <NumberForm
           open={open}
@@ -1170,9 +1170,27 @@ export default ({
         />
       );
     case 'make_message':
-      let defaultValueObj;
+      let defaultValueObj = {};
       if (!defaultValue) { defaultValueObj = { recipientID: '*select' }; }
-      else { defaultValueObj = JSON.parse(defaultValue); }
+      else {
+        if (Array.isArray(defaultValue)) {
+          defaultValue.forEach(d => {
+            if (typeof d === 'string') {
+              let [dKey, dVal] = d.split('=');
+              defaultValueObj[dKey] = dVal;
+            }
+            else { 
+              for (let dKey in d) {
+                defaultValueObj[dKey] = d[dKey];
+              }
+            }
+          });
+        }
+        else {
+          try { defaultValueObj = JSON.parse(defaultValue); }
+          catch { console.log(defaultValue); }
+        }
+      }
       return (
         <MakeMessage
           titleText={defaultValueObj.title}
@@ -1181,6 +1199,7 @@ export default ({
           sender={session}
           pRecipientID={defaultValueObj.recipientID}
           pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
+          peopleList={defaultValueObj.peopleList || []}
           onCancel={onClose}
           onComplete={onClose}
           allowCancel={true}
@@ -1196,9 +1215,9 @@ export default ({
           pClient={session.client_id}
           qualifiers={qualifierTable}
           listValues={values}
-          onSave={(requestNumber, oSelected, fText, fQualifiers) => { 
-            newFact.commonKey = requestNumber; 
-            newFact.value.selected = oSelected; 
+          onSave={(requestNumber, oSelected, fText, fQualifiers) => {
+            newFact.commonKey = requestNumber;
+            newFact.value.selected = oSelected;
             newFact.value.freeText = fText;
             newFact.value.qualifiers = fQualifiers;
             newFact.status = 'confirmed';
@@ -1519,8 +1538,8 @@ export default ({
                               variant={'standard'}
                               multiline
                               fullWidth
-                            autoComplete='off'
-                            required={requiredInput}
+                              autoComplete='off'
+                              required={requiredInput}
                               value={newFact?.value?.freeText?.[freeTextFieldName] || ''}
                               onChange={onChangeFreeText}
                             />
@@ -1567,7 +1586,7 @@ export default ({
                                   Body: fObj,
                                   ACL: 'public-read-write',
                                   ContentType: fObj.type,
-                                  Metadata: {'Content-Type': fObj.type}
+                                  Metadata: { 'Content-Type': fObj.type }
                                 };
                                 newFact.value.tag = freeText || oName;
                                 newFact.value.mediaData = pFile;

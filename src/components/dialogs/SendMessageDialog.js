@@ -10,7 +10,7 @@ import Paper from '@material-ui/core/Paper';
 import useSession from '../../hooks/useSession';
 import PersonFilter from '../forms/PersonFilter';
 
-export default ({ open, onClose, onSelect }) => {
+export default ({ open, multiSelect = false, onClose, onSelect }) => {
 
   const { state } = useSession();
   const { session } = state;
@@ -51,6 +51,7 @@ export default ({ open, onClose, onSelect }) => {
                     onSelect(selectedPerson);
                   }}
                   allowRandom={true}
+                  multiSelect
                 />
               }
             </List>

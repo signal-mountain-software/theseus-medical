@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, uuid, listFromArray, sentenceCase } from './AVAUtilities';
+import { clt, cl, recordExists, uuid, listFromArray, makeArray, sentenceCase } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { makeDate } from './AVADateTime';
@@ -448,6 +448,7 @@ export async function sendMessages(body) {
           htmlMessageText: <text>
           recipientList: <person_id or array of person_id's list can include "GRP//<group_id>" as well>
           subject: <subject>
+          attachments: [<string>, <string>, ...]
           preffered_method: <attempt to force this method>
           thread_id: <if present, add this message to the indicated thread; otherwise, create a new thread>    
   */
@@ -489,6 +490,7 @@ export async function sendMessages(body) {
       TableName: "PostOffice"
     };
     if (env.testMode) { PostOfficeRec.TableName = "TestPostOffice"; };
+    if (env.attachments) { PostOfficeRec.Item.attachments = makeArray(env.attachments); }
     if (!('subject' in PostOfficeRec.Item)) {
       PostOfficeRec.Item["subject"] = `Message from ${await makeName(env.author)}`;
     }

@@ -387,25 +387,136 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
   };
-
+  /*
+    async function putS3Object(pMediaData, pType) {
+      enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: true });
+      let uploadOK = true;
+      await s3
+        .putObject(pMediaData)
+        .promise()
+        .catch(err => {
+          uploadOK = false;
+          enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
+            { variant: 'error', persist: true });
+        });
+      if (uploadOK) {
+        closeSnackbar();
+        enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
+        return pMediaData.Key;
+      };
+      return null;
+    }
+  */
   async function putS3Object(pMediaData, pType) {
-    enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: true });
-    let uploadOK = true;
-    await s3
-      .putObject(pMediaData)
-      .promise()
-      .catch(err => {
-        uploadOK = false;
-        enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
-          { variant: 'error', persist: true });
-      });
-    if (uploadOK) {
-      closeSnackbar();
-      enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
+    /*
+    pMediaData = {
+      Bucket: 'theseus-medical-storage',
+      Key: fName,
+      Body: fObj,
+      ACL: 'public-read-write',
+      ContentType: fObj.type,
+      Metadata: { 'Content-Type': fObj.type }
+    }
+    */
+    let buff, buffer;
+    let fileSize = 1;
+    let forceSingle = false;
+    try {
+      buff = await pMediaData.Body.arrayBuffer();
+      buffer = new Float32Array(buff, 4, 4);
+      fileSize = buffer.length;
+    }
+    catch {
+      enqueueSnackbar(`${pMediaData.Key} is really big.  This may take a few minutes...`, { variant: 'error', persist: false });
+      forceSingle = true;
+    }
+
+    let uploadId;
+    try {
+      // Multipart upload will pass chunks of 10Mb
+      let partSize = 10000000;
+      let numberOfParts = 10;
+      if (fileSize > (partSize * numberOfParts)) { partSize = fileSize / 10; }
+      else { numberOfParts = Math.ceil(fileSize / partSize); }
+
+      if ((numberOfParts === 1) || forceSingle) {
+        enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: false });
+        let uploadOK = true;
+        await s3
+          .putObject(pMediaData)
+          .promise()
+          .catch(err => {
+            uploadOK = false;
+            enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
+              { variant: 'error', persist: true });
+          });
+        if (uploadOK) {
+          closeSnackbar();
+          enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
+          return pMediaData.Key;
+        };
+        return null;
+      }
+
+      // this is a multi-part load
+      enqueueSnackbar(`AVA broke your ${pType.toLowerCase()} with the name ${pMediaData.Key} into ${numberOfParts} pieces and is uploading them now`, { variant: 'info', persist: false });
+      let upParms = {
+        Bucket: pMediaData.Bucket,
+        Key: pMediaData.Key,
+        ACL: pMediaData.ACL,
+        ContentType: pMediaData.ContentType,
+        Metadata: pMediaData.MetaData
+      };
+      let mpUp = await s3.createMultipartUpload(upParms).promise();
+      uploadId = mpUp.UploadId;
+
+      const uploadPromises = [];
+      // Upload each part.
+      for (let i = 0; i < numberOfParts; i++) {
+        const start = i * partSize;
+        const end = start + partSize;
+        let uPartParm = {
+          Bucket: pMediaData.Bucket,
+          Key: pMediaData.Key,
+          UploadId: uploadId,
+          Body: buffer.subarray(start, end),
+          PartNumber: i + 1,
+        }
+        uploadPromises.push(s3.uploadPart(uPartParm).promise());
+      }
+
+      const uploadResults = await Promise.all(uploadPromises);
+      let upDone = {
+        Bucket: pMediaData.Bucket,
+        Key: pMediaData.Key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: uploadResults.map(({ ETag }, i) => ({
+            ETag,
+            PartNumber: i + 1,
+          })),
+        }
+      };
+      let s3Resp = await s3.completeMultipartUpload(upDone).promise();
+      enqueueSnackbar(`All parts of ${s3Resp.Key} were saved successfully to ${s3Resp.Location}`, { variant: 'success', persist: true });
       return pMediaData.Key;
-    };
-    return null;
-  }
+
+      // Verify the output by downloading the file from the Amazon Simple Storage Service (Amazon S3) console.
+      // Because the output is a 25 MB string, text editors might struggle to open the file.
+    } catch (err) {
+      console.error(err);
+      enqueueSnackbar(`That didn't work.  ${err}`, { variant: 'error', persist: true });
+      if (uploadId) {
+        let s3Bad = await s3.abortMultipartUpload({
+          Bucket: pMediaData.Bucket,
+          Key: pMediaData.Key,
+          UploadId: uploadId,
+        }).promise();
+        console.log(s3Bad);
+      }
+      return null;
+    }
+  };
 
   const screenQuiet = (statusMessage) => {
     return;
@@ -627,10 +738,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
         // write the Fact Table entry
         putFact(pFact, pFactName, pIndex);
-
-        if (factValueType === 'file_details') {
-          enqueueSnackbar(`The file upload is done!  AVA needs a minute or two to make it available on menus.`, { variant: 'success' });
-        }
       }
     };
     setShowNewFactDialog(-1);
@@ -744,9 +851,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   };
 
   async function prepareDefaults(fact) {
-    let excludeList = ['reservation', 'play_video', 'make_message'];
+    let excludeList = ['reservation', 'play_video'];
     if (!fact.default_value) { return; }
-    if (excludeList.includes(fact.activity_rec?.type)  || excludeList.includes(fact.type)) { return fact.default_value; }
+    if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
+    if (fact.activity_rec?.type === 'make_message') { 
+      
+    }
     let returnArray = [];
     let factClient;
     let defaultValues = makeArray(fact.default_value, /\s~|~\s/g);
@@ -771,12 +881,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         default: { }
       }
       let returnValue;
-      if (dField) { 
+      if (dField) {
         if (dField.includes('.')) { dField = dField.split('.')[1]; }
         if (typeof dPart !== 'string') { returnValue = {}; returnValue[dField] = dPart; }
         else { returnValue = `${dField}=${dPart}`; }
       }
-      else { 
+      else {
         if (typeof dPart !== 'string') { returnValue = {}; returnValue[`d${d}`] = dPart; }
         else { returnValue = dPart; }
       }
@@ -1387,7 +1497,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   ml={2} mr={2}
                   justifyContent='center'
                   flexDirection='column'
-                  height={30}
+                height={30}
+                onContextMenu={async (e) => {
+                  e.preventDefault();
+                  enqueueSnackbar(`Open row=${mainMenu[mainMenu.length - 1].section_name}`, { variant: 'info', persist: true });
+                }}
                 />
               }
             </List>
@@ -1465,7 +1579,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             onSave={
               async (pResult) => {
                 if ('client_id' in selected) { pResult.client_id = selected.client_id; }
-                onSaveFact(pResult, selected.name, showNewFactDialog);
+                await onSaveFact(pResult, selected.name, showNewFactDialog);
               }
             }
             onNext={onNextFact}
@@ -1482,7 +1596,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }}
             onConfirm={async () => {
               pendingFact.status = 'confirmed';
-              onSaveFact(pendingFact, selected.name, needsConfirmation);
+              await onSaveFact(pendingFact, selected.name, needsConfirmation);
               setNeedsConfirmation(-1);
             }}
           >

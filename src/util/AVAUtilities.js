@@ -92,10 +92,40 @@ export function makeArray(input, delimiter = null) {
   let response = [];
   if (Array.isArray(input)) { response.push(...input); }
   else if (typeof input === 'object') { response = Object.keys(input); }
-  else if (delimiter) { response = input.split(delimiter).map(e => { return e.trim(); }); }
+  else if ((input.charAt(0) === '{') && (input.charAt(input.length - 1) === '}')) {
+    let rObj = JSON.parse(input);
+    Object.keys(rObj).forEach(o => {
+      response.push(`${o}=${rObj[o]}`);
+    });
+  }
+  else if (delimiter) {
+    response = input.split(delimiter).map(e => { return e.trim(); });
+  }
   else { response.push(input); }
   return response;
 }
+
+export function extract(string, left, right = null, options = {}) {
+  let f_left = string.indexOf(left);
+  let f_right = string.indexOf(right, f_left);
+  if ((f_left === -1) || !left) {
+    if (!options.fuzzyLeft) { return null; }
+    else {
+      f_left = 0;
+      left = '';
+    }
+  }
+  if ((f_right === -1) || !right) {
+    if (!options.fuzzyRight) { return null; }
+    else {
+      f_right = string.length;
+      right = '';
+    }
+  }
+  if (!options.includeLeft) { f_left += left.length; }
+  if (!options.includeRight) { f_right -= right.length; }
+  return string.slice(f_left, f_right);
+};
 
 export function titleCase(pString) {
   if (!pString) { return ''; }
