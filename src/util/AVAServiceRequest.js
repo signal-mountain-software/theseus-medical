@@ -141,7 +141,7 @@ export async function putServiceRequest(body) {
       let rMsg;
       serviceRequestRec.messages = preparedMessages;
       serviceRequestRec.last_update = rTime.timestamp;
-      if (body.messaging.format.method === 'hold') {
+      if (body.messaging?.format?.method === 'hold') {
         serviceRequestRec.last_status = 'Prepared & Held';
         rMsg = `Held for future processing ${rTime.oaDate}`;
       }
