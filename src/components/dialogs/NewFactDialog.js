@@ -127,7 +127,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   const [factMessageClass, setFactMessageClass] = React.useState(false);
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
-  const [value, setExecutionDefaultValue] = React.useState('');
+  const [executionDefaultValue, setExecutionDefaultValue] = React.useState('');
   const [qualifierTable, setQualifierTable] = React.useState({});
   const [associationsTable, setAssociationsTable] = React.useState({});
   const [checked, setChecked] = React.useState([]);
@@ -430,38 +430,25 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
     if ('messaging' in fact) { nF.messaging = fact.messaging; }
 
-    let defaultSelections = [];
     if (defaultValue
       && fact.type !== 'reservation'
       && fact.type !== 'play_video'
       && fact.type !== 'make_message'
     ) {
-      if (Array.isArray(defaultValue)) {
-        if (defaultValue[0].includes('.')) {
-          let [, dValues] = defaultValue[0].split(/\.(.*)/);
-          defaultValue[0] = dValues;
-        }
-        setExecutionDefaultValue(defaultValue);     
-        defaultSelections = defaultValue;
-      }
-      else {
-        if (defaultValue.includes('.')) { defaultValue = defaultValue.split(/\.(.*)/)[1]; }
-        defaultSelections = defaultValue.split(/\s~|~\s/g);
-        setExecutionDefaultValue(defaultSelections.map(s => { return s.trim(); }));     
-      }
-      if (defaultSelections.length > 0) {
-        defaultSelections.forEach(nfValue => {
-          //  let [value, freeText] = nfValue.trim().split(/\s~|~\s/);
-          let [value, freeText] = nfValue.trim().split("=");
-          value = value.trim();
-          if (freeText) {
-            freeText = freeText.trim();
-            nF.value.freeText[value] = freeText;
-            if (value === mF) {
-              setMessage(freeText);
-            } 
-          } else {
-            nF.value.selected.push(value);
+      if (defaultValue.length > 0) {
+        defaultValue.forEach(nfValue => {
+          if (typeof nfValue === 'string') {
+            let [value, freeText] = nfValue.trim().split("=");
+            value = value.trim();
+            if (freeText) {
+              freeText = freeText.trim();
+              nF.value.freeText[value] = freeText;
+              if (value === mF) {
+                setMessage(freeText);
+              }
+            } else {
+              nF.value.selected.push(value);
+            }
           }
         });
       }
@@ -511,7 +498,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             statusMessage={statusMessage}
             values={fact.valid_values_list}
             qualifierTable={qualifierTable}
-            defaultValue={value}
+            defaultValue={executionDefaultValue}
             qualCheckedParam={qualChecked}
             checkedParm={checked}
             searchTextFromParent={searchText}

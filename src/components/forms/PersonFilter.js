@@ -89,7 +89,8 @@ export default ({
   onSelect,
   allowRandom,
   multiSelect = false,
-  alreadyChecked
+  alreadyChecked,
+  returnValue = 'ID'        // returnValue = 'object' returns object with {id: name, id: name, ...}
 }) => {
 
   const [person_filter, setPersonFilter] = React.useState('');
@@ -99,7 +100,7 @@ export default ({
   const [maxY, setMaxY] = React.useState(0);
   const [previousY, setCurrentY] = React.useState(0);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  const [checkList, setCheckList] = React.useState([]);
+  const [checkList, setCheckList] = React.useState({});
   const [selections, setSelections] = React.useState('');
   const [selectedNames, setSelectedNames] = React.useState([]);
 
@@ -122,19 +123,23 @@ export default ({
     }
   };
 
-  async function toggleCheck(pKey) {
+  async function toggleCheck(pIn) {
+    let [pName, pKey] = pIn.split(':');
+    if (!pName) {
+      pName = await makeName(pKey);
+    }
     let tempNames = [];
     if (isChecked(pKey)) {
       delete checkList[pKey];
       let nList = Object.keys(checkList);
       for (let n = 0; n < nList.length; n++) {
-        tempNames.push(await makeName(nList[n]));
+        tempNames.push(pName);
       }
     }
     else {
-      checkList[pKey] = true;
+      checkList[pKey] = pName;
       if (selectedNames.length > 0) { tempNames = [...selectedNames]; }
-      tempNames.push(await makeName(pKey));
+      tempNames.push(pName);
     }
     setSelectedNames(tempNames);
     setSelections(listFromArray(tempNames));
@@ -143,7 +148,7 @@ export default ({
   }
 
   function isChecked(pKey) {
-    if ((pKey in checkList) && (checkList[pKey])) { return true; }
+    if (pKey in checkList) { return true; }
     else { return false; }
   }
 
@@ -222,7 +227,7 @@ export default ({
     if (alreadyChecked) {
       let newCheckList = {};
       let theList = makeArray(alreadyChecked);
-      theList.forEach(p => { newCheckList[p] = true; })
+      theList.forEach(p => { newCheckList[p] = 'true'; })
       setCheckList(newCheckList);
     }
   }, [peopleList]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -274,7 +279,7 @@ export default ({
                 onClick={async () => {
                   if (!multiSelect) { onSelect(listEntry); }
                   else {
-                    if (!toggling) { await toggleCheck(listEntry.split(':')[1]); }
+                    if (!toggling) { await toggleCheck(listEntry); }
                     toggling = false;
                   }
                 }}
@@ -293,7 +298,7 @@ export default ({
                       key={'checkbox' + x}
                       onClick={async () => {
                         toggling = true;
-                        await toggleCheck(listEntry.split(':')[1]);
+                        await toggleCheck(listEntry);
                       }}
                     />
                   }
@@ -356,7 +361,8 @@ export default ({
           <Button
             className={classes.reject}
             onClick={() => {
-              onSelect(Object.keys(checkList));
+              if (returnValue === 'object') { onSelect(checkList); }
+              else { onSelect(Object.keys(checkList)); }
             }}
             startIcon={<CheckIcon fontSize="small" />}
           >

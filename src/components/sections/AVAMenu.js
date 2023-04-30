@@ -2,9 +2,10 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, cl, resolveVariables } from '../../util/AVAUtilities';
+import { recordExists, cl, resolveVariables, makeArray } from '../../util/AVAUtilities';
 import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
+import { getMemberList } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -281,7 +282,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 5 * oneMinute;
 
-  let idleTimer = React.createRef()
+  let idleTimer = React.createRef();
 
   let nowTime = new Date().getTime();
 
@@ -321,7 +322,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         return menuRec.Item.AVA_main_menu;
       }
     }
-    
+
     let forceRefresh = true;
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
 
@@ -386,25 +387,136 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
   };
-
+  /*
+    async function putS3Object(pMediaData, pType) {
+      enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: true });
+      let uploadOK = true;
+      await s3
+        .putObject(pMediaData)
+        .promise()
+        .catch(err => {
+          uploadOK = false;
+          enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
+            { variant: 'error', persist: true });
+        });
+      if (uploadOK) {
+        closeSnackbar();
+        enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
+        return pMediaData.Key;
+      };
+      return null;
+    }
+  */
   async function putS3Object(pMediaData, pType) {
-    enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: true });
-    let uploadOK = true;
-    await s3
-      .putObject(pMediaData)
-      .promise()
-      .catch(err => {
-        uploadOK = false;
-        enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
-          { variant: 'error', persist: true });
-      });
-    if (uploadOK) {
-      closeSnackbar();
-      enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
+    /*
+    pMediaData = {
+      Bucket: 'theseus-medical-storage',
+      Key: fName,
+      Body: fObj,
+      ACL: 'public-read-write',
+      ContentType: fObj.type,
+      Metadata: { 'Content-Type': fObj.type }
+    }
+    */
+    let buff, buffer;
+    let fileSize = 1;
+    let forceSingle = false;
+    try {
+      buff = await pMediaData.Body.arrayBuffer();
+      buffer = new Float32Array(buff, 4, 4);
+      fileSize = buffer.length;
+    }
+    catch {
+      enqueueSnackbar(`${pMediaData.Key} is really big.  This may take a few minutes...`, { variant: 'error', persist: false });
+      forceSingle = true;
+    }
+
+    let uploadId;
+    try {
+      // Multipart upload will pass chunks of 10Mb
+      let partSize = 10000000;
+      let numberOfParts = 10;
+      if (fileSize > (partSize * numberOfParts)) { partSize = fileSize / 10; }
+      else { numberOfParts = Math.ceil(fileSize / partSize); }
+
+      if ((numberOfParts === 1) || forceSingle) {
+        enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: false });
+        let uploadOK = true;
+        await s3
+          .putObject(pMediaData)
+          .promise()
+          .catch(err => {
+            uploadOK = false;
+            enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
+              { variant: 'error', persist: true });
+          });
+        if (uploadOK) {
+          closeSnackbar();
+          enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
+          return pMediaData.Key;
+        };
+        return null;
+      }
+
+      // this is a multi-part load
+      enqueueSnackbar(`AVA broke your ${pType.toLowerCase()} with the name ${pMediaData.Key} into ${numberOfParts} pieces and is uploading them now`, { variant: 'info', persist: false });
+      let upParms = {
+        Bucket: pMediaData.Bucket,
+        Key: pMediaData.Key,
+        ACL: pMediaData.ACL,
+        ContentType: pMediaData.ContentType,
+        Metadata: pMediaData.MetaData
+      };
+      let mpUp = await s3.createMultipartUpload(upParms).promise();
+      uploadId = mpUp.UploadId;
+
+      const uploadPromises = [];
+      // Upload each part.
+      for (let i = 0; i < numberOfParts; i++) {
+        const start = i * partSize;
+        const end = start + partSize;
+        let uPartParm = {
+          Bucket: pMediaData.Bucket,
+          Key: pMediaData.Key,
+          UploadId: uploadId,
+          Body: buffer.subarray(start, end),
+          PartNumber: i + 1,
+        }
+        uploadPromises.push(s3.uploadPart(uPartParm).promise());
+      }
+
+      const uploadResults = await Promise.all(uploadPromises);
+      let upDone = {
+        Bucket: pMediaData.Bucket,
+        Key: pMediaData.Key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: uploadResults.map(({ ETag }, i) => ({
+            ETag,
+            PartNumber: i + 1,
+          })),
+        }
+      };
+      let s3Resp = await s3.completeMultipartUpload(upDone).promise();
+      enqueueSnackbar(`All parts of ${s3Resp.Key} were saved successfully to ${s3Resp.Location}`, { variant: 'success', persist: true });
       return pMediaData.Key;
-    };
-    return null;
-  }
+
+      // Verify the output by downloading the file from the Amazon Simple Storage Service (Amazon S3) console.
+      // Because the output is a 25 MB string, text editors might struggle to open the file.
+    } catch (err) {
+      console.error(err);
+      enqueueSnackbar(`That didn't work.  ${err}`, { variant: 'error', persist: true });
+      if (uploadId) {
+        let s3Bad = await s3.abortMultipartUpload({
+          Bucket: pMediaData.Bucket,
+          Key: pMediaData.Key,
+          UploadId: uploadId,
+        }).promise();
+        console.log(s3Bad);
+      }
+      return null;
+    }
+  };
 
   const screenQuiet = (statusMessage) => {
     return;
@@ -626,10 +738,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
         // write the Fact Table entry
         putFact(pFact, pFactName, pIndex);
-
-        if (factValueType === 'file_details') {
-          enqueueSnackbar(`The file upload is done!  AVA needs a minute or two to make it available on menus.`, { variant: 'success' });
-        }
       }
     };
     setShowNewFactDialog(-1);
@@ -737,10 +845,55 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   async function getActivityDetail(pActRec) {
     let resolvedActivity = await makeObservationList(pActRec.activity_rec || pActRec.activity_code, session);
     resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
-    resolvedActivity.activityRec.default_value = await resolveVariables(pActRec.default_value, session);
+    resolvedActivity.activityRec.default_value = await prepareDefaults(pActRec);
     setSelected(resolvedActivity.activityRec);
     return resolvedActivity;
   };
+
+  async function prepareDefaults(fact) {
+    let excludeList = ['reservation', 'play_video'];
+    if (!fact.default_value) { return; }
+    if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
+    if (fact.activity_rec?.type === 'make_message') { 
+      
+    }
+    let returnArray = [];
+    let factClient;
+    let defaultValues = makeArray(fact.default_value, /\s~|~\s/g);
+    for (let d = 0; d < defaultValues.length; d++) {
+      let dField, dValue;
+      if (defaultValues[d].includes('=')) { [dField, dValue] = defaultValues[d].split('='); }
+      else { dValue = defaultValues[d]; }
+      let dInstr, dPart;
+      if (dValue.includes('.')) { [dInstr, dPart] = dValue.split('.'); }
+      else { dPart = dValue; }
+      dPart = await resolveVariables(dPart, session, { ignoreArrayCheck: true });
+      switch (dInstr) {
+        case 'people': {
+          if (!factClient) {
+            if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
+            else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//'); }
+            else { factClient = defaultClient; }
+          }
+          dPart = await getMemberList(makeArray(dPart, ','), factClient, { sort: true });
+          break;
+        }
+        default: { }
+      }
+      let returnValue;
+      if (dField) {
+        if (dField.includes('.')) { dField = dField.split('.')[1]; }
+        if (typeof dPart !== 'string') { returnValue = {}; returnValue[dField] = dPart; }
+        else { returnValue = `${dField}=${dPart}`; }
+      }
+      else {
+        if (typeof dPart !== 'string') { returnValue = {}; returnValue[`d${d}`] = dPart; }
+        else { returnValue = dPart; }
+      }
+      returnArray.push(returnValue);
+    }
+    return returnArray;
+  }
 
   const getActivityHistory = async (pActivity) => {
     let invokeFailed = false;
@@ -863,7 +1016,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             if ((now.getTime() - idleTimer.current.state.lastIdle) > oneHour) {
               window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
             }
-          }}          
+          }}
           onIdle={async () => {
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
             await updateAVA(sectionOpen, mainMenu);
@@ -1099,7 +1252,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           </Box>
         }
 
-    {/* AVA Menu */}
+        {/* AVA Menu */}
         {mainMenu && mainMenu.length > 0 && !loading &&
           <Paper component={Box} variant='outlined' overflow='auto'>
             <List >
@@ -1344,7 +1497,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   ml={2} mr={2}
                   justifyContent='center'
                   flexDirection='column'
-                  height={30}
+                height={30}
+                onContextMenu={async (e) => {
+                  e.preventDefault();
+                  enqueueSnackbar(`Open row=${mainMenu[mainMenu.length - 1].section_name}`, { variant: 'info', persist: true });
+                }}
                 />
               }
             </List>
@@ -1422,7 +1579,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             onSave={
               async (pResult) => {
                 if ('client_id' in selected) { pResult.client_id = selected.client_id; }
-                onSaveFact(pResult, selected.name, showNewFactDialog);
+                await onSaveFact(pResult, selected.name, showNewFactDialog);
               }
             }
             onNext={onNextFact}
@@ -1439,13 +1596,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }}
             onConfirm={async () => {
               pendingFact.status = 'confirmed';
-              onSaveFact(pendingFact, selected.name, needsConfirmation);
+              await onSaveFact(pendingFact, selected.name, needsConfirmation);
               setNeedsConfirmation(-1);
             }}
           >
           </AVAConfirm>
         }
-        </React.Fragment >
+      </React.Fragment >
     </Dialog >
   );
 };

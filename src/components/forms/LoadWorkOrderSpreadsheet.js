@@ -99,7 +99,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pClient, showSheet, session, onClose }) => {
+export default ({ pClient, showSheet, session, defaults, onClose }) => {
 
   const classes = useStyles();
 
@@ -112,6 +112,10 @@ export default ({ pClient, showSheet, session, onClose }) => {
   const [pWidth, setPWidth] = React.useState(60);
 
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
+
+  let defaultUser = 'AVA';
+  if (Array.isArray(defaults) & (defaults.length > 0)) { defaultUser = defaults[0]; }
+  else if (typeof defaults === 'string') { defaultUser = defaults; }
 
   let sheetData = [];
 
@@ -159,12 +163,13 @@ export default ({ pClient, showSheet, session, onClose }) => {
       'Open Date': { notify: false, request_data: false },
       'Closed Date': { notify: false, request_data: false },
       'Closed By': { notify: false, request_data: false },
-      'Summary': { notify: true, request_data: true },
-      'Description': { notify: true, request_data: true },
+      'Summary': { notify: true, request_data: true, description_data: true },
+      'Details of your request': { notify: true, request_data: true, description_data: true },
+      'Description': { notify: true, request_data: true, description_data: true },
       'Status': { notify: true, request_data: false },
       'Assigned To': { notify: true, request_data: true },
       'Area Name': { notify: false, request_data: true },
-      'Comments': { notify: true, request_data: true },
+      'Comments': { notify: true, request_data: true, description_data: true },
       'Initiated By': { notify: false, request_data: false },
       'Requested By': { notify: false, request_data: false }
     };
@@ -200,6 +205,7 @@ export default ({ pClient, showSheet, session, onClose }) => {
         continue;
       }
       // process detail rows
+      let needsUpdate = false;
       let reqRec;
       if (sheetData[activeRow][headers[keyHeader].column]) {     // if the row lists a foreign key...
         let reqRecs = await getServiceRequests({    // see if there is a request for that foreign key already
@@ -212,8 +218,8 @@ export default ({ pClient, showSheet, session, onClose }) => {
           reqRec = reqRecs[rL - 1];
         }
       }
-      if (!reqRec) {
-        // does any this cell contain a local key?
+      if (!reqRec) {   // there is no foreign key (TELS number, eg)
+        // is there a local key in any cell?
         findLocal: for (let c in sheetData[activeRow]) {
           let wordList = sheetData[activeRow][c].split(' ');
           for (let w = 0; w < wordList.length; w++) {
@@ -232,33 +238,9 @@ export default ({ pClient, showSheet, session, onClose }) => {
           }
         }
       }
-      let textInput = {};
-      for (let h in headers) {
-        if (headers[h].request_data) {
-          textInput[h] = sheetData[activeRow][headers[h].column];
-        }
-      }
-      let statusMessage, updateTime;
-      if (sheetData[activeRow][headers[statusHeader].column] && (!reqRec || (sheetData[activeRow][headers[statusHeader].column] !== reqRec.last_status))) {
-        if (sheetData[activeRow][headers[closedDate].column]) {
-          let closeTime = makeDate(sheetData[activeRow][headers[closedDate].column]);
-          statusMessage = `Closed ${closeTime.absolute}`;
-          updateTime = closeTime.timestamp;
-          if (sheetData[activeRow][headers[closedBy].column]) {
-            statusMessage += ` by ${sheetData[activeRow][headers[closedBy].column]}`;
-          }
-        }
-        else {
-          let statusFrom;
-          if (reqRec && reqRec.last_status) {
-            statusFrom = ` from ${reqRec.last_status}`;
-          }
-          statusMessage = `Status changed${statusFrom} to ${sheetData[activeRow][headers[statusHeader].column]}`;
-        }
-      }
-      if (!reqRec) {
-        let fKey = sheetData[activeRow][headers[keyHeader].column];
-        let guessedAuthor, guessedOBO;
+      let guessedAuthor, guessedOBO;
+      if (!reqRec) {  // No foreign key and no local key
+        // Can we figure out who the person is associated with this request?
         if (sheetData[activeRow][headers[locationHeader].column]) {
           let possibles = await getPersonFromLocation(pClient, sheetData[activeRow][headers[locationHeader].column]);
           if (possibles.length > 0) {
@@ -279,15 +261,101 @@ export default ({ pClient, showSheet, session, onClose }) => {
             guessedAuthor = possibles[0].person_id;
           }
         }
-        if (!guessedOBO && (sheetData[activeRow][headers[personHeader].column])) {
-          guessedOBO = sheetData[activeRow][headers[personHeader].column];
+        // if we have a guessedAuthor, is there an open Service Request for this person that matches
+        // three or more of the words in this request (provided that the word is four letters long or longer)
+        if (guessedAuthor) {
+          let guessedRecs = await getServiceRequests({
+            person: guessedAuthor,
+            request_type: 'maint'
+          });
+          // step 1 - remove any closed or completed requests
+          let openRecs = []
+          if (guessedRecs && (guessedRecs.length > 0)) { 
+            guessedRecs.forEach(g => {
+              if (!(['closed', 'completed', 'cancelled'].includes(g.last_status.toLowerCase()))) { 
+                openRecs.push(g);
+              }
+            });
+          }
+          if (openRecs.length > 0) { 
+            // step 2 - get all of the four+ letter words that are in the spreadsheet's dsecription columns
+            let descriptive_words = [];
+            for (let h in headers) {
+              if (headers[h].description_data && sheetData[activeRow][headers[h].column]) {
+                sheetData[activeRow][headers[h].column].split(/\s/).forEach(w => {
+                  if ((w.length > 3) && !(descriptive_words.includes(w))) { descriptive_words.push(w); }
+                });
+              }
+            }
+            for (let g = 0; g < openRecs.length; g++) {
+              let gRec = openRecs[g];
+              let request_words = [];
+              // step 3 - get all of the descriptive_words in the original request
+              if (gRec.original_request.hasOwnProperty('textInput')) { 
+                if (typeof gRec.original_request.textInput === 'string') {
+                  gRec.original_request.textInput.split(/\s/).forEach(w => {
+                    if ((w.length > 3) && !(request_words.includes(w))) { request_words.push(w); }
+                  });
+                }
+                else {
+                  Object.keys(gRec.original_request.textInput).forEach(k => { 
+                    if (headers[k].description_data) { 
+                      gRec.original_request.textInput[k].split(/\s/).forEach(w => {
+                        if ((w.length > 3) && !(request_words.includes(w))) { request_words.push(w); }
+                      });
+                    }
+                  })
+                }
+              }
+              // step 4 - does this request include three or more of the descriptive_words?
+              let count = 0;
+              descriptive_words.forEach(d => { 
+                request_words.forEach(r => { 
+                  if (d === r) { count++; }
+                })
+              })
+              if (count > 2) {
+                reqRec = gRec;
+                needsUpdate = true;
+                break;
+              }
+            }
+          }
         }
+      }
+      let textInput = {};
+      for (let h in headers) {
+        if (headers[h].request_data) {
+          textInput[h] = sheetData[activeRow][headers[h].column];
+        }
+      }
+      let statusMessage, updateTime;
+      if (sheetData[activeRow][headers[statusHeader].column] && (!reqRec || (sheetData[activeRow][headers[statusHeader].column] !== reqRec.last_status))) {
+        needsUpdate = true;
+        if (sheetData[activeRow][headers[closedDate].column]) {
+          let closeTime = makeDate(sheetData[activeRow][headers[closedDate].column]);
+          statusMessage = `Closed ${closeTime.absolute}`;
+          updateTime = closeTime.timestamp;
+          if (sheetData[activeRow][headers[closedBy].column]) {
+            statusMessage += ` by ${sheetData[activeRow][headers[closedBy].column]}`;
+          }
+        }
+        else {
+          let statusFrom = '';
+          if (reqRec && reqRec.last_status) {
+            statusFrom = ` from ${reqRec.last_status}`;
+          }
+          statusMessage = `Status changed${statusFrom} to ${sheetData[activeRow][headers[statusHeader].column]}`;
+        }
+      }
+      if (!reqRec) {
+        let fKey = sheetData[activeRow][headers[keyHeader].column];
         await putServiceRequest({
           client: pClient,
-          author: guessedAuthor || session.patient_id,
+          author: guessedAuthor || defaultUser,
           requestType: 'maint',
           requestDate: makeDate(sheetData[activeRow][headers[dateHeader].column]).timestamp,
-          onBehalfOf: guessedOBO || session.patient_display_name,
+          onBehalfOf: guessedOBO || 'Maintenance Team',
           foreign_key: fKey,
           update_time: updateTime,    // if null, putServiceRequest will set to current time
           history: [statusMessage],
@@ -296,7 +364,7 @@ export default ({ pClient, showSheet, session, onClose }) => {
           request: { textInput }
         });
       }
-      else {
+      else if (needsUpdate) {
         // found an existing request...  update it
         reqRec.last_status = sheetData[activeRow][headers[statusHeader].column];
         reqRec.last_update = updateTime || jobTime;

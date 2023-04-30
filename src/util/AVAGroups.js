@@ -1,5 +1,5 @@
 import { cl, clt, recordExists } from './AVAUtilities';
-import { getPerson, getSession } from '../util/AVAPeople';
+import { AVAname, getPerson, getSession } from '../util/AVAPeople';
 
 
 const AWS = require('aws-sdk');
@@ -142,8 +142,11 @@ export async function getRole(pGroup, pPerson) {
 
 export async function getMemberList(pGroups, pClient_id, options) {
   // returns an array of peopleRecs that are members of the group(s) in pGroups
+  // if you happen to include a person_id in the pGroups list, getMemberList returns those too
   let returnArray = [];
   let foundIDs = [];
+  // if options.exclude is TRUE, getMemberList respects directory_option === exclude 
+  // otherwise, people records are return without regard to the directory_option
   let checkExclude = false;
   let sortResults = false;
   if (options) {
@@ -172,7 +175,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
       IndexName: "client_id-index",
     };
     if (grp !== '*all') {
-      qParm.FilterExpression = 'contains ( groups, :n )';
+      qParm.FilterExpression = 'contains(groups, :n) OR (person_id = :n)';
       qParm.ExpressionAttributeValues[':n'] = grp;
     }
     let gPeopleRecs = await dbClient
@@ -188,6 +191,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
           if (!checkExclude || (i.directory_option !== 'exclude')) {
             if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
             if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
+            i.display_name = AVAname(i);
             returnArray.push(i);
           }
         }
@@ -196,15 +200,11 @@ export async function getMemberList(pGroups, pClient_id, options) {
   };
   if (sortResults) {
     returnArray.sort((a, b) => {
-      if (a.name.last === b.name.last) {
-        if (a.name.first > b.name.first) { return 1; }
-        if (a.name.first < b.name.first) { return -1; }
-      }
-      else {
-        if (a.name.last > b.name.last) { return 1; }
-        if (a.name.last < b.name.last) { return -1; }
-      }
-      return 0;
+      if (a.name.last > b.name.last) { return 1; }
+      else if (a.name.last < b.name.last) { return -1; }
+      else if (a.name.first > b.name.first) { return 1; }
+      else if (a.name.first < b.name.first) { return -1; }
+      else { return 0; }
     });
   }
   return {

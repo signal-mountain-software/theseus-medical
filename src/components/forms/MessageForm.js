@@ -2,6 +2,8 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
+import { messageHistory, getMessages } from '../../util/AVAMessages';
+import { extract } from '../../util/AVAUtilities';
 
 import List from '@material-ui/core/List';
 
@@ -128,6 +130,10 @@ const useStyles = makeStyles(theme => ({
   preferenceLine: {
     fontSize: theme.typography.fontSize * 1.0,
   },
+  attachmentLine: {
+    marginTop: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1.0,
+  },
   techInfoLine: {
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: theme.spacing(2),
@@ -243,6 +249,23 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     else { return 'AVA Message'; }
   }
 
+  async function replyAllList(pThreadID) {
+    let threadHeaderRec = await getMessages({
+      thread_id: pThreadID,
+      type: 'message'
+    });
+    if (!threadHeaderRec || (threadHeaderRec.length === 0)) { return []; }
+    let responseList = [];
+    Object.values(threadHeaderRec[0].recipient_list).forEach(r => { 
+      let resp;
+      if (r.name) { resp = (r.name.first + ' ' + r.name.last).trim(); }
+      else { resp = r.destination; }
+      resp += ':' + r.id;
+      responseList.push(resp);
+    })
+    return responseList;
+  }
+
   const handleChangeMessageFilter = event => {
     if (event.target.value.length === 0) {
       setMessageFilter(null);
@@ -287,7 +310,13 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   };
 
   async function getMessageResults(pCommonKey) {
-    let returnArray = [];
+    let requestBody = {
+      thread_id: pCommonKey.split('~')[0].slice(2),
+      composite_key: pCommonKey,
+      record_type: 'delivery'
+    };
+    let returnArray = await messageHistory(requestBody);
+    /*
     let mRecs = await dbClient
       .query({
         KeyConditionExpression: 'thread_id = :k AND begins_with(composite_key, :c)',
@@ -391,8 +420,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
         mLine += mInfo;
         returnArray.push(mLine);
       });
-      return ['~~~', 'Results:', ...returnArray];
-    }
+    */
+    return ['~~~', 'Results:', ...returnArray];
   };
 
   async function getReceiptDetails(pCommonKey) {
@@ -451,11 +480,16 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   function filteredMessage(pMessageRec, pFilter) {
     if (singleFilterDigit) { return true; }
     else {
-      let searchString = [pMessageRec.message_content, pMessageRec.sender_name, pMessageRec.sender_id].join(' ');
+      let searchString = [pMessageRec.message_text, pMessageRec.sender_name, pMessageRec.sender_id].join(' ');
       return searchString.toLowerCase().includes(message_filter_lower);
     }
   }
 
+  function attachmentName(a) {
+    let fNArr = a.split('/').pop().split('.');
+    fNArr.pop();
+    return decodeURI(fNArr.join('.'));
+  }
 
   React.useEffect(() => {
     async function initialize() {
@@ -492,6 +526,16 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               m.author.author_name = `${sRec.name.first} ${sRec.name.last}`;
             }
           }
+          // convert inline link to an attachment
+          let hLink = extract(m.content.current[language].text, 'http', ' ', {
+            fuzzyRight: true,  // allow end-of-string as a right delimeter 
+            includeLeft: true,  // return the left delimeter
+          });
+          if (hLink) {
+            if (!m.content.current.attachments) { m.content.current.attachments = []; }
+            m.content.current.attachments.push(hLink);
+            m.content.current[language].text = m.content.current[language].text.replace(hLink, '');
+          }
           let this_message = {
             inOut: 'in',
             delete_flag: m.delete_flag,
@@ -505,9 +549,11 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             deliver_time: m.created_time,
             common_key: m.composite_key,
             message_content: m.content.current[language].text,
+            attachments: m.content.current.attachments,
             subject: m.subject_line,
             message_text: m.content.current[language].text,
-            thread_id: m.thread_id
+            thread_id: m.thread_id,
+            allowReplyAll: (m.allowReplyAll || false)
           };
           messageArray.push(this_message);
         };
@@ -538,6 +584,16 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
         for (let x = 0; x < mRecs.Items.length; x++) {
           let m = mRecs.Items[x];
           let language = m.language || 'EN-US';
+          // convert inline link to an attachment
+          let hLink = extract(m.content.current[language].text, 'http', ' ', {
+            fuzzyRight: true,  // allow end-of-string as a right delimeter 
+            includeLeft: true,  // return the left delimeter
+          });
+          if (hLink) {
+            if (!m.content.current.attachments) { m.content.current.attachments = []; }
+            m.content.current.attachments.push(hLink);
+            m.content.current[language].text = m.content.current[language].text.replace(hLink, '');
+          }
           let this_message = {
             inOut: 'out',
             delete_flag: m.delete_flag,
@@ -550,6 +606,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             deliver_time: m.created_time,
             common_key: m.composite_key,
             message_content: m.content.current[language].text,
+            attachments: m.content.current.attachments,
             subject: m.subject_line,
             message_text: m.content.current[language].text
           };
@@ -636,18 +693,23 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                   <Typography variant='h5' className={classes.timeLine}>{makeReadableTime(this_item.posted_time || this_item.deliver_time)}</Typography>
                                 </Box>
                               </Box>
-                              {this_item.message_content.replace('http', '\n\rhttp').split(/[\n\r]+/).map((mLine, mIndex) => (
-                                ((mLine.startsWith('http')) ?
-                                  <a
-                                    href={mLine.split(/\s+/g)[0]}
-                                    key={`prefLine-${mIndex}-href`}
-                                    target='_blank'
-                                    rel='noopener noreferrer'
-                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                    <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
-                                  </a>
-                                  :
-                                  <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
+                              {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
+                                <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>
+                              ))}
+                              {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
+                                <a
+                                  href={aLine}
+                                  key={`attach-${aIndex}-href`}
+                                  target='_blank'
+                                  rel='noopener noreferrer'
+                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                  <Typography
+                                    key={`attach-${aIndex}`}
+                                    className={classes.attachmentLine}
+                                  >
+                                    {`Attachment: ${attachmentName(aLine)}`}
+                                  </Typography>
+                                </a>
                               ))}
                               {open[index] &&
                                 messageResults.map((mLine, mIndex) => (
@@ -674,6 +736,21 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                               {this_item.message_text.split(/[\n\r]+/).map((mLine, mIndex) => (
                                 <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
                               )}
+                              {this_item.attachments && this_item.attachments.map((aLine, aIndex) => (
+                                <a
+                                  href={aLine}
+                                  key={`attach-${aIndex}-href`}
+                                  target='_blank'
+                                  rel='noopener noreferrer'
+                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                  <Typography
+                                    key={`attach-${aIndex}`}
+                                    className={classes.attachmentLine}
+                                  >
+                                    {`Attachment: ${attachmentName(aLine)}`}
+                                  </Typography>
+                                </a>
+                              ))}
                               {open[index] &&
                                 messageResults.map((mLine, mIndex) => (
                                   <Typography key={`prefLine-${mIndex}`} className={classes.preferenceLine}>{mLine}</Typography>)
@@ -698,6 +775,20 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                       <Collapse in={open[index]} timeout="auto" unmountOnExit>
                         {
                           <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
+                            {(inOut_mode === 'in') && (this_item.allowReplyAll) &&
+                              <Button
+                                onClick={async () => {
+                                  let rList = await replyAllList(this_item.thread_id);
+                                  setRecipient(rList);
+                                  setRecipientIndex(index);
+                                  setPromptForMessage(true);
+                                }}
+                                className={classes.rowButtonGreen}
+                                startIcon={<SendIcon fontSize="small" />}
+                              >
+                                Reply All
+                              </Button>
+                            }
                             {(inOut_mode === 'in') &&
                               <Button
                                 onClick={() => {
@@ -724,12 +815,12 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           {
             promptForMessage &&
             <MakeMessage
-              titleText={`Send a Reply to ${recipient.split(':')[0]}`}
+              titleText={''}
               promptText={`What's the Message?`}
               buttonText={'Send'}
               sender={pSession}
-              pRecipientID={recipient.split(':')[1]}
-              pRecipientName={recipient.split(':')[0]}
+              pRecipientID={Array.isArray(recipient) ? recipient.map(r => {return r.split(':')[1]}) : [recipient.split(':')[1]]}
+              pRecipientName={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[0]; }) : [recipient.split(':')[0]]}
               onCancel={() => { setPromptForMessage(false); }}
               onComplete={() => { setPromptForMessage(false); }}
               allowCancel={true}

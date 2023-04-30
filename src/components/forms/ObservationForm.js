@@ -386,6 +386,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   }
 
   function handleQualChecked(pOrderOption, pQualifier, pQualChoice) {
+    if (!pQualChoice) { return; }
     let qRule = dataRows[pOrderOption].find(r => { return (r.title === pQualifier); });
     let workChosenQ = dataRows.chosenQual;
     if (!workChosenQ) {
@@ -505,12 +506,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function makeConfirm(pDisplayRows, pChecked, textInput = { 'empty': true }) {
     let workChecked = [];
     let errorsExist = false;
-    let errorMessage = ['Please correct these errors', '----'];
-    let responseArray = [`Please confirm your selections`, '----'];
+    let errorMessage = ['Please correct these errors', ''];
+    let responseArray = [`Please confirm your selections`, ''];
     pDisplayRows.forEach(r => {
       if (r.required && (!textInput.hasOwnProperty(r.text) || textInput[r.text] === '')) {
         errorsExist = true;
-        errorMessage.push(`You left "${r.text}" blank!`);
+        errorMessage.push(`[italic]You left "${r.text}" blank!`);
       }
       if (r.checkbox || textInput.hasOwnProperty(r.text)) {
         let rText = '';
@@ -725,13 +726,32 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                   handleQualChecked(this_item.text, qR.title, opt.display);
                                 }}
                               >
-                                {opt.type === 'checkbox' &&
+                                {(!opt.type || (opt.type === 'checkbox')) &&
                                   <React.Fragment>
                                     <Checkbox
                                       className={classes.radioButton}
                                       size="small"
                                       checked={isQChecked(this_item, qR, opt.display)} />
                                     <Typography className={classes.radioText}>{opt.display}</Typography>
+                                  </React.Fragment>
+                                }
+                                {opt.type === 'prompt' &&
+                                  <React.Fragment>
+                                    <Checkbox
+                                      className={classes.radioButton}
+                                      size="small"
+                                      checked={isQChecked(this_item, qR, opt.display)} />
+                                    <TextField
+                                      className={classes.radioText}
+                                      id={'text' + this_index + oX}
+                                      variant={'standard'}
+                                      key={'text' + this_index + oX}
+                                      multiline
+                                      onChange={(event) => {
+                                        qR.option[oX].display = event.target.value;
+                                      }}
+                                      autoComplete='off'
+                                    />
                                   </React.Fragment>
                                 }
                               </Box>
@@ -819,9 +839,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     {
                       client: pClient,
                       author: fact.patient_id,
+                      proxy_user: fact.session.user_id,
                       requestType: fact.value.freeText.requestType,
                       onBehalfOf: oBo,
-                      foreignKey: foreign_key,
+                      foreign_key,
                       request: requestObj,
                       messaging: fact.messaging
                     });

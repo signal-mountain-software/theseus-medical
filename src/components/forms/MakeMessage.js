@@ -1,5 +1,7 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
+import { sendMessages } from '../../util/AVAMessages';
+import { makeName, getImage } from '../../util/AVAPeople';
+import { makeArray } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -9,6 +11,8 @@ import DialogContentText from '@material-ui/core/DialogContentText';
 import { useSnackbar } from 'notistack';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import SendIcon from '@material-ui/icons/Send';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import DeleteIcon from '@material-ui/icons/Delete';
 
 import Checkbox from '@material-ui/core/Checkbox';
 import Typography from '@material-ui/core/Typography';
@@ -44,8 +48,8 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 'bold'
   },
   imageArea: {
-    minWidth: '150px',
-    maxWidth: '150px',
+    minWidth: '100px',
+    maxWidth: '100px',
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
   },
@@ -66,6 +70,16 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 'bold',
     size: 'small',
     color: theme.palette.confirm[theme.palette.type],
+  },
+  uploadButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.4px solid gray',
+    textTransform: 'none',
+    fontWeight: 'bold',
+    size: 'small',
+    color: theme.palette.primary[theme.palette.type],
   },
   rowButtonReject: {
     marginLeft: theme.spacing(1),
@@ -90,7 +104,14 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0,
     marginTop: 0,
     paddingLeft: 0,
-    paddingRight: 50,
+  },
+  radioHeader: {
+    fontSize: theme.typography.fontSize * 0.9,
+    fontWeight: 'bold',
+    marginLeft: 0,
+    marginBottom: 0,
+    marginTop: 0,
+    paddingLeft: 0,
   },
   idText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -132,58 +153,89 @@ export default ({
 }) => {
 
   const classes = useStyles();
-
   const { enqueueSnackbar } = useSnackbar();
-
-  const [recipientID, setRecipientID] = React.useState(pRecipientID);
-  const [recipientName, setRecipientName] = React.useState(pRecipientName);
-  const [newAccount, setNewAccount] = React.useState(false);
-
-  const [textInput, setTextInput] = React.useState(seedText || '');
-  const [nameInput, setNameInput] = React.useState('');
-  const [forceRedisplay, setForceRedisplay] = React.useState(true);
-  const [isUrgent, setIsUrgent] = React.useState(setUrgent);
-  const [forceMethod, ] = React.useState(setMethod);
-  const [imageURL, setImageURL] = React.useState('');
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  //  const [textInput, setTextInput] = React.useState(seedText || '');
+  const [reactData, setReactData] = React.useState({
+    recipientID: pRecipientID,
+    recipientName: pRecipientName,
+    selectID: pRecipientID,
+    newAccount: false,
+    titleText: titleText,
+    attachmentList: [],
+    textInput: seedText || '',
+    multipleRecipients: false,
+    nameInput: '',
+    isUrgent: setUrgent,
+    allowReplyAll: false,
+    forceMethod: setMethod,
+    imageURL: ''
   });
 
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
   const handleChangeTextInput = (event) => {
-    setTextInput(event.target.value);
+    reactData.textInput = event.target.value;
+    // setTextInput(event.target.value);
+    setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
   };
 
   const handleChangeNameInput = (event) => {
-    setNameInput(event.target.value);
+    reactData.nameInput = event.target.value;
+    reactData.forceRedisplay = !reactData.forceRedisplay;
+    setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
   };
 
+  const hiddenFileInput = React.useRef(null);
+
+  const handleFileUpload = event => {
+    hiddenFileInput.current.click();
+  };
+
+  async function handleSaveFile(pTarget) {
+    let pType = pTarget.type;
+    let s3Resp = await s3
+      .upload({
+        Bucket: 'theseus-medical-storage',
+        Key: pTarget.name,
+        Body: pTarget,
+        ACL: 'public-read-write',
+        ContentType: pType
+      })
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+      });
+    reactData.attachmentList.push(s3Resp);
+    reactData.forceRedisplay = !reactData.forceRedisplay;
+    setReactData(reactData);
+    setForceRedisplay(!forceRedisplay);
+    return s3Resp;
+  };
+
   const noInput = () => {
-    return (!textInput);
+    return (!reactData.textInput);
+    // return (!textInput);
   };
 
   const handleSave = async () => {
+    /*
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
     let pRecipient = recipientName + ':';
     if (recipientID.startsWith('GRP//')) {
       pRecipient += 'group=' + recipientID.split('//')[1].replace('/', '~');
     }
-    else if (newAccount) {
-      setNewAccount(false);
-      pRecipient += await handleAddAccount();
-      setRecipientID(pRecipient);
+    else 
+    */
+    let sendToID = reactData.recipientID;
+    let sendToName = reactData.recipientName;
+    if (reactData.newAccount) {
+      // pRecipient += await handleAddAccount();
+      [sendToID, sendToName] = await handleAddAccount();
+      reactData.newAccount = false;
+      setReactData(reactData);
     }
+    /*
     else {
       pRecipient += recipientID;
     }
@@ -191,13 +243,29 @@ export default ({
       "body": {
         "client": sender.client_id,
         "author": sender.patient_id,
-        "values": pRecipient + ' ~ MessageText = ' + textInput
+        "values": pRecipient + ' ~ MessageText = ' + textInput + hyperlink
       }
     };
     lambdaPayload.body.values += ' ~ Urgent = ' + (isUrgent ? 'urgent' : 'normal');
     if (forceMethod) { lambdaPayload.body.method = forceMethod; }
     if (thread_id) { lambdaPayload.body.thread_id = thread_id; }
     params.Payload = JSON.stringify(lambdaPayload);
+    */
+    let senderName = await makeName(sender.patient_id);
+    let request = {
+      client: sender.client_id,
+      author: sender.patient_id,
+      messageText: reactData.textInput,
+      // messageText: textInput,
+      recipientList: Array.isArray(sendToID) ? sendToID : [sendToID],
+      subject: `Message from ${senderName}`
+    };
+    if (reactData.attachmentList.length > 0) { request.attachments = reactData.attachmentList.map(a => { return a.Location; }); }
+    if (reactData.isUrgent) { request.preffered_method = 'urgent'; }
+    if (reactData.allowReplyAll) { request.allowReplyAll = true; }
+    else if (reactData.forceMethod) { request.preffered_method = reactData.forceMethod; }
+    if (thread_id) { request.thread_id = thread_id; }
+    /*
     lambda
       .invoke(params)
       .promise()
@@ -206,7 +274,20 @@ export default ({
           variant: 'error'
         });
       });
-    enqueueSnackbar(`Your ${isUrgent ? 'urgent' : ''} message is on the way to ${recipientName}`, { variant: 'success' });
+    */
+    await sendMessages(request);
+    /*
+    let sentTo;
+    if (typeof pRecipient === 'string') { sentTo = await makeName(pRecipient); }
+    else if (pRecipient.length === 1) { sentTo = await makeName(pRecipient[0]); }
+    else {
+      let random = Math.floor(Math.random() * pRecipient.length);
+      let randomName = await makeName(pRecipient[random]);
+      sentTo = `${pRecipient.length} people, including ${randomName}`;
+    };
+    sendToName = sendTo;
+    */
+    enqueueSnackbar(`Your ${reactData.isUrgent ? 'urgent ' : ''}message is on the way to ${sendToName}`, { variant: 'success' });
     onComplete();
   };
 
@@ -250,9 +331,9 @@ export default ({
   }
 
   const handleAddAccount = async () => {
-    let fName = recipientName.split(' ')[0];
-    let lName = recipientName.slice(fName.length).trim();
-    let pParse = recipientID.split('=');
+    let fName = reactData.recipientName.split(' ')[0];
+    let lName = reactData.recipientName.slice(fName.length).trim();
+    let pParse = reactData.recipientID.split('=');
     let pAddress = pParse[pParse.length - 1];
     let isEmail = pAddress.includes('@');
     let isPhone = !isNaN(pAddress);
@@ -270,7 +351,7 @@ export default ({
         sms: (isPhone ? `+1${pAddress}` : null),
         voice: (isPhone ? `+1${pAddress}` : null)
       },
-      search_data: recipientName,
+      search_data: reactData.recipientName,
       preferred_method: (isPhone ? 'sms' : 'email'),
       requirePassword: false,
       storePassword: true,
@@ -293,70 +374,81 @@ export default ({
         console.log(`caught error updating People; error is:`, error);
         workingID = null;
       });
-    return workingID;
-  };
-
-  const onCheckEnter = async (event) => {
-    if ((event.key === 'Enter') && (textInput) && (!newAccount)) { await handleSave(); }
+    return [workingID, reactData.recipientName];
   };
 
   const onNameEnter = async (event) => {
-    if (((event.key === 'Enter') || (event.type === 'blur')) && (newAccount)) {
-      setRecipientName(event.target.value);
+    if (((event.key === 'Enter') || (event.type === 'blur')) && (reactData.newAccount)) {
+      reactData.recipientName = event.target.value;
+      reactData.forceRedisplay = !reactData.forceRedisplay;
+      setReactData(reactData);
       setForceRedisplay(!forceRedisplay);
     }
   };
-  function makeName(pName) {
-    let ans = pName.split(',');
-    switch (ans.length) {
-      case 3: { return `${ans[2].trim()} ${ans[0].trim()}, ${ans[1].trim()}`; }
-      case 2: { return `${ans[1].trim()} ${ans[0].trim()}`; }
-      default: { return ans[0].trim(); }
-    }
-  }
 
-  function getImage(pPerson) {
-    if (!imageURL) {
-      const imageBucket = 'theseus-medical-storage';
-      const imageURI = `public/patients/${pPerson}.jpg`;
-      try {
-        setImageURL(
-          s3.getSignedUrl('getObject', {
-            Bucket: imageBucket,
-            Key: imageURI,
-            Expires: 3600
-          })
-        );
+  function makeTitle(selectedData) {
+    let response = '';
+    reactData.multipleRecipients = false;
+    if (reactData.forceMethod === 'AVA') { response += 'Send an AVA Alert '; }
+    else { response += 'Send a '; }
+    if (thread_id) { response += 'reply '; }
+    else { response += 'message '; }
+    let rArray = makeArray(selectedData.recipientID);
+    let nArray = makeArray(selectedData.recipientName);
+    if (rArray.length === 1) {
+      if (rArray[0].startsWith('GRP//')) {
+        reactData.multipleRecipients = true;
+        response += `to members of ${nArray[0]}`;
       }
-      catch (e) {
-        console.log(`error getting S3 image is ${e}`);
+      else {
+        let [last, first] = nArray[0].split(/,/);
+        response += `to ${first ? (first + ' ') : ''}${last}`;
+        reactData.selectID = rArray[0];
       }
     }
-    return imageURL;
-  };
+    else {
+      reactData.multipleRecipients = true;
+      let random = Math.floor(Math.random() * rArray.length);
+      if (rArray[random].startsWith('GRP//')) {
+        response += `to multiple people, including members of ${nArray[random]}`;
+      }
+      else {
+        let [last, first] = nArray[random].split(/,/);
+        response += `to ${rArray.length} people, including ${first ? (first + ' ') : ''}${last}`;
+      }
+      reactData.selectID = selectedData.recipientID[random];
+    }
+    reactData.titleText = response;
+    setReactData(reactData);
+    return response;
+  }
 
   // **************************
 
   return (
-    <Dialog open={forceRedisplay || true} fullScreen className={classes.containerBox}>
-      {(recipientID === '*select') &&
+    <Dialog open={reactData.forceRedisplay || true} fullScreen className={classes.containerBox}>
+      {(typeof reactData.recipientID === 'string') && (reactData.recipientID === '*select') &&
         <SendMessageDialog
           open={true}
           onClose={() => {
             onCancel();
           }}
-          onSelect={(selectedPerson) => {
-            let [sRecipientName, sRecipientID] = selectedPerson.split(':');
-            setNewAccount(sRecipientName === '*new');
-            setRecipientName(makeName(sRecipientName));
-            setRecipientID(sRecipientID);
-            setImageURL(null);
+          multiSelect={true}
+          pReturnValue={'object'}
+          onSelect={async (selectedPerson) => {
+            reactData.imageURL = null;
+            reactData.newAccount = false;     // future enhancement
+            reactData.recipientID = Object.keys(selectedPerson);
+            reactData.recipientName = Object.values(selectedPerson);
+            makeTitle(reactData);
+            reactData.forceRedisplay = !reactData.forceRedisplay;
+            setReactData(reactData);
             setForceRedisplay(!forceRedisplay);
           }}
         >
         </SendMessageDialog>
       }
-      {(recipientID !== '*select') &&
+      {((typeof reactData.recipientID !== 'string') || (reactData.recipientID !== '*select')) &&
         <React.Fragment>
           <Box display='flex'
             grow={1}
@@ -366,13 +458,13 @@ export default ({
             alignItems='flex-start'
           >
             <DialogContentText className={classes.title} id='scroll-dialog-title'>
-              {titleText || `Send a${(forceMethod === 'AVA') ? 'n AVA Alert' : ''} ${thread_id ? 'reply' : 'message'} to ${(recipientName === '*new') ? recipientID.split('=')[1].trim() : (recipientName || 'an AVA Subscriber')}`}
+              {reactData.titleText || makeTitle(reactData)}
             </DialogContentText>
             <Box
               className={classes.imageArea}
               component="img"
               alt=''
-              src={getImage(recipientID)}
+              src={getImage(reactData.selectID)}
             />
             <DialogContent className={classes.contentBox}>
               <Box
@@ -384,15 +476,15 @@ export default ({
                 justifyContent='center'
                 alignItems='flex-start'
               >
-                {newAccount &&
+                {reactData.newAccount &&
                   <TextField
                     classes={{ root: classes.idText }}
                     id={`name-msg`}
                     key={`name-msg`}
                     fullWidth
                     multiline
-                    helperText={`What name should AVA use for ${recipientID.split('=')[1].trim()}`}
-                    value={nameInput || ''}
+                    helperText={`What name should AVA use for ${reactData.recipientID.split('=')[1].trim()}`}
+                    value={reactData.nameInput || ''}
                     onChange={(event) => {
                       handleChangeNameInput(event);
                     }}
@@ -412,46 +504,119 @@ export default ({
                   fullWidth
                   multiline
                   helperText={promptText}
-                  value={textInput || ''}
+                  value={reactData.textInput || ''}
+                  // value={textInput || ''}
                   onChange={(event) => {
                     handleChangeTextInput(event);
                   }}
-                  onKeyPress={(event) => {
-                    onCheckEnter(event);
-                  }}
                   autoComplete='off'
                 />
+                {reactData.multipleRecipients &&
+                  <Box
+                    key={'qMulti'}
+                    display="flex"
+                    className={classes.qualOption}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                      alignItems='center' key={'qrOpt_multibox'}
+                    >
+                      <Checkbox
+                        className={classes.radioButton}
+                        size="small"
+                        onClick={() => {
+                          reactData.allowReplyAll = !reactData.allowReplyAll;
+                          setReactData(reactData);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                        checked={reactData.allowReplyAll}
+                      />
+                      <Typography className={classes.radioText}>Allow Reply all</Typography>
+                    </Box>
+                  </Box>
+                }
                 <Box
                   key={'qRow'}
-                  display="flex"
+                  display={"flex"}
                   className={classes.qualOption}
                   flexDirection='column'
                   justifyContent="center"
                 >
                   <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                    alignItems='center' flexWrap='wrap' key={'qrOpt'}
+                    alignItems='center' key={'qrOpt_urgentbox'}
                   >
                     <Checkbox
                       className={classes.radioButton}
                       size="small"
-                      onClick={() => { setIsUrgent(!isUrgent); }}
-                      checked={isUrgent}
+                      onClick={() => {
+                        reactData.isUrgent = !reactData.isUrgent;
+                        setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
+                      }}
+                      checked={reactData.isUrgent}
                     />
                     <Typography className={classes.radioText}>Mark as Urgent</Typography>
                   </Box>
                 </Box>
+                {(reactData.attachmentList.length > 0) &&
+                  <Box display='flex' flexDirection='column' justifyContent='flex-start'
+                    alignItems='flex-start' key={'qrOpt_attachmentlist'}
+                  >
+                    <Typography className={classes.radioHead}>Attachments:</Typography>
+                    {reactData.attachmentList.map((a, x) => (
+                      <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                        alignItems='flex-start' key={`qrOpt_attachmentLine-${x}`}
+                      >
+                        <DeleteIcon
+                          className={classes.radioButton}
+                          size="small"
+                          onClick={() => {
+                            reactData.attachmentList.splice(x, 1);
+                            reactData.forceRedisplay = !reactData.forceRedisplay;
+                            setReactData(reactData);
+                            setForceRedisplay(!forceRedisplay);
+                          }}
+                        />
+                        <Typography className={classes.radioText}>{a.Key}</Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                }
               </Box>
             </DialogContent>
           </Box>
           <DialogActions style={{ justifyContent: 'center' }}>
+            <Box display='flex' flexDirection='row' justifyContent='flex-start'
+              alignItems='center' key={'qrOpt_attachmentbox'}
+            >
+              <Button
+                className={classes.uploadButton}
+                size='small'
+                startIcon={<CloudUploadIcon />}
+                onClick={handleFileUpload}
+              >
+                {'Attach'}
+              </Button>
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                ref={hiddenFileInput}
+                onChange={async (target) => {
+                  await handleSaveFile(target.target.files[0]);
+                  reactData.forceRedisplay = !reactData.forceRedisplay;
+                  setReactData(reactData);
+                  setForceRedisplay(!forceRedisplay);
+                }}
+              />
+            </Box>
             <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
               {allowCancel &&
                 <Button
                   className={classes.rowButtonReject}
                   size='small'
                   onClick={() => {
-                    if (pRecipientID !== '*select') { onCancel(); }
-                    setRecipientID(pRecipientID);
+                    onCancel();
                   }}
                   startIcon={<CloseIcon size="small" />}
                 >
@@ -472,9 +637,9 @@ export default ({
               </Button>
             </Box>
           </DialogActions>
-        </React.Fragment>
+        </React.Fragment >
       }
-    </Dialog>
+    </Dialog >
 
   );
 };

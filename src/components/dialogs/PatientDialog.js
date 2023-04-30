@@ -571,7 +571,7 @@ export default ({ patient, picture, open, onClose }) => {
     setResettingPwd(true);
     setPwdConfirmed(false);
     // setInputPWD('password');
-    localData.inputPWD = (patientSession.last_login || 'password');
+    localData.inputPWD = ((patientSession && patientSession.last_login) ? patientSession.last_login : 'password');
   };
 
   const handleResetPassword2 = event => {
