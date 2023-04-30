@@ -137,19 +137,30 @@ export async function putServiceRequest(body) {
     let preparedMessages = await prepareMessage(body);
     if (preparedMessages.length > 0) {
       preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
-      let sendResults = (await sendMessages(preparedMessages)).pop();
-      if (!sendResults.sent) { serviceRequestRec.last_status = 'Failed to send'; }
-      else {
-        let rTime = makeDate(new Date().getTime());
-        serviceRequestRec.last_status = 'Sent';
-        serviceRequestRec.last_update = rTime.timestamp;
-        let rMsg = `Sent for processing ${rTime.oaDate}`;
-        if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
-          serviceRequestRec.history.unshift(rMsg);
-        }
-        else { serviceRequestRec.history = [rMsg]; }
-        updateServiceRequest(serviceRequestRec);
+      let rTime = makeDate(new Date().getTime());
+      let rMsg;
+      serviceRequestRec.messages = preparedMessages;
+      serviceRequestRec.last_update = rTime.timestamp;
+      if (body.messaging.format.method === 'hold') {
+        serviceRequestRec.last_status = 'Prepared & Held';
+        rMsg = `Held for future processing ${rTime.oaDate}`;
       }
+      else {
+        let sendResults = (await sendMessages(preparedMessages)).pop();
+        if (!sendResults.sent) {
+          serviceRequestRec.last_status = 'Failed to send';
+          rMsg = `Failed to send ${rTime.oaDate}`;
+        }
+        else {
+          serviceRequestRec.last_status = 'Sent';
+          rMsg = `Sent for processing ${rTime.oaDate}`;
+        }
+      }
+      if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
+        serviceRequestRec.history.unshift(rMsg);
+      }
+      else { serviceRequestRec.history = [rMsg]; }
+      updateServiceRequest(serviceRequestRec);
     }
   }
   return {
