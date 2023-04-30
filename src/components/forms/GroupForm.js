@@ -926,7 +926,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         onClick={() => {
                           setPromptForMessage(true);
                           setMessageType('Group');
-                          setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                          setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
                         }}
                         className={classes.rowButtonGreen}
                         startIcon={<SendIcon size='small' />}
@@ -937,7 +937,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         onClick={() => {
                           setPromptForMessage(true);
                           setMessageType('URGENT Group');
-                          setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                          setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
                         }}
                         className={classes.rowButtonRed}
                         startIcon={<PhoneInTalkIcon size='small' />}
@@ -948,7 +948,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         onClick={() => {
                           setPromptForMessage(true);
                           setMessageType('AVA');
-                          setRecipient(pGroupName + ':group=' + pClient + '~' + pGroup);
+                          setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
                         }}
                         className={classes.rowButtonGreen}
                         startIcon={<ContactMailOutlinedIcon size='small' />}

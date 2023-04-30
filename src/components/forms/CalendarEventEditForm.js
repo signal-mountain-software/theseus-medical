@@ -532,7 +532,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             <List  >
               {eventSlotList.map((this_item, index) => (
                 (!this_item.slotData.hasOwnProperty('show_this_slot') || this_item.slotData.show_this_slot) &&
-      
+
                 <Paper component={Box} elevation={0} key={this_item.slotData.owner + 'frag' + index} >
                   <ListItem
                     key={this_item.slotData.owner + 'r' + index}
@@ -544,36 +544,36 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         {rowsWritten++}
                       </Typography>
                       {/* Mark an item - Radio button */}
-                        {isEventOwner && !allSlotsEmpty &&
-                          <Box width={40} display='flex' mr={0} flexDirection='row' justifyContent='center' alignItems='center'>
-                            {isOwned(this_item.slotData) &&
-                              <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
-                                <IconButton mr={0} ml={0} color='inherit'
-                                  onClick={async () => {
-                                    await dbClient
-                                      .update({
-                                        Key: {
-                                          "client": pClient,
-                                          "event_key": `${pEventCode}#${this_item.slotData.id}`
-                                        },
-                                        UpdateExpression: 'set marked = :m',
-                                        ExpressionAttributeValues: { ':m': !this_item.marked },
-                                        TableName: "Calendar"
-                                      })
-                                      .promise()
-                                      .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
-                                    eventSlotList[index].marked = !this_item.marked;
-                                    setEventSlotList(eventSlotList);
-                                    setForceRedisplay(!forceRedisplay);
-                                  }}
-                                >
-                                  {this_item.marked ? <RadioButtonCheckedIcon mr={0} ml={0} /> : <RadioButtonUncheckedIcon mr={0} ml={0} />}
-                                </IconButton>
-                              </Tooltip>
-                            }
+                      {isEventOwner && !allSlotsEmpty &&
+                        <Box width={40} display='flex' mr={0} flexDirection='row' justifyContent='center' alignItems='center'>
+                          {isOwned(this_item.slotData) &&
+                            <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
+                              <IconButton mr={0} ml={0} color='inherit'
+                                onClick={async () => {
+                                  await dbClient
+                                    .update({
+                                      Key: {
+                                        "client": pClient,
+                                        "event_key": `${pEventCode}#${this_item.slotData.id}`
+                                      },
+                                      UpdateExpression: 'set marked = :m',
+                                      ExpressionAttributeValues: { ':m': !this_item.marked },
+                                      TableName: "Calendar"
+                                    })
+                                    .promise()
+                                    .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+                                  eventSlotList[index].marked = !this_item.marked;
+                                  setEventSlotList(eventSlotList);
+                                  setForceRedisplay(!forceRedisplay);
+                                }}
+                              >
+                                {this_item.marked ? <RadioButtonCheckedIcon mr={0} ml={0} /> : <RadioButtonUncheckedIcon mr={0} ml={0} />}
+                              </IconButton>
+                            </Tooltip>
+                          }
                         </Box>
-                        }
-                        {/* Slot Name */}
+                      }
+                      {/* Slot Name */}
                       {(this_item.slotData.id !== this_item.slotData.owner) &&
                         <Box display='flex' mr={1} ml={1} flexDirection='row' justifyContent='center' alignItems='center'>
                           <Typography variant='body1' className={classes.standard} >{makeSlotName(this_item.slotData.id)}</Typography>
@@ -730,7 +730,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             <AVATextInput
               titleText={`You are not on the list yet.  Tap "Add me" below.`}
               promptText={'(Optional) Notes or Additional Information'}
-            buttonText={['Add me!', 'Not now']}
+              buttonText={['Add me!', 'Not now']}
               onCancel={() => {
                 setBrowseMode(true);
                 setsignupMode(false);
@@ -751,7 +751,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             <AVATextInput
               titleText={`Want to learn more?  Send a message to the event sponsor...`}
               promptText={'Message Text'}
-            buttonText={['Send', 'Not now']}
+              buttonText={['Send', 'Not now']}
               onCancel={() => {
                 setBrowseMode(true);
                 setsignupMode(false);
@@ -766,7 +766,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         }
         {promptForMessage &&
           <AVATextInput
-            promptText={`What should your ${messageType === 'time_based' ? '' : (messageType === 'sms' ? 'text' : messageType)} message to ${recipient.split(':')[0]} say?`}
+            promptText={`Message to everyone signed up for ${pOccData.description}`}
             buttonText='Send'
             onCancel={() => { setPromptForMessage(false); }}
             onSave={(messageText) => {
@@ -843,9 +843,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                       onClick={() => {
                         setPromptForMessage(true);
                         setMessageType('Group');
-                        setRecipient(`People on the ${pOccData.description} list`
-                          + ':' +
-                          + (eventSlotList.map(e => { return e.slotData.id; })).join(' ~ '));
+                        setRecipient(eventSlotList.map(e => { return e.slotData.id; }));
                       }}
                       startIcon={<SendIcon size='small' />}
                     >

@@ -2,7 +2,7 @@ import React from 'react';
 import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
-import { messageHistory } from '../../util/AVAMessages';
+import { messageHistory, getMessages } from '../../util/AVAMessages';
 import { extract } from '../../util/AVAUtilities';
 
 import List from '@material-ui/core/List';
@@ -247,6 +247,23 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
       */
     }
     else { return 'AVA Message'; }
+  }
+
+  async function replyAllList(pThreadID) {
+    let threadHeaderRec = await getMessages({
+      thread_id: pThreadID,
+      type: 'message'
+    });
+    if (!threadHeaderRec || (threadHeaderRec.length === 0)) { return []; }
+    let responseList = [];
+    Object.values(threadHeaderRec[0].recipient_list).forEach(r => { 
+      let resp;
+      if (r.name) { resp = (r.name.first + ' ' + r.name.last).trim(); }
+      else { resp = r.destination; }
+      resp += ':' + r.id;
+      responseList.push(resp);
+    })
+    return responseList;
   }
 
   const handleChangeMessageFilter = event => {
@@ -535,7 +552,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             attachments: m.content.current.attachments,
             subject: m.subject_line,
             message_text: m.content.current[language].text,
-            thread_id: m.thread_id
+            thread_id: m.thread_id,
+            allowReplyAll: (m.allowReplyAll || false)
           };
           messageArray.push(this_message);
         };
@@ -757,6 +775,20 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                       <Collapse in={open[index]} timeout="auto" unmountOnExit>
                         {
                           <Box display='flex' flexDirection='row' paddingTop={1} paddingBottom={1} justifyContent='center' alignItems='center'>
+                            {(inOut_mode === 'in') && (this_item.allowReplyAll) &&
+                              <Button
+                                onClick={async () => {
+                                  let rList = await replyAllList(this_item.thread_id);
+                                  setRecipient(rList);
+                                  setRecipientIndex(index);
+                                  setPromptForMessage(true);
+                                }}
+                                className={classes.rowButtonGreen}
+                                startIcon={<SendIcon fontSize="small" />}
+                              >
+                                Reply All
+                              </Button>
+                            }
                             {(inOut_mode === 'in') &&
                               <Button
                                 onClick={() => {
@@ -783,12 +815,12 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           {
             promptForMessage &&
             <MakeMessage
-              titleText={`Send a Reply to ${recipient.split(':')[0]}`}
+              titleText={''}
               promptText={`What's the Message?`}
               buttonText={'Send'}
               sender={pSession}
-              pRecipientID={recipient.split(':')[1]}
-              pRecipientName={recipient.split(':')[0]}
+              pRecipientID={Array.isArray(recipient) ? recipient.map(r => {return r.split(':')[1]}) : [recipient.split(':')[1]]}
+              pRecipientName={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[0]; }) : [recipient.split(':')[0]]}
               onCancel={() => { setPromptForMessage(false); }}
               onComplete={() => { setPromptForMessage(false); }}
               allowCancel={true}

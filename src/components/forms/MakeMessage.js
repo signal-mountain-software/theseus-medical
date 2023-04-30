@@ -1,6 +1,7 @@
 import React from 'react';
 import { sendMessages } from '../../util/AVAMessages';
 import { makeName, getImage } from '../../util/AVAPeople';
+import { makeArray } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -154,6 +155,7 @@ export default ({
   const classes = useStyles();
   const { enqueueSnackbar } = useSnackbar();
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  //  const [textInput, setTextInput] = React.useState(seedText || '');
   const [reactData, setReactData] = React.useState({
     recipientID: pRecipientID,
     recipientName: pRecipientName,
@@ -162,15 +164,17 @@ export default ({
     titleText: titleText,
     attachmentList: [],
     textInput: seedText || '',
+    multipleRecipients: false,
     nameInput: '',
     isUrgent: setUrgent,
+    allowReplyAll: false,
     forceMethod: setMethod,
     imageURL: ''
-  })
+  });
 
   const handleChangeTextInput = (event) => {
     reactData.textInput = event.target.value;
-    reactData.forceRedisplay = !reactData.forceRedisplay;
+    // setTextInput(event.target.value);
     setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
   };
@@ -211,6 +215,7 @@ export default ({
 
   const noInput = () => {
     return (!reactData.textInput);
+    // return (!textInput);
   };
 
   const handleSave = async () => {
@@ -251,11 +256,13 @@ export default ({
       client: sender.client_id,
       author: sender.patient_id,
       messageText: reactData.textInput,
+      // messageText: textInput,
       recipientList: Array.isArray(sendToID) ? sendToID : [sendToID],
       subject: `Message from ${senderName}`
     };
     if (reactData.attachmentList.length > 0) { request.attachments = reactData.attachmentList.map(a => { return a.Location; }); }
     if (reactData.isUrgent) { request.preffered_method = 'urgent'; }
+    if (reactData.allowReplyAll) { request.allowReplyAll = true; }
     else if (reactData.forceMethod) { request.preffered_method = reactData.forceMethod; }
     if (thread_id) { request.thread_id = thread_id; }
     /*
@@ -370,10 +377,6 @@ export default ({
     return [workingID, reactData.recipientName];
   };
 
-  const onCheckEnter = async (event) => {
-    if ((event.key === 'Enter') && (reactData.textInput) && (!reactData.newAccount)) { await handleSave(); }
-  };
-
   const onNameEnter = async (event) => {
     if (((event.key === 'Enter') || (event.type === 'blur')) && (reactData.newAccount)) {
       reactData.recipientName = event.target.value;
@@ -383,27 +386,37 @@ export default ({
     }
   };
 
-  function makeTitle(selectedData) { 
+  function makeTitle(selectedData) {
     let response = '';
+    reactData.multipleRecipients = false;
     if (reactData.forceMethod === 'AVA') { response += 'Send an AVA Alert '; }
     else { response += 'Send a '; }
     if (thread_id) { response += 'reply '; }
     else { response += 'message '; }
-    if (Array.isArray(selectedData.recipientID)) { 
-      let rArray = selectedData.recipientID;
-      if (rArray.length === 1) {
-        response += `to ${selectedData.recipientName[0]}`;
-        reactData.selectID = selectedData.recipientID[0];
+    let rArray = makeArray(selectedData.recipientID);
+    let nArray = makeArray(selectedData.recipientName);
+    if (rArray.length === 1) {
+      if (rArray[0].startsWith('GRP//')) {
+        reactData.multipleRecipients = true;
+        response += `to members of ${nArray[0]}`;
       }
       else {
-        let random = Math.floor(Math.random() * rArray.length);
-        response += `to ${rArray.length} people, including ${selectedData.recipientName[random]}`;
-        reactData.selectID = selectedData.recipientID[random];
+        let [last, first] = nArray[0].split(/,/);
+        response += `to ${first ? (first + ' ') : ''}${last}`;
+        reactData.selectID = rArray[0];
       }
     }
     else {
-      response += `to ${selectedData.recipientName}`;
-      reactData.selectID = selectedData.recipientID;
+      reactData.multipleRecipients = true;
+      let random = Math.floor(Math.random() * rArray.length);
+      if (rArray[random].startsWith('GRP//')) {
+        response += `to multiple people, including members of ${nArray[random]}`;
+      }
+      else {
+        let [last, first] = nArray[random].split(/,/);
+        response += `to ${rArray.length} people, including ${first ? (first + ' ') : ''}${last}`;
+      }
+      reactData.selectID = selectedData.recipientID[random];
     }
     reactData.titleText = response;
     setReactData(reactData);
@@ -421,21 +434,13 @@ export default ({
             onCancel();
           }}
           multiSelect={true}
+          pReturnValue={'object'}
           onSelect={async (selectedPerson) => {
-            reactData.imageURL = null; 
+            reactData.imageURL = null;
             reactData.newAccount = false;     // future enhancement
-            if (Array.isArray(selectedPerson)) {
-              reactData.recipientID = selectedPerson;
-              reactData.recipientName = [];
-              for (let p = 0; p < selectedPerson.length; p++) {
-                reactData.recipientName.push(await makeName(selectedPerson[p]));
-              }  
-            }
-            else {
-              reactData.recipientID = selectedPerson;
-              reactData.recipientName = await makeName(selectedPerson);
-            }
-            makeTitle(reactData)
+            reactData.recipientID = Object.keys(selectedPerson);
+            reactData.recipientName = Object.values(selectedPerson);
+            makeTitle(reactData);
             reactData.forceRedisplay = !reactData.forceRedisplay;
             setReactData(reactData);
             setForceRedisplay(!forceRedisplay);
@@ -500,23 +505,46 @@ export default ({
                   multiline
                   helperText={promptText}
                   value={reactData.textInput || ''}
+                  // value={textInput || ''}
                   onChange={(event) => {
                     handleChangeTextInput(event);
                   }}
-                  onKeyPress={(event) => {
-                    onCheckEnter(event);
-                  }}
                   autoComplete='off'
                 />
+                {reactData.multipleRecipients &&
+                  <Box
+                    key={'qMulti'}
+                    display="flex"
+                    className={classes.qualOption}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                      alignItems='center' key={'qrOpt_multibox'}
+                    >
+                      <Checkbox
+                        className={classes.radioButton}
+                        size="small"
+                        onClick={() => {
+                          reactData.allowReplyAll = !reactData.allowReplyAll;
+                          setReactData(reactData);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                        checked={reactData.allowReplyAll}
+                      />
+                      <Typography className={classes.radioText}>Allow Reply all</Typography>
+                    </Box>
+                  </Box>
+                }
                 <Box
                   key={'qRow'}
-                  display="flex"
+                  display={"flex"}
                   className={classes.qualOption}
                   flexDirection='column'
                   justifyContent="center"
                 >
                   <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                    alignItems='center'  key={'qrOpt_urgentbox'}
+                    alignItems='center' key={'qrOpt_urgentbox'}
                   >
                     <Checkbox
                       className={classes.radioButton}
@@ -524,6 +552,7 @@ export default ({
                       onClick={() => {
                         reactData.isUrgent = !reactData.isUrgent;
                         setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
                       }}
                       checked={reactData.isUrgent}
                     />
@@ -532,12 +561,12 @@ export default ({
                 </Box>
                 {(reactData.attachmentList.length > 0) &&
                   <Box display='flex' flexDirection='column' justifyContent='flex-start'
-                    alignItems='flex-start'  key={'qrOpt_attachmentlist'}
+                    alignItems='flex-start' key={'qrOpt_attachmentlist'}
                   >
                     <Typography className={classes.radioHead}>Attachments:</Typography>
                     {reactData.attachmentList.map((a, x) => (
                       <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                        alignItems='flex-start'  key={`qrOpt_attachmentLine-${x}`}
+                        alignItems='flex-start' key={`qrOpt_attachmentLine-${x}`}
                       >
                         <DeleteIcon
                           className={classes.radioButton}
@@ -608,9 +637,9 @@ export default ({
               </Button>
             </Box>
           </DialogActions>
-        </React.Fragment>
+        </React.Fragment >
       }
-    </Dialog>
+    </Dialog >
 
   );
 };

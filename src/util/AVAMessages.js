@@ -497,6 +497,7 @@ export async function sendMessages(body) {
     };
     if (env.testMode) { PostOfficeRec.TableName = "TestPostOffice"; };
     if (env.attachments) { PostOfficeRec.Item.attachments = makeArray(env.attachments); }
+    if (env.allowReplyAll) { PostOfficeRec.Item.allowReplyAll = env.allowReplyAll; }
     if (!('subject' in PostOfficeRec.Item)) {
       PostOfficeRec.Item["subject"] = `Message from ${await makeName(env.author)}`;
     }
@@ -507,6 +508,11 @@ export async function sendMessages(body) {
     for (let r = 0; r < to.length; r++) {
       if (to[r].startsWith('GRP//')) {
         let gCode = to[r].split('//')[1];
+        if (gCode.includes('/')) {
+          let [cl, gr] = gCode.split(/[/]+/);
+          PostOfficeRec.Item["client_id"] = cl;
+          gCode = gr;
+        }
         PostOfficeRec.Item["recipient_base"] = 'group';
         PostOfficeRec.Item["recipient_key"] = gCode;
         let goodSend = true;
