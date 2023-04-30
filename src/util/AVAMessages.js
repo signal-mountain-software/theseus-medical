@@ -312,7 +312,10 @@ export async function resolveMessageVariables(inString, body) {
 };
 
 async function formatRequestDetails(body, summaryType) {
-
+  let textInput = {};
+  if (body.textInput && (Object.keys(body.textInput).length > 0)) {
+    textInput = Object.assign({}, body.textInput);
+  }
   let titleWords = body.subject;
   if (!titleWords && body.format) { titleWords = body.format.subject; }
   if (!titleWords && body.activityName) { titleWords = body.activityName; }
@@ -379,14 +382,14 @@ async function formatRequestDetails(body, summaryType) {
     htmlMessage += `<h2 style="color: black;">Order Details</h2><dl style="padding-left: 40px;">`;
   }
   else {
-    if (body.textInput && (Object.keys(body.textInput).length > 0)) {
-      for (let topic in body.textInput) {
+    if (textInput && (Object.keys(textInput).length > 0)) {
+      for (let topic in textInput) {
         if (!body.selections.includes(topic)) {
           let sVal = sentenceCase(topic.trim());
-          rawMessage += `\n${sVal}\n${body.textInput[topic]}\n`;
+          rawMessage += `\n${sVal}\n${textInput[topic]}\n`;
           htmlMessage += `<h2><span style="color: black;">${sVal}</span></h2>`;
-          htmlMessage += `<div style="padding-left: 10px; margin-top: -15px; font-size: 1.2em;">${body.textInput[topic]}</div>`;
-          delete body.textInput[topic];
+          htmlMessage += `<div style="padding-left: 10px; margin-top: -15px; font-size: 1.2em;">${textInput[topic]}</div>`;
+          delete textInput[topic];
         }
       }
     }
@@ -396,14 +399,14 @@ async function formatRequestDetails(body, summaryType) {
   }
 
   let lineSpacing = '0px';
-  if (!body.textInput) { body.textInput = {}; }
+  if (!textInput) { textInput = {}; }
   body.selections.forEach((aVal) => {
     let sVal = sentenceCase(aVal.trim());
-    htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[aVal] || ''}</dt>`;
+    htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${textInput[aVal] || ''}</dt>`;
     rawMessage += `\n${sVal}\n`;
-    if (body.textInput[aVal]) {
-      rawMessage += `${body.textInput[aVal]}\n`;
-      delete body.textInput[aVal];
+    if (textInput[aVal]) {
+      rawMessage += `${textInput[aVal]}\n`;
+      delete textInput[aVal];
     }
     /* Check for qualifiers */
     if ((body.qualifiers) && (body.qualifiers.hasOwnProperty(aVal))) {
@@ -416,11 +419,11 @@ async function formatRequestDetails(body, summaryType) {
     lineSpacing = `${spaceBetweenLines}px`;
   });
 
-  if (body.textInput && (Object.keys(body.textInput).length > 0)) {
-    for (let topic in body.textInput) {
+  if (textInput && (Object.keys(textInput).length > 0)) {
+    for (let topic in textInput) {
       let sVal = sentenceCase(topic.trim());
-      htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${body.textInput[topic]}</dt>`;
-      rawMessage += `\n${sVal}\n${body.textInput[topic]}\n`;
+      htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${textInput[topic]}</dt>`;
+      rawMessage += `\n${sVal}\n${textInput[topic]}\n`;
       lineSpacing = `${spaceBetweenLines}px`;
     }
   }
