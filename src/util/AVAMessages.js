@@ -62,6 +62,9 @@ export async function prepareMessage(inBody) {
     requestID: inBody.requestID
   },
     inBody.request);
+  if (inBody.hasOwnProperty('attachments')) {
+    requestInfo.attachments = inBody.attachments.map(a => { return a.Location; });
+  }
   do {
     let this_request = Object.assign({}, requestInfo, messageList.shift());
     cl({ 'in prepare messages': { this_request } });
@@ -97,6 +100,18 @@ export async function prepareMessage(inBody) {
 
     results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
     results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
+
+    if (requestInfo.hasOwnProperty('attachments')) {
+      results.htmlText += '<br>';
+      // eslint-disable-next-line
+      requestInfo.attachments.forEach((a, x) => {
+        let fNArr = a.split('/').pop().split('.');
+        fNArr.pop();
+        let fName = decodeURI(fNArr.join('.'));
+        results.messageText += `\r\n\nAttachment ${fName}: ${a}`;
+        results.htmlText += `<br><a href=${a}>Attachment: ${fName}</a>`;
+      });
+    }
 
     returnResults.push(results);
   } while (messageList.length > 0);

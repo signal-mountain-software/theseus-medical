@@ -155,7 +155,6 @@ export default ({
   const classes = useStyles();
   const { enqueueSnackbar } = useSnackbar();
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  //  const [textInput, setTextInput] = React.useState(seedText || '');
   const [reactData, setReactData] = React.useState({
     recipientID: pRecipientID,
     recipientName: pRecipientName,

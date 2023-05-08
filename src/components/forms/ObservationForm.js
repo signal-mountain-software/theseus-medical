@@ -5,6 +5,7 @@ import { makeName } from '../../util/AVAPeople';
 import { putServiceRequest } from '../../util/AVAServiceRequest';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import { useSnackbar } from 'notistack';
 
 import TextField from '@material-ui/core/TextField';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -17,6 +18,8 @@ import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import DeleteIcon from '@material-ui/icons/Delete';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
@@ -33,6 +36,12 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 1.3,
     flexGrow: 0,
     marginRight: '7px'
+  },
+  containerBox: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0
   },
   headerLine: {
     marginTop: theme.spacing(3.0),
@@ -61,8 +70,16 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'space-between',
     marginTop: theme.spacing(2),
     marginBottom: theme.spacing(2),
-    marginLeft: theme.spacing(1),
+    marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
+  },
+  radioHeader: {
+    fontSize: theme.typography.fontSize * 0.9,
+    fontWeight: 'bold',
+    marginLeft: 0,
+    marginBottom: 0,
+    marginTop: 0,
+    paddingLeft: 0,
   },
   profileArea: {
     alignItems: 'center'
@@ -134,7 +151,7 @@ const useStyles = makeStyles(theme => ({
   title: {
     marginTop: theme.spacing(2),
     marginRight: theme.spacing(2),
-    marginLeft: theme.spacing(2),
+    // marginLeft: theme.spacing(2),
     marginBottom: 0,
     fontSize: theme.typography.fontSize * 1.5,
     fontWeight: 'bold',
@@ -142,7 +159,7 @@ const useStyles = makeStyles(theme => ({
   subTitle: {
     marginRight: theme.spacing(2),
     marginBottom: theme.spacing(0.5),
-    marginLeft: theme.spacing(2),
+    //  marginLeft: theme.spacing(2),
     fontSize: theme.typography.fontSize * 1.2
   },
   buttonArea: {
@@ -150,6 +167,36 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
+  },
+  rowButtonConfirm: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.4px solid gray',
+    textTransform: 'none',
+    fontWeight: 'bold',
+    size: 'small',
+    color: theme.palette.confirm[theme.palette.type],
+  },
+  uploadButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.4px solid gray',
+    textTransform: 'none',
+    fontWeight: 'bold',
+    size: 'small',
+    color: theme.palette.primary[theme.palette.type],
+  },
+  rowButtonReject: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.4px solid gray',
+    textTransform: 'none',
+    fontWeight: 'bold',
+    size: 'small',
+    color: theme.palette.reject[theme.palette.type],
   },
   rowButtonDefault: {
     marginLeft: theme.spacing(1),
@@ -160,22 +207,30 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
+const AWS = require('aws-sdk');
+const s3 = new AWS.S3({
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
   const classes = useStyles();
+  const { enqueueSnackbar } = useSnackbar();
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  const [cancelPending, setCancelPending] = React.useState(false);
-  const [confirmStatus, setConfirmStatus] = React.useState('');
-  const [confirmPrompt, setConfirmPrompt] = React.useState(false);
+  const [reactData, setReactData] = React.useState({
+    cancelPending: false,
+    confirmStatus: '',
+    confirmPrompt: false,
+    checkedToSave: null,
+    attachmentList: [],
+    textInput: null,
+    initialLoadComplete: null,
+    popupMenuOpen: false
+  });
 
-  const [checkedToSave, setCheckedToSave] = React.useState();
-
-  const [textInput, setTextInput] = React.useState();
-  const [initialLoadComplete, setLoadComplete] = React.useState();
   const [dataRows, setDataRows] = React.useState();
-
-  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
   const factType = fact.activity_key.split('.')[0];
@@ -230,7 +285,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   let displayBold = false;
   let displayItalic = false;
 
-  if (!initialLoadComplete) {
+  if (!reactData.initialLoadComplete) {
     let defaultObj = {};
     let defaultChecked = [];
     if (defaultValue) {
@@ -331,9 +386,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       });
       if (dValue) { defaultObj[instruction[1]] = dValue; }
     };
-    setTextInput(defaultObj);
-    setLoadComplete(true);
+    reactData.textInput = defaultObj;
+    reactData.initialLoadComplete = true;
     setDataRows({ displayRows: displayRowList, dataRows: {}, checked: defaultChecked });
+    setReactData(reactData);
   }
 
   async function getObservations(pText, pObsKey, pChecked) {
@@ -446,8 +502,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   const handleDateExit = async (event, this_item) => {
     let AVAdate = makeDate(event.target.value);
-    textInput[this_item.text] = AVAdate.absolute;
-    setTextInput(textInput);
+    reactData.textInput[this_item.text] = AVAdate.absolute;
+    setReactData(reactData);
+    setForceRedisplay(!forceRedisplay);
   };
 
   const handleTimeExit = (event, this_item) => {
@@ -479,13 +536,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       ampm = 'pm';
     }
     if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
-    textInput[this_item.text] = `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
-    setTextInput(textInput);
+    reactData.textInput[this_item.text] = `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
+    setReactData(reactData);
+    setForceRedisplay(!forceRedisplay);
   };
 
   const handleTextExit = (event, this_item) => {
-    textInput[this_item.text] = event.target.value;
-    setTextInput(textInput);
+    reactData.textInput[this_item.text] = event.target.value;
+    setReactData(reactData);
+    setForceRedisplay(!forceRedisplay);
   };
 
   function isChecked(pObj) {
@@ -532,16 +591,48 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       }
     });
-    setCheckedToSave(workChecked);
+    if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
+      reactData.attachmentList.forEach(aRow => {
+        let fNArr = aRow.Location.split('/').pop().split('.');
+        fNArr.pop();
+        let fName = decodeURI(fNArr.join('.'));
+        responseArray.push(`Attachment: ${fName}`);
+      });
+    }
+    reactData.checkedToSave = workChecked;
+    setReactData(reactData);
+    setForceRedisplay(!forceRedisplay);
     if (errorsExist) { return ['error', errorMessage]; } else { return ['confirm', responseArray]; };
   }
 
+  const hiddenFileInput = React.useRef(null);
+
+  const handleFileUpload = event => {
+    hiddenFileInput.current.click();
+  };
+
+  async function handleSaveFile(pTarget) {
+    let pType = pTarget.type;
+    let s3Resp = await s3
+      .upload({
+        Bucket: 'theseus-medical-storage',
+        Key: pTarget.name,
+        Body: pTarget,
+        ACL: 'public-read-write',
+        ContentType: pType
+      })
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+      });
+    reactData.attachmentList.push(s3Resp);
+    setReactData(reactData);
+    setForceRedisplay(!forceRedisplay);
+    return s3Resp;
+  };
+
   return (
-    <Dialog
-      open={true || forceRedisplay}
-      p={2}
-      fullScreen
-    >
+    <Dialog open={forceRedisplay || true} fullScreen className={classes.containerBox}>
       {!!dataRows && dataRows.hasOwnProperty('displayRows') && dataRows.displayRows.length > 0 &&
         <React.Fragment>
           {/* Header with Avatar, Message, and VertMenu */}
@@ -569,15 +660,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               aria-haspopup='true'
               onClick={(event) => {
                 handleClick(event);
-                setPopupMenuOpen(true);
+                reactData.popupMenuOpen = true;
+                setReactData(reactData);
+                setForceRedisplay(!forceRedisplay);
               }}>
               <Avatar src={process.env.REACT_APP_AVA_LOGO} />
             </Box>
             <Menu
               id='hidden-menu'
               anchorEl={anchorEl}
-              open={popupMenuOpen}
-              onClose={() => { setPopupMenuOpen(false); }}
+              open={reactData.popupMenuOpen}
+              onClose={() => {
+                reactData.popupMenuOpen = false;
+                setReactData(reactData);
+                setForceRedisplay(!forceRedisplay);
+              }}
               keepMounted>
               <MenuList className={classes.popUpMenu}>
                 <MenuItem
@@ -619,7 +716,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               </MenuList>
             </Menu>
           </Box>
-          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+          <Paper component={Box} className={classes.page} overflow='auto' square>
             <List  >
               {dataRows.displayRows.map((this_item, this_index) => (
                 <Box display='flex'
@@ -682,14 +779,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                           onCheckEnter(event, this_item);
                         }}
                         onChange={(event) => {
-                          if (!textInput || (Object.keys(textInput).length === 0)) {
+                          if (!reactData.textInput || (Object.keys(reactData.textInput).length === 0)) {
                             let tempText = {};
                             tempText[this_item.text] = event.target.value;
-                            setTextInput(tempText);
+                            setReactData(reactData);
+                            setForceRedisplay(!forceRedisplay);
                           }
                           else {
-                            textInput[this_item.text] = event.target.value;
-                            setTextInput(textInput);
+                            reactData.textInput[this_item.text] = event.target.value;
+                            setReactData(reactData);
                             setForceRedisplay(!forceRedisplay);
                           }
                         }}
@@ -697,7 +795,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                           onCheckEnter(event, this_item);
                         }}
                         autoComplete='off'
-                        value={(textInput && (Object.keys(textInput).length > 0)) ? textInput[this_item.text] : ''}
+                        value={(reactData.textInput && (Object.keys(reactData.textInput).length > 0)) ? reactData.textInput[this_item.text] : ''}
                       />
                     }
                   </Box>
@@ -764,17 +862,43 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 </Box>
               ))}
             </List>
+            { /* Attachment List */}
+            {(reactData.attachmentList.length > 0) &&
+              <Box display='flex' flexDirection='column' pl={'24px'} justifyContent='flex-start'
+                alignItems='flex-start' key={'qrOpt_attachmentlist'}
+              >
+                <Typography className={classes.radioHead}>Attachments:</Typography>
+                {reactData.attachmentList.map((a, x) => (
+                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                    alignItems='flex-start' key={`qrOpt_attachmentLine-${x}`}
+                  >
+                    <DeleteIcon
+                      className={classes.radioButton}
+                      size="small"
+                      onClick={() => {
+                        reactData.attachmentList.splice(x, 1);
+                        reactData.forceRedisplay = !reactData.forceRedisplay;
+                        setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
+                      }}
+                    />
+                    <Typography className={classes.radioText}>{a.Key}</Typography>
+                  </Box>
+                ))}
+              </Box>
+            }
           </Paper>
-
           { /* Prompts */}
           {
-            cancelPending &&
+            reactData.cancelPending &&
             <AVAConfirm
               promptText={`Are you sure you'd like to exit?`}
               cancelText={'No, go back'}
               confirmText={'Yes, exit'}
               onCancel={() => {
-                setCancelPending(false);
+                reactData.cancelPending = false;
+                setReactData(reactData);
+                setForceRedisplay(!forceRedisplay);
               }}
               onConfirm={() => {
                 onClose();
@@ -783,12 +907,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             </AVAConfirm>
           }
           {
-            (confirmStatus === 'confirm') &&
+            (reactData.confirmStatus === 'confirm') &&
             <AVAConfirm
-              promptText={confirmPrompt}
+              promptText={reactData.confirmPrompt}
               cancelText={'Go back'}
               confirmText={'Save/Send'}
-              onCancel={() => { setConfirmStatus(''); }}
+              onCancel={() => {
+                reactData.confirmStatus = '';
+                setReactData(reactData);
+                setForceRedisplay(!forceRedisplay);
+              }}
               onConfirm={async () => {
                 let rObj;
                 if (factType !== 'list') {
@@ -800,65 +928,72 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   if (fact.value.freeText) {
                     if ('onBehalfOf' in fact.value.freeText) {
                       oBo = fact.value.freeText.onBehalfOf;
-                      if (textInput && textInput[fact.value.freeText.onBehalfOf]) {
-                        oBo = textInput[fact.value.freeText.onBehalfOf];
-                        delete textInput[fact.value.freeText.onBehalfOf];
+                      if (reactData.textInput && reactData.textInput[fact.value.freeText.onBehalfOf]) {
+                        oBo = reactData.textInput[fact.value.freeText.onBehalfOf];
+                        delete reactData.textInput[fact.value.freeText.onBehalfOf];
                         delete fact.value.freeText.onBehalfOf;
-                        delete textInput.onBehalfOf;
+                        delete reactData.textInput.onBehalfOf;
                       }
                     }
                     if ('foreignKey' in fact.value.freeText) {
                       foreign_key = fact.value.freeText.foreignKey;
-                      if (textInput) {
-                        if (textInput[fact.value.freeText.foreignKey]) {
-                          foreign_key = textInput[fact.value.freeText.foreignKey];
-                          delete textInput[fact.value.freeText.foreignKey];
+                      if (reactData.textInput) {
+                        if (reactData.textInput[fact.value.freeText.foreignKey]) {
+                          foreign_key = reactData.textInput[fact.value.freeText.foreignKey];
+                          delete reactData.textInput[fact.value.freeText.foreignKey];
                           delete fact.value.freeText.foreignKey;
                         }
-                        else if ('foreignKey' in textInput) {
-                          foreign_key = textInput['foreignKey'];
+                        else if ('foreignKey' in reactData.textInput) {
+                          foreign_key = reactData.textInput['foreignKey'];
                         }
-                        delete textInput['foreignKey'];
+                        delete reactData.textInput['foreignKey'];
                       }
                     }
                   }
-                  if (checkedToSave.some(s => { return s.toLowerCase().includes('anonymous'); })) {
+                  if (reactData.checkedToSave.some(s => { return s.toLowerCase().includes('anonymous'); })) {
                     oBo = 'Anonymous';
                   }
                   else if (!oBo) { oBo = await makeName(fact.patient_id); }
                   if (!foreign_key) { foreign_key = '*tbd'; }
 
-                  delete textInput['requestType'];
-                  let requestObj = { 'selections': checkedToSave, textInput, 'qualifiers': dataRows.chosenQual };
+                  delete reactData.textInput['requestType'];
+                  let requestObj = { 'selections': reactData.checkedToSave, textInput: reactData.textInput, 'qualifiers': dataRows.chosenQual };
                   let messageObj = {};
                   if ('messaging' in fact) {
                     messageObj.messaging = Object.assign({}, requestObj, fact.messaging);
                     messageObj.messaging.activityName = factName;
                   }
-                  rObj = await putServiceRequest(
-                    {
-                      client: pClient,
-                      author: fact.patient_id,
-                      proxy_user: fact.session.user_id,
-                      requestType: fact.value.freeText.requestType,
-                      onBehalfOf: oBo,
-                      foreign_key,
-                      request: requestObj,
-                      messaging: fact.messaging
-                    });
+                  let putSR = {
+                    client: pClient,
+                    author: fact.patient_id,
+                    proxy_user: fact.session.user_id,
+                    requestType: fact.value.freeText.requestType,
+                    onBehalfOf: oBo,
+                    foreign_key,
+                    request: requestObj,
+                    messaging: fact.messaging
+                  };
+                  if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
+                    putSR.attachments = reactData.attachmentList;
+                  }
+                  rObj = await putServiceRequest(putSR);
                 }
-                onSave((rObj ? rObj.request_id : ''), checkedToSave, textInput, dataRows.chosenQual);
+                onSave((rObj ? rObj.request_id : ''), reactData.checkedToSave, reactData.textInput, dataRows.chosenQual);
               }}
             >
             </AVAConfirm>
           }
           {
-            (confirmStatus === 'error') &&
+            (reactData.confirmStatus === 'error') &&
             <AVAConfirm
-              promptText={confirmPrompt}
+              promptText={reactData.confirmPrompt}
               cancelText={'Go back'}
               confirmText={'*none*'}
-              onCancel={() => { setConfirmStatus(''); }}
+              onCancel={() => {
+                reactData.confirmStatus = '';
+                setReactData(reactData);
+                setForceRedisplay(!forceRedisplay);
+              }}
               onConfirm={() => { }}
             >
             </AVAConfirm>
@@ -869,10 +1004,39 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                  {reactData.textInput.requestType && !(['meal'].includes(reactData.textInput.requestType)) &&
+                    <React.Fragment>
+                      <Button
+                        className={classes.uploadButton}
+                        size='small'
+                        startIcon={<CloudUploadIcon />}
+                        onClick={handleFileUpload}
+                      >
+                        {'Attach'}
+                      </Button>
+                      <input
+                        type="file"
+                        style={{ display: 'none' }}
+                        ref={hiddenFileInput}
+                        onChange={async (target) => {
+                          await handleSaveFile(target.target.files[0]);
+                          reactData.forceRedisplay = !reactData.forceRedisplay;
+                          setReactData(reactData);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                      />
+                    </React.Fragment>
+                  }
                   <Button
-                    className={classes.rowButtonDefault}
+                    className={classes.rowButtonReject}
+                    size='small'
                     onClick={() => {
-                      ((factType === 'list') ? onClose() : setCancelPending(true));
+                      if (factType === 'list') { onClose(); }
+                      else {
+                        reactData.cancelPending = true;
+                        setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
+                      };
                     }}
                     startIcon={<CloseIcon size="small" />}
                   >
@@ -880,11 +1044,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   </Button>
                   {(!factType || (factType !== 'list')) &&
                     <Button
-                      className={classes.rowButtonDefault}
+                      className={classes.rowButtonConfirm}
+                      size='small'
                       onClick={() => {
-                        let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, textInput);
-                        setConfirmPrompt(response);
-                        setConfirmStatus(cStatus);
+                        let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, reactData.textInput);
+                        reactData.confirmPrompt = response;
+                        reactData.confirmStatus = cStatus;
+                        setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
                       }}
                       startIcon={<CheckIcon size="small" />}
                     >

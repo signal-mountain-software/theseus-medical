@@ -84,6 +84,7 @@ export async function putServiceRequest(body) {
               onBehalfOf: <optional - defaults to author's name>
               request: <object> (required)
               messaging: <optional messaging object>
+              attachments: <optional attachments to add to the request>
               local_key: <optional AVA key>
               foreign_key: <optional external key>
               update_time: <optional, if missing set to current time>
@@ -121,6 +122,9 @@ export async function putServiceRequest(body) {
     "last_status": body.requestStatus || 'submitted',
     "last_note": body.notes
   };
+  if (body.attachments && (body.attachments.length > 0)) { 
+    serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; })
+  }
   cl({ 'adding ServiceRequestRec as': serviceRequestRec });
   let goodWrite = true;
   await dbClient
