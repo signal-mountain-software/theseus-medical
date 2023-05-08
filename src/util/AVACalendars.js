@@ -916,13 +916,13 @@ export async function writeSlot(body) {
     else { messageList.push(eventRec.eventData.messaging); }
     for (let m = 0; m < messageList.length; m++) {
       let this_message = messageList[m];
-  //    if (!this_message.action || (this_message.action !== body.status.current)) {
+      if (!this_message.action || (this_message.action === body.status.current)) {
         if ('subject' in this_message.format) { msgObject.subject = await resolveMessageVariables(this_message.format.subject, body); }
         if (Array.isArray(this_message.recipientList)) { msgObject.recipientList = [...this_message.recipientList]; }
         else { msgObject.recipientList = [this_message.recipientList]; }
         msgObject.messageText = await resolveMessageVariables(this_message.format.text, body);
         sendMessages(msgObject);
-  //    }
+      }
     }
   }
   /*
