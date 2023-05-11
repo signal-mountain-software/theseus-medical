@@ -13,18 +13,38 @@ import PatientDialog from './dialogs/PatientDialog';
 
 export default ({ patient, roles, session }) => {
   const [picture, setPicture] = React.useState('');
-  const [open, setOpen] = React.useState(false);
+  const [reactData, setReactData] = React.useState({
+    openPeopleEdit: false,
+    groupData: {}
+  })
+
   const history = useHistory();
   const { enqueueSnackbar } = useSnackbar();
 
-  const onClick = () => {
+  const onClick = async () => {
     if (!session?.kiosk_mode) {
       if (session.patient_id) {
-        setOpen(true);
+        reactData.openPeopleEdit = true;
+        reactData.groupData = await getAllGroups(session.patient_id);
+        setReactData(reactData);
       } else {
         history.push('/theseus');
       }
     }
+  };
+
+
+  async function getAllGroups(pPatient) {
+    let responseData = {};
+    responseData.adminHierarchy = await getGroupHierarchy(session.client_id, { sort: true });
+    for (let g = 0; g < responseData.adminHierarchy.length; g++) {
+      if (responseData.adminHierarchy[g].selectable && isMemberOf(pPatient, responseData.adminHierarchy[g].id)) {
+        responseData.selectedID = responseData.adminHierarchy[g].id;
+      }
+    }
+    responseData.publicGroups = await getPublicGroupList(session.client_id, pPatient);
+    responseData.privateGroups = await getGroupsBelongTo(pPatient);
+    return responseData;
   };
 
   React.useEffect(() => {
@@ -65,13 +85,15 @@ export default ({ patient, roles, session }) => {
               clickable
             />
           </Tooltip>
-          {open &&
+          {reactData.openPeopleEdit &&
             <PatientDialog
               patient={patient}
-              picture={picture}
-              open={open}
+            picture={picture}
+            groupData={reactData.groupData}
+              open={reactData.openPeopleEdit}
               onClose={() => {
-                setOpen(false);
+                reactData.openPeopleEdit = false;
+                setReactData(reactData);
               }}
             />
           }

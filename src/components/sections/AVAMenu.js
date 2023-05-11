@@ -5,7 +5,7 @@ import { useSnackbar } from 'notistack';
 import { recordExists, cl, resolveVariables, makeArray } from '../../util/AVAUtilities';
 import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
-import { getMemberList } from '../../util/AVAGroups';
+import { getMemberList, getGroupHierarchy, getPublicGroupList, getGroupsBelongTo } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -269,6 +269,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [rowOpen, setRowOpen] = React.useState(-1);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
+  const [groupData, setGroupData] = React.useState({});
 
   const [loading, setLoading] = React.useState('Initializing');
   const [progress, setProgress] = React.useState(100);
@@ -481,7 +482,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           UploadId: uploadId,
           Body: buffer.subarray(start, end),
           PartNumber: i + 1,
-        }
+        };
         uploadPromises.push(s3.uploadPart(uPartParm).promise());
       }
 
@@ -854,8 +855,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     let excludeList = ['reservation', 'play_video'];
     if (!fact.default_value) { return; }
     if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
-    if (fact.activity_rec?.type === 'make_message') { 
-      
+    if (fact.activity_rec?.type === 'make_message') {
+
     }
     let returnArray = [];
     let factClient;
@@ -940,6 +941,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       }
     };
     return [];
+  };
+
+  async function getAllGroups(pPatient) {
+    let responseData = {};
+    responseData.adminHierarchy = await getGroupHierarchy(session.client_id, { sort: true });
+    responseData.adminHierarchy.forEach(a => {
+      if (a.selectable && patient.groups.includes(a.id)) {
+        responseData.selectedID = a.id;
+      }
+    })
+    responseData.publicGroups = await getPublicGroupList(session.client_id, pPatient);
+    responseData.privateGroups = await getGroupsBelongTo(pPatient, {sort: true});
+    responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; })
+    for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
+    return responseData;
   };
 
   function makeGreetingName(pString) {
@@ -1036,8 +1052,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             flexGrow={1}
             className={classes.profileArea}
             key={'personBox'}
-            onClick={() => {
+            onClick={async () => {
               setPopupMenuOpen(false);
+              setGroupData(await getAllGroups(session.patient_id));
               setShowProfileEdit(true);
             }}
           >
@@ -1107,8 +1124,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 </MenuItem>
               )}
               {!session?.kiosk_mode && (
-                <MenuItem onClick={() => {
+                <MenuItem onClick={async () => {
                   setPopupMenuOpen(false);
+                  setGroupData(await getAllGroups(session.patient_id));
                   setShowProfileEdit(true);
                 }}>
                   <Box
@@ -1497,11 +1515,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   ml={2} mr={2}
                   justifyContent='center'
                   flexDirection='column'
-                height={30}
-                onContextMenu={async (e) => {
-                  e.preventDefault();
-                  enqueueSnackbar(`Open row=${mainMenu[mainMenu.length - 1].section_name}`, { variant: 'info', persist: true });
-                }}
+                  height={30}
+                  onContextMenu={async (e) => {
+                    e.preventDefault();
+                    enqueueSnackbar(`Open row=${mainMenu[mainMenu.length - 1].section_name}`, { variant: 'info', persist: true });
+                  }}
                 />
               }
             </List>
@@ -1529,6 +1547,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         {showProfileEdit &&
           <PatientDialog
             patient={patient}
+            groupData={groupData}
             open={true}
             onClose={() => {
               setShowProfileEdit(false);

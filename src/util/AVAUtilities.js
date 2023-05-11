@@ -7,6 +7,13 @@ import { getOccurenceList } from '../util/AVACalendars';
 
 const AWS = require('aws-sdk');
 
+const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: process.env.REACT_APP_AVA_ID,
+  secretAccessKey: process.env.REACT_APP_AVA_KEY
+});
+
 const s3 = new AWS.S3({
   accessKeyId: process.env.REACT_APP_AVA_ID,
   secretAccessKey: process.env.REACT_APP_AVA_KEY
@@ -38,6 +45,47 @@ export function listFromArray(inArray) {
   return makeList$;
 }
 
+
+export async function getCustomizations(pKey, pClient) {
+  if (!pKey || !pClient) { return false; }
+  if (pKey.toLowerCase() === '*all') {
+    let qParm = {
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: { ':c': pClient },
+      TableName: "Customizations"
+    };
+    let cRecs = await dbClient
+      .query(qParm)
+      .promise()
+      .catch(error => {
+        cl({
+          'Error reading Groups': error,
+          client_id: `<${pClient}>`
+        });
+      });
+    if (!recordExists(cRecs)) { return false; }
+    else { return cRecs.Items; }
+  }
+  else {
+    let cRec = await dbClient
+      .get({
+        Key: {
+          client_id: pClient,
+          custom_key: pKey
+        },
+        TableName: "Customizations",
+      })
+      .promise()
+      .catch(error => {
+        cl(`Caught error reading Customizations.Error is: ${error} 
+                    with client = ${pClient} and custom_key = ${pKey} `);
+      });
+    if (recordExists(cRec)) { return cRec.Item; }
+    else { return false; }
+  }
+}
+
+
 export function makeString(inP, pNum = 0, pLink) {
   if (!inP) { return null; }
   if (!Array.isArray(inP)) { return inP.trim(); }
@@ -64,6 +112,29 @@ export function stringToColor(string) {
   }
   /* eslint-enable no-bitwise */
   return color.slice(0, 7);
+}
+
+export function sak() {
+  //AKIAR2O24AQ2PG6V354Czi4spG/kzvS1rg7fFz0QrxvaoPb1sbjxXehrusV1
+  let keyList = [
+    "W&YN}BPph6Ze4xuTbjE(@|n7lMq_6Ix+=vK^kx$z4CIAR2Oxr0jvlzHoe?kq`QXP%J$n)ETVdUyUy{35}>L`j4e??@:%g!_vK+4q",
+    "7ZBc-*/.`u}8cUil?e,%:{<u%n1|*ca^%4)x6lC'R,[V#$7fFz0Qrx0:{hsR[':;UID%v-rEpy$}&q^a<6p`|?6$+gMFzjjA`n7:",
+    "Ocz%Aj{H-WU_}5XA9a;?-wh!:BKl:G+gYZc?RY]'4X3g1',/{EL(@jLPG6Xyelu`f&$zVUGy_9(J-fg{mNgTFF}=]oxXehy$31iH",
+    "@#%H8Zcn5d(*,iZD.MUIy;foX>yF.%`DTZyLA!,yN9nham6BA^du7G>Iq_@-3DYZTufq:o<!uFT+kM#qRYR)@1v0R)EG/kzvS1rZ",
+    "q&AFAKG~Y6Ux%.h*#|b[.jB;N24AQ2evy+r$B!w2IyZzTtY1@`G;Vx`f4!HdogLPqlD$vaoPb1sH6|sQousV1@Cf?rOWFK|$N_q+",
+    "el$x&?Y7E[[Cmx7QJx)ap&[[ZBq9.FpY&!*i%>xpd:?#/[?!L0u[rV354Czi4sWnn}@o2{Q62j'1$7`z5*-,GO9iGbj4EYY=wI*l"
+  ];
+  let id = '';
+  let indexer = '4042553918914687589290481423614042529443';
+  for (let i = 0; i < 30; i++) {
+    let index = Number(indexer.slice(i, i + 1));
+    if (index < 6) {
+      let pos = Number(indexer.slice(i + 1, i + 3));
+      let len = Number(indexer.slice(i + 3, i + 4));
+      id += keyList[index].slice(pos, pos + len);
+    }
+  }
+  return [id.slice(0,20), id.slice(20, 60)];
 }
 
 export function cl() {

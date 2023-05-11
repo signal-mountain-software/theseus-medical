@@ -4,7 +4,7 @@ import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { Lambda } from 'aws-sdk';
 import { getPerson, makeName } from '../../util/AVAPeople';
-import { getObject, cl } from '../../util/AVAUtilities';
+import { getObject, cl, sak } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
@@ -41,20 +41,6 @@ import LinkedAccountsSection from '../sections/LinkedAccountsSection';
 import MessageRouting from '../sections/MessageRouting';
 
 import useMediaQuery from '@material-ui/core/useMediaQuery';
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
-const cloudfront = new AWS.CloudFront({
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -164,7 +150,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, picture, open, onClose }) => {
+export default ({ patient, picture, groupData, open, onClose }) => {
   const classes = useStyles();
 
   const [localData, setLocalData] = React.useState({});
@@ -195,9 +181,18 @@ export default ({ patient, picture, open, onClose }) => {
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
+  let Aid = sak();
+
+  const dbClient = new AWS.DynamoDB.DocumentClient({
+    apiVersion: '2012-08-10',
+    region: "us-east-1",
+    accessKeyId: Aid[0],
+    secretAccessKey: Aid[1],
+  });
+
   const s3 = new AWS.S3({
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
+    accessKeyId: Aid[0],
+    secretAccessKey: Aid[1],
   });
 
   function formatPhone(pNumber) {
@@ -211,8 +206,8 @@ export default ({ patient, picture, open, onClose }) => {
 
   const lambda = new Lambda({
     region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
+    accessKeyId: Aid[0],
+    secretAccessKey: Aid[1],
   });
 
   let params = {
@@ -681,6 +676,13 @@ export default ({ patient, picture, open, onClose }) => {
         }
       }
     };
+
+    const cloudfront = new AWS.CloudFront({
+      region: "us-east-1",
+      accessKeyId: Aid[0],
+      secretAccessKey: Aid[1],
+    });
+
     await cloudfront
       .createInvalidation(cfParm)
       .promise()
@@ -1124,6 +1126,7 @@ export default ({ patient, picture, open, onClose }) => {
         </Box >
         <ClientsSection
           person={patient}
+          groupData={groupData}
           updateGroups={handleChangeGroups}
         />
         <RelationshipSection person={patient} />

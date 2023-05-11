@@ -1,4 +1,4 @@
-import { cl, clt, recordExists } from './AVAUtilities';
+import { cl, clt, recordExists, getCustomizations } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
 
 
@@ -35,14 +35,16 @@ export async function getGroupsResponsibleFor(person_id) {
   var returnObject = {};
   // First, get Groups that this person explicitly manages (as per the SessionsV2 table)
   if ('groups_managed' in session) {
-    session.groups_managed.forEach(group => {
-      let [gID, gName] = group.split('~');
-      returnObject[gID.trim()] = {
-        group_name: gName.trim(),
-        group_id: gID.trim(),
+    for (let g = 0; g < session.groups_managed.length; g++) {
+      let [gID, gName] = session.groups_managed[g].split('~').map(s => { return s.trim(); });
+      let gRec = await getGroup(gID, session.client_id);
+      if (gRec.name) { gName = gRec.name; }
+      returnObject[gID] = {
+        group_name: gName,
+        group_id: gID,
         role: 'responsible'
       };
-    });
+    };
   }
   // If there are groups in the "responsible for" array, include those
   let respArray = [];
@@ -54,27 +56,26 @@ export async function getGroupsResponsibleFor(person_id) {
   for (let g = 0; g < respArray.length; g++) {
     let group = respArray[g].trim();
     if (!(group in returnObject)) {
-      let groupName;
-      if (groupObj[group]) { groupName = groupObj[group].name; }
-      else { 
-        let groupO = await getGroup(group, session.client_id);
-        if (Object.keys(groupO).length === 0) {
-          continue;
-        }
-        groupName = groupO.name;
+      let gName;
+      if (groupObj[group]) { gName = groupObj[group].name; }
+      else {
+        let gRec = await getGroup(group, session.client_id);
+        if (gRec.name) { gName = gRec.name; }
       }
-      returnObject[group] = {
-        group_name: groupName,
-        group_id: group,
-        role: 'responsible'
-      };
-    }
-  };
+      if (gName) {
+        returnObject[group] = {
+          group_name: gName,
+          group_id: group,
+          role: 'responsible'
+        };
+      }
+    };
+  }
   loadedPerson = person_id;
   return returnObject;
 }
 
-export async function getGroupsBelongTo(person_id) {
+export async function getGroupsBelongTo(person_id, options) {
   // You belong to all groups that you are responsible for
   var returnObject = await getGroupsResponsibleFor(person_id);
   // Next, get any other Groups that this person belongs to (but aren't responsible for)
@@ -85,17 +86,37 @@ export async function getGroupsBelongTo(person_id) {
     for (let g = 0; g < profile.groups.length; g++) {
       let group = profile.groups[g];
       if (!(group in returnObject)) {
-        returnObject[group] = {
-          group_name: (groupObj[group] ? groupObj[group].name : null),
-          group_id: group,
-          role: 'member'
-        };
+        let gName;
+        if (groupObj[group]) { gName = groupObj[group].name; }
+        else {
+          let gRec = await getGroup(group, session.client_id);
+          if (gRec.name) { gName = gRec.name; }
+        }
+        if (gName) {
+          returnObject[group] = {
+            group_name: gName,
+            group_id: group,
+            role: 'member'
+          };
+        }
       }
     };
   }
   loadedPerson = person_id;
   loadedGroupObj = returnObject;
-  return returnObject;
+  if (options && options.sort) {
+    // put each object in an array of objects, then sort that array and return an object sequenced by the sort
+    let gArray = [];
+    for (let gID in returnObject) { gArray.push(returnObject[gID]); }
+    gArray.sort((a, b) => {
+      if (a.group_name > b.group_name) { return 1; }
+      else { return -1; }
+    });
+    let newObject = {};
+    gArray.forEach(g => { newObject[g.group_id] = g; });
+    return newObject;
+  }
+  else { return returnObject; }
 };
 
 export async function getGroup(pGroup_id, pClient_id) {
@@ -137,7 +158,8 @@ export async function getRole(pGroup, pPerson) {
     let gRec = await getGroup(pGroup, pSession.client_id);
     if (gRec.admin_list && gRec.admin_list.includes(pPerson)) { return 'responsible'; }
   }
-  return 'member';
+  if (await isMemberOf(pPerson, pGroup)) { return 'member'; }
+  else { return 'non-member'; }
 }
 
 export async function getMemberList(pGroups, pClient_id, options) {
@@ -309,4 +331,164 @@ export async function prepareTargets(pPerson, pClient_id, options) {
     }
   }
   return { responsibleList, responsibleObj };
+}
+
+export async function getGroupHierarchy(pClient_id, options) {
+  /* options can be as follows (all optional and treated as FALSE is missing)
+  {
+    sort: true,    return the names sorted at each level of the hierarchy
+    displayList: true     returns an array with [ {level: <n>, name: <name>, selectable: <boolean>}, {}, ... ]
+  }
+  */
+  if (!pClient_id) {
+    if (session) { pClient_id = session.client_id; }
+    else return {};
+  }
+  let qParm = {
+    KeyConditionExpression: 'client_id = :c',
+    ExpressionAttributeValues: { ':c': pClient_id, ':a': 'admin', ':p': 'parent' },
+    FilterExpression: 'group_type IN (:a, :p)',
+    TableName: "Groups"
+  };
+  let groupRec = await dbClient
+    .query(qParm)
+    .promise()
+    .catch(error => {
+      cl({
+        'Error reading Groups': error,
+        client_id: `<${pClient_id}>`
+      });
+    });
+  if (!recordExists(groupRec)) { return {}; }
+  let hierarchy = {};
+  let customRec = await getCustomizations('client_name', pClient_id);
+  let nameObj = { 'ALL': `All ${customRec.customization_value} Accounts` };
+  let parentObj = { 'ALL': '' };
+  // first pass - all admin level groups are added to their parent
+  for (let g = 0; g < groupRec.Items.length; g++) {
+    if (!groupRec.Items[g].belongs_to) { groupRec.Items[g].belongs_to = 'ALL'; }
+    let thisGroup = groupRec.Items[g];
+    if (thisGroup.group_type === 'admin') {
+      if (!hierarchy.hasOwnProperty(thisGroup.belongs_to)) {
+        hierarchy[thisGroup.belongs_to] = {};
+      }
+      hierarchy[thisGroup.belongs_to][thisGroup.group_id] = {};
+      nameObj[thisGroup.group_id] = thisGroup.name;
+      parentObj[thisGroup.group_id] = thisGroup.belongs_to;
+      let cKey = `${pClient_id}//${thisGroup.group_id}`;
+      groupRecs[cKey] = thisGroup;
+      groupRec.Items.splice(g, 1);
+      g--;
+    }
+  }
+  // what's left behind is an array of all the parents
+  // loop through looking for a parent that was mentioned in the prior loop
+  let count = 0;
+  let thisGroup;
+  let withChildren;
+  do {
+    count++;
+    for (let g = 0; g < groupRec.Items.length; g++) {
+      thisGroup = groupRec.Items[g];
+      if (hierarchy.hasOwnProperty(thisGroup.group_id)) {
+        withChildren = Object.assign({}, hierarchy[thisGroup.group_id]);
+        delete hierarchy[thisGroup.group_id];
+        // does my parent already exist in the tree somewhere?
+        let [success, result] = recursiveSearch(hierarchy);
+        if (success) {
+          hierarchy = result;
+        }
+        else {
+          hierarchy[thisGroup.belongs_to] = {};
+          hierarchy[thisGroup.belongs_to][thisGroup.group_id] = withChildren;
+        };
+        nameObj[thisGroup.group_id] = thisGroup.name;
+        parentObj[thisGroup.group_id] = thisGroup.belongs_to;
+        groupRec.Items.splice(g, 1);
+        g--;
+      }
+    }
+  } while ((groupRec.Items.length > 0) && (count < 20));
+
+  // manipulate the output:
+  if (!options) { return hierarchy; }
+  if (options.sort) { return recursiveSort(hierarchy, [], 0); }
+  return hierarchy;
+
+  function recursiveSearch(searchObj) {
+    let oKeys = Object.keys(searchObj);
+    if (oKeys.length === 0) { return [false, {}]; }
+    if (oKeys.includes(thisGroup.belongs_to)) { // parent found
+      searchObj[thisGroup.belongs_to][thisGroup.group_id] = withChildren;
+      return [true, searchObj];
+    }
+    else {
+      for (let g = 0; g < oKeys.length; g++) {
+        let [success, result] = recursiveSearch(searchObj[oKeys[g]]);
+        if (success) {
+          searchObj[oKeys[g]] = result;
+          return [true, searchObj];
+        }
+      }
+      return [false, {}];
+    }
+  }
+
+  function recursiveSort(searchObj, response, level) {
+    if (Object.keys(searchObj).length === 0) { return; }
+    let oKeys = Object.keys(searchObj).sort((a, b) => {
+      if (nameObj[a] > nameObj[b]) { return 1; }
+      else { return -1; }
+    });
+    for (let g = 0; g < oKeys.length; g++) {
+      let selectable = (Object.keys(searchObj[oKeys[g]]).length === 0);
+      response.push({
+        id: oKeys[g],
+        level,
+        belongs_to: parentObj[oKeys[g]],
+        name: nameObj[oKeys[g]],
+        selectable
+      });
+      if (!selectable) { response = recursiveSort(searchObj[oKeys[g]], response, level + 1); }
+    }
+    return response;
+  }
+}
+
+export async function getPublicGroupList(pClient_id, person_id, options) {
+  if (!pClient_id) {
+    if (session) { pClient_id = session.client_id; }
+    else return {};
+  }
+  let qParm = {
+    KeyConditionExpression: 'client_id = :c',
+    ExpressionAttributeValues: { ':c': pClient_id, ':a': 'open', ':p': 'public' },
+    FilterExpression: 'group_type IN (:a, :p)',
+    TableName: "Groups"
+  };
+  let groupRec = await dbClient
+    .query(qParm)
+    .promise()
+    .catch(error => {
+      cl({
+        'Error reading Groups': error,
+        client_id: `<${pClient_id}>`
+      });
+    });
+  if (!recordExists(groupRec)) { return {}; }
+  groupRec.Items.sort((a, b) => {
+    if (a.name > b.name) { return 11; }
+    else { return -1; }
+  });
+  let response = {};
+  for (let g = 0; g < groupRec.Items.length; g++) {
+    let thisGroup = groupRec.Items[g];
+    let role = await getRole(thisGroup.group_id, person_id);
+    response[thisGroup.group_id] = {
+      group_name: thisGroup.name,
+      group_id: thisGroup.group_id,
+      role
+    };
+  }
+  return response;
 }
