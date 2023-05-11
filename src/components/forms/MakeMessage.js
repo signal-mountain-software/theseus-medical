@@ -1,7 +1,7 @@
 import React from 'react';
 import { sendMessages } from '../../util/AVAMessages';
 import { makeName, getImage } from '../../util/AVAPeople';
-import { makeArray } from '../../util/AVAUtilities';
+import { makeArray, s3, dbClient } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -123,18 +123,6 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 0,
   },
 }));
-
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 export default ({
   titleText,

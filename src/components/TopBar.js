@@ -1,7 +1,7 @@
 import React from 'react';
+import { lambda } from '../../util/AVAUtilities';
 import { useRecoilState } from 'recoil';
 import { Auth } from 'aws-amplify';
-import { Lambda } from 'aws-sdk';
 
 import { useCookies } from 'react-cookie';
 
@@ -86,12 +86,6 @@ export default () => {
   const onIOSInstallClose = () => {
     setShowIOSDialog(false);
   };
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   const accessLog = async (pUser, pPwd, pMessage) => {
     var payload =

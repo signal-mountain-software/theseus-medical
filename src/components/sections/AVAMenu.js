@@ -1,8 +1,7 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, cl, resolveVariables, makeArray } from '../../util/AVAUtilities';
+import { recordExists, cl, resolveVariables, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
 import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getMemberList, getGroupHierarchy, getPublicGroupList, getGroupsBelongTo } from '../../util/AVAGroups';
@@ -224,19 +223,6 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
 export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const classes = useStyles();
@@ -288,12 +274,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   let nowTime = new Date().getTime();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});

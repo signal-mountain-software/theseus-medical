@@ -1,9 +1,8 @@
 import React from 'react';
+import { lambda } from '../../util/AVAUtilities';
 
 import Paper from '@material-ui/core/Paper';
 import TextField from '@material-ui/core/TextField';
-
-import { Lambda } from 'aws-sdk';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -221,12 +220,6 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, o
   }
 
   const handleCreateAGroup = async pGroupName => {
-    const lambda = new Lambda({
-      region: 'us-east-1',
-      accessKeyId: process.env.REACT_APP_AVA_ID,
-      secretAccessKey: process.env.REACT_APP_AVA_KEY,
-    });
-
     let params = {
       FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
       InvocationType: 'RequestResponse',

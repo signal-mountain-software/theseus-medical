@@ -1,17 +1,9 @@
-import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid } from './AVAUtilities';
+import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid, dbClient } from './AVAUtilities';
 import { makeName } from './AVAPeople';
 import { addDays, makeDate, makeTime } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
 
 // const PDFDocument = require('pdfkit');
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 let eventCache = {};
 

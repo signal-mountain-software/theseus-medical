@@ -1,10 +1,7 @@
 import React from 'react';
+import { lambda } from '../../util/AVAUtilities';
+
 import { useLocation } from 'react-router-dom';
-import {
-  AmplifyAuthenticator,
-  AmplifySignIn,
-  AmplifyForgotPassword
-} from '@aws-amplify/ui-react';
 import useIosCheck from '../hooks/useIosCheck';
 import {
   Auth,
@@ -22,15 +19,10 @@ import {
   graphqlOperation
 } from 'aws-amplify';
 import {
-  Lambda
-} from 'aws-sdk';
-import {
   useSnackbar
 } from 'notistack';
 import Button from '@material-ui/core/Button';
 import Paper from '@material-ui/core/Paper';
-
-import TopBar from '../components/TopBar';
 
 export default Component => props => {
   const [signedIn, setSigned] = React.useState(true);
@@ -56,12 +48,6 @@ export default Component => props => {
   const [resetPW, setResetPW] = React.useState(false);
   let [platform, showIOS] = useIosCheck();
   if (showIOS) { };
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   const checkUser = () => {
     setUser();

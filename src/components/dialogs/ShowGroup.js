@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 import { getMemberList, getGroup, getRole } from '../../util/AVAGroups';
+import { dbClient } from '../../util/AVAUtilities';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -63,16 +64,6 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
-
-const AWS = require('aws-sdk');
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
 
 export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClose }) => {
   const [groupMemberList, setGroupMemberList] = React.useState([]);

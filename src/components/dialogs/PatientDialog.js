@@ -2,9 +2,8 @@ import React from 'react';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
-import { Lambda } from 'aws-sdk';
 import { getPerson, makeName } from '../../util/AVAPeople';
-import { getObject, cl, sak } from '../../util/AVAUtilities';
+import { getObject, cl, dbClient, s3, lambda, cloudfront } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
@@ -181,20 +180,6 @@ export default ({ patient, picture, groupData, open, onClose }) => {
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
-  let Aid = sak();
-
-  const dbClient = new AWS.DynamoDB.DocumentClient({
-    apiVersion: '2012-08-10',
-    region: "us-east-1",
-    accessKeyId: Aid[0],
-    secretAccessKey: Aid[1],
-  });
-
-  const s3 = new AWS.S3({
-    accessKeyId: Aid[0],
-    secretAccessKey: Aid[1],
-  });
-
   function formatPhone(pNumber) {
     var match = '' + pNumber.replace(/\D/g, '').substr(-10);
     let formatted = '';
@@ -203,12 +188,6 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     if (match.length > 6) { formatted += '-' + match.substring(6, 10); }
     return formatted;
   }
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: Aid[0],
-    secretAccessKey: Aid[1],
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
@@ -676,12 +655,6 @@ export default ({ patient, picture, groupData, open, onClose }) => {
         }
       }
     };
-
-    const cloudfront = new AWS.CloudFront({
-      region: "us-east-1",
-      accessKeyId: Aid[0],
-      secretAccessKey: Aid[1],
-    });
 
     await cloudfront
       .createInvalidation(cfParm)

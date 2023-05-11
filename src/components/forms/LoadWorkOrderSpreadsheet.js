@@ -3,6 +3,7 @@ import { useSnackbar } from 'notistack';
 import { getServiceRequests, updateServiceRequest, putServiceRequest } from '../../util/AVAServiceRequest';
 import { makeDate } from '../../util/AVADateTime';
 import { makeName, getPersonFromPartialID, getPersonFromLocation, getPersonByName } from '../../util/AVAPeople';
+import { s3 } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -122,13 +123,6 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
   const jobTime = new Date().getTime();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-
-  const AWS = require('aws-sdk');
-  AWS.config.update({ region: 'us-east-1' });
-  const s3 = new AWS.S3({
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   const hiddenFileInput = React.useRef(null);
 

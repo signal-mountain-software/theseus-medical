@@ -1,4 +1,5 @@
 import React from 'react';
+import { lambda } from '../../util/AVAUtilities';
 import { useLocation } from 'react-router-dom';
 import { useCookies } from 'react-cookie';
 import {
@@ -23,9 +24,6 @@ import {
   API,
   graphqlOperation
 } from 'aws-amplify';
-import {
-  Lambda
-} from 'aws-sdk';
 import {
   useSnackbar
 } from 'notistack';
@@ -81,12 +79,6 @@ export default Component => props => {
 
   const [saveP, setSaveP] = React.useState([]);
   const [saveU, setSaveU] = React.useState([]);
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   const checkUser = () => {
     setUser();

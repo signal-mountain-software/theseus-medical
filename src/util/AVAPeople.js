@@ -1,13 +1,4 @@
-import { isPromise, cl, recordExists, sentenceCase } from '../util/AVAUtilities';
-
-const AWS = require('aws-sdk');
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-    apiVersion: '2012-08-10',
-    region: "us-east-1",
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
+import { isPromise, cl, recordExists, sentenceCase, dbClient } from '../util/AVAUtilities';
 
 let foundPeople = {};
 let savedSession;

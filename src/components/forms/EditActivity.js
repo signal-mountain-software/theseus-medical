@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
+import { lambda } from '../../util/AVAUtilities';
 import { useSnackbar } from 'notistack';
 
 import Dialog from '@material-ui/core/Dialog';
@@ -53,12 +53,6 @@ export default ({ pClient, activity, showDialog, handleClose }) => {
   const [activityName, setActivityName] = React.useState(activity.activity_name);
   const [changeDetected, setChangeDetected] = React.useState(false);
   const activityClient = pClient;
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:EventActivityMaintenance',

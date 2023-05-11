@@ -1,18 +1,5 @@
 import { isMemberOf } from './AVAGroups';
-import { cl, recordExists, resolveVariables } from './AVAUtilities';
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
-const lambda = new AWS.Lambda({
-  region: 'us-east-1',
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY,
-});
+import { cl, recordExists, resolveVariables, lambda, dbClient } from './AVAUtilities';
 
 // Functions
 
@@ -146,6 +133,7 @@ export async function makeObservationList(pObs, pSession) {
         lObj[key] = value;
       })
       let payload = { body: lObj };
+      const AWS = require('aws-sdk');
       let b64 = AWS.util.base64.encode(JSON.stringify('AVAObservations'));
       var params = {
         FunctionName: lFunction,

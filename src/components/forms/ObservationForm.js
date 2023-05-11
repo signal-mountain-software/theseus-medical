@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
+import { s3, lambda } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { makeName } from '../../util/AVAPeople';
 import { putServiceRequest } from '../../util/AVAServiceRequest';
@@ -207,12 +207,6 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
   const classes = useStyles();
@@ -238,12 +232,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',

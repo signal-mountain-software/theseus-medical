@@ -1,17 +1,9 @@
-import { resolveVariables, stringToColor, cl, clt, recordExists } from '../util/AVAUtilities';
+import { resolveVariables, stringToColor, cl, clt, recordExists, dbClient } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
 import { getGroup } from '../util/AVAGroups';
 
-const AWS = require('aws-sdk');
 const AVAIcon = process.env.REACT_APP_AVA_LOGO;
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 let customObj = {};
 let activityObj = {};

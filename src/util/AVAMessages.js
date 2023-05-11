@@ -1,16 +1,7 @@
-import { clt, cl, recordExists, uuid, listFromArray, makeArray, sentenceCase } from './AVAUtilities';
+import { clt, cl, recordExists, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { makeDate } from './AVADateTime';
-
-const AWS = require('aws-sdk');
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 // Functions
 

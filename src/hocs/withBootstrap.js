@@ -1,4 +1,5 @@
 import React from 'react';
+import { dbClient, lambda } from '../util/AVAUtilities';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
@@ -10,7 +11,6 @@ import CardMedia from '@material-ui/core/CardMedia';
 import Typography from '@material-ui/core/Typography';
 import Dialog from '@material-ui/core/Dialog';
 
-import { Lambda } from 'aws-sdk';
 import { useCookies } from 'react-cookie';
 import useSession from '../hooks/useSession';
 import useIosCheck from '../hooks/useIosCheck';
@@ -38,12 +38,6 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 const CognitoClient = new AWS.CognitoIdentityServiceProvider({
   region: "us-east-1"
 });
@@ -69,12 +63,6 @@ export default Component => props => {
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
   const AVA_environment = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   const [messageList, setMessageList] = React.useState([]);
 

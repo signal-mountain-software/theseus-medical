@@ -1,6 +1,6 @@
 import React from 'react';
 import { API, graphqlOperation } from 'aws-amplify';
-import { Lambda } from 'aws-sdk';
+import { s3, lambda } from '../../util/AVAUtilities';
 import IdleTimer from 'react-idle-timer';
 import avaAlert from '../../ava_alert.mp3';
 import { useSnackbar } from 'notistack';
@@ -156,12 +156,6 @@ export default ({ patient, session }) => {
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const classes = useStyles();
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   async function getActivityDetails(pActivity) {
     let invokeFailed = false;
@@ -324,14 +318,6 @@ export default ({ patient, session }) => {
   var addedAFavorite = false;
   var toggledRow = false;
   var toggledSection = false;
-
-  const AWS = require('aws-sdk');
-  AWS.config.update({ region: 'us-east-1' });
-
-  const s3 = new AWS.S3({
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   var idleTimer = null;
 

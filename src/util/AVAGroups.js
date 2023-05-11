@@ -1,14 +1,5 @@
-import { cl, clt, recordExists, getCustomizations } from './AVAUtilities';
+import { cl, clt, recordExists, getCustomizations, dbClient } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
-
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 let profile, session;
 let groupRecs = {};

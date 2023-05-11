@@ -1,6 +1,6 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
+import { lambda } from '../../util/AVAUtilities';
 
 import TextField from '@material-ui/core/TextField';
 
@@ -108,12 +108,6 @@ export default ({ pClient, showMenu, onClose }) => {
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',
