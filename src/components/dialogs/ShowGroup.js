@@ -96,7 +96,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const getGroupMemberList = async (inGroup) => {
+  async function getGroupMemberList (inGroup) {
     setprogressMessage('Getting all accounts');
     let memberInfo = await getMemberList(inGroup, pSession.client_id, { "sort": true, "exclude": false });
 
@@ -281,11 +281,21 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   React.useEffect(() => {
     async function prepare() {
       if (pGroup_id) {
+        let gList = [];
+        if (Array.isArray(pGroup_id)) {
+          pGroup_id.forEach(grp => { gList.push(...(grp.replace(/[[\]]/g, '').split(/,|~/g))); });
+        }
+        else if (pGroup_id.includes('[')) { gList = pGroup_id.replace(/[[\]]/g, '').split(/,|~/g); }
+        else { gList = [pGroup_id]; }
         setShowGroupSelect(false);
-        await getGroupMemberList(pGroup_id);
-        if (!(pGroup_name.trim())) { 
-          let gRec = await getGroup(pGroup_id, pSession.client_id);
-          if (gRec && gRec.name) { setGroupName(gRec.name); }
+        await getGroupMemberList(gList);
+        if (!(pGroup_name.trim())) {
+          let gName = ``;
+          if (gList.length === 1) {
+            let gRec = await getGroup(gList[0], pSession.client_id);
+            if (gRec && gRec.name) { gName = gRec.name; }
+          }
+          setGroupName(gName);
         }
       }
       else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
