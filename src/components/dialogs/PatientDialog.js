@@ -175,8 +175,6 @@ export default ({ patient, picture, groupData, open, onClose }) => {
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
@@ -798,7 +796,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                 variant='contained'
                 className={classes.topButton}
               >
-                {isMobile ? 'Save' : 'Save Changes'}
+                {'Save'}
               </Button>}
           </Toolbar>
         </AppBar>
@@ -1229,7 +1227,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                 variant='contained'
                 className={classes.topButton}
               >
-                {isMobile ? 'Save' : 'Save Changes'}
+                {'Save'}
               </Button>
             }
           </Toolbar>

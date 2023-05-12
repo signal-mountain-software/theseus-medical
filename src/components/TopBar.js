@@ -53,7 +53,6 @@ export default () => {
   const [addAccount, setAddAccount] = React.useState(false);
   const [templatePatient, setTemplatePatient] = React.useState({});
   const [anchorEl, setAnchorEl] = React.useState(null);
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const isStandalone = useMediaQuery('(display-mode: standalone)');
   const [platform, showIOS] = useIosCheck();
   const { state } = useSession();
@@ -214,24 +213,6 @@ export default () => {
               </Typography>
             </Box>
           }
-          {!isMobile && !hideSwitchAccountButton && (
-            <Box >
-              <Tooltip
-                enterDelay={2000}
-                title={<Typography variant='caption'>{session.responsible_for}</Typography>}
-                placement='bottom-end'>
-                <Button
-                  color='primary'
-                  size='small'
-                  variant='contained'
-                  startIcon={<AssignmentIndIcon />}
-                  endIcon={<SwapHorizIcon />}
-                  onClick={onSwitchPatient}>
-                  Switch Account
-                </Button>
-              </Tooltip>
-            </Box>
-          )}
           <IconButton aria-controls='hidden-menu' aria-haspopup='true' onClick={handleClick}>
             <MoreVertIcon />
           </IconButton>
@@ -246,7 +227,7 @@ export default () => {
               },
             }}
             keepMounted>
-            {isMobile && !hideSwitchAccountButton && (
+            {!hideSwitchAccountButton && (
               <MenuItem onClick={onSwitchPatient}>
                 <ListItemIcon>
                   <SwapHorizIcon />

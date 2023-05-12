@@ -200,7 +200,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, onRefresh }) => {
+export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }) => {
   const [activity_filter, setActivityFilter] = React.useState('');
   const [lower_activity_filter, setLowerFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
@@ -276,7 +276,7 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, o
             value={activity_filter}
             onChange={handleChangeActivityFilter}
             className={classes.freeInput}
-            label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+            label={'Filter'}
             variant={'standard'}
             autoComplete='off'
           />
@@ -339,7 +339,7 @@ export default ({ pSession, isMobile, groupsManagedObject, onCancel, onSelect, o
               className={classes.rowButtonGreen}
               startIcon={<GroupAddIcon fontSize="small" />}
             >
-              {`Create ${!isMobile ? 'New Group' : ''}`}
+              {`New Group`}
             </Button>
           }
         </DialogActions>

@@ -79,9 +79,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const classes = useStyles();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
-  if (isMobile) { }
-
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
@@ -342,7 +339,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               pGroupRec={groupRec}
               pGroupName={groupName}
               pRole={groupRole}
-              isMobile={isMobile}
               onReset={handleAbort}
             />
           }
@@ -350,7 +346,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
         {showGroupSelect &&
           <GroupFilter
             pSession={pSession}
-            isMobile={isMobile}
             groupsManagedObject={groupsManagedObject}
             onCancel={() => {
               setShowGroupSelect(false);

@@ -20,14 +20,6 @@ export default () => {
       });
   }
 
-  /*
-  return (
-    <Box>
-      <ActivitySection patient={patient} state={state} session={session} />
-    </Box>
-  );
-  */
-  
   return (
     <Box>
       <AVAMenu pPerson={patient.person_id} patient={patient} pClient={session.client_id} />

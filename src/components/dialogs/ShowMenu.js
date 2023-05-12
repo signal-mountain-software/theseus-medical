@@ -103,9 +103,6 @@ export default ({ pClient, showMenu, onClose }) => {
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-  if (isMobile) { }
-
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 

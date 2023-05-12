@@ -345,7 +345,7 @@ export default Component => props => {
               value={input_userID}
               onChange={handleChangeUserID}
               className={classes.freeInput}
-              label={isMobile ? 'ID or Name' : 'Type a few letters to filter the list'}
+              label={'Filter'}
               variant={'standard'}
               autoComplete='off'
             />
@@ -410,7 +410,7 @@ export default Component => props => {
               className={classes.rowButtonGreen}
               startIcon={<GroupAddIcon fontSize="small" />}
             >
-              {`Create ${!isMobile ? 'New Group' : ''}`}
+              {`Create New Group`}
             </Button>
           }
         </DialogActions>

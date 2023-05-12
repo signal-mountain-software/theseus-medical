@@ -159,9 +159,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-  if (isMobile) { }
-
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
@@ -386,8 +383,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 <Box
                   component="img"
                   mb={2}
-                  minWidth={isMobile ? 150 : 175}
-                  maxWidth={isMobile ? 150 : 175}
+                  minWidth={150}
+                  maxWidth={150}
                   alt=''
                   src={patient.client_logo || process.env.REACT_APP_AVA_LOGO}
                 />
@@ -435,7 +432,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 size='small'
                 className={classes.topButton}
               >
-                {isMobile ? 'More' : 'Show more?'}
+                {'More'}
               </Button>
             }
             {patient.kiosk_mode &&

@@ -59,7 +59,6 @@ export default Component => props => {
   const classes = useStyles();
   const [platform] = useIosCheck();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
   const AVA_environment = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
@@ -330,7 +329,7 @@ export default Component => props => {
         {promptForUser() &&
           <AVATextInput
             titleText="AVA Sign-in"
-            promptText={isMobile ? "User ID / Name" : "Enter your User ID or Name"}
+            promptText={"User ID"}
             buttonText='Sign In'
             onCancel={() => {
               enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
@@ -358,8 +357,8 @@ export default Component => props => {
         }
         {promptForPassword() &&
           <AVATextInput
-            titleText="AVA Sign-in"
-            promptText={isMobile ? "Password / Apartment" : "Enter your Password or Apartment Number."}
+          titleText={"AVA Sign-in"}
+            promptText={"Password"}
             buttonText='Continue'
             onCancel={() => {
               setMessageList([]);

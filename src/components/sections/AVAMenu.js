@@ -273,8 +273,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   let nowTime = new Date().getTime();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});
 
@@ -1057,24 +1055,24 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 className={classes.hello}
                 id='scroll-dialog-title'
               >
-                {`${greetingWords},${isMobile ? '' : (' ' + greetingName + '!')}`}
+                {`${greetingWords},`}
               </Typography>
               <Typography
                 className={classes.hello}
                 id='scroll-dialog-title'
               >
-                {`${isMobile ? (greetingName + '!') : 'Welcome to AVA'}`}
+                {`${greetingName}!`}
               </Typography>
             </Box>
           </Box>
           <Box
             component="img"
-            ml={isMobile ? 2 : 5}
+            ml={2}
             mr={2}
             aria-controls='hidden-menu'
             aria-haspopup='true'
-            minWidth={isMobile ? 50 : 55}
-            maxWidth={isMobile ? 50 : 55}
+            minWidth={50}
+            maxWidth={50}
             onClick={(event) => {
               handleClick(event);
               setPopupMenuOpen(true);
@@ -1217,8 +1215,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <Box
               component="img"
               mb={2}
-              minWidth={isMobile ? 150 : 175}
-              maxWidth={isMobile ? 150 : 175}
+              minWidth={150}
+              maxWidth={150}
               alt=''
               src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
             />

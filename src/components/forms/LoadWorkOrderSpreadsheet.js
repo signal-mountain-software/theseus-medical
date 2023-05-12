@@ -122,8 +122,6 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
 
   const jobTime = new Date().getTime();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-
   const hiddenFileInput = React.useRef(null);
 
   const handleFileUpload = event => {
@@ -396,8 +394,8 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
           <Box
             component="img"
             mb={2}
-            minWidth={isMobile ? 150 : 175}
-            maxWidth={isMobile ? 150 : 175}
+            minWidth={150}
+            maxWidth={150}
             alt=''
             src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
           />

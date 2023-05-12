@@ -239,7 +239,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, isMobile, onReset }) => {
+export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, onReset }) => {
 
   const classes = useStyles();
   const { dispatch } = useSession();
@@ -281,6 +281,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   let allGroups = (pGroup && (pGroup.toLowerCase === '*all'));
 
   const { enqueueSnackbar } = useSnackbar();
+
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
