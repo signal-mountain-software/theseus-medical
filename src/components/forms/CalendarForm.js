@@ -29,7 +29,7 @@ import DialogActions from '@material-ui/core/DialogActions';
 
 import Button from '@material-ui/core/Button';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   formControl: {

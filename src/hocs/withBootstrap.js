@@ -16,7 +16,7 @@ import useSession from '../hooks/useSession';
 import useIosCheck from '../hooks/useIosCheck';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { SET_PATIENT, SET_PROFILE, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 import AVATextInput from '../components/forms/AVATextInput';
@@ -357,7 +357,7 @@ export default Component => props => {
         }
         {promptForPassword() &&
           <AVATextInput
-          titleText={"AVA Sign-in"}
+            titleText={"AVA Sign-in"}
             promptText={"Password"}
             buttonText='Continue'
             onCancel={() => {

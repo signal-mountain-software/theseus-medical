@@ -1,7 +1,7 @@
 import React from 'react';
 import { SnackbarProvider } from 'notistack';
 import Button from '@material-ui/core/Button';
-// import useMediaQuery from '@material-ui/core/useMediaQuery';
+// // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 export default Component => props => {
   const notistackRef = React.createRef();

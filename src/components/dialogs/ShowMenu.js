@@ -23,7 +23,7 @@ import CopyMenu from '../forms/CopyMenu';
 import MenuForm from '../forms/MenuForm';
 import LoadMenuSpreadsheet from '../forms/LoadMenuSpreadsheet';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   pageHead: {
@@ -352,11 +352,11 @@ export default ({ pClient, showMenu, onClose }) => {
         }
         {copyMode &&
           <CopyMenu
-          pClient={pClient}
-          showUpload={copyMode}
-          handleClose={() => {
-            setCopyMode(false);
-          }}
+            pClient={pClient}
+            showUpload={copyMode}
+            handleClose={() => {
+              setCopyMode(false);
+            }}
           />
         }
       </Dialog>

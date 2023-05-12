@@ -15,7 +15,7 @@ import Typography from '@material-ui/core/Typography';
 import GroupForm from '../forms/GroupForm';
 import GroupFilter from '../forms/GroupFilter';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 
 const useStyles = makeStyles(theme => ({
@@ -84,7 +84,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const { enqueueSnackbar } = useSnackbar();
 
-  async function getGroupMemberList (inGroup) {
+  async function getGroupMemberList(inGroup) {
     setprogressMessage('Getting all accounts');
     let memberInfo = await getMemberList(inGroup, pSession.client_id, { "sort": true, "exclude": false });
 

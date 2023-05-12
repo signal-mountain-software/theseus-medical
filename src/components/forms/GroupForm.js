@@ -5,7 +5,7 @@ import { useSnackbar } from 'notistack';
 import { getImage, formatPhone } from '../../util/AVAPeople';
 import { cl } from '../../util/AVAUtilities';
 import { getMemberList, addMember } from '../../util/AVAGroups';
-
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
@@ -346,7 +346,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     for (let p = 0; p < pPerson.length; p++) {
       await addMember(pPerson[p], pClient, pGroup);
     }
-    let memberInfo = await getMemberList(pGroup, pClient, { "sort": true, "exclude": false });   
+    let memberInfo = await getMemberList(pGroup, pClient, { "sort": true, "exclude": false });
     setGroupMemberList(memberInfo.peopleList);
   };
 
@@ -408,8 +408,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     let emptyMenu = [];
     if (mL > 100) { mLP = (100 / mL); }
     for (let m = 0; m < mL; m++) {
-      let member = memberList[m];      
-      screenStatus('Updating Menus', ((m / mL) * 100), ((( mL * mLP ) / 40) + .75));
+      let member = memberList[m];
+      screenStatus('Updating Menus', ((m / mL) * 100), (((mL * mLP) / 40) + .75));
       await dbClient
         .update({
           Key: { person_id: member.person_id },
@@ -460,28 +460,28 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   const setChoices = async (inList) => {
     let response = [];
-    let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });    
+    let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });
     /* getMemberList returns
         {
           peopleList: [<People records of the members>],
           groupList: [<Group records for the selected groups>]
         }
     */
-        let mInfo;
-        let pLL = memberInfo.peopleList.length;
-        for (let e = 0; e < pLL; e++) {
-          let p = memberInfo.peopleList[e];
-          let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
-          if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
-          // list is of the form <name>:<id>:<search_string>
-          try {
-            mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
-            response.push(mInfo);
-          }
-          catch (error) {
-            cl(`response push error at index ${e} with ${mInfo}`);
-          }
-        };
+    let mInfo;
+    let pLL = memberInfo.peopleList.length;
+    for (let e = 0; e < pLL; e++) {
+      let p = memberInfo.peopleList[e];
+      let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+      // list is of the form <name>:<id>:<search_string>
+      try {
+        mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+        response.push(mInfo);
+      }
+      catch (error) {
+        cl(`response push error at index ${e} with ${mInfo}`);
+      }
+    };
     setChoiceList(response);
     setShowAddPrompt(true);
   };
@@ -508,7 +508,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         return searchString.toLowerCase().includes(person_filter_lower.trim());
       }
     }
-    catch (error) { return false;
+    catch (error) {
+      return false;
     }
   }
 

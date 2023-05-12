@@ -14,7 +14,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import EventActivityForm from '../forms/EventActivityForm';
 import ActivityFilter from '../forms/ActivityFilter';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   pageHead: {
@@ -176,7 +176,7 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
         response();
         console.log(aList);
       }
-      else { 
+      else {
         buildDetailedMenuList();
       }
     }

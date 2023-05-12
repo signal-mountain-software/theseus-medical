@@ -11,7 +11,7 @@ import TableContainer from '@material-ui/core/TableContainer';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import Typography from '@material-ui/core/Typography';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 //import Section from '../Section';
@@ -40,7 +40,7 @@ export default ({ patient, session, newFact }) => {
   const classes = useStyles();
 
   React.useEffect(() => {
-  //  let mounted = true;
+    //  let mounted = true;
     /* removing Fact section (temporary?)    
     (async () => {
       let result;
@@ -64,7 +64,7 @@ export default ({ patient, session, newFact }) => {
     })();
 */
     return () => {
-//      mounted = false;
+      //      mounted = false;
     };
   }, [patient, session, newFact]); // eslint-disable-line react-hooks/exhaustive-deps
 

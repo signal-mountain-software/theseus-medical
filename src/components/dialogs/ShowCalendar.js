@@ -4,7 +4,7 @@ import { API, graphqlOperation } from 'aws-amplify';
 import { getCalendarEntries } from '../../util/AVACalendars';
 import { makeTime } from '../../util/AVADateTime';
 import { getCalendar } from '../../graphql/queries';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -272,8 +272,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
       if (a.occData.date > b.occData.date) { return 1; }
       else if (a.occData.date < b.occData.date) { return -1; }
       else if (a.occData.time24 > b.occData.time24) { return 1; }
-      else { return -1; } 
-    })
+      else { return -1; }
+    });
     setMyCalendar(theCalendar);
     setLastEndDate(twoWeeksFromNow);
     return theCalendar;

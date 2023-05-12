@@ -8,7 +8,7 @@ import { getMemberList, getGroupHierarchy, getPublicGroupList, getGroupsBelongTo
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { useCookies } from 'react-cookie';
 import IdleTimer from 'react-idle-timer';
@@ -928,10 +928,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if (a.selectable && patient.groups.includes(a.id)) {
         responseData.selectedID = a.id;
       }
-    })
+    });
     responseData.publicGroups = await getPublicGroupList(session.client_id, pPatient);
-    responseData.privateGroups = await getGroupsBelongTo(pPatient, {sort: true});
-    responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; })
+    responseData.privateGroups = await getGroupsBelongTo(pPatient, { sort: true });
+    responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
     for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
     return responseData;
   };

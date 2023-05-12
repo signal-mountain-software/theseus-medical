@@ -39,7 +39,7 @@ import RelationshipSection from '../sections/RelationshipSection';
 import LinkedAccountsSection from '../sections/LinkedAccountsSection';
 import MessageRouting from '../sections/MessageRouting';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -662,7 +662,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
           'clearing cache - cloudfront invalidation error': {
             err, cfParm
           }
-        })
+        });
         enqueueSnackbar(`The new image is saved, but you'll still see the old one for a little while`, { variant: 'warning', persist: false });
       });
     localData.photoURL = await getObject(patient.person_id, 'image');

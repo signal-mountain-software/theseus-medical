@@ -8,7 +8,7 @@ import AVAConfirm from '../forms/AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
 
 import { useSnackbar } from 'notistack';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import List from '@material-ui/core/List';
 
