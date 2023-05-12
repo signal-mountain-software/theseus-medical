@@ -142,7 +142,7 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
 
   const classes = useStyles();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isMobile = true; // checks if current device is a smart phone
   if (isMobile) { }
 
   React.useEffect(() => {
@@ -175,8 +175,8 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
             <Box
               component="img"
               mb={2}
-              minWidth={isMobile ? 150 : 175}
-              maxWidth={isMobile ? 150 : 175}
+              minWidth={150}
+              maxWidth={150}
               alt=''
               src={session.client_logo || process.env.REACT_APP_AVA_LOGO}
             />

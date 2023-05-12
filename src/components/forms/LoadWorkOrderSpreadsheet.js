@@ -122,7 +122,7 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
 
   const jobTime = new Date().getTime();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isMobile = true; // checks if current device is a smart phone
 
   const hiddenFileInput = React.useRef(null);
 
@@ -180,7 +180,7 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
     let sdL = sheetData.length;
     setPWidth(100);
     for (let activeRow = 0; activeRow < sdL; activeRow++) {
-      setProgress((activeRow /  sdL) * 100);
+      setProgress((activeRow / sdL) * 100);
       if (!sheetData[activeRow]) { continue; }
       if (!foundHeader) {
         // ignore this row until we've found headers, then start with next row
@@ -263,15 +263,15 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
             request_type: 'maint'
           });
           // step 1 - remove any closed or completed requests
-          let openRecs = []
-          if (guessedRecs && (guessedRecs.length > 0)) { 
+          let openRecs = [];
+          if (guessedRecs && (guessedRecs.length > 0)) {
             guessedRecs.forEach(g => {
-              if (!(['closed', 'completed', 'cancelled'].includes(g.last_status.toLowerCase()))) { 
+              if (!(['closed', 'completed', 'cancelled'].includes(g.last_status.toLowerCase()))) {
                 openRecs.push(g);
               }
             });
           }
-          if (openRecs.length > 0) { 
+          if (openRecs.length > 0) {
             // step 2 - get all of the four+ letter words that are in the spreadsheet's dsecription columns
             let descriptive_words = [];
             for (let h in headers) {
@@ -285,29 +285,29 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
               let gRec = openRecs[g];
               let request_words = [];
               // step 3 - get all of the descriptive_words in the original request
-              if (gRec.original_request.hasOwnProperty('textInput')) { 
+              if (gRec.original_request.hasOwnProperty('textInput')) {
                 if (typeof gRec.original_request.textInput === 'string') {
                   gRec.original_request.textInput.split(/\s/).forEach(w => {
                     if ((w.length > 3) && !(request_words.includes(w))) { request_words.push(w); }
                   });
                 }
                 else {
-                  Object.keys(gRec.original_request.textInput).forEach(k => { 
-                    if (headers[k].description_data) { 
+                  Object.keys(gRec.original_request.textInput).forEach(k => {
+                    if (headers[k].description_data) {
                       gRec.original_request.textInput[k].split(/\s/).forEach(w => {
                         if ((w.length > 3) && !(request_words.includes(w))) { request_words.push(w); }
                       });
                     }
-                  })
+                  });
                 }
               }
               // step 4 - does this request include three or more of the descriptive_words?
               let count = 0;
-              descriptive_words.forEach(d => { 
-                request_words.forEach(r => { 
+              descriptive_words.forEach(d => {
+                request_words.forEach(r => {
                   if (d === r) { count++; }
-                })
-              })
+                });
+              });
               if (count > 2) {
                 reqRec = gRec;
                 needsUpdate = true;
@@ -396,8 +396,8 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
           <Box
             component="img"
             mb={2}
-            minWidth={isMobile ? 150 : 175}
-            maxWidth={isMobile ? 150 : 175}
+            minWidth={150}
+            maxWidth={150}
             alt=''
             src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
           />

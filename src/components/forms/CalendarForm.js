@@ -177,7 +177,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
     setAnchorEl(event.currentTarget);
   };
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isMobile = true; // checks if current device is a smart phone
 
   function formatDate(pDate$) {
     let pDate = pDate$.toString() || '19591021';

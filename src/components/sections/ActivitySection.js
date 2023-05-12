@@ -153,7 +153,7 @@ export default ({ patient, session }) => {
 
   // var timeNow = new Date().getTime();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isMobile = true; // checks if current device is a smart phone
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const classes = useStyles();
 

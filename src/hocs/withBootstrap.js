@@ -59,7 +59,7 @@ export default Component => props => {
   const classes = useStyles();
   const [platform] = useIosCheck();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isMobile = true; // checks if current device is a smart phone
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
   const AVA_environment = window.location.href.split('//')[1].slice(0, 1).toUpperCase();

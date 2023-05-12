@@ -109,7 +109,7 @@ export default ({ person, groupData, updateGroups }) => {
             >
               {gObj.selectable ?
                 <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                  alignItems='center' flexWrap='wrap' key={`qropt-${ndx}`}
+                  alignItems='center' flexWrap='nowrap' key={`qropt-${ndx}`}
                 >
                   <Checkbox
                     className={classes.radioButton}
@@ -159,7 +159,12 @@ export default ({ person, groupData, updateGroups }) => {
                     if (reactData.publicGroups[gID].role.startsWith('non-')) {
                       reactData.publicGroups[gID].role = reactData.publicGroups[gID].role.slice(4);
                     }
-                    else { reactData.publicGroups[gID].role = `non-${reactData.publicGroups[gID].role}`; }
+                    else {
+                      if (reactData.publicGroups[gID].role !== 'member') { 
+                        enqueueSnackbar(`You can't use this function to remove yourself from a Group you are responsible for`, { variant: 'info' });
+                      }
+                      else { reactData.publicGroups[gID].role = `non-${reactData.publicGroups[gID].role}`; }
+                    }
                     setReactData(reactData);
                     handleUpdate();
                   }}

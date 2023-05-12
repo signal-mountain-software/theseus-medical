@@ -103,7 +103,7 @@ export default ({ pClient, showMenu, onClose }) => {
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
+  const isMobile = true; // checks if current device is a smart phone
   if (isMobile) { }
 
   const AWS = require('aws-sdk');
@@ -355,11 +355,11 @@ export default ({ pClient, showMenu, onClose }) => {
         }
         {copyMode &&
           <CopyMenu
-          pClient={pClient}
-          showUpload={copyMode}
-          handleClose={() => {
-            setCopyMode(false);
-          }}
+            pClient={pClient}
+            showUpload={copyMode}
+            handleClose={() => {
+              setCopyMode(false);
+            }}
           />
         }
       </Dialog>
