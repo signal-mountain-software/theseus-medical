@@ -76,7 +76,7 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
-  const isMobile = true; // checks if current device is a smart phone
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   if (isMobile) { }
 
   const AWS = require('aws-sdk');
@@ -179,7 +179,7 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
         response();
         console.log(aList);
       }
-      else {
+      else { 
         buildDetailedMenuList();
       }
     }

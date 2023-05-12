@@ -5,7 +5,7 @@ import Button from '@material-ui/core/Button';
 
 export default Component => props => {
   const notistackRef = React.createRef();
-  // const isMobile = true; // checks if current device is a smart phone
+  // const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const onCLickDismiss = key => () => {
     notistackRef.current.closeSnackbar(key);

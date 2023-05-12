@@ -125,6 +125,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   const [factPromoClass, setFactPromoClass] = React.useState(false);
   const [factEventClass, setFactEventClass] = React.useState(false);
   const [factMessageClass, setFactMessageClass] = React.useState(false);
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const [executionDefaultValue, setExecutionDefaultValue] = React.useState('');
   const [qualifierTable, setQualifierTable] = React.useState({});
@@ -512,7 +513,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button className={classes.reject} variant='outlined' size='small' onClick={handleClose}>
-          {!factIOClass ? 'Done' : 'Cancel'}
+          {!factIOClass ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
         </Button>
         {factIOClass
           ? (<Button className={classes.confirm} variant='outlined' size='small' onClick={handleSave}>
@@ -539,7 +540,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           ? (
             <React.Fragment>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
-                'Save & Next'
+                {isMobile ? 'Save +' : 'Save & Next'}
               </Button>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleSkip}>
                 Skip

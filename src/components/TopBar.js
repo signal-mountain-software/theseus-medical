@@ -53,7 +53,7 @@ export default () => {
   const [addAccount, setAddAccount] = React.useState(false);
   const [templatePatient, setTemplatePatient] = React.useState({});
   const [anchorEl, setAnchorEl] = React.useState(null);
-  const isMobile = true; // checks if current device is a smart phone
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const isStandalone = useMediaQuery('(display-mode: standalone)');
   const [platform, showIOS] = useIosCheck();
   const { state } = useSession();

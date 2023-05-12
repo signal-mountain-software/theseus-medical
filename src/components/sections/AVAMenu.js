@@ -273,7 +273,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   let nowTime = new Date().getTime();
 
-  const isMobile = true; // checks if current device is a smart phone
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});
@@ -930,10 +930,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if (a.selectable && patient.groups.includes(a.id)) {
         responseData.selectedID = a.id;
       }
-    });
+    })
     responseData.publicGroups = await getPublicGroupList(session.client_id, pPatient);
-    responseData.privateGroups = await getGroupsBelongTo(pPatient, { sort: true });
-    responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
+    responseData.privateGroups = await getGroupsBelongTo(pPatient, {sort: true});
+    responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; })
     for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
     return responseData;
   };
@@ -1217,8 +1217,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <Box
               component="img"
               mb={2}
-              minWidth={150}
-              maxWidth={150}
+              minWidth={isMobile ? 150 : 175}
+              maxWidth={isMobile ? 150 : 175}
               alt=''
               src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
             />

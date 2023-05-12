@@ -159,7 +159,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
-  const isMobile = true; // checks if current device is a smart phone
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   if (isMobile) { }
 
   const AWS = require('aws-sdk');
@@ -275,8 +275,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
       if (a.occData.date > b.occData.date) { return 1; }
       else if (a.occData.date < b.occData.date) { return -1; }
       else if (a.occData.time24 > b.occData.time24) { return 1; }
-      else { return -1; }
-    });
+      else { return -1; } 
+    })
     setMyCalendar(theCalendar);
     setLastEndDate(twoWeeksFromNow);
     return theCalendar;
@@ -386,8 +386,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 <Box
                   component="img"
                   mb={2}
-                  minWidth={150}
-                  maxWidth={150}
+                  minWidth={isMobile ? 150 : 175}
+                  maxWidth={isMobile ? 150 : 175}
                   alt=''
                   src={patient.client_logo || process.env.REACT_APP_AVA_LOGO}
                 />

@@ -25,6 +25,8 @@ import ShowGroup from '../dialogs/ShowGroup';
 
 import TextField from '@material-ui/core/TextField';
 
+import { isMobile } from 'react-device-detect';
+
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Checkbox from '@material-ui/core/Checkbox';
@@ -1761,7 +1763,7 @@ export default ({
                                     <EmailIcon />
                                   </IconButton>
                                 ) : null}
-                                {(qualifier.startsWith('~~c') || qualifier.startsWith('~~h')) ? (
+                                {isMobile && (qualifier.startsWith('~~c') || qualifier.startsWith('~~h')) ? (
                                   <IconButton
                                     edge='start'
                                     aria-label='action'
@@ -1770,7 +1772,7 @@ export default ({
                                     <CallIcon />
                                   </IconButton>
                                 ) : null}
-                                {qualifier.startsWith('~~c') ? (
+                                {isMobile && qualifier.startsWith('~~c') ? (
                                   <IconButton
                                     edge='start'
                                     aria-label='actionsms'

@@ -256,7 +256,7 @@ export default ({ session, filter = {}, onClose }) => {
     setAnchorEl(event.currentTarget);
   };
 
-  const isMobile = true; // checks if current device is a smart phone
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const requestNames = {
     maint: 'Maintenance Request',
@@ -868,8 +868,8 @@ export default ({ session, filter = {}, onClose }) => {
         <Box
           component="img"
           mb={2}
-          minWidth={150}
-          maxWidth={150}
+          minWidth={isMobile ? 150 : 175}
+          maxWidth={isMobile ? 150 : 175}
           alt=''
           src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
         />

@@ -39,6 +39,8 @@ import RelationshipSection from '../sections/RelationshipSection';
 import LinkedAccountsSection from '../sections/LinkedAccountsSection';
 import MessageRouting from '../sections/MessageRouting';
 
+import useMediaQuery from '@material-ui/core/useMediaQuery';
+
 const useStyles = makeStyles(theme => ({
   title: {
     marginLeft: theme.spacing(2),
@@ -172,6 +174,8 @@ export default ({ patient, picture, groupData, open, onClose }) => {
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
+
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
@@ -534,7 +538,6 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     setPhotoChanges(false);
     setResettingPwd(false);
     setPwdConfirmed(false);
-    window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
     onClose(updatePerson);
   };
 
@@ -795,7 +798,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                 variant='contained'
                 className={classes.topButton}
               >
-                'Save'
+                {isMobile ? 'Save' : 'Save Changes'}
               </Button>}
           </Toolbar>
         </AppBar>
@@ -1226,7 +1229,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                 variant='contained'
                 className={classes.topButton}
               >
-                'Save'
+                {isMobile ? 'Save' : 'Save Changes'}
               </Button>
             }
           </Toolbar>
