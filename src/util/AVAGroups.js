@@ -313,6 +313,7 @@ export async function prepareTargets(pPerson, pClient_id, options) {
       allPeopleArr.forEach(p => {
         responsibleList.push(((`${p.name?.last}, ${p.name?.first}:${p.person_id}:${p.search_data} ${((typeof p.messaging) === 'object') ? JSON.stringify(p.messaging) : ''}`).trim()));
         responsibleObj[p.person_id] = {
+          person_id: p.person_id,
           type: 'person',
           name: p.name,
           search: p.search_data,
@@ -426,7 +427,7 @@ export async function getGroupHierarchy(pClient_id, options) {
   }
 
   function recursiveSort(searchObj, response, level) {
-    if (Object.keys(searchObj).length === 0) { return; }
+    if (Object.keys(searchObj).length === 0) { return []; }
     let oKeys = Object.keys(searchObj).sort((a, b) => {
       if (nameObj[a] > nameObj[b]) { return 1; }
       else { return -1; }
@@ -483,3 +484,24 @@ export async function getPublicGroupList(pClient_id, person_id, options) {
   }
   return response;
 }
+
+export async function getAllGroups(person_id, client_id) {
+  let responseData = {};
+  let profile = await getPerson(person_id);
+  if (!client_id) {
+    let session = await getSession(person_id);
+    if (session) { client_id = session.client_id; }
+    if (!client_id) { return { adminHierarchy: [], publicGroups: {}, privateGroups: {}}; }
+  }
+  responseData.adminHierarchy = await getGroupHierarchy(client_id, { sort: true });
+  responseData.adminHierarchy.forEach(a => {
+    if (a.selectable && profile?.groups?.includes(a.id)) {
+      responseData.selectedID = a.id;
+    }
+  });
+  responseData.publicGroups = await getPublicGroupList(client_id, person_id);
+  responseData.privateGroups = await getGroupsBelongTo(person_id, { sort: true });
+  responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
+  for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
+  return responseData;
+};

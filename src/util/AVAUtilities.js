@@ -38,6 +38,10 @@ export const dbClient = new AWS.DynamoDB.DocumentClient({
   secretAccessKey: sak()[1]
 });
 
+export const CognitoClient = new AWS.CognitoIdentityServiceProvider({
+  region: "us-east-1"
+});
+
 export const s3 = new AWS.S3({
   accessKeyId: sak()[0],
   secretAccessKey: sak()[1]
