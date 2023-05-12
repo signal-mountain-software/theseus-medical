@@ -69,7 +69,7 @@ export async function prepareMessage(inBody) {
     results.author = this_request.author;
     results.preferred_method = this_request.method;
     if (!('format' in this_request)) { this_request.format = { 'type': 'factForm' }; }
-    if ('subject' in this_request.format) { results.subject = await resolveMessageVariables(this_request.format.subject, this_request); }
+    if ('subject' in this_request.format) { results.subject = this_request.format.subject }
     if ('method' in this_request.format) { results.preferred_method = this_request.format.method; }
     switch (this_request.format.type) {
       case 'mealOrder':
@@ -88,7 +88,9 @@ export async function prepareMessage(inBody) {
       let ruleStatus = await processRules(this_request);
       if (ruleStatus === 'cancel') { continue; }
     }
-
+    if (results.subject) {
+      results.subject = await resolveMessageVariables(results.subject, this_request);
+    }
     results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
     results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
 
@@ -188,6 +190,10 @@ export async function prepareMessage(inBody) {
           }
           case 'urgency': {
             results.urgent = rule.value;
+            break;
+          }
+          case 'subject': {
+            results.subject = rule.value;
             break;
           }
           case 'override_method': {
