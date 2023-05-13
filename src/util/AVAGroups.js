@@ -1,4 +1,4 @@
-import { cl, clt, recordExists, getCustomizations, dbClient } from './AVAUtilities';
+import { cl, clt, recordExists, makeArray, getCustomizations, dbClient } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
 
 let profile, session;
@@ -270,6 +270,53 @@ export async function addMember(pPerson, pClient, pGroup) {
     .catch(error => {
       clt({ 'Bad put to PeopleGroups - caught error is': error });
     });
+}
+
+export async function addAdministrator(pPerson, pGroup) {
+  let sessionRec = await getSession(pPerson);
+  if (sessionRec?.session_id) {
+    let rArray = makeArray(sessionRec.responsible_for);
+    if (!rArray.includes(pGroup)) {
+      rArray.push(pGroup);
+      await dbClient
+        .update({
+          Key: { session_id: pPerson },
+          UpdateExpression: "set responsible_for = :r",
+          ExpressionAttributeValues: {
+            ":r": rArray
+          },
+          TableName: "SessionsV2",
+        })
+        .promise()
+        .catch(error => {
+          clt({ 'Bad update to Sessions - caught error is': error });
+        });
+    }
+  }
+}
+
+export async function removeAdministrator(pPerson, pGroup) {
+  let sessionRec = await getSession(pPerson);
+  if (sessionRec?.session_id) {
+    let rArray = makeArray(sessionRec.responsible_for);
+    let rIndex = rArray.indexOf(pGroup);
+    if (rIndex > -1) {
+      rArray.splice(rIndex, 1);
+      await dbClient
+        .update({
+          Key: { session_id: pPerson },
+          UpdateExpression: "set responsible_for = :r",
+          ExpressionAttributeValues: {
+            ":r": rArray
+          },
+          TableName: "SessionsV2",
+        })
+        .promise()
+        .catch(error => {
+          clt({ 'Bad update to Sessions - caught error is': error });
+        });
+    }
+  }
 }
 
 export async function prepareTargets(pPerson, pClient_id, options) {

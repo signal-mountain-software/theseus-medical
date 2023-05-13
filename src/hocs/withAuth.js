@@ -559,7 +559,6 @@ export default Component => props => {
   if (!signedIn) {
     return (
       <React-Fragment>
-        <TopBar />
         <Paper  >
           <AmplifyAuthenticator
             hideToast
