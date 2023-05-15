@@ -109,7 +109,7 @@ export default ({ person, groupData, updateGroups }) => {
             >
               {gObj.selectable ?
                 <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                  alignItems='center' flexWrap='wrap' key={`qropt-${ndx}`}
+                  alignItems='center' flexWrap='nowrap' key={`qropt-${ndx}`}
                 >
                   <Checkbox
                     className={classes.radioButton}
