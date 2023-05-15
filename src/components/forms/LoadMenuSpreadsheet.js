@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { Lambda } from 'aws-sdk';
+import { s3, lambda } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -108,20 +108,7 @@ export default ({ pClient, showUpload, handleClose }) => {
 
   const entryTypes = ['header', 'message', 'entree', 'soft_entree', 'AL_lunch_entree', 'AL_dinner_entree', 'soup', 'salad', 'side', 'bread', 'dessert'];
 
-  const AWS = require('aws-sdk');
-  AWS.config.update({ region: 'us-east-1' });
-  const s3 = new AWS.S3({
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
-
-  let params = {
+ let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',
     InvocationType: 'RequestResponse',
     LogType: 'Tail',

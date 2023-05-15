@@ -509,6 +509,14 @@ export default ({ session, filter = {}, onClose }) => {
       i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
       i.workData.search_data = i.original_request;
     }
+    if (i.attachments && (i.attachments.length > 0)) {
+      i.attachments.forEach(a => {
+        let fNArr = a.split('/').pop().split('.');
+        fNArr.pop();
+        let fName = decodeURI(fNArr.join('.'));
+        i.workData.formatted_request.push([`href=${a}`, fName]);
+      });
+    }
     if (anonymous) {
       i.workData.requestor_name = 'Anonymous';
       i.workData.requestor_location = null;
@@ -731,12 +739,29 @@ export default ({ session, filter = {}, onClose }) => {
                               </Box>
                             </Box>
                             {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
-                              <Typography
-                                key={`prefLine-${mIndex}`}
-                                className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                              >
-                                {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
-                              </Typography>
+                              (mLine[0].startsWith('href=')
+                                ?
+                                <a
+                                  href={mLine[0].split('=')[1]}
+                                  key={`attach-${mIndex}-href`}
+                                  target='_blank'
+                                  rel='noopener noreferrer'
+                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                  <Typography
+                                    key={`attach-${mIndex}`}
+                                    className={classes.mrowdetail}
+                                  >
+                                    {`Attachment: ${mLine[1]}`}
+                                  </Typography>
+                                </a>
+                                :
+                                < Typography
+                                  key={`prefLine-${mIndex}`}
+                                  className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                >
+                                  {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
+                                </Typography>
+                              )
                             ))}
                             {this_item.workData.open &&
                               this_item.workData.messageRecs.map((mLine, dX) => (
@@ -787,7 +812,8 @@ export default ({ session, filter = {}, onClose }) => {
             >
             </AVAConfirm>
           }
-          {promptForUpdate &&
+          {
+            promptForUpdate &&
             <AVATextInput
               titleText={createMessageText()}
               promptText={['New Status', '[checkbox]Mark as Complete?', 'Message to Requestor']}

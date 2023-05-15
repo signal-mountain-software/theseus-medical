@@ -1,10 +1,9 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 import { makeDate } from '../../util/AVADateTime';
 import { getSlotList, writeSlot, makeSlotName } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
-import { cl, makeArray } from '../../util/AVAUtilities';
+import { cl, makeArray, lambda, dbClient } from '../../util/AVAUtilities';
 import { makeName, getImage } from '../../util/AVAPeople';
 import { sendMessages } from '../../util/AVAMessages';
 
@@ -201,20 +200,6 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   const [firstAvailableSlot, setFirstAvailableSlot] = React.useState();
 
   var rowsWritten = 0;
-
-  const AWS = require('aws-sdk');
-  const dbClient = new AWS.DynamoDB.DocumentClient({
-    apiVersion: '2012-08-10',
-    region: "us-east-1",
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY
-  });
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',

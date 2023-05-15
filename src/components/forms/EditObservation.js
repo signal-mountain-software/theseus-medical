@@ -1,5 +1,6 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
+import { dbClient, lambda } from '../../util/AVAUtilities';
+
 import { useSnackbar } from 'notistack';
 
 import Dialog from '@material-ui/core/Dialog';
@@ -14,14 +15,6 @@ import Box from '@material-ui/core/Box';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Button from '@material-ui/core/Button';
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 const useStyles = makeStyles(theme => ({
   containerBox: {
@@ -71,12 +64,6 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
   const observationLongDate = oD[0] + '.' + ((Number(oD[1]) + 100).toString()).substring(1) + '.' + ((Number(oD[2]) + 100).toString()).substring(1);
 
   let editMode = (observationType || observationCode);
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',

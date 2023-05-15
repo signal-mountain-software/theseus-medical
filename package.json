@@ -25,7 +25,6 @@
     "react": "^16.13.1",
     "react-cookie": "^4.1.1",
     "react-cropper": "^2.1.8",
-    "react-date-picker": "^8.2.0",
     "react-device-detect": "^2.2.2",
     "react-dom": "^16.13.1",
     "react-file-viewer": "^1.1.0",

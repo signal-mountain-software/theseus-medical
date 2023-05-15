@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 import { getMemberList, getGroup, getRole } from '../../util/AVAGroups';
+import { dbClient } from '../../util/AVAUtilities';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -14,7 +15,7 @@ import Typography from '@material-ui/core/Typography';
 import GroupForm from '../forms/GroupForm';
 import GroupFilter from '../forms/GroupFilter';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 
 const useStyles = makeStyles(theme => ({
@@ -64,16 +65,6 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-const AWS = require('aws-sdk');
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
-
 export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClose }) => {
   const [groupMemberList, setGroupMemberList] = React.useState([]);
   const [groupsManagedObject, setGroupsManagedObject] = React.useState([]);
@@ -88,15 +79,12 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const classes = useStyles();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
-  if (isMobile) { }
-
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const getGroupMemberList = async (inGroup) => {
+  async function getGroupMemberList(inGroup) {
     setprogressMessage('Getting all accounts');
     let memberInfo = await getMemberList(inGroup, pSession.client_id, { "sort": true, "exclude": false });
 
@@ -281,11 +269,21 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   React.useEffect(() => {
     async function prepare() {
       if (pGroup_id) {
+        let gList = [];
+        if (Array.isArray(pGroup_id)) {
+          pGroup_id.forEach(grp => { gList.push(...(grp.replace(/[[\]]/g, '').split(/,|~/g))); });
+        }
+        else if (pGroup_id.includes('[')) { gList = pGroup_id.replace(/[[\]]/g, '').split(/,|~/g); }
+        else { gList = [pGroup_id]; }
         setShowGroupSelect(false);
-        await getGroupMemberList(pGroup_id);
-        if (!(pGroup_name.trim())) { 
-          let gRec = await getGroup(pGroup_id, pSession.client_id);
-          if (gRec && gRec.name) { setGroupName(gRec.name); }
+        await getGroupMemberList(gList);
+        if (!(pGroup_name.trim())) {
+          let gName = ``;
+          if (gList.length === 1) {
+            let gRec = await getGroup(gList[0], pSession.client_id);
+            if (gRec && gRec.name) { gName = gRec.name; }
+          }
+          setGroupName(gName);
         }
       }
       else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
@@ -341,7 +339,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               pGroupRec={groupRec}
               pGroupName={groupName}
               pRole={groupRole}
-              isMobile={isMobile}
               onReset={handleAbort}
             />
           }
@@ -349,7 +346,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
         {showGroupSelect &&
           <GroupFilter
             pSession={pSession}
-            isMobile={isMobile}
             groupsManagedObject={groupsManagedObject}
             onCancel={() => {
               setShowGroupSelect(false);

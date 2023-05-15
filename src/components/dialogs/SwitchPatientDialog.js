@@ -3,18 +3,11 @@ import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import List from '@material-ui/core/List';
 import Paper from '@material-ui/core/Paper';
+import { dbClient } from '../../util/AVAUtilities';
 
 import { SET_PATIENT, SET_SESSION, SET_PATIENTS } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 import PersonFilter from '../forms/PersonFilter';
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 export default ({ open, roles, onClose, forceSwitch }) => {
   // const [selected, setSelected] = React.useState(null);

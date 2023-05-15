@@ -2,9 +2,8 @@ import React from 'react';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
-import { Lambda } from 'aws-sdk';
 import { getPerson, makeName } from '../../util/AVAPeople';
-import { getObject, cl } from '../../util/AVAUtilities';
+import { getObject, cl, dbClient, s3, lambda, cloudfront } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
@@ -40,21 +39,7 @@ import RelationshipSection from '../sections/RelationshipSection';
 import LinkedAccountsSection from '../sections/LinkedAccountsSection';
 import MessageRouting from '../sections/MessageRouting';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
-const cloudfront = new AWS.CloudFront({
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -164,7 +149,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, picture, open, onClose }) => {
+export default ({ patient, picture, groupData, open, onClose }) => {
   const classes = useStyles();
 
   const [localData, setLocalData] = React.useState({});
@@ -190,15 +175,8 @@ export default ({ patient, picture, open, onClose }) => {
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
-
-  const s3 = new AWS.S3({
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   function formatPhone(pNumber) {
     var match = '' + pNumber.replace(/\D/g, '').substr(-10);
@@ -208,12 +186,6 @@ export default ({ patient, picture, open, onClose }) => {
     if (match.length > 6) { formatted += '-' + match.substring(6, 10); }
     return formatted;
   }
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
@@ -681,6 +653,7 @@ export default ({ patient, picture, open, onClose }) => {
         }
       }
     };
+
     await cloudfront
       .createInvalidation(cfParm)
       .promise()
@@ -689,7 +662,7 @@ export default ({ patient, picture, open, onClose }) => {
           'clearing cache - cloudfront invalidation error': {
             err, cfParm
           }
-        })
+        });
         enqueueSnackbar(`The new image is saved, but you'll still see the old one for a little while`, { variant: 'warning', persist: false });
       });
     localData.photoURL = await getObject(patient.person_id, 'image');
@@ -823,7 +796,7 @@ export default ({ patient, picture, open, onClose }) => {
                 variant='contained'
                 className={classes.topButton}
               >
-                {isMobile ? 'Save' : 'Save Changes'}
+                {'Save'}
               </Button>}
           </Toolbar>
         </AppBar>
@@ -1124,6 +1097,7 @@ export default ({ patient, picture, open, onClose }) => {
         </Box >
         <ClientsSection
           person={patient}
+          groupData={groupData}
           updateGroups={handleChangeGroups}
         />
         <RelationshipSection person={patient} />
@@ -1253,7 +1227,7 @@ export default ({ patient, picture, open, onClose }) => {
                 variant='contained'
                 className={classes.topButton}
               >
-                {isMobile ? 'Save' : 'Save Changes'}
+                {'Save'}
               </Button>
             }
           </Toolbar>

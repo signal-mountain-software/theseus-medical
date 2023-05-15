@@ -1,9 +1,8 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { messageHistory, getMessages } from '../../util/AVAMessages';
-import { extract } from '../../util/AVAUtilities';
+import { extract, dbClient, lambda } from '../../util/AVAUtilities';
 
 import List from '@material-ui/core/List';
 
@@ -164,15 +163,6 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-const AWS = require('aws-sdk');
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
 export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValue }) => {
 
   const classes = useStyles();
@@ -212,12 +202,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   var rowsWritten;
 
   const { enqueueSnackbar } = useSnackbar();
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',

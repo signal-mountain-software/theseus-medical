@@ -1,17 +1,9 @@
-import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid } from './AVAUtilities';
+import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid, dbClient } from './AVAUtilities';
 import { makeName } from './AVAPeople';
 import { addDays, makeDate, makeTime } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
 
 // const PDFDocument = require('pdfkit');
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 let eventCache = {};
 
@@ -916,13 +908,13 @@ export async function writeSlot(body) {
     else { messageList.push(eventRec.eventData.messaging); }
     for (let m = 0; m < messageList.length; m++) {
       let this_message = messageList[m];
-  //    if (!this_message.action || (this_message.action !== body.status.current)) {
+      if (!this_message.action || (this_message.action === body.status.current)) {
         if ('subject' in this_message.format) { msgObject.subject = await resolveMessageVariables(this_message.format.subject, body); }
         if (Array.isArray(this_message.recipientList)) { msgObject.recipientList = [...this_message.recipientList]; }
         else { msgObject.recipientList = [this_message.recipientList]; }
         msgObject.messageText = await resolveMessageVariables(this_message.format.text, body);
         sendMessages(msgObject);
-  //    }
+      }
     }
   }
   /*

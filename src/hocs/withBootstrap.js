@@ -1,4 +1,5 @@
 import React from 'react';
+import { dbClient, lambda } from '../util/AVAUtilities';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
@@ -10,13 +11,12 @@ import CardMedia from '@material-ui/core/CardMedia';
 import Typography from '@material-ui/core/Typography';
 import Dialog from '@material-ui/core/Dialog';
 
-import { Lambda } from 'aws-sdk';
 import { useCookies } from 'react-cookie';
 import useSession from '../hooks/useSession';
 import useIosCheck from '../hooks/useIosCheck';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { SET_PATIENT, SET_PROFILE, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 import AVATextInput from '../components/forms/AVATextInput';
@@ -38,12 +38,6 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 const CognitoClient = new AWS.CognitoIdentityServiceProvider({
   region: "us-east-1"
 });
@@ -65,16 +59,9 @@ export default Component => props => {
   const classes = useStyles();
   const [platform] = useIosCheck();
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
   const AVA_environment = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   const [messageList, setMessageList] = React.useState([]);
 
@@ -342,7 +329,7 @@ export default Component => props => {
         {promptForUser() &&
           <AVATextInput
             titleText="AVA Sign-in"
-            promptText={isMobile ? "User ID / Name" : "Enter your User ID or Name"}
+            promptText={"User ID"}
             buttonText='Sign In'
             onCancel={() => {
               enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
@@ -370,8 +357,8 @@ export default Component => props => {
         }
         {promptForPassword() &&
           <AVATextInput
-            titleText="AVA Sign-in"
-            promptText={isMobile ? "Password / Apartment" : "Enter your Password or Apartment Number."}
+            titleText={"AVA Sign-in"}
+            promptText={"Password"}
             buttonText='Continue'
             onCancel={() => {
               setMessageList([]);

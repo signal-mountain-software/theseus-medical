@@ -1,4 +1,5 @@
 import React from 'react';
+import { dbClient } from '../../util/AVAUtilities';
 import Paper from '@material-ui/core/Paper';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -232,14 +233,6 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 5,
   },
 }));
-
-const AWS = require('aws-sdk');
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 export default ({ person, updateSetChange, onChangeMethod, onChangeEscalationType, onChangeWaitTime, onChangeKeyWords, onChangeEscalationData, numRows, session }) => {
   const classes = useStyles();

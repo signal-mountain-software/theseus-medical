@@ -1,7 +1,7 @@
 import React from 'react';
 import Button from '@material-ui/core/Button';
 import { makeStyles } from '@material-ui/core/styles';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { useSnackbar } from 'notistack';
 
@@ -120,18 +120,14 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const searchText = '';
   const [factIOClass, setFactIOClass] = React.useState(false);
   const [factPromoClass, setFactPromoClass] = React.useState(false);
   const [factEventClass, setFactEventClass] = React.useState(false);
   const [factMessageClass, setFactMessageClass] = React.useState(false);
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
 
   const [executionDefaultValue, setExecutionDefaultValue] = React.useState('');
   const [qualifierTable, setQualifierTable] = React.useState({});
   const [associationsTable, setAssociationsTable] = React.useState({});
-  const [checked, setChecked] = React.useState([]);
-  const [qualChecked, setQualChecked] = React.useState({});
 
   var withNext;
   var oopsie;
@@ -277,7 +273,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         case 'render':
         case 'query':
         case 'action':
-        case 'list': { break; }   
+        case 'list': { break; }
         case 'media': { setFactIOClass(true); break; }
         case 'message': { setFactMessageClass(true); setFactIOClass(true); break; }
         case 'promo': { setFactPromoClass(true); break; }
@@ -409,7 +405,6 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         v++;
       } while (v < vL && !mF);
     }
-    setQualChecked({});
 
     let nF = {
       client_id: fact.client_id || session.client_id,
@@ -459,17 +454,10 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           let [value, qArr] = qStr.split(':');
           nF.value.qualifiers[value] = [...qArr.split(',')];
         });
-        setQualChecked(nF.value.qualifiers);
       }
     }
 
-    setChecked(fact.type !== 'reservation' ? nF.value.selected : {});
     setNewFact(nF);
-    //setFirstTime(false);
-    //setPeopleMode(false);
-    //setSaveMode(false);
-    //setLastQualifier(lQ);
-    //  }
 
   }, [fact]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -495,15 +483,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             factName={fact.name}
             session={session}
             message={message}
-            statusMessage={statusMessage}
             values={fact.valid_values_list}
             qualifierTable={qualifierTable}
             defaultValue={executionDefaultValue}
-            qualCheckedParam={qualChecked}
-            checkedParm={checked}
-            searchTextFromParent={searchText}
-            setMessage={setMessage}
-            setStatusMessage={setStatusMessage}
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}
@@ -513,7 +495,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button className={classes.reject} variant='outlined' size='small' onClick={handleClose}>
-          {!factIOClass ? 'Done' : (isMobile ? 'Cncl' : 'Cancel')}
+          {!factIOClass ? 'Done' : 'Cancel'}
         </Button>
         {factIOClass
           ? (<Button className={classes.confirm} variant='outlined' size='small' onClick={handleSave}>
@@ -540,7 +522,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           ? (
             <React.Fragment>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
-                {isMobile ? 'Save +' : 'Save & Next'}
+                {'Next'}
               </Button>
               <Button className={classes.confirm} size='small' variant='contained' onClick={handleSkip}>
                 Skip

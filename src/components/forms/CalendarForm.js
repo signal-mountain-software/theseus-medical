@@ -29,7 +29,7 @@ import DialogActions from '@material-ui/core/DialogActions';
 
 import Button from '@material-ui/core/Button';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -177,8 +177,6 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
     setAnchorEl(event.currentTarget);
   };
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-
   function formatDate(pDate$) {
     let pDate = pDate$.toString() || '19591021';
     let yyyy = pDate.substr(0, 4);
@@ -275,15 +273,15 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
             </Box>
             <Box
               component="img"
-              ml={isMobile ? 2 : 5}
+              ml={2}
               mr={2}
               mt={2}
               aria-controls='hidden-menu'
               aria-haspopup='true'
-              minWidth={isMobile ? 50 : 55}
-              maxWidth={isMobile ? 50 : 55}
-              minHeight={isMobile ? 50 : 55}
-              maxHeight={isMobile ? 50 : 55}
+              minWidth={50}
+              maxWidth={50}
+              minHeight={50}
+              maxHeight={50}
               onClick={(event) => {
                 handleClick(event);
                 setPopupMenuOpen(true);

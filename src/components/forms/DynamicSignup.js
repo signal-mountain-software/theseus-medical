@@ -1,14 +1,7 @@
 import React from 'react';
-// import { API, graphqlOperation } from 'aws-amplify';
-// import { createPutFact } from '../../graphql/mutations';
-// import { getSession } from '../../graphql/queries';
-// import useSession from '../../hooks/useSession';
+import { lambda } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
-
-import { Lambda } from 'aws-sdk';
-
-// import "react-datepicker/dist/react-datepicker.css";
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
@@ -203,15 +196,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   // const [patientGroups, setPatientGroups] = React.useState();
 
   const [changes, setChanges] = React.useState(false);
-
-  const AWS = require('aws-sdk');
-  AWS.config.update({ region: 'us-east-1' });
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine',

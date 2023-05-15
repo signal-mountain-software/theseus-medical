@@ -1,30 +1,24 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
+import { lambda, cl } from '../../util/AVAUtilities';
+
 import { useSnackbar } from 'notistack';
 import { getImage, formatPhone } from '../../util/AVAPeople';
-import { cl } from '../../util/AVAUtilities';
-import { getMemberList, addMember } from '../../util/AVAGroups';
-
+import { getMemberList, addMember, getRole, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 
 import List from '@material-ui/core/List';
 
-// import Collapse from '@material-ui/core/Collapse';
-import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
 import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
-import MenuUpdateIcon from '@material-ui/icons/MobileFriendly';
-
-import CircularProgress from '@material-ui/core/CircularProgress';
-import LinearProgress from '@material-ui/core/LinearProgress';
-
-import SwapIcon from '@material-ui/icons/SwapHoriz';
-
 import Button from '@material-ui/core/Button';
+
+import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
+import RemoveCircleOutlineIcon from '@material-ui/icons/RemoveCircleOutline';
+import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -37,7 +31,6 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import TextField from '@material-ui/core/TextField';
 
-import EditIcon from '@material-ui/icons/Edit';
 import DeleteIcon from '@material-ui/icons/Delete';
 import PrintIcon from '@material-ui/icons/Print';
 import StorageOutlined from '@material-ui/icons/StorageOutlined';
@@ -45,7 +38,6 @@ import SendIcon from '@material-ui/icons/Send';
 
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
 
-import PatientDialog from '../dialogs/PatientDialog';
 import PersonFilter from '../forms/PersonFilter';
 import AVAConfirm from './AVAConfirm';
 import MakeMessage from './MakeMessage';
@@ -109,6 +101,20 @@ const useStyles = makeStyles(theme => ({
     size: 'small',
     color: theme.palette.reject[theme.palette.type],
   },
+  giveSpace: {
+    marginTop: theme.spacing(2),
+  },
+  giveMoreSpace: {
+    marginTop: theme.spacing(4),
+  },
+  giveSpaceBoth: {
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+  },
+  adHead: {
+    fontSize: '1.1rem',
+    fontWeight: 'bold'
+  },
   rowButtonGreen: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
@@ -120,21 +126,50 @@ const useStyles = makeStyles(theme => ({
   rowButtonBack: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
-    marginTop: theme.spacing(4),
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
     outlineColor: theme.palette.reject[theme.palette.type],
-    outlineWidth: '2px',
+    fontSize: theme.typography.fontSize * 1,
+    outlineWidth: '1px',
     outlineStyle: 'auto',
+    width: '60%',
+    textTransform: 'none',
+    size: 'small',
+  },
+  rowButtonRemove: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    outlineColor: theme.palette.reject[theme.palette.type],
+    fontSize: theme.typography.fontSize * 1,
+    outlineWidth: '1px',
+    width: '60%',
+    outlineStyle: 'auto',
+    textTransform: 'none',
+    size: 'small',
+  },
+  rowButtonSwitch: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1,
+    textTransform: 'none',
+    size: 'small',
+  },
+  rowButtonFlat: {
+    fontSize: theme.typography.fontSize * 1,
+    paddingTop: theme.spacing(0),
+    paddingBottom: theme.spacing(0),
     textTransform: 'none',
     size: 'small',
   },
   rowButtonSend: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
-    marginTop: theme.spacing(4),
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
     outlineColor: theme.palette.confirm[theme.palette.type],
-    outlineWidth: '2px',
+    fontSize: theme.typography.fontSize * 1,
+    outlineWidth: '1px',
+    width: '80%',
     outlineStyle: 'auto',
     textTransform: 'none',
     size: 'small',
@@ -229,7 +264,7 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 'bold'
   },
   superSizePreferenceLine3: {
-    marginTop: theme.spacing(-1.5),
+    marginTop: theme.spacing(-0.5),
     fontSize: theme.typography.fontSize * 2.0,
     fontWeight: 'bold'
   },
@@ -238,16 +273,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-const AWS = require('aws-sdk');
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
-export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, isMobile, onReset }) => {
+export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, onReset }) => {
 
   const classes = useStyles();
   const { dispatch } = useSession();
@@ -259,10 +285,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const [workingMemberList, setGroupMemberList] = React.useState(groupMemberList);
-  const [editIndex, setEditIndex] = React.useState();
 
   const [deletePending, setDeletePending] = React.useState(false);
-  const [showPatientDialog, setShowPatientDialog] = React.useState(false);
   const [confirmMessage, setConfirmMessage] = React.useState('');
   const [confirmPerson, setConfirmPerson] = React.useState('');
   const [confirmIndex, setConfirmIndex] = React.useState('');
@@ -271,14 +295,9 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [superSizeData, setSuperSizeData] = React.useState(false);
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
-  const [open, setOpen] = React.useState([]);
   const [choiceList, setChoiceList] = React.useState([]);
 
   const [overrideRole, setOverrideRole] = React.useState();
-
-  const [loading, setLoading] = React.useState(null);
-  const [progress, setProgress] = React.useState(100);
-  const [pWidth, setPWidth] = React.useState(60);
 
   const [rowLimit, setRowLimit] = React.useState(5);
   const [previousY, setCurrentY] = React.useState(0);
@@ -290,11 +309,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
+  const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
@@ -358,7 +373,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     for (let p = 0; p < pPerson.length; p++) {
       await addMember(pPerson[p], pClient, pGroup);
     }
-    let memberInfo = await getMemberList(pGroup, pClient, { "sort": true, "exclude": false });   
+    let memberInfo = await getMemberList(pGroup, pClient, { "sort": true, "exclude": false });
     setGroupMemberList(memberInfo.peopleList);
   };
 
@@ -413,40 +428,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     });
   };
 
-  async function handleMenuUpdate(memberList) {
-    // What we actually do is wipe out the AVA_main_menu entry from the AVAMenu table, forcing a reload next time 
-    let mL = memberList.length;
-    let mLP = 1;
-    let emptyMenu = [];
-    if (mL > 100) { mLP = (100 / mL); }
-    for (let m = 0; m < mL; m++) {
-      let member = memberList[m];      
-      screenStatus('Updating Menus', ((m / mL) * 100), ((( mL * mLP ) / 40) + .75));
-      await dbClient
-        .update({
-          Key: { person_id: member.person_id },
-          UpdateExpression: 'set AVA_main_menu = :m',
-          ExpressionAttributeValues: {
-            ':m': emptyMenu
-          },
-          TableName: "AVAMenu",
-        })
-        .promise()
-        .catch(error => {
-          cl(`AVA couldn't update your Menu settings.  Error is ${error}`);
-        });
-    }
-    setLoading(null);
-    return;
-
-    function screenStatus(statusMessage, progressPct, progressWidth) {
-      setLoading(statusMessage);
-      setProgress(progressPct);
-      setPWidth(progressWidth * 100);
-      setForceRedisplay(!forceRedisplay);
-    };
-  }
-
   const handlePrintRoster = async (pGroup) => {
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:group_roster';
     params.Payload = JSON.stringify({
@@ -472,28 +453,28 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   const setChoices = async (inList) => {
     let response = [];
-    let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });    
+    let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });
     /* getMemberList returns
         {
           peopleList: [<People records of the members>],
           groupList: [<Group records for the selected groups>]
         }
     */
-        let mInfo;
-        let pLL = memberInfo.peopleList.length;
-        for (let e = 0; e < pLL; e++) {
-          let p = memberInfo.peopleList[e];
-          let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
-          if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
-          // list is of the form <name>:<id>:<search_string>
-          try {
-            mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
-            response.push(mInfo);
-          }
-          catch (error) {
-            cl(`response push error at index ${e} with ${mInfo}`);
-          }
-        };
+    let mInfo;
+    let pLL = memberInfo.peopleList.length;
+    for (let e = 0; e < pLL; e++) {
+      let p = memberInfo.peopleList[e];
+      let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+      // list is of the form <name>:<id>:<search_string>
+      try {
+        mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+        response.push(mInfo);
+      }
+      catch (error) {
+        cl(`response push error at index ${e} with ${mInfo}`);
+      }
+    };
     setChoiceList(response);
     setShowAddPrompt(true);
   };
@@ -520,7 +501,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         return searchString.toLowerCase().includes(person_filter_lower.trim());
       }
     }
-    catch (error) { return false;
+    catch (error) {
+      return false;
     }
   }
 
@@ -616,9 +598,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         >
                           <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                             <Box
-                              onClick={() => {
-                                setshowSuperSize(true);
+                              onClick={async () => {
+                                this_item.role = await getRole(pGroup, this_item.person_id);
                                 setSuperSizeData(this_item);
+                                setshowSuperSize(true);
                               }}
                               display='flex' flexDirection='column'>
                               <Box >
@@ -667,13 +650,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                             flexDirection='row'
                             justifyContent='space-between'
                             alignItems='center'
-                            onClick={() => {
-                              if (pRole === 'admin' || pRole === 'responsible') {
-                                open[index] = !open[index];
-                                setOpen(open);
-                                setForceRedisplay(!forceRedisplay);
-                              }
-                            }}
                           >
                             <Box>
                               <Box
@@ -686,101 +662,14 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 src={getImage(this_item.person_id)}
                               />
                             </Box>
-                            <Button
-                              onClick={() => {
-                                setPromptForMessage(true);
-                                setMessageType('');
-                                let rKey = `${this_item.name.first || this_item.display_name} ${this_item.name.last}:${this_item.person_id}`;
-                                setRecipient(rKey.trim());
-                              }}
-                              className={classes.rowButtonGreen}
-                              startIcon={<SendIcon fontSize="small" />}
-                            >
-                            </Button>
-                            {(pRole === 'admin' || pRole === 'responsible') &&
-                              (!open[index] ? <ExpandMoreIcon /> : <ExpandLessIcon />)
-                            }
                           </Box>
                         </Box>
-                        {open[index] &&
-                          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                            {(pRole === 'admin' || pRole === 'responsible') &&
-                              <Button
-                                onClick={async () => {
-                                  let switchData = await prepareSwitch(
-                                    pPatient,
-                                    this_item.person_id,
-                                    `${this_item.name.first} ${this_item.name.last || this_item.display_name}:`
-                                  );
-                                  dispatch({ type: SET_SESSION, payload: switchData[0] });
-                                  dispatch({ type: SET_PATIENT, payload: switchData[1] });
-                                  let jumpTo = window.location.href.replace('refresh', 'theseus');
-                                  window.location.replace(jumpTo);
-                                }}
-                                className={classes.rowButtonGreen}
-                                startIcon={<SwapIcon fontSize="small" />}
-                              >
-                                Switch to
-                              </Button>
-                            }
-                            {pRole === 'responsible' &&
-                              <Button
-                                onClick={() => {
-                                  setEditIndex(index);
-                                  setShowPatientDialog(true);
-                                }}
-                                className={classes.rowButtonDefault}
-                                startIcon={<EditIcon fontSize="small" />}
-                              >
-                                View/Edit
-                              </Button>
-                            }
-                            {(pRole === 'admin' || pRole === 'responsible') && !allGroups &&
-                              <Button
-                                onClick={() => {
-                                  setConfirmMessage(`Confirm removing ${this_item.name.first} ${this_item.name.last || this_item.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                                  setConfirmPerson(this_item.person_id);
-                                  setConfirmIndex(index);
-                                  setDeletePending(true);
-                                  setForceRedisplay(false);
-                                }}
-                                className={classes.rowButtonGreen}
-                                startIcon={<DeleteIcon fontSize="small" />}
-                              >
-                                Remove from Group
-                              </Button>
-                            }
-                          </Box>
-                        }
                       </Box>
                     </Paper>
                   )
                 ))}
               </List>
             </Paper>
-            {showPatientDialog &&
-              <PatientDialog
-                patient={workingMemberList[editIndex]}
-                picture={""}
-                open={true}
-                onClose={(updatedPerson) => {
-                  if (updatedPerson) {
-                    workingMemberList[editIndex].preferred_method = updatedPerson.preferred_method;
-                    workingMemberList[editIndex].home = updatedPerson.voice;
-                    workingMemberList[editIndex].work = updatedPerson.office;
-                    workingMemberList[editIndex].cell = updatedPerson.sms;
-                    workingMemberList[editIndex].email = updatedPerson.email;
-                    workingMemberList[editIndex].name = {
-                      'last': updatedPerson.last,
-                      'first': updatedPerson.first
-                    };
-                    workingMemberList[editIndex].location = updatedPerson.location;
-                    workingMemberList[editIndex].search_data = updatedPerson.search_data.toLowerCase();
-                  }
-                  setShowPatientDialog(false);
-                }}
-              />
-            }
             {showAddPrompt &&
               <PersonFilter
                 prompt={'Tap the name of the person you wish to add'}
@@ -955,13 +844,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       >
                         {`Notify`}
                       </Button>
-                      <Button
-                        onClick={async () => { await handleMenuUpdate(workingMemberList); }}
-                        className={classes.rowButtonGreen}
-                        startIcon={<MenuUpdateIcon size='small' />}
-                      >
-                        {'Menu Upd'}
-                      </Button>
                     </Box>
                   }
                 </Box>
@@ -1000,7 +882,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     style={{ color: 'inherit', textDecoration: 'none' }}>
                     {(prefLine.split('~')[1].split(' ')[0].trim() !== '')
                       ?
-                      <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center' >
+                      <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
                         <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.superSizePreferenceLine1}>
                           {prefLine.split('~')[1].split(' ')[0]}:
                         </Typography>
@@ -1009,7 +891,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         </Typography>
                       </Box>
                       :
-                      <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' >
+                      <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
                         <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine3}>
                           {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
                         </Typography>
@@ -1017,7 +899,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     }
                   </a>
                 )))}
-              <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+              <Box display='flex' flexDirection='row' className={classes.giveMoreSpace} justifyContent='center' alignItems='center' >
                 <Button
                   className={classes.rowButtonBack}
                   onClick={() => {
@@ -1039,23 +921,92 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   {`Send Msg`}
                 </Button>
               </Box>
+              {(pRole === 'admin' || pRole === 'responsible') &&
+                <Box display='flex' className={classes.giveSpaceBoth} flexDirection='row' justifyContent='center' alignItems='center' >
+                  <Typography key={`HeadLine-superSize`} className={classes.adHead}>{'Administrator Options'}</Typography>
+                </Box>
+              }
+              {(pRole === 'admin' || pRole === 'responsible') &&
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                  <Button
+                    onClick={async () => {
+                      let switchData = await prepareSwitch(
+                        pPatient,
+                        superSizeData.person_id,
+                        `${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name}:`
+                      );
+                      dispatch({ type: SET_SESSION, payload: switchData[0] });
+                      dispatch({ type: SET_PATIENT, payload: switchData[1] });
+                      let jumpTo = window.location.href.replace('refresh', 'theseus');
+                      window.location.replace(jumpTo);
+                    }}
+                    startIcon={<SwapHorizIcon size='small' />}
+                    className={classes.rowButtonFlat}
+                  >
+                    {'Switch to'}
+                  </Button>
+                </Box>
+              }
+              {(pRole === 'admin' || pRole === 'responsible')
+                && pGroup
+                && (!pGroup.toLowerCase().includes('*all'))
+                && (!pGroup.includes('~')) &&
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                  <Button
+                    onClick={() => {
+                      setConfirmMessage(`Confirm removing ${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                      setConfirmPerson(superSizeData.person_id);
+                      setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === superSizeData.person_id; }));
+                      setDeletePending(true);
+                      setForceRedisplay(false);
+                    }}
+                    startIcon={<DeleteIcon size='small' />}
+                    className={classes.rowButtonFlat}
+                  >
+                    {`Remove ${superSizeData.name.first || superSizeData.display_name} from the group`}
+                  </Button>
+                </Box>
+              }
+              {(pRole === 'admin' || pRole === 'responsible')
+                && pGroup
+                && (!pGroup.toLowerCase().includes('*all'))
+                && (!pGroup.includes('~'))
+                && (superSizeData.role === 'member') &&
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                  <Button
+                    onClick={async () => {
+                      await addAdministrator(superSizeData.person_id, pGroup);
+                      setForceRedisplay(false);
+                    }}
+                    startIcon={<AddCircleOutlineIcon size='small' />}
+                    className={classes.rowButtonFlat}
+                  >
+                    {`Make ${superSizeData.name.first || superSizeData.display_name} an Administrator of the group`}
+                  </Button>
+                </Box>
+              }
+              {(pRole === 'admin' || pRole === 'responsible')
+                && pGroup
+                && (!pGroup.toLowerCase().includes('*all'))
+                && (!pGroup.includes('~'))
+                && (superSizeData.role !== 'member') &&
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                  <Button
+                    onClick={async () => {
+                      await removeAdministrator(superSizeData.person_id, pGroup);
+                      setForceRedisplay(false);
+                    }}
+                    startIcon={<RemoveCircleOutlineIcon size='small' />}
+                    className={classes.rowButtonFlat}
+                  >
+                    {`Remove ${superSizeData.name.first || superSizeData.display_name} as an Administrator of the group`}
+                  </Button>
+                </Box>
+              }
             </Box>
           </List>
         }
       </Dialog >
-      <Dialog open={!!loading} fullWidth p={20} className={classes.containerBox}>
-        <Box
-          display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-          flexWrap='wrap' textOverflow='ellipsis' width='100%'
-          key={'loadingBox'}
-          mt={10} mb={10}
-        >
-          <Typography variant='h5' className={classes.lastName} >{`Updating Menus`}</Typography>
-          <Typography className={classes.lastName}>{loading}</Typography>
-          <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
-          <CircularProgress />
-        </Box>
-      </Dialog>
     </React.Fragment>
   );
-};;
+};

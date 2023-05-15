@@ -1,7 +1,7 @@
 import React from 'react';
 import { sendMessages } from '../../util/AVAMessages';
 import { makeName, getImage } from '../../util/AVAPeople';
-import { makeArray } from '../../util/AVAUtilities';
+import { makeArray, s3, dbClient } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -124,18 +124,6 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
-
 export default ({
   titleText,
   promptText,
@@ -155,7 +143,6 @@ export default ({
   const classes = useStyles();
   const { enqueueSnackbar } = useSnackbar();
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  //  const [textInput, setTextInput] = React.useState(seedText || '');
   const [reactData, setReactData] = React.useState({
     recipientID: pRecipientID,
     recipientName: pRecipientName,

@@ -1,16 +1,7 @@
-import { clt, cl, recordExists, uuid, listFromArray, makeArray, sentenceCase } from './AVAUtilities';
+import { clt, cl, recordExists, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { makeDate } from './AVADateTime';
-
-const AWS = require('aws-sdk');
-
-const dbClient = new AWS.DynamoDB.DocumentClient({
-  apiVersion: '2012-08-10',
-  region: "us-east-1",
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
-});
 
 // Functions
 
@@ -62,6 +53,9 @@ export async function prepareMessage(inBody) {
     requestID: inBody.requestID
   },
     inBody.request);
+  if (inBody.hasOwnProperty('attachments')) {
+    requestInfo.attachments = inBody.attachments.map(a => { return a.Location; });
+  }
   do {
     let this_request = Object.assign({}, requestInfo, messageList.shift());
     cl({ 'in prepare messages': { this_request } });
@@ -75,7 +69,7 @@ export async function prepareMessage(inBody) {
     results.author = this_request.author;
     results.preferred_method = this_request.method;
     if (!('format' in this_request)) { this_request.format = { 'type': 'factForm' }; }
-    if ('subject' in this_request.format) { results.subject = await resolveMessageVariables(this_request.format.subject, this_request); }
+    if ('subject' in this_request.format) { results.subject = this_request.format.subject }
     if ('method' in this_request.format) { results.preferred_method = this_request.format.method; }
     switch (this_request.format.type) {
       case 'mealOrder':
@@ -94,9 +88,23 @@ export async function prepareMessage(inBody) {
       let ruleStatus = await processRules(this_request);
       if (ruleStatus === 'cancel') { continue; }
     }
-
+    if (results.subject) {
+      results.subject = await resolveMessageVariables(results.subject, this_request);
+    }
     results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
     results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
+
+    if (requestInfo.hasOwnProperty('attachments')) {
+      results.htmlText += '<br>';
+      // eslint-disable-next-line
+      requestInfo.attachments.forEach((a, x) => {
+        let fNArr = a.split('/').pop().split('.');
+        fNArr.pop();
+        let fName = decodeURI(fNArr.join('.'));
+        results.messageText += `\r\n\nAttachment ${fName}: ${a}`;
+        results.htmlText += `<br><a href=${a}>Attachment: ${fName}</a>`;
+      });
+    }
 
     returnResults.push(results);
   } while (messageList.length > 0);
@@ -182,6 +190,10 @@ export async function prepareMessage(inBody) {
           }
           case 'urgency': {
             results.urgent = rule.value;
+            break;
+          }
+          case 'subject': {
+            results.subject = rule.value;
             break;
           }
           case 'override_method': {

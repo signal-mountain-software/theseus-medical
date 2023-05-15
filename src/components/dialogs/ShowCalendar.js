@@ -4,7 +4,7 @@ import { API, graphqlOperation } from 'aws-amplify';
 import { getCalendarEntries } from '../../util/AVACalendars';
 import { makeTime } from '../../util/AVADateTime';
 import { getCalendar } from '../../graphql/queries';
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -159,9 +159,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-  if (isMobile) { }
-
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
@@ -275,8 +272,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
       if (a.occData.date > b.occData.date) { return 1; }
       else if (a.occData.date < b.occData.date) { return -1; }
       else if (a.occData.time24 > b.occData.time24) { return 1; }
-      else { return -1; } 
-    })
+      else { return -1; }
+    });
     setMyCalendar(theCalendar);
     setLastEndDate(twoWeeksFromNow);
     return theCalendar;
@@ -386,8 +383,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 <Box
                   component="img"
                   mb={2}
-                  minWidth={isMobile ? 150 : 175}
-                  maxWidth={isMobile ? 150 : 175}
+                  minWidth={150}
+                  maxWidth={150}
                   alt=''
                   src={patient.client_logo || process.env.REACT_APP_AVA_LOGO}
                 />
@@ -435,7 +432,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 size='small'
                 className={classes.topButton}
               >
-                {isMobile ? 'More' : 'Show more?'}
+                {'More'}
               </Button>
             }
             {patient.kiosk_mode &&

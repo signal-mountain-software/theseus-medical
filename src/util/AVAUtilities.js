@@ -1,18 +1,64 @@
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
 import { getOccurenceList } from '../util/AVACalendars';
+import { Lambda } from 'aws-sdk';
 
 // NOTES -
 // regex to split at the first instance of a character only (% used as example to split on): is .split(/%(.*)/)
 
 const AWS = require('aws-sdk');
+let iconObj = {};
 
-const s3 = new AWS.S3({
-  accessKeyId: process.env.REACT_APP_AVA_ID,
-  secretAccessKey: process.env.REACT_APP_AVA_KEY
+const sak = () => {
+  let keyList = [
+    "nMJ$NnV$cA5-oPTC-j,%If?)UhFnl))hH$$^QGs>SkIAR2OYl`n3;Ap&(cHd}/pKM{ul^KaHat{%hyb^@@o+j(EftN9K768dM,O[",
+    "[?oRnyvdNc:=4b5-Sy^==`35W41%A}|x2}b_}S#'%pO>-(Op6FjtrZDb:&[j(:y?53M,FTI{gIB?,7S*9DAW2G)Ibq4H[(WFtqo=",
+    "-RKC(0^vR[u8]z*,Q`M98d?$#6b$;c<`<<1XOseJX&/BT$soC;ZT~n4FEF.d5,?H1#UC(c=x4K8MQkNFg$?tfU;&a#ssocLPMsx]",
+    "8?7'@=wJ$3LF27=%2E_{1q?U7/Wdd424%0a-Y41^&b/dY(=BO(7ddn1-QgJrT|![&uKXEH5p-P'[Nh#R%I>qbpVpU]nmLdhWcXE>",
+    "h5]$AK2akK$VkrPM~ynClNK_624AQ26xQG{z-Q]{tu*|vIf(26{G}oi9qls``Fe-WJwVhniEuQG:?Z%w:7Zjl)R7.w_mzq|hu$?5",
+    "}QE*tYyZ]%5{L0{#KjiPJ-fyf<EEo?lWk`LcUo>h(:[3?.Uh^V/v{KSYETYeToF63C0;AQYhb,Kq-?N,C5]d{81{yp8Q]RP(y+0%"
+  ];
+  let id2 = '';
+  let indexer = '4042553918914687589290481423614042529443';
+  for (let i = 0; i < 30; i++) {
+    let index = Number(indexer.slice(i, i + 1));
+    if (index < 6) {
+      let pos = Number(indexer.slice(i + 1, i + 3));
+      let len = Number(indexer.slice(i + 3, i + 4));
+      id2 += keyList[index].slice(pos, pos + len);
+    }
+  }
+  return [id2.slice(0, 20), id2.slice(20, 60)];
+}
+
+export const dbClient = new AWS.DynamoDB.DocumentClient({
+  apiVersion: '2012-08-10',
+  region: "us-east-1",
+  accessKeyId: sak()[0],
+  secretAccessKey: sak()[1]
 });
 
-let iconObj = {};
+export const CognitoClient = new AWS.CognitoIdentityServiceProvider({
+  region: "us-east-1"
+});
+
+export const s3 = new AWS.S3({
+  accessKeyId: sak()[0],
+  secretAccessKey: sak()[1]
+});
+
+export const lambda = new Lambda({
+  region: 'us-east-1',
+  accessKeyId: sak()[0],
+  secretAccessKey: sak()[1],
+});
+
+export const cloudfront = new AWS.CloudFront({
+  region: "us-east-1",
+  accessKeyId: sak()[0],
+  secretAccessKey: sak()[1],
+});
+
 
 export function recordExists(recordId) {
   if (!recordId) { return false; }
@@ -37,6 +83,47 @@ export function listFromArray(inArray) {
   });
   return makeList$;
 }
+
+
+export async function getCustomizations(pKey, pClient) {
+  if (!pKey || !pClient) { return false; }
+  if (pKey.toLowerCase() === '*all') {
+    let qParm = {
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: { ':c': pClient },
+      TableName: "Customizations"
+    };
+    let cRecs = await dbClient
+      .query(qParm)
+      .promise()
+      .catch(error => {
+        cl({
+          'Error reading Groups': error,
+          client_id: `<${pClient}>`
+        });
+      });
+    if (!recordExists(cRecs)) { return false; }
+    else { return cRecs.Items; }
+  }
+  else {
+    let cRec = await dbClient
+      .get({
+        Key: {
+          client_id: pClient,
+          custom_key: pKey
+        },
+        TableName: "Customizations",
+      })
+      .promise()
+      .catch(error => {
+        cl(`Caught error reading Customizations.Error is: ${error} 
+                    with client = ${pClient} and custom_key = ${pKey} `);
+      });
+    if (recordExists(cRec)) { return cRec.Item; }
+    else { return false; }
+  }
+}
+
 
 export function makeString(inP, pNum = 0, pLink) {
   if (!inP) { return null; }
@@ -90,6 +177,7 @@ export function sentenceCase(pString) {
 
 export function makeArray(input, delimiter = null) {
   let response = [];
+  if (!input) { return []; };
   if (Array.isArray(input)) { response.push(...input); }
   else if (typeof input === 'object') { response = Object.keys(input); }
   else if ((input.charAt(0) === '{') && (input.charAt(input.length - 1) === '}')) {

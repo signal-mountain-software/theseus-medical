@@ -1,6 +1,6 @@
 import React from 'react';
-import { Lambda } from 'aws-sdk';
 import { useSnackbar } from 'notistack';
+import { lambda } from '../../util/AVAUtilities';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -14,7 +14,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import EventActivityForm from '../forms/EventActivityForm';
 import ActivityFilter from '../forms/ActivityFilter';
 
-import useMediaQuery from '@material-ui/core/useMediaQuery';
+// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   pageHead: {
@@ -76,17 +76,8 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
-  const isMobile = useMediaQuery(theme => theme.breakpoints.down('xs')); // checks if current device is a smart phone
-  if (isMobile) { }
-
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
-
-  const lambda = new Lambda({
-    region: 'us-east-1',
-    accessKeyId: process.env.REACT_APP_AVA_ID,
-    secretAccessKey: process.env.REACT_APP_AVA_KEY,
-  });
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:EventActivityMaintenance',
@@ -185,7 +176,7 @@ export default ({ pSession, pEvent_id, pName, showList, onClose }) => {
         response();
         console.log(aList);
       }
-      else { 
+      else {
         buildDetailedMenuList();
       }
     }
