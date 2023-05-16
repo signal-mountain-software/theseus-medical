@@ -837,6 +837,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
     }
     let returnArray = [];
+    // check for default values in the person's record
+    if (patient.hasOwnProperty('defaultValues')) {
+      let pDefaults = patient.defaultValues;
+      for (let key in pDefaults) {
+        returnArray.push(`private~${key}=${pDefaults[key]}`);
+      } 
+    }
+    // now pull in default values associated with this specific function call
     let factClient;
     let defaultValues = makeArray(fact.default_value, /\s~|~\s/g);
     for (let d = 0; d < defaultValues.length; d++) {

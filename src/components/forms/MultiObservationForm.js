@@ -205,7 +205,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const [confirmStatus, setConfirmStatus] = React.useState('');
   const [confirmPrompt, setConfirmPrompt] = React.useState(false);
 
-  const [promptForText, setPromptForText] = React.useState([]);
+  const [promptForText, setPromptForText] = React.useState({});
 
   const [textInput, setTextInput] = React.useState();
   const [initialLoadComplete, setLoadComplete] = React.useState();
@@ -255,6 +255,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   let displayBold = false;
   let displayItalic = false;
   let doneWithTopBox = false;
+  const defaultCheckedWords = ['checked', 'on', 'selected', 'true'];
 
   if (!initialLoadComplete) {
     let defaultObj = {};
@@ -338,7 +339,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             bold: displayBold,
             italic: displayItalic
           });
-          if (['checked', 'on', 'selected', 'true'].includes(dValue)) { defaultChecked[instruction[0]] = true; }
+          // default the checkbox to checked if either:
+          //   a previous instruction set the default for all checkboxes to ON (~[default=checked]), OR
+          //   a passed in default for this item instructs AVA to set the checkbox ON
+          if (defaultCheckedWords.includes(dValue)
+            || (defaultObj.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaultObj[instruction[0]]))) {
+            defaultChecked[instruction[0]] = true;
+          }
         };
         continue;
       }
@@ -346,8 +353,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       // Dropping through to here means that instruction[0] was null/blank
       //    (ie. there was nothing before the first "~"; the row started with "~")
       // This handles rows in the form "~<instruction[1]>:<instruction[2]>", for example
-      //     "~lambda:<instruction[2]>" or "~prompt:Who is this order for?"
-      // Ignore these lines in multi-mode...
+      //     "~lambda:<instruction[2]>" or 
+      //     "~prompt:Who is this order for?"
       if (instruction[2]) {
         displayRowList.push({
           checkbox: false,
@@ -381,8 +388,19 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     // We'll pre-load the radio checkboxes and do a little manipulation on the names for display purposes
     let radioOn = {};
     let maxLength = 1;
+    let textValue = {};
     columnList.forEach((c, x) => {
       radioOn[c.person_id] = Object.assign({}, defaultChecked);
+      if (c.hasOwnProperty('defaultValues')) {  // if this person carried global default values
+        // for every row in the displayRowList, check for a defaultvalue for this person
+        // if such a value is found, preload it
+        displayRowList.forEach((r, rx) => {
+          if (c.defaultValues.hasOwnProperty(r.text)) {
+            if (!textValue.hasOwnProperty(c.person_id)) { textValue[c.person_id] = {}; }
+            textValue[c.person_id][r.text] = c.defaultValues[r.text];
+          }
+        });
+      }
       let a = c.display_name.split(' ');
       maxLength = Math.max(a.length, maxLength);
       columnList[x].dName = [' ', ' ', ' '].concat(a);
@@ -392,6 +410,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     setDataRows({
       displayRows: displayRowList,
       dataRows: {},
+      textValue,
       radioOn,
       checked: Object.keys(defaultChecked),
       columnList: columnList
@@ -425,6 +444,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (numberOn === 0) { return 'none'; }
     else if (numberOn < numberOfPeople) { return 'some'; }
     else { return 'all'; }
+  }
+
+  function textPresent(pText, pPerson) {
+    if (!pPerson) {
+      for (let person in dataRows.radioOn) {
+        if (dataRows.textValue && dataRows.textValue[person] && dataRows.textValue[person][pText]
+          && (dataRows.textValue[person][pText].trim() !== '')) { return true; }
+      }
+    }
+    else {
+      if (dataRows.textValue && dataRows.textValue[pPerson] && dataRows.textValue[pPerson][pText]
+        && (dataRows.textValue[pPerson][pText].trim() !== '')) { return true; }
+    }
+    return false;
   }
 
   function isRadioSelected(person, item) {
@@ -562,8 +595,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             {dataRows.displayRows.map((this_item, this_index) => (
               <Box display='flex'
                 flexDirection='column'
-                margin={0}
-                border={isChecked(this_item.text) !== 'none' ? 2 : 0}
+                margin={((isChecked(this_item.text) !== 'none') || textPresent(this_item.text)) ? 2 : 0}
+                border={((isChecked(this_item.text) !== 'none') || textPresent(this_item.text)) ? 2 : 0}
                 key={'fullRow' + this_index}
                 className={(this_index === 0 ? classes.listItemSticky : classes.listTopRow)}
               >
@@ -622,7 +655,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                               disableRipple
                               key={'checkbox' + this_index}
                               onClick={() => {
-                                // i every person currently check ON for this row?
+                                // is every person currently check ON for this row?
                                 let someAreOff = false;
                                 for (let person in dataRows.radioOn) {
                                   if (!dataRows.radioOn[person][this_item.text]) { someAreOff = true; }
@@ -744,7 +777,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                   <Button
                                     className={classes.pencilButton}
                                     onClick={() => {
-                                      setPromptForText([this_person.person_id, this_item.text, this_person.display_name]);
+                                      setPromptForText({
+                                        person: this_person.person_id,
+                                        prompt: this_item.text,
+                                        title: this_person.display_name,
+                                        value: dataRows.textValue[this_person.person_id][this_item.text]
+                                      });
                                       setForceRedisplay(!forceRedisplay);
                                     }}
                                     startIcon={<NotesIcon size="small" />}
@@ -754,7 +792,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                 <Button
                                   className={classes.pencilButton}
                                   onClick={() => {
-                                    setPromptForText([this_person.person_id, this_item.text, this_person.display_name]);
+                                    setPromptForText(
+                                      {
+                                        person: this_person.person_id,
+                                        prompt: this_item.text,
+                                        title: this_person.display_name
+                                      }
+                                    );
                                     setForceRedisplay(!forceRedisplay);
                                   }}
                                   startIcon={<EditIcon size="small" />}
@@ -773,23 +817,24 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           </Paper>
 
           { /* Prompt for Text */}
-          {(promptForText.length > 0) &&
+          {(Object.keys(promptForText).length > 0) &&
             <AVATextInput
-              titleText={promptForText[2]}
-              promptText={promptForText[1]}
+              titleText={promptForText.title}
+              promptText={promptForText.prompt}
+              valueText={promptForText.value || ''}
               buttonText='Save'
               onCancel={() => {
-                setPromptForText([]);
+                setPromptForText({});
                 setForceRedisplay(!forceRedisplay);
               }}
               onSave={(updatedText) => {
                 if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
-                if (!dataRows.textValue.hasOwnProperty(promptForText[0])) {
-                  dataRows.textValue[promptForText[0]] = {};
+                if (!dataRows.textValue.hasOwnProperty(promptForText.person)) {
+                  dataRows.textValue[promptForText.person] = {};
                 }
-                dataRows.textValue[promptForText[0]][promptForText[1]] = updatedText;
+                dataRows.textValue[promptForText.person][promptForText.prompt] = updatedText;
                 setDataRows(dataRows);
-                setPromptForText([]);
+                setPromptForText({});
                 setForceRedisplay(!forceRedisplay);
               }}
             />
