@@ -109,11 +109,14 @@ const useStyles = makeStyles(theme => ({
   },
   giveSpaceBoth: {
     marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
   },
   adHead: {
     fontSize: '1.1rem',
     fontWeight: 'bold'
+  },
+  adName: {
+    fontSize: '0.9rem',
   },
   rowButtonGreen: {
     marginLeft: theme.spacing(1),
@@ -255,7 +258,6 @@ const useStyles = makeStyles(theme => ({
   },
   superSizePreferenceLine1: {
     fontSize: theme.typography.fontSize * 2.0,
-    marginRight: theme.spacing(1),
   },
   superSizePreferenceLine2: {
     lineHeight: `${theme.spacing(3)}px`,
@@ -512,7 +514,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       switch (messageType) {
         case 'sms': {
           if (pMessaging.sms && (!pMessaging.sms_private || allGroups)) {
-            returnArray.push(`sms:${pMessaging.sms}~cell ${formatPhone(pMessaging.sms)}${pMessaging.sms_private ? ' *UNPUBLISHED*' : ''}`);
+            returnArray.push(`tel:${pMessaging.sms}~cell ${formatPhone(pMessaging.sms)}${pMessaging.sms_private ? ' *UNPUBLISHED*' : ''}`);
           }
           break;
         }
@@ -927,25 +929,30 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 </Box>
               }
               {(pRole === 'admin' || pRole === 'responsible') &&
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-                  <Button
-                    onClick={async () => {
-                      let switchData = await prepareSwitch(
-                        pPatient,
-                        superSizeData.person_id,
-                        `${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name}:`
-                      );
-                      dispatch({ type: SET_SESSION, payload: switchData[0] });
-                      dispatch({ type: SET_PATIENT, payload: switchData[1] });
-                      let jumpTo = window.location.href.replace('refresh', 'theseus');
-                      window.location.replace(jumpTo);
-                    }}
-                    startIcon={<SwapHorizIcon size='small' />}
-                    className={classes.rowButtonFlat}
-                  >
-                    {'Switch to'}
-                  </Button>
-                </Box>
+                <React.Fragment>
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                    <Typography key={`HeadLine-superSize`} className={classes.adName}>{superSizeData.person_id}</Typography>
+                  </Box>
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                    <Button
+                      onClick={async () => {
+                        let switchData = await prepareSwitch(
+                          pPatient,
+                          superSizeData.person_id,
+                          `${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name}:`
+                        );
+                        dispatch({ type: SET_SESSION, payload: switchData[0] });
+                        dispatch({ type: SET_PATIENT, payload: switchData[1] });
+                        let jumpTo = window.location.href.replace('refresh', 'theseus');
+                        window.location.replace(jumpTo);
+                      }}
+                      startIcon={<SwapHorizIcon size='small' />}
+                      className={classes.rowButtonFlat}
+                    >
+                      {'Switch to'}
+                    </Button>
+                  </Box>
+                </React.Fragment>
               }
               {(pRole === 'admin' || pRole === 'responsible')
                 && pGroup
