@@ -1014,7 +1014,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                  {reactData.textInput.requestType && !(['meal'].includes(reactData.textInput.requestType)) &&
+                  {reactData?.textInput?.requestType && !(['meal'].includes(reactData.textInput.requestType)) &&
                     <React.Fragment>
                       <Button
                         className={classes.uploadButton}
