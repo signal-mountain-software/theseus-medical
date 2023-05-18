@@ -522,7 +522,12 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     if (aType.includes('//')) {
       [aClient, aType] = aType.split('//');
     }
-    let favorite = (pReason === 'History') || requestor.favorite_activities.includes(activityRec.activity_code);
+    let favorite = false;
+    if (pReason === 'History') { favorite = true; }
+    else { 
+      let foundIndex = requestor.favorite_activities.findIndex(r => { return (r.split('~')[0] === activityRec.activity_code); });
+      if (foundIndex > -1) { favorite = true; }
+    } 
     let pSort;
     if (activityRec.section_name && !favorite) {
       pSort = `#need-${numberOfRows}`;
