@@ -91,7 +91,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             pSubMenu.menu_name,                 // this menu name
             sectionColor,                       // this menu color
             sectionIcon,                        // this menu icon
-            `Sub-menu ${pSubMenu.event_id}`     // why is this row in the menu
+            (`${pSubMenu.reason} Sub-menu ${pSubMenu.event_id}`).trim()     // why is this row in the menu
           );
         if (this_row) { returnArray.push(this_row); }
       }
@@ -334,7 +334,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
               event_id: subName,
               parent: menuStructure[currentMenu].menuName,
               parent_name: menuStructure[currentMenu].menuName,
-              menu_name: subName
+              menu_name: subName,
+              reason: `Group ${this_group.group_id}`
             };
             let subLines = await handleSubMenu(subMenuObj, subActivities, subOverrides);
             returnArray.push(...subLines);
@@ -546,7 +547,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       section_icon: pSectionIcon,
       row_color: pSectionColor,
       activity_code: activityRec.activity_code,
-      activity_name: await resolveVariables(activityRec.name, { client_id: masterClient, patient_id: pPerson, user_id: pPerson }),
+      activity_name: await resolveVariables(activityRec.name, { client_id: aClient, patient_id: pPerson, user_id: pPerson }),
       row_type: activityRec.type,
       default_value: activityRec.validation?.default_value || null,
       parent_menu: pParent,
