@@ -575,15 +575,19 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let overrideDefault, overrideTitle;
     let parts = pActivityCode.split('~[');
     let pActivity = parts[0];
+    if (pActivity.includes('//')) {
+      [pClient, pActivity] = pActivity.split('//');
+      addClient = true;
+    }
     for (let p = 1; p < parts.length; p++) {
       let [iType, iData] = parts[p].split(/[=\]]/);
       switch (iType) {
         case 'default': {
-          overrideDefault = await resolveVariables(iData, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });
+          overrideDefault = await resolveVariables(iData, { client_id: pClient, patient_id: pPerson, user_id: pPerson });
           break;
         }
         case 'title': {
-          overrideTitle = await resolveVariables(iData, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });;
+          overrideTitle = await resolveVariables(iData, { client_id: pClient, patient_id: pPerson, user_id: pPerson });;
           break;
         }
         case 'env': {
@@ -617,10 +621,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         }
         default: { break; }
       }
-    }
-    if (pActivity.includes('//')) {
-      [pClient, pActivity] = pActivity.split('//');
-      addClient = true;
     }
     let aRecs = await dbClient
       .get({
