@@ -926,8 +926,7 @@ export async function writeSlot(body) {
     }
     else { subjectLine = 'Your event'; }
     subjectLine += ` on ${makeDate(occurrence).absolute}`;
-    messageText += `With regard to ${subjectLine}${locationLine}...  `;
-    messageText += `${slotDataObj.name} was`;
+    messageText += `${subjectLine} - ${slotDataObj.name} was`;
     subjectLine += ` - ${slotDataObj.name}`;
     if (body.status === 'released') {
       messageText += ` removed from this event.`;
