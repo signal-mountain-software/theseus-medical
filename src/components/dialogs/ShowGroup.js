@@ -170,17 +170,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     let patientSession = await getSession(pPatient);
     var returnObject = {};
     let foundGroups = [];
-    // First, get Groups that this person explicitly manages (as per the SessionsV2 table)
-    if ('groups_managed' in patientSession) {
-      patientSession.groups_managed.forEach(group => {
-        let [gID, gName] = group.split('~');
-        returnObject[gName.trim()] = {
-          group_id: gID.trim(),
-          role: 'responsible'
-        };
-        foundGroups.push(gID.trim());
-      });
-    }
 
     // If there are groups in the "responsible for" array, include those
     let respArray = [];
@@ -189,27 +178,34 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       else if (patientSession.responsible_for.startsWith('[')) { respArray = patientSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
       else { respArray.push(patientSession.responsible_for); }
     }
+
+    // Get Groups that this person explicitly manages (as per the SessionsV2 table)
+    if ('groups_managed' in patientSession) {
+      patientSession.groups_managed.forEach(group => {
+        let [gID,] = group.split('~');
+        if (!respArray.includes(gID)) { respArray.push(gID); }
+      });
+    }
+
+    // Put group names with these groups
     for (let g = 0; g < respArray.length; g++) {
-      let group = respArray[g];
-      if (!foundGroups.includes(group)) {
-        let checkGroup = await getGroupDetails(pSession.client_id, group);
-        if (checkGroup.hasOwnProperty('name')) {
-          returnObject[checkGroup.name.trim()] = {
-            group_id: group.trim(),
-            role: 'responsible'
-          };
-          foundGroups.push(group.trim());
-        }
+      let checkGroup = await getGroupDetails(pSession.client_id, respArray[g]);
+      if (checkGroup.hasOwnProperty('name') && (checkGroup.group_type !== 'parent')) {
+        returnObject[checkGroup.name.trim()] = {
+          group_id: respArray[g],
+          role: 'responsible'
+        };
       }
+      foundGroups.push(respArray[g]);
     };
 
     // Next, get any other Groups that this person belongs to
     var personRec = await getPerson(pPatient);
     for (let g = 0; g < personRec.groups.length; g++) {
       let group = personRec.groups[g];
-      if (!foundGroups.includes(group)) {
+      if (!respArray.includes(group)) {
         let checkGroup = await getGroupDetails(pSession.client_id, group);
-        if (checkGroup.hasOwnProperty('name')) {
+        if (checkGroup.hasOwnProperty('name') && (checkGroup.group_type !== 'parent')) {
           returnObject[checkGroup.name.trim()] = {
             group_id: group.trim(),
             role: 'member'
@@ -219,11 +215,11 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       }
     };
 
-    // Finally, get open Groups that this person does not already belong to
+    // Finally, get nny other Groups that need to be added
     let openGroups = await dbClient
-      .scan({
-        FilterExpression: 'client_id = :c and group_type = :o',
-        ExpressionAttributeValues: { ':c': pSession.client_id, ':o': 'open' },
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        ExpressionAttributeValues: { ':c': pSession.client_id },
         TableName: 'Groups',
       })
       .promise()
@@ -232,13 +228,13 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       });
     if (openGroups && ('Items' in openGroups)) {
       openGroups.Items.forEach(groupRec => {
-        if (!foundGroups.includes(groupRec.group_id)) {
-          returnObject[groupRec.name] =
-          {
-            group_id: groupRec.group_id,
-            role: 'non-member'
-          };
-          foundGroups.push(groupRec.group_id);
+        if (!foundGroups.includes(groupRec.group_id) && (groupRec.group_type !== 'parent')) {
+          if (respArray.includes('*all') || respArray.includes('*ALL')) {
+            returnObject[groupRec.name] = { group_id: groupRec.group_id, role: 'responsible' };
+          }
+          else if (['open', 'public'].includes(groupRec.group_type)) {
+            returnObject[groupRec.name] = { group_id: groupRec.group_id, role: 'non-member' };
+          }
         }
       });
     }
