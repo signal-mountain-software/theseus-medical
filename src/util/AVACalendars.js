@@ -926,18 +926,18 @@ export async function writeSlot(body) {
     }
     else { subjectLine = 'Your event'; }
     subjectLine += ` on ${makeDate(occurrence).absolute}`;
-    messageText += `${subjectLine} - ${slotDataObj.name} was`;
+    messageText += `${subjectLine} - ${slotDataObj.name}`;
     subjectLine += ` - ${slotDataObj.name}`;
     if (body.status === 'released') {
-      messageText += ` removed from this event.`;
+      messageText += ` removed`;
       subjectLine += ` removed`;
     }
     else {
-      messageText += ` added to this event`;
+      messageText += ` added`;
       if (slotDataObj.slot) {
         let maybeTime = makeSlotName(slotDataObj.slot);
         if (maybeTime.includes(':')) {
-          messageText += `, and selected the ${makeTime(slotDataObj.slot).time} time slot.`;
+          messageText += ` in the ${makeTime(slotDataObj.slot).time} slot.`;
         }
         else {
           messageText += `.`;
@@ -951,7 +951,7 @@ export async function writeSlot(body) {
     if (eventRec.eventData.event_data) { ownerList = makeArray(eventRec.eventData.event_data.owner); }
     else if (eventRec.calData) { ownerList = eventRec.calData.owner; }
     eventRec.eventData.messaging = {
-      action: "selected",
+      action: (body.status === 'released' ? "released" : "selected"),
       format: {
         subject: subjectLine,
         text: messageText
