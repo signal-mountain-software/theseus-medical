@@ -107,6 +107,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       },
       TableName: "ActivityEvent",
       IndexName: 'sequence-index',
+      ScanIndexForward: false
     };
     let mRecs = await dbClient
       .query(queryObj)
