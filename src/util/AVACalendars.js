@@ -913,16 +913,13 @@ export async function writeSlot(body) {
   if (eventRec.eventData && (!eventRec.eventData.messaging || (eventRec.eventData.messaging.length === 0))) {
     let subjectLine = '';
     let messageText = '';
-    let locationLine = '';
     let notesLine = '';
     if (eventRec.eventData.event_data) {
       subjectLine = eventRec.eventData.event_data.description;
-      locationLine = ` (${eventRec.eventData.event_data.location.description})`;
       if (slotDataObj.notes) { notesLine = `  \r\n\nNotes - ${slotDataObj.notes}`; }
     }
     else if (eventRec.calData) {
       subjectLine = eventRec.calData.description;
-      locationLine = ` (${eventRec.calData.location})`;
     }
     else { subjectLine = 'Your event'; }
     subjectLine += ` on ${makeDate(occurrence).absolute}`;
