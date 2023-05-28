@@ -93,11 +93,11 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ titleText, promptText, buttonText, onCancel, onSave, allowCancel = true }) => {
+export default ({ titleText, promptText, valueText, buttonText, onCancel, onSave, allowCancel = true }) => {
 
   const classes = useStyles();
 
-  const [textInput, setTextInput] = React.useState([]);
+  const [textInput, setTextInput] = React.useState(valueText ? (Array.isArray(valueText) ? valueText : [valueText]) : []);
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
 
   const handleChangeTextInput = (event, ndx) => {

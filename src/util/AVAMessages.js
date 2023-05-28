@@ -127,7 +127,7 @@ export async function prepareMessage(inBody) {
         if (requestToTest.selections && requestToTest.selections.includes(t.check)) { passedTest = true; }
       }
       // there is a test condition
-      else if (t.check in requestToTest.textInput) {  // checking text input against t.test
+      else if (requestToTest.textInput && (requestToTest.textInput.hasOwnProperty(t.check))) {  // checking text input against t.test
         if (requestToTest.textInput[t.check].toLowerCase().includes(t.test.toLowerCase())) { passedTest = true; }
       }
       else if (t.check) {    // resolve whatever is being checked and test it against t.test (or array of t.tests)

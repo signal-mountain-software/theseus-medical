@@ -272,6 +272,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   let required = false;
   let displayBold = false;
   let displayItalic = false;
+  const defaultCheckedWords = ['checked', 'on', 'selected', 'true'];
 
   if (!reactData.initialLoadComplete) {
     let defaultObj = {};
@@ -328,6 +329,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       if (ignore) { continue; }
 
       // This handles any row without a leading "~"
+      // These will be checkbox fields UNLESS a previous instruction turned checkbox OFF (~[checkbox=OFF])
       if (instruction[0]) {
         displayRowList.push({
           checkbox,
@@ -339,14 +341,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           bold: displayBold,
           italic: displayItalic
         });
-        if (['checked', 'on', 'selected', 'true'].includes(dValue)) { defaultChecked.push(instruction[0]); }
+        // default the checkbox to checked if either:
+        //   a previous instruction set the default for all checkboxes to ON (~[default=checked]), OR
+        //   a passed in default for this item instructs AVA to set the checkbox ON
+        if (defaultCheckedWords.includes(dValue)
+          || (defaultObj.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaultObj[instruction[0]]))) {
+          defaultChecked.push(instruction[0]);
+        }
         continue;
       }
 
       // Dropping through to here means that instruction[0] was null/blank
       //    (ie. there was nothing before the first "~"; the row started with "~")
       // This handles rows in the form "~<instruction[1]>:<instruction[2]>", for example
-      //     "~lambda:<instruction[2]>"
+      //     "~lambda:ServiceRequestMaintenance" or
+      //     "~prompt:Notes for the Dining Staff..."
       if (instruction[2]) {
         displayRowList.push({
           checkbox: (instruction[1].includes('withCheckBox')),
@@ -357,6 +366,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           input: instruction[1]
         });
         if (dValue) { defaultObj[instruction[2]] = dValue; }
+        if (defaultObj.hasOwnProperty(`private~${instruction[2]}`)) {
+          if (!reactData.textInput) { reactData.textInput = {}; }
+          reactData.textInput[instruction[2]] = defaultObj[`private~${instruction[2]}`];
+          fact.value.freeText[instruction[2]] = defaultObj[`private~${instruction[2]}`];
+        }
         continue;
       }
 
@@ -374,7 +388,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       });
       if (dValue) { defaultObj[instruction[1]] = dValue; }
     };
-    reactData.textInput = defaultObj;
+    if (defaultObj && (Object.keys(defaultObj).length > 0)) {
+      for (const key in defaultObj) {
+        if (!key.startsWith('private~')) {
+          if (!reactData.textInput) { reactData.textInput = {}; }
+          reactData.textInput[key] = defaultObj[key];
+        }
+        else { delete fact?.value?.freeText[key]; }
+      }
+    }
     reactData.initialLoadComplete = true;
     setDataRows({ displayRows: displayRowList, dataRows: {}, checked: defaultChecked });
     setReactData(reactData);
@@ -992,7 +1014,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                  {reactData.textInput.requestType && !(['meal'].includes(reactData.textInput.requestType)) &&
+                  {reactData?.textInput?.requestType && !(['meal'].includes(reactData.textInput.requestType)) &&
                     <React.Fragment>
                       <Button
                         className={classes.uploadButton}

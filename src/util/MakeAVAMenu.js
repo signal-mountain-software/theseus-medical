@@ -91,7 +91,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             pSubMenu.menu_name,                 // this menu name
             sectionColor,                       // this menu color
             sectionIcon,                        // this menu icon
-            `Sub-menu ${pSubMenu.event_id}`     // why is this row in the menu
+            (`${pSubMenu.reason} Sub-menu ${pSubMenu.event_id}`).trim()     // why is this row in the menu
           );
         if (this_row) { returnArray.push(this_row); }
       }
@@ -107,6 +107,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       },
       TableName: "ActivityEvent",
       IndexName: 'sequence-index',
+      ScanIndexForward: false
     };
     let mRecs = await dbClient
       .query(queryObj)
@@ -334,7 +335,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
               event_id: subName,
               parent: menuStructure[currentMenu].menuName,
               parent_name: menuStructure[currentMenu].menuName,
-              menu_name: subName
+              menu_name: subName,
+              reason: `Group ${this_group.group_id}`
             };
             let subLines = await handleSubMenu(subMenuObj, subActivities, subOverrides);
             returnArray.push(...subLines);
@@ -522,7 +524,12 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     if (aType.includes('//')) {
       [aClient, aType] = aType.split('//');
     }
-    let favorite = (pReason === 'History') || requestor.favorite_activities.includes(activityRec.activity_code);
+    let favorite = false;
+    if (pReason === 'History') { favorite = true; }
+    else { 
+      let foundIndex = requestor.favorite_activities.findIndex(r => { return (r.split('~')[0] === activityRec.activity_code); });
+      if (foundIndex > -1) { favorite = true; }
+    } 
     let pSort;
     if (activityRec.section_name && !favorite) {
       pSort = `#need-${numberOfRows}`;
@@ -541,7 +548,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       section_icon: pSectionIcon,
       row_color: pSectionColor,
       activity_code: activityRec.activity_code,
-      activity_name: await resolveVariables(activityRec.name, { client_id: masterClient, patient_id: pPerson, user_id: pPerson }),
+      activity_name: await resolveVariables(activityRec.name, { client_id: aClient, patient_id: pPerson, user_id: pPerson }),
       row_type: activityRec.type,
       default_value: activityRec.validation?.default_value || null,
       parent_menu: pParent,
@@ -569,15 +576,19 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let overrideDefault, overrideTitle;
     let parts = pActivityCode.split('~[');
     let pActivity = parts[0];
+    if (pActivity.includes('//')) {
+      [pClient, pActivity] = pActivity.split('//');
+      addClient = true;
+    }
     for (let p = 1; p < parts.length; p++) {
       let [iType, iData] = parts[p].split(/[=\]]/);
       switch (iType) {
         case 'default': {
-          overrideDefault = await resolveVariables(iData, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });
+          overrideDefault = await resolveVariables(iData, { client_id: pClient, patient_id: pPerson, user_id: pPerson });
           break;
         }
         case 'title': {
-          overrideTitle = await resolveVariables(iData, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });;
+          overrideTitle = await resolveVariables(iData, { client_id: pClient, patient_id: pPerson, user_id: pPerson });;
           break;
         }
         case 'env': {
@@ -611,10 +622,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         }
         default: { break; }
       }
-    }
-    if (pActivity.includes('//')) {
-      [pClient, pActivity] = pActivity.split('//');
-      addClient = true;
     }
     let aRecs = await dbClient
       .get({

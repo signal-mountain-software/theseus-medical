@@ -31,9 +31,6 @@ import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
-import Collapse from '@material-ui/core/Collapse';
-import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import EditIcon from '@material-ui/icons/PersonOutlineOutlined';
 import FavoriteIcon from '@material-ui/icons/FavoriteBorder';
 import NotFavorite from '@material-ui/icons/DeleteForever';
@@ -252,7 +249,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [showNewFactDialog, setShowNewFactDialog] = React.useState(-1);
   const [needsConfirmation, setNeedsConfirmation] = React.useState(-1);
   const [toggleClick, setToggleClick] = React.useState(false);
-  const [rowOpen, setRowOpen] = React.useState(-1);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
   const [groupData, setGroupData] = React.useState({});
@@ -535,40 +531,28 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if ('favorite_activities' in personRec.Item) {
         favoriteList = personRec.Item.favorite_activities;
       }
-      if (!favoriteList.includes(activityLine)) {
-        if (pType === 'add') {
-          favoriteList.unshift(activityLine);
-          changeMade = true;
-        }
+      let indexAt = favoriteList.findIndex(r => { return (r.split('~')[0] === activityRow.activity_code); });
+      if ((indexAt === -1) && (pType === 'add')) {
+        favoriteList.unshift(activityLine);
+        changeMade = true;
       }
-      else {
-        if (pType === 'remove') {
-          let indexAt = favoriteList.findIndex(r => { return (r === activityLine); });
-          if (indexAt > -1) {
-            favoriteList.splice(indexAt, 1);
-            changeMade = true;
-          }
-        }
+      else if (pType === 'remove') {
+        favoriteList.splice(indexAt, 1);
+        changeMade = true;
       }
       // remove from the blockedList if it is in there
       let favoriteBlocked = [];
       if ('favorite_blocked' in personRec.Item) {
         favoriteBlocked = personRec.Item.favorite_blocked;
       }
-      if (!favoriteBlocked.includes(activityLine)) {
-        if (pType === 'remove') {
-          favoriteBlocked.push(activityLine);
-          changeMade = true;
-        }
+      indexAt = favoriteBlocked.findIndex(r => { return (r.split('~')[0] === activityRow.activity_code); });
+      if ((indexAt === -1) && (pType === 'remove')) {
+        favoriteBlocked.push(activityLine);
+        changeMade = true;
       }
-      else {
-        if (pType === 'add') {
-          let indexAt = favoriteBlocked.findIndex(r => { return (r === activityLine); });
-          if (indexAt > -1) {
-            favoriteBlocked.splice(indexAt, 1);
-            changeMade = true;
-          }
-        }
+      else if (pType === 'add') {
+        favoriteBlocked.splice(indexAt, 1);
+        changeMade = true;
       }
       // rewrite the People record with the new favorite and blocked lists
       if (changeMade) {
@@ -620,7 +604,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       setMainMenu(mainMenu);
       setLoading(false);
       setForceRedisplay(!forceRedisplay);
-    }
+    };
     return;
   };
 
@@ -837,6 +821,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
     }
     let returnArray = [];
+    // check for default values in the person's record
+    if (patient.hasOwnProperty('defaultValues')) {
+      let pDefaults = patient.defaultValues;
+      for (let key in pDefaults) {
+        returnArray.push(`private~${key}=${pDefaults[key]}`);
+      }
+    }
+    // now pull in default values associated with this specific function call
     let factClient;
     let defaultValues = makeArray(fact.default_value, /\s~|~\s/g);
     for (let d = 0; d < defaultValues.length; d++) {
@@ -873,53 +865,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
     return returnArray;
   }
-
-  const getActivityHistory = async (pActivity) => {
-    let invokeFailed = false;
-    let cClient = defaultClient;
-    let cActivity = pActivity;
-    if (pActivity.includes('//')) {
-      [cClient, cActivity] = pActivity.split('//');
-    }
-    var payload =
-    {
-      'test': false,
-      'body': {
-        "clientId": cClient,
-        "personId": pPerson,
-        "activityType": `$$${cActivity}`,
-        "limit": 100,
-        "fact_data": true,
-        "historyOnly": true,
-        "use_short_date": true,
-        "kiosk_mode": false
-      }
-    };
-    let params = {
-      FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:thesesus-activityList',
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify(payload)
-    };
-    let fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        if (err.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-        }
-        cl('Call for Activity details failed.  Error is', JSON.stringify(err));
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let activityResponse = JSON.parse(fResp.Payload);
-      if (activityResponse.status === 200) {
-        setSelected(activityResponse.body.activityData[0]);
-        return activityResponse.body.activityData[0];
-      }
-    };
-    return [];
-  };
 
   async function getAllGroups(pPatient) {
     let responseData = {};
@@ -967,28 +912,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setAnchorEl(event.currentTarget);
   };
 
-  let pendingColor;
-  function setPending(pColor) {
-    pendingColor = pColor;
-    return pColor;
-  };
-
-  function clearPending(pColor) {
-    pendingColor = null;
-    return pColor;
-  };
-
-  let lastColor, lastOpen;
   function rowIsOpen(pRow) {
-    if (sectionOpen[pRow.section_name] || (currentMenu !== 'main')) {
-      lastOpen = true;
-      lastColor = pRow.row_color;
-      return true;
-    }
-    else {
-      lastOpen = false;
-      return false;
-    }
+    return (sectionOpen[pRow.section_name] || (currentMenu !== 'main'));
   }
 
   // ******************
@@ -1256,7 +1181,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
                   <Box
                     display='flex'
-                    style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: clearPending('#d25958'), textDecoration: 'none' }}
+                    style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: '#d25958', textDecoration: 'none' }}
                     ml={2} mr={2}
                     justifyContent='center'
                     flexDirection='column'
@@ -1301,19 +1226,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                       <React.Fragment
                         key={'on-section-break' + index}
                       >
-                        {(index > 0) && lastOpen &&
-                          <Box
-                            display='flex'
-                            style={{
-                              borderRadius: '0px 0px 30px 30px',
-                              backgroundColor: clearPending(lastColor),
-                              textDecoration: 'none'
-                            }}
-                            ml={2} mr={2}
-                            justifyContent='center'
-                            flexDirection='column'
-                            height={30}
-                          />}
                         <Paper ml={2} mr={2} mt={1.5} elevation={0} component={Box} key={this_row.activity_code + 'section' + index} >
                           <Box
                             display='flex'
@@ -1356,150 +1268,116 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                       </React.Fragment>
                     }
                     {rowIsOpen(this_row) &&
-                      <Paper component={Box} elevation={0}
-                        ml={2} mr={2} mt={.2} mb={.2} key={this_row.activity_code + 'detail' + index} >
-                        <Box
-                          display='flex'
-                          style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: setPending(this_row.row_color), textDecoration: 'none' }}
-                          p={2}
-                          justifyContent='center'
-                          flexDirection='column'
-                          minHeight={60}
-                        >
+                      <React.Fragment>
+                        <Paper component={Box} elevation={0}
+                          ml={2} mr={2} mt={.2} mb={.2} key={this_row.activity_code + 'detail' + index} >
                           <Box
-                            display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                            key={this_row.activity_code + 'detailrow' + index}
-                            className={classes.listItem}
-                            onContextMenu={async (e) => {
-                              e.preventDefault();
-                              enqueueSnackbar(`AVA function=${this_row.activity_code} **** type=${this_row.row_type} **** reason=${this_row.reason} **** user=${session.user_id}`, { variant: 'info', persist: true });
-                            }}
+                            display='flex'
+                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                            p={2}
+                            justifyContent='center'
+                            flexDirection='column'
+                            minHeight={60}
                           >
                             <Box
-                              display='flex'
-                              mr={2}
-                              flexGrow={1}
-                              flexDirection='row'
-                              justifyContent='space-between'
-                              alignItems='center'
-                              onClick={async () => {
-                                await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
-                                if (!toggleClick && (this_row.row_type !== 'document')) {
-                                  if (this_row.subMenu_data) {
-                                    let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
-                                    delete mainMenu[index].subMenu_data;
-                                    mainMenu.push(...subMenu);
-                                    setMainMenu(mainMenu);
-                                  }
-                                  if (this_row.child_menu) {
-                                    setCurrentMenu(this_row.child_menu);
-                                    menuArray.push(this_row.child_menu);
-                                    setMenuArray(menuArray);
-                                    menuNames.push((currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
-                                    setMenuNames(menuNames);
-                                    setForceRedisplay(!forceRedisplay);
-                                  }
-                                  else {
-                                    await getActivityDetail(this_row);
-                                    setShowNewFactDialog(index);
-                                  }
-                                }
-                                setToggleClick(false);
+                              display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                              key={this_row.activity_code + 'detailrow' + index}
+                              className={classes.listItem}
+                              onContextMenu={async (e) => {
+                                e.preventDefault();
+                                enqueueSnackbar(`AVA function=${this_row.activity_code} **** type=${this_row.row_type} **** reason=${this_row.reason} **** user=${session.user_id}`, { variant: 'info', persist: true });
                               }}
                             >
-                              {this_row.row_type === 'document' ?
-                                <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
-                                  <Typography variant='h5'>{this_row.activity_name}</Typography>
-                                </a>
-                                :
-                                <Typography variant='h5'>{this_row.activity_name}</Typography>
-                              }
-                            </Box>
-                            <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-                              {(this_row.last_used > -1) &&
-                                <IconButton
-                                  aria-label='showActivities'
-                                  size='small'
-                                  onClick={async () => {
-                                    setToggleClick(true);
-                                    if (rowOpen === index) {
-                                      setRowOpen(-1);
+                              <Box
+                                display='flex'
+                                mr={2}
+                                flexGrow={1}
+                                flexDirection='row'
+                                justifyContent='space-between'
+                                alignItems='center'
+                                onClick={async () => {
+                                  await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
+                                  if (!toggleClick && (this_row.row_type !== 'document')) {
+                                    if (this_row.subMenu_data) {
+                                      let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
+                                      delete mainMenu[index].subMenu_data;
+                                      mainMenu.push(...subMenu);
+                                      setMainMenu(mainMenu);
+                                    }
+                                    if (this_row.child_menu) {
+                                      setCurrentMenu(this_row.child_menu);
+                                      menuArray.push(this_row.child_menu);
+                                      setMenuArray(menuArray);
+                                      menuNames.push((currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
+                                      setMenuNames(menuNames);
+                                      setForceRedisplay(!forceRedisplay);
                                     }
                                     else {
-                                      await getActivityHistory(this_row.activity_code);
-                                      setRowOpen(index);
+                                      await getActivityDetail(this_row);
+                                      setShowNewFactDialog(index);
                                     }
-                                    setForceRedisplay(!forceRedisplay);
-                                  }}
-                                >
-                                  {(rowOpen !== index) ? <ExpandMoreIcon /> : <ExpandLessIcon />}
-                                </IconButton>
-                              }
-                              {(this_row.is_favorite) ?
-                                ((['Favorite', 'History'].includes(this_row.reason)) &&
+                                  }
+                                  setToggleClick(false);
+                                }}
+                              >
+                                {this_row.row_type === 'document' ?
+                                  <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
+                                    <Typography variant='h5'>{this_row.activity_name}</Typography>
+                                  </a>
+                                  :
+                                  <Typography variant='h5'>{this_row.activity_name}</Typography>
+                                }
+                              </Box>
+                              <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                                {(this_row.is_favorite) ?
+                                  ((['Favorite', 'History'].includes(this_row.reason)) &&
+                                    <IconButton
+                                      aria-label='showActivities'
+                                      size='small'
+                                      onClick={async () => {
+                                        await updateFavorites('remove', index);
+                                        setForceRedisplay(!forceRedisplay);
+                                      }}
+                                    >
+                                      <NotFavorite fontSize="small" />
+                                    </IconButton>)
+                                  :
                                   <IconButton
                                     aria-label='showActivities'
                                     size='small'
                                     onClick={async () => {
-                                      await updateFavorites('remove', index);
+                                      await updateFavorites('add', index);
                                       setForceRedisplay(!forceRedisplay);
                                     }}
                                   >
-                                    <NotFavorite fontSize="small" />
-                                  </IconButton>)
-                                :
-                                <IconButton
-                                  aria-label='showActivities'
-                                  size='small'
-                                  onClick={async () => {
-                                    await updateFavorites('add', index);
-                                    setForceRedisplay(!forceRedisplay);
-                                  }}
-                                >
-                                  <FavoriteIcon fontSize="small" />
-                                </IconButton>
-                              }
+                                    <FavoriteIcon fontSize="small" />
+                                  </IconButton>
+                                }
+                              </Box>
                             </Box>
                           </Box>
-                        </Box>
-                        <Collapse in={(rowOpen === index)} timeout="auto" unmountOnExit>
+                        </Paper>
+                        {((index === (mainMenu.length - 1))
+                          || (this_row.menu_name !== mainMenu[index + 1].menu_name)
+                          || (this_row.section_name !== mainMenu[index + 1].section_name)
+                        ) &&
                           <Box
-                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: setPending(this_row.row_color), textDecoration: 'none' }}
                             display='flex'
-                            flexDirection='row' paddingBottom={1} justifyContent='flex-start' alignItems='center'
-                          >
-                            {(rowOpen === index) &&
-                              <Box display={'block'} ml={5} mr={2} pb={2}>
-                                <Typography key={'nohistory'} variant='body2'>
-                                  <strong> {`Last used ${new Date(this_row.last_used).toLocaleString()}`} </strong>
-                                </Typography>
-                              </Box>
-                            }
-                          </Box>
-                        </Collapse>
-                      </Paper>
+                            style={{
+                              borderRadius: '0px 0px 30px 30px',
+                              backgroundColor: this_row.row_color,
+                              textDecoration: 'none'
+                            }}
+                            ml={2} mr={2}
+                            justifyContent='center'
+                            flexDirection='column'
+                            height={30}
+                          />}
+                      </React.Fragment>
                     }
                   </React.Fragment>
                 )
               ))}
-              {(rowIsOpen(mainMenu[mainMenu.length - 1]) || pendingColor) &&
-                <Box
-                  display='flex'
-                  style={{
-                    borderRadius: '0px 0px 30px 30px',
-                    backgroundColor: clearPending(pendingColor || lastColor),
-                    textDecoration: 'none'
-                  }}
-                  ml={2} mr={2}
-                  justifyContent='center'
-                  flexDirection='column'
-                  height={30}
-                  onContextMenu={async (e) => {
-                    e.preventDefault();
-                    enqueueSnackbar(`Open row=${mainMenu[mainMenu.length - 1].section_name}`, { variant: 'info', persist: true });
-                  }}
-                />
-              }
             </List>
           </Paper>
         }

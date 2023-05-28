@@ -51,7 +51,7 @@ export async function getServiceRequests(body) {
       if (error.code === 'NetworkingError') {
         console.log(`Security Violation or no Internet Connection`);
       }
-      console.log({ 'Error reading ServiceRequests by Person': error });
+      console.log({ 'Error reading ServiceRequests': error, index: qQ.IndexName, qQ });
     });
   if (recordExists(qR)) {
     return qR.Items.sort((a, b) => {
@@ -117,18 +117,6 @@ export async function putServiceRequest(body) {
   if (body.attachments && (body.attachments.length > 0)) { 
     serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; })
   }
-  cl({ 'adding ServiceRequestRec as': serviceRequestRec });
-  let goodWrite = true;
-  await dbClient
-    .put({
-      Item: serviceRequestRec,
-      TableName: "ServiceRequests"
-    })
-    .promise()
-    .catch(error => {
-      clt({ 'Bad put to ServiceRequests - caught error is': error });
-      goodWrite = false;
-    });
   if (body.messaging) {
     let preparedMessages = await prepareMessage(body);
     if (preparedMessages.length > 0) {
@@ -156,9 +144,20 @@ export async function putServiceRequest(body) {
         serviceRequestRec.history.unshift(rMsg);
       }
       else { serviceRequestRec.history = [rMsg]; }
-      updateServiceRequest(serviceRequestRec);
     }
   }
+  cl({ 'adding ServiceRequestRec as': serviceRequestRec });
+  let goodWrite = true;
+  await dbClient
+    .put({
+      Item: serviceRequestRec,
+      TableName: "ServiceRequests"
+    })
+    .promise()
+    .catch(error => {
+      clt({ 'Bad put to ServiceRequests - caught error is': error });
+      goodWrite = false;
+    });
   return {
     'request_id': serviceRequestRec.request_id,
     'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')

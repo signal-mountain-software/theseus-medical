@@ -55,7 +55,7 @@ export async function getPersonFromPartialID(pClient, pID) {
             if (error.code === 'NetworkingError') {
                 console.log(`Security Violation or no Internet Connection`);
             }
-            console.log({ 'Error reading ServiceRequests by Person': error });
+            console.log({ 'Error reading People by Person ID': error });
         });
     if (recordExists(qR)) {
         for (let p = 0; p < qR.Items.length; p++) {
@@ -93,7 +93,7 @@ export async function getPersonFromLocation(pClient, pLoc) {
             if (error.code === 'NetworkingError') {
                 console.log(`Security Violation or no Internet Connection`);
             }
-            console.log({ 'Error reading ServiceRequests by Person': error });
+            console.log({ 'Error reading Person by Location': error });
         });
     if (recordExists(qR)) {
         for (let p = 0; p < qR.Items.length; p++) {
@@ -108,8 +108,7 @@ export async function getPersonByName(pClient, pFirstName, pLastName) {
     if (!pLastName) { [pFirstName, pLastName] = pFirstName.split(' '); }
     let qQ = { TableName: 'People' };
     qQ.IndexName = 'display_name-index';
-    qQ.KeyConditionExpression = 'client_id = :c';
-    qQ.FilterExpression = 'contains(#f, :f) and contains(#f, :l)';
+    qQ.KeyConditionExpression = 'client_id = :c and contains(#f, :f) and contains(#f, :l)';
     qQ.ExpressionAttributeValues = { ':c': pClient, ':f': sentenceCase(pFirstName), ':l': sentenceCase(pLastName) };
     qQ.ExpressionAttributeNames = { '#f': 'display_name' }
     let qR = await dbClient
@@ -119,7 +118,7 @@ export async function getPersonByName(pClient, pFirstName, pLastName) {
             if (error.code === 'NetworkingError') {
                 console.log(`Security Violation or no Internet Connection`);
             }
-            console.log({ 'Error reading ServiceRequests by Person': error });
+            console.log({ 'Error reading People by Name': error });
         });
     if (recordExists(qR)) {
         for (let p = 0; p < qR.Items.length; p++) {
