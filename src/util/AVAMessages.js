@@ -279,7 +279,10 @@ export async function resolveMessageVariables(inString, body) {
       case 'requestor':
       case 'self':
       case 'user': {
-        workString = `${front}${body.author}${back}`;
+        if (body.hasOwnProperty('requestID')) {
+          workString = `${front}${body.requestID.split('~')[0]}${back}`;
+        }
+        else { workString = `${front}${body.author}${back}`; }
         break;
       }
       case 'selections': {
