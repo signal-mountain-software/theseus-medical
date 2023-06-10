@@ -27,20 +27,6 @@ const useStyles = makeStyles(theme => ({
   contentBox: {
     minWidth: '100%'
   },
-  rowButtonRed: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-  },
-  rowButtonGreen: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-  },
   radioButton: {
     marginTop: 0,
     marginRight: 10,
@@ -61,26 +47,22 @@ const useStyles = makeStyles(theme => ({
     fontSize: '1.3rem',
     fontWeight: 'bold'
   },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  },
   buttonArea: {
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
-  },
-  rowButtonConfirm: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-  },
-  rowButtonReject: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    backgroundColor: theme.palette.reject[theme.palette.type],
   },
   idText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -206,7 +188,8 @@ export default ({ titleText, promptText, valueText, buttonText, onCancel, onSave
         <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           {allowCancel &&
             <Button
-              className={classes.rowButtonRed}
+              className={classes.AVAButton}
+              style={{color: 'red'}}
               size='small'
               onClick={() => {
                 onCancel();
@@ -217,7 +200,7 @@ export default ({ titleText, promptText, valueText, buttonText, onCancel, onSave
             </Button>
           }
           <Button
-            className={classes.rowButtonGreen}
+            className={classes.AVAButton}
             size='small'
             onClick={handleSave}
             startIcon={<LoadIcon size="small" />}

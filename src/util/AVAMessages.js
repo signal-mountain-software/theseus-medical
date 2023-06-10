@@ -196,6 +196,7 @@ export async function prepareMessage(inBody) {
             results.subject = rule.value;
             break;
           }
+          case 'method':
           case 'override_method': {
             results.preferred_method = rule.value;
             break;
@@ -210,6 +211,7 @@ export async function prepareMessage(inBody) {
             skipTo = rule.value;
             break;
           }
+          case 'replace_message':
           case 'create_message': {
             messageList.push(rule.value);
             break;

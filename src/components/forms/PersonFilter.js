@@ -26,6 +26,18 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     paddingTop: 0,
   },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  },
   noDisplay: {
     display: 'none',
     visibility: 'hidden'
@@ -40,14 +52,6 @@ const useStyles = makeStyles(theme => ({
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
     minHeight: theme.typography.fontSize * 1.8,
-  },
-  reject: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.confirm[theme.palette.type],
   },
   title: {
     marginTop: theme.spacing(3),
@@ -349,7 +353,8 @@ export default ({
       </Paper>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
-          className={classes.reject}
+          className={classes.AVAButton}
+          style={{ color: 'red' }}
           onClick={() => {
             onCancel();
           }}
@@ -359,7 +364,8 @@ export default ({
         </Button>
         {multiSelect &&
           <Button
-            className={classes.reject}
+            className={classes.AVAButton}
+            style={{color: 'green'}}
             onClick={() => {
               if (returnValue === 'object') { onSelect(checkList); }
               else { onSelect(Object.keys(checkList)); }

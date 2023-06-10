@@ -56,10 +56,19 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.4,
     minHeight: theme.typography.fontSize * 2.8,
   },
-  reject: {
-    backgroundColor: theme.palette.reject[theme.palette.type],
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
   },
-  title: {
+ title: {
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
@@ -86,38 +95,6 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     textTransform: 'none',
     size: 'small'
-  },
-  rowButtonDefault: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // backgroundColor: theme.palette.primary[theme.palette.type],
-  },
-  rowButtonRed: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // backgroundColor: theme.palette.reject[theme.palette.type],
-  },
-  rowButtonGreen: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.confirm[theme.palette.type],
-  },
-  rowButtonBlue: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // backgroundColor: theme.palette.info[theme.palette.type],
   },
   picture: {
     width: theme.spacing(16),
@@ -323,11 +300,12 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
       }
         <DialogActions className={classes.buttonArea} >
           <Button
-            className={classes.rowButtonRed}
+          className={classes.AVAButton}
+          style={{ color: 'red' }}
+          startIcon={<CloseIcon fontSize="small" />}
             onClick={() => {
               onCancel();
             }}
-            startIcon={<CloseIcon fontSize="small" />}
           >
             {'Done'}
           </Button>
@@ -336,7 +314,7 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
               onClick={() => {
                 setPromptForName(true);
               }}
-              className={classes.rowButtonGreen}
+              className={classes.AVAButton}
               startIcon={<GroupAddIcon fontSize="small" />}
             >
               {`New Group`}

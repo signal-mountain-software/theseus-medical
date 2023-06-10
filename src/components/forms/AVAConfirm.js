@@ -6,6 +6,8 @@ import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 
 import Button from '@material-ui/core/Button';
+import GoBackIcon from '@material-ui/icons/SettingsBackupRestore';
+import CheckIcon from '@material-ui/icons/DoneSharp';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
@@ -26,13 +28,18 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '90%',
     marginRight: theme.spacing(2),
   },
-  reject: {
-    backgroundColor: theme.palette.reject[theme.palette.type],
-  },
-  greenButton: {
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     variant: 'outlined',
-    backgroundColor: 'green',
-  },
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  }
 }));
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
@@ -120,9 +127,10 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       <DialogActions style={{ justifyContent: 'center' }}>
         {(cancelText !== '*none*') &&
           <Button
-            className={classes.reject}
+            className={classes.AVAButton}
+            startIcon={<GoBackIcon />}
+            style={{ color: 'red' }}
             size='small'
-            variant='contained'
             onClick={() => {
               onCancel();
             }}>
@@ -131,9 +139,9 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
         }
         {(confirmText !== '*none*') &&
           <Button
-            className={classes.greenButton}
+            className={classes.AVAButton}
+            startIcon={<CheckIcon />}
             size='small'
-            variant='contained'
             onClick={() => {
               onConfirm();
             }}>

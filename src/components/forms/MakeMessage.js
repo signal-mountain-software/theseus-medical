@@ -53,6 +53,18 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
   },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  },
   buttonArea: {
     justifyContent: 'center',
     marginTop: theme.spacing(1),
@@ -60,36 +72,6 @@ const useStyles = makeStyles(theme => ({
   },
   tightRight: {
     marginRight: 0
-  },
-  rowButtonConfirm: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.4px solid gray',
-    textTransform: 'none',
-    fontWeight: 'bold',
-    size: 'small',
-    color: theme.palette.confirm[theme.palette.type],
-  },
-  uploadButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.4px solid gray',
-    textTransform: 'none',
-    fontWeight: 'bold',
-    size: 'small',
-    color: theme.palette.primary[theme.palette.type],
-  },
-  rowButtonReject: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(2),
-    variant: 'outlined',
-    border: '0.4px solid gray',
-    textTransform: 'none',
-    fontWeight: 'bold',
-    size: 'small',
-    color: theme.palette.reject[theme.palette.type],
   },
   radioButton: {
     marginTop: 0,
@@ -578,7 +560,7 @@ export default ({
               alignItems='center' key={'qrOpt_attachmentbox'}
             >
               <Button
-                className={classes.uploadButton}
+                className={classes.AVAButton}
                 size='small'
                 startIcon={<CloudUploadIcon />}
                 onClick={handleFileUpload}
@@ -600,7 +582,8 @@ export default ({
             <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
               {allowCancel &&
                 <Button
-                  className={classes.rowButtonReject}
+                  className={classes.AVAButton}
+                  style={{ color: 'red' }}
                   size='small'
                   onClick={() => {
                     onCancel();
@@ -611,7 +594,8 @@ export default ({
                 </Button>
               }
               <Button
-                className={classes.rowButtonConfirm}
+                className={classes.AVAButton}
+                style={{ color: 'green' }}
                 size='small'
                 disabled={noInput()}
                 onClick={async () => {
