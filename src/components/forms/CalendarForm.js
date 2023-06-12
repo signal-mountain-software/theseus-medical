@@ -1,5 +1,7 @@
 import React from 'react';
+import { useSnackbar } from 'notistack';
 
+import { makeDate, addDays } from '../../util/AVADateTime';
 import { getCalendarEntries } from '../../util/AVACalendars';
 import { cl } from '../../util/AVAUtilities';
 
@@ -12,12 +14,16 @@ import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import CloseIcon from '@material-ui/icons/ExitToApp';
+
 import CalendarEventEditForm from './CalendarEventEditForm';
 
 import TextField from '@material-ui/core/TextField';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
+import Forward10Icon from '@material-ui/icons/Update';
+import Backward10Icon from '@material-ui/icons/History';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -25,7 +31,6 @@ import MenuItem from '@material-ui/core/MenuItem';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import DialogContent from '@material-ui/core/DialogContent';
 import Dialog from '@material-ui/core/Dialog';
-import DialogActions from '@material-ui/core/DialogActions';
 
 import Button from '@material-ui/core/Button';
 
@@ -84,11 +89,17 @@ const useStyles = makeStyles(theme => ({
   popUpFooter: {
     fontSize: theme.typography.fontSize * 0.8,
   },
-  defaultButton: {
-    alignSelf: 'end',
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     variant: 'outlined',
-    verticalAlign: 'end',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
   },
   freeInput: {
     marginRight: 2,
@@ -101,35 +112,19 @@ const useStyles = makeStyles(theme => ({
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
   },
-  confirm: {
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-  },
-  unavailable: {
-    backgroundColor: theme.palette.warning.light[theme.palette.type],
-  },
-  topButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
+  subDescriptionText2: {
+    marginTop: 0,
+    marginBottom: 0,
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    fontSize: '0.8rem',
   },
   subDescriptionText: {
     marginTop: 0,
-    marginBottom: theme.spacing(1),
+    marginBottom: 0,
     marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(5),
+    marginRight: theme.spacing(1),
     fontSize: '0.8rem',
-  },
-  resetButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-    marginRight: 10,
-  },
-  infoButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.info[theme.palette.type],
-    marginRight: 10,
-    paddingRight: 10,
-    marginLeft: 10,
-    paddingLeft: 10,
   },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -144,23 +139,13 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
-  radioButton: {
-    marginTop: 0,
-    marginRight: 0,
-    marginLeft: 0,
-    paddingLeft: 0,
-    paddingRight: 5,
-  },
 }));
 
-export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, session, onClose }) => {
+export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, session, handleMore, onClose }) => {
 
   let working_date = '';
 
-  const now = new Date(new Date().setHours(0, 0, 0, 0));
-  const today = now.getTime();
-  const tomorrow = new Date(now.getFullYear(), now.getMonth(), (now.getDate() + 1)).getTime();
-  const dateOptions = { weekday: 'short', month: 'short', day: 'numeric' };
+  const { enqueueSnackbar } = useSnackbar();
 
   const classes = useStyles();
 
@@ -176,17 +161,6 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
-
-  function formatDate(pDate$) {
-    let pDate = pDate$.toString() || '19591021';
-    let yyyy = pDate.substr(0, 4);
-    let mm = pDate.substr(4, 2);
-    let dd = pDate.substr(6, 2);
-    let dDate = new Date(yyyy, Number(mm) - 1, dd);
-    let testDate = dDate.getTime();
-    let rString = (testDate === today ? 'Today - ' : (testDate === tomorrow ? 'Tomorrow - ' : '')) + dDate.toLocaleDateString('en-US', dateOptions);
-    return rString;
-  }
 
   function makeSlotName(pSlot) {
     let nSlot = Number(pSlot);
@@ -261,9 +235,14 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                 {!session.patient_display_name ? `Calendar of Events` : `${session.patient_display_name.split(',').pop()}'s Calendar`}
               </DialogContentText>
               {(myCalendar.length > 0) &&
-                <DialogContentText className={classes.subDescriptionText}>
-                  {formatDate(myCalendar[0].occData.date)} to {formatDate(myCalendar[myCalendar.length - 1].occData.date)}
-                </DialogContentText>
+                <Box
+                  display='flex' flexDirection='row' alignItems={'center'}
+                  key={'vRowRefresh'}
+                >
+                  <DialogContentText className={classes.subDescriptionText2} >
+                    From {makeDate(myCalendar[0].occData.date).relative} to {makeDate(myCalendar[myCalendar.length - 1].occData.date).relative}
+                  </DialogContentText>
+                </Box>
               }
               {(myCalendar.length === 0) &&
                 <DialogContentText className={classes.subDescriptionText}>
@@ -367,7 +346,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                                 key={working_date + 'head' + index}
                                 variant='h6'
                               >
-                                {formatDate(working_date)}
+                                {makeDate(working_date).absolute}
                               </Typography>
                               {
                                 // an event can display a message under its name
@@ -406,7 +385,13 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                               setDetailEdit(this_event);
                             }}
                             square>
-                            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                            <Box display='flex' flexDirection='row'
+                              justifyContent='flex-start' alignItems='center'
+                              onContextMenu={async (e) => {
+                                e.preventDefault();
+                                enqueueSnackbar(`Event ID=${this_event.id}`, { variant: 'info', persist: true });
+                              }}
+                            >
                               <Box display='flex' flexDirection='column' className={classes.activityText} width='95%' textOverflow='ellipsis'>
                                 <React.Fragment key={`act_box_${this_event.id}`}>
                                   <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
@@ -471,11 +456,34 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
           </DialogContent>
         </React.Fragment>
       }
-      <DialogActions style={{ justifyContent: 'center' }}>
-        <Button className={classes.reject} size='small' variant='contained' onClick={onClose}>
+      <Box display='flex' flexDirection='column' style={{marginTop: '1em' }}>
+        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+          <Button className={classes.AVAButton}
+            startIcon={<Backward10Icon fontSize="small" />}
+            size='small'
+            onClick={async () => {
+              await handleMore(-10);
+            }}
+          >
+            Back to {makeDate(addDays(makeDate(myCalendar[0].occData.date).date, -10)).relative}
+          </Button>
+          <Button className={classes.AVAButton}
+            startIcon={<Forward10Icon fontSize="small" />}
+            size='small'
+            onClick={async () => {
+              await handleMore(10);
+            }}
+          >
+            Forward to {makeDate(addDays(makeDate(myCalendar[myCalendar.length - 1].occData.date).date, 10)).relative}
+          </Button>
+        </Box>
+        <Button className={classes.AVAButton}
+          style={{ color: 'red' }}
+          startIcon={<CloseIcon fontSize="small" />}
+          size='small' onClick={onClose}>
           {'Done'}
         </Button>
-      </DialogActions>
+      </Box>
     </Dialog>
   );
 };

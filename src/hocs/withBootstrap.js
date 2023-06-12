@@ -429,9 +429,14 @@ export default Component => props => {
       return [true, pUser, pPass];
     }
     catch (e) {
-      await logAccessAttempt(pUser, pPass, false,
-        `Failed login. Attempted ${pUser} and ${pPass.trim()}.  Cognito responded with ${e.code} - ${e.message}`
-      );
+      if (!pPass) {
+        await logAccessAttempt(pUser, pPass, false, `You left the password blank!`);
+      }
+      else {
+        await logAccessAttempt(pUser, pPass, false,
+          `Failed login. Attempted ${pUser} and ${pPass.trim()}.  Cognito responded with ${e.code} - ${e.message}`
+        );
+      }
       setDoneTrying(false);
       if ((e.code !== 'NotAuthorizedException')
         || (e.message.includes('expired'))

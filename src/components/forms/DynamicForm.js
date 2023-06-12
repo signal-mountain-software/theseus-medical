@@ -6,6 +6,7 @@ import FormGroup from '@material-ui/core/FormGroup';
 
 import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
+import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 import MultiObservationForm from '../forms/MultiObservationForm';
 import RequestDashboard from '../dialogs/RequestDashboard';
@@ -117,7 +118,7 @@ export default ({
           onError={onError}
         />
       );
-    case 'upload_file':
+    case 'upload_file_legacy':
       return (
         <FormControl fullWidth>
           <FormGroup value={newFact.value} id='value-label' name='values' open={formState > 0}>
@@ -308,6 +309,15 @@ export default ({
           onCancel={onClose}
           onComplete={onClose}
           allowCancel={true}
+        />
+      );
+    case 'upload_file':
+      return (
+        <FileUpload
+          fileTag={defaultValue}
+          pClient={session.client_id}
+          onCancel={onClose}
+          promptText={factName}
         />
       );
     case 'observation_form':

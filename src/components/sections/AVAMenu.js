@@ -1059,7 +1059,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 </MenuItem>
               )}
               {session?.responsible_for && (
-                <MenuItem onClick={() => {
+                <MenuItem onClick={async () => {
+                  setGroupData(await getAllGroups('*NEW~0'));
                   setPopupMenuOpen(false);
                   setShowAddAccount(true);
                 }}>
@@ -1426,7 +1427,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   "id": defaultClient
                 }
               ],
-            }}
+          }}
+          groupData={groupData}
             open={true}
             onClose={() => {
               setShowAddAccount(false);

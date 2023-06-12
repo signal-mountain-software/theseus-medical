@@ -168,41 +168,16 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
   },
-  rowButtonConfirm: {
+  AVAButton: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     variant: 'outlined',
-    border: '0.4px solid gray',
+    border: '0.75px solid gray',
     textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
     fontWeight: 'bold',
-    size: 'small',
-    color: theme.palette.confirm[theme.palette.type],
-  },
-  uploadButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.4px solid gray',
-    textTransform: 'none',
-    fontWeight: 'bold',
-    size: 'small',
-    color: theme.palette.primary[theme.palette.type],
-  },
-  rowButtonReject: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.4px solid gray',
-    textTransform: 'none',
-    fontWeight: 'bold',
-    size: 'small',
-    color: theme.palette.reject[theme.palette.type],
-  },
-  rowButtonDefault: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
     size: 'small',
   }
 }));
@@ -1017,9 +992,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   {reactData?.textInput?.requestType && !(['meal'].includes(reactData.textInput.requestType)) &&
                     <React.Fragment>
                       <Button
-                        className={classes.uploadButton}
-                        size='small'
+                        className={classes.AVAButton}
                         startIcon={<CloudUploadIcon />}
+                        size='small'
                         onClick={handleFileUpload}
                       >
                         {'Attach'}
@@ -1038,7 +1013,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     </React.Fragment>
                   }
                   <Button
-                    className={classes.rowButtonReject}
+                    className={classes.AVAButton}
+                    style={{ color: 'red' }}
                     size='small'
                     onClick={() => {
                       if (factType === 'list') { onClose(); }
@@ -1054,7 +1030,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   </Button>
                   {(!factType || (factType !== 'list')) &&
                     <Button
-                      className={classes.rowButtonConfirm}
+                      className={classes.AVAButton}
+                      style={{color: 'green'}}
                       size='small'
                       onClick={() => {
                         let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, reactData.textInput);

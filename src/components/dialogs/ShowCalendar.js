@@ -1,9 +1,7 @@
 import React from 'react';
 
-import { API, graphqlOperation } from 'aws-amplify';
 import { getCalendarEntries } from '../../util/AVACalendars';
 import { makeTime } from '../../util/AVADateTime';
-import { getCalendar } from '../../graphql/queries';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import Box from '@material-ui/core/Box';
@@ -40,6 +38,18 @@ const useStyles = makeStyles(theme => ({
     paddingTop: 0,
     height: theme.spacing(2.5),
   },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  },
   freeInput: {
     marginLeft: '25px',
     marginTop: '5px',
@@ -51,9 +61,6 @@ const useStyles = makeStyles(theme => ({
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
     minHeight: theme.typography.fontSize * 2.8,
-  },
-  reject: {
-    backgroundColor: theme.palette.reject[theme.palette.type],
   },
   title: {
     marginTop: theme.spacing(3),
@@ -85,35 +92,6 @@ const useStyles = makeStyles(theme => ({
       height: theme.spacing(8),
     },
   },
-  photoButton: {
-    alignSelf: 'center',
-    size: 'sm',
-    variant: 'outlined',
-    verticalAlign: 'middle',
-  },
-  defaultButton: {
-    alignSelf: 'end',
-    variant: 'outlined',
-    verticalAlign: 'end',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-  },
-  topButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.primary[theme.palette.type],
-  },
-  resetButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.confirm[theme.palette.type],
-    marginRight: 10,
-  },
-  infoButton: {
-    variant: 'outlined',
-    backgroundColor: theme.palette.info[theme.palette.type],
-    marginRight: 10,
-    paddingRight: 10,
-    marginLeft: 10,
-    paddingLeft: 10,
-  },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: 0,
@@ -129,25 +107,25 @@ const useStyles = makeStyles(theme => ({
     marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 10,
-  },
-  radioButton: {
-    marginTop: 0,
-    marginRight: 0,
-    marginLeft: 0,
-    paddingLeft: 0,
-    paddingRight: 5,
-  },
+  }
 }));
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, calendarMode, onClose }) => {
-  const [myCalendar, setMyCalendar] = React.useState([]);
+ // const [myCalendar, setMyCalendar] = React.useState([]);
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showAll, setShowAll] = React.useState(true);
-  const [loading, setLoading] = React.useState(false);
+  // const [loading, setLoading] = React.useState(false);
 
-  const [lastEndDate, setLastEndDate] = React.useState();
+  const [reactData, setReactData] = React.useState({
+    start_date: 0,
+    end_date: 'today',
+    myCalendar: [],
+    loading: false
+  })
+
+ // const [lastEndDate, setLastEndDate] = React.useState();
 
   const [statusMessage, setStatusMessage] = React.useState('Initializing');
   const [progress, setProgress] = React.useState(100);
@@ -170,9 +148,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   };
 
   const setCalendar = async () => {
-    let rightNow = new Date();
-    let this_date = rightNow.getDate();
-    let twoWeeksFromNow = new Date(rightNow.setDate(this_date + 14));
+    // let rightNow = new Date();
+    // let this_date = rightNow.getDate();
     let theCalendar = [];
     let oRecs;
     let checkClient = eventClient || (patient.adopted_client || patient.client_id);
@@ -188,10 +165,20 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     }
     else {
       setShowAll(true);
+      /*
+      if (calendarMode === 'history') {
+        reactData.end_date = new Date();
+        reactData.start_date = new Date(rightNow.setDate(this_date - 7));
+      }
+      else {
+        reactData.start_date = new Date();
+        reactData.end_date = new Date(rightNow.setDate(this_date + 7));
+      }
+      */
       oRecs = await getCalendarEntries({
         client_id: checkClient,
-        start_date: 'today',
-        end_date: 'today + 7',
+        startDate: reactData.start_date,
+        endDate: reactData.end_date,
         type: ['occurrence']
       }, onStatusUpdate);
     }
@@ -211,10 +198,10 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
         signup_type = eventRec.eventData.event_data.type;
         if (eventRec.eventData.event_data.time) {
           time24 = makeTime(eventRec.eventData.event_data.time.from).numeric24;
-          time$ = eventRec.eventData.event_data.time.from;
           if (eventRec.eventData.event_data.time.to) {
-            time$ += ' to ' + eventRec.eventData.event_data.time.to;
+            time$ = 'From ' + eventRec.eventData.event_data.time.from + ' to ' + eventRec.eventData.event_data.time.to;
           }
+          else { time$ = eventRec.eventData.event_data.time.from; }
         }
         if (eventRec.eventData.event_data.location) {
           location = ((typeof eventRec.eventData.event_data.location === 'object')
@@ -274,51 +261,36 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
       else if (a.occData.time24 > b.occData.time24) { return 1; }
       else { return -1; }
     });
-    setMyCalendar(theCalendar);
-    setLastEndDate(twoWeeksFromNow);
     return theCalendar;
   };
 
-  const extendDates = async () => {
-    let invokeFailed = false;
-    lastEndDate.setDate(lastEndDate.getDate() + 1);
-    let event_time = lastEndDate.getTime();
-    let this_year = lastEndDate.getFullYear();
-    let this_month = lastEndDate.getMonth() + 1;
-    let this_date = lastEndDate.getDate();
-    let twoWeeksFromNow = new Date(lastEndDate);
-    twoWeeksFromNow.setDate(this_date + 14);
-    let fortnight_year = twoWeeksFromNow.getFullYear();
-    let fortnight_month = twoWeeksFromNow.getMonth() + 1;
-    let fortnight_date = twoWeeksFromNow.getDate();
-    let result = {};
-
-    result = await API
-      .graphql(
-        graphqlOperation(getCalendar, {
-          input: {
-            "action": `list_events#${event_time}`,
-            "clientId": eventClient || (patient.adopted_client || patient.client_id),
-            "list_start": ((this_year * 10000) + (this_month * 100) + this_date).toString(),
-            "list_end": ((fortnight_year * 10000) + (fortnight_month * 100) + fortnight_date).toString(),
-            "person_id": patient.patient_id
-          }
-        })
-      )
-      .catch(error => {
-        console.log(error);
-        invokeFailed = true;
-      });
-
-    let theCalendar = myCalendar;
-    if (!invokeFailed && result.data.getCalendar.body) {
-      result.data.getCalendar.body.forEach(cEv => {
-        theCalendar.push(cEv);
-      });
-    };
-    setMyCalendar(theCalendar);
-    setLastEndDate(twoWeeksFromNow);
-    return theCalendar;
+  const extendDates = async (factor) => {
+    let previousReactData = Object.assign({}, reactData );
+    if (factor > 0) {
+      reactData.start_date = new Date(reactData.end_date);
+      let myDate = new Date(reactData.end_date);
+      myDate.setDate(myDate.getDate() + factor);
+      reactData.end_date = myDate;
+    }
+    else {
+      reactData.end_date = new Date(reactData.start_date);
+      let myDate = new Date(reactData.start_date);
+      myDate.setDate(myDate.getDate() + factor);
+      reactData.start_date = myDate;
+    }
+    reactData.loading = true;
+    setReactData({ ...reactData });
+    let newEntries = await setCalendar();
+    reactData.loading = false;
+    if (factor > 0) {
+      reactData.start_date = previousReactData.start_date;
+      reactData.myCalendar.push(...newEntries);
+    }
+    else {
+      reactData.end_date = previousReactData.end_date;
+      reactData.myCalendar.unshift(...newEntries);
+    }
+    setReactData({ ...reactData });
   };
 
   const choosePerson = () => {
@@ -338,11 +310,23 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   // **************************
   React.useEffect(() => {
     async function buildIt() {
-      setLoading(true);
-      await setCalendar();
-      setLoading(false);
+      let rightNow = new Date();
+      let this_date = rightNow.getDate();
+      if (calendarMode === 'history') {
+        reactData.end_date = new Date();
+        reactData.start_date = new Date(rightNow.setDate(this_date - 7));
+      }
+      else {
+        reactData.start_date = new Date();
+        reactData.end_date = new Date(rightNow.setDate(this_date + 7));
+      }
+      reactData.loading = true;
+      setReactData({ ...reactData });
+      reactData.myCalendar = await setCalendar();
+      reactData.loading = false;
+      setReactData({ ...reactData });
     }
-    if (!loading) {
+    if (!reactData.loading) {
       buildIt();
     }
   }, [currentEvent]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -350,7 +334,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
 
   return (
     <React.Fragment>
-      {showAll && (forceRedisplay || true) &&
+      {showAll && reactData && (forceRedisplay || true) &&
         <Dialog
           open={!!calendarMode}
           onClose={handleAbort}
@@ -366,14 +350,14 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           >
             {patient.kiosk_mode &&
               <Box mr={3} justifySelf={'flex-end'} alignSelf={'center'}>
-                <Button className={classes.defaultButton} size='small' variant='contained' onClick={choosePerson}>
+                <Button className={classes.AVAButton} size='small' variant='contained' onClick={choosePerson}>
                   {'Resident?'}
                 </Button>
               </Box>
             }
           </Box>
           {/* Loading spinner */}
-          {loading &&
+          {reactData.loading &&
             <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
               <Box
                 display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -411,41 +395,43 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
               </Box>
             </DialogContent>
           }
-          {!loading &&
+          {!reactData.loading &&
             <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
               <CalendarForm
-                myCalendar={myCalendar}
+                myCalendar={reactData.myCalendar}
                 person_id={patient.patient_id}
                 kiosk_mode={patient.kiosk_mode}
                 display_name={patient.patient_display_name}
                 peopleList={peopleList}
+                handleMore={async (factor) => {await extendDates(factor)}}
                 session={patient}
                 onClose={onClose}
               />
             </DialogContent>
           }
           <DialogActions style={{ justifyContent: 'center' }}>
-            {myCalendar && myCalendar.length > 0 &&
+            {reactData.myCalendar && reactData.myCalendar.length > 0 &&
               <Button
-                onClick={extendDates}
-                variant='contained'
+                onClick={() => { }}
                 size='small'
-                className={classes.topButton}
+                className={classes.AVAButton}
               >
-                {'More'}
+                {'More Dates'}
               </Button>
             }
             {patient.kiosk_mode &&
               <Button
-                className={classes.defaultButton}
+                className={classes.AVAButton}
                 size='small'
                 variant='contained'
                 onClick={choosePerson}>
                 {'Sign-up?'}
               </Button>
             }
-            <Button className={classes.reject} size='small' variant='contained' onClick={handleAbort}>
-              {'Done'}
+            <Button className={classes.AVAButton}
+              style={{color: 'red'}}
+              size='small' onClick={handleAbort}>
+              {'Exit'}
             </Button>
           </DialogActions>
           {showPersonSelect &&
@@ -468,19 +454,19 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           }
         </Dialog>
       }
-      {!showAll && (myCalendar.length > 0) &&
+      {!showAll && (reactData.myCalendar.length > 0) &&
         <CalendarEventEditForm
           pEventCode={currentEvent}
           peopleList={peopleList}
           pPatient={patient.patient_id}
           pClient={eventClient || (patient.adopted_client || patient.client_id)}
-          pOccData={myCalendar[0].occData}
+        pOccData={reactData.myCalendar[0].occData}
           pPatientRec={patient}
           onReset={() => { handleAbort(); }}
           pMode={calendarMode}
         />
       }
-      {!showAll && (myCalendar.length === 0) &&
+      {!showAll && (reactData.myCalendar.length === 0) &&
         <DialogContentText className={classes.subDescriptionText}>
           Getting your Event Info
         </DialogContentText>

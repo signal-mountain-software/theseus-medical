@@ -39,6 +39,18 @@ const useStyles = makeStyles(theme => ({
     height: 950,
     maxWidth: 1000
   },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  },
   freeInput: {
     marginLeft: '25px',
     marginRight: 2,
@@ -77,38 +89,6 @@ const useStyles = makeStyles(theme => ({
     variant: 'contained',
     size: 'small'
   },
-  rowButtonDefault: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.primary[theme.palette.type],
-  },
-  rowButtonRed: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    color: theme.palette.reject[theme.palette.type],
-  },
-  rowButtonGreen: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.confirm[theme.palette.type],
-  },
-  rowButtonBlue: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.info[theme.palette.type],
-  },
   listItem: {
     justifyContent: 'space-between',
     marginTop: theme.spacing(1),
@@ -140,9 +120,6 @@ const useStyles = makeStyles(theme => ({
   techInfoLine2: {
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: theme.spacing(4),
-  },
-  reject: {
-    backgroundColor: theme.palette.reject[theme.palette.type],
   },
   confirm: {
     backgroundColor: 'green',
@@ -767,7 +744,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                   setRecipientIndex(index);
                                   setPromptForMessage(true);
                                 }}
-                                className={classes.rowButtonGreen}
+                                className={classes.AVAButton}
                                 startIcon={<SendIcon fontSize="small" />}
                               >
                                 Reply All
@@ -780,7 +757,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                                   setRecipient(`${this_item.sender_name}:${this_item.sender_id}`);
                                   setRecipientIndex(index);
                                 }}
-                                className={classes.rowButtonGreen}
+                                className={classes.AVAButton}
                                 startIcon={<SendIcon fontSize="small" />}
                               >
                                 Reply
@@ -844,14 +821,14 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
-                    className={classes.rowButtonGreen}
+                    className={classes.AVAButton}
                     onClick={onReset}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Close'}
                   </Button>
                   <Button
-                    className={classes.rowButtonGreen}
+                    className={classes.AVAButton}
                     onClick={() => {
                       if (inOut_mode === 'in') { setinOut('out'); }
                       else { setinOut('in'); }
@@ -866,7 +843,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                     onClick={async () => {
                       setShowAddPrompt(true);
                     }}
-                    className={classes.rowButtonGreen}
+                    className={classes.AVAButton}
                     startIcon={<SendIcon size='small' />}
                   >
                     {`New Message`}

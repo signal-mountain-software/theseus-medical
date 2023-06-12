@@ -196,6 +196,7 @@ export async function prepareMessage(inBody) {
             results.subject = rule.value;
             break;
           }
+          case 'method':
           case 'override_method': {
             results.preferred_method = rule.value;
             break;
@@ -210,6 +211,7 @@ export async function prepareMessage(inBody) {
             skipTo = rule.value;
             break;
           }
+          case 'replace_message':
           case 'create_message': {
             messageList.push(rule.value);
             break;
@@ -279,7 +281,10 @@ export async function resolveMessageVariables(inString, body) {
       case 'requestor':
       case 'self':
       case 'user': {
-        workString = `${front}${body.author}${back}`;
+        if (body.hasOwnProperty('requestID')) {
+          workString = `${front}${body.requestID.split('~')[0]}${back}`;
+        }
+        else { workString = `${front}${body.author}${back}`; }
         break;
       }
       case 'selections': {

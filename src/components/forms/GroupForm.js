@@ -13,7 +13,6 @@ import List from '@material-ui/core/List';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import PhoneInTalkIcon from '@material-ui/icons/PhoneInTalk';
-import ContactMailOutlinedIcon from '@material-ui/icons/ContactMailOutlined';
 import Button from '@material-ui/core/Button';
 
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
@@ -79,28 +78,6 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
   },
-  rowButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'contained',
-    size: 'small'
-  },
-  rowButtonDefault: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.primary[theme.palette.type],
-  },
-  rowButtonRed: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    color: theme.palette.reject[theme.palette.type],
-  },
   giveSpace: {
     marginTop: theme.spacing(2),
   },
@@ -118,72 +95,17 @@ const useStyles = makeStyles(theme => ({
   adName: {
     fontSize: '0.9rem',
   },
-  rowButtonGreen: {
+  AVAButton: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     variant: 'outlined',
+    border: '0.75px solid gray',
     textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
     size: 'small',
-    // color: theme.palette.confirm[theme.palette.type],
-  },
-  rowButtonBack: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    outlineColor: theme.palette.reject[theme.palette.type],
-    fontSize: theme.typography.fontSize * 1,
-    outlineWidth: '1px',
-    outlineStyle: 'auto',
-    width: '60%',
-    textTransform: 'none',
-    size: 'small',
-  },
-  rowButtonRemove: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    outlineColor: theme.palette.reject[theme.palette.type],
-    fontSize: theme.typography.fontSize * 1,
-    outlineWidth: '1px',
-    width: '60%',
-    outlineStyle: 'auto',
-    textTransform: 'none',
-    size: 'small',
-  },
-  rowButtonSwitch: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    fontSize: theme.typography.fontSize * 1,
-    textTransform: 'none',
-    size: 'small',
-  },
-  rowButtonFlat: {
-    fontSize: theme.typography.fontSize * 1,
-    paddingTop: theme.spacing(0),
-    paddingBottom: theme.spacing(0),
-    textTransform: 'none',
-    size: 'small',
-  },
-  rowButtonSend: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    outlineColor: theme.palette.confirm[theme.palette.type],
-    fontSize: theme.typography.fontSize * 1,
-    outlineWidth: '1px',
-    width: '80%',
-    outlineStyle: 'auto',
-    textTransform: 'none',
-    size: 'small',
-  },
-  rowButtonBlue: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.info[theme.palette.type],
   },
   listItem: {
     justifyContent: 'space-between',
@@ -212,12 +134,6 @@ const useStyles = makeStyles(theme => ({
   techInfoLine2: {
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: theme.spacing(4),
-  },
-  reject: {
-    backgroundColor: theme.palette.reject[theme.palette.type],
-  },
-  confirm: {
-    backgroundColor: 'green',
   },
   firstName: {
 
@@ -514,31 +430,49 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       switch (messageType) {
         case 'sms': {
           if (pMessaging.sms && (!pMessaging.sms_private || allGroups)) {
-            returnArray.push(`tel:${pMessaging.sms}~cell ${formatPhone(pMessaging.sms)}${pMessaging.sms_private ? ' *UNPUBLISHED*' : ''}`);
+            returnArray.push({
+              action: [`sms:${pMessaging.sms}`, `tel:${pMessaging.sms}`],
+              button: ['Send Text', 'Call Cell'],
+              type: 'cell',
+              display: [formatPhone(pMessaging.sms)],
+              private: pMessaging.sms_private
+            });
           }
           break;
         }
         case 'voice': {
           if (pMessaging.voice && (!pMessaging.voice_private || allGroups)) {
-            returnArray.push(`tel:${pMessaging.voice}~home ${formatPhone(pMessaging.voice)}${pMessaging.voice_private ? ' *UNPUBLISHED*' : ''}`);
+            returnArray.push({
+              action: [`tel:${pMessaging.voice}`],
+              button: ['Call Home'],
+              type: 'home',
+              display: [formatPhone(pMessaging.voice)],
+              private: pMessaging.voice_private
+            });
           }
           break;
         }
         case 'office': {
           if (pMessaging.office && (!pMessaging.office_private || allGroups)) {
-            returnArray.push(`tel:${pMessaging.office}~work ${formatPhone(pMessaging.office)}${pMessaging.office_private ? ' *UNPUBLISHED*' : ''}`);
+            returnArray.push({
+              action: [`tel:${pMessaging.office}`],
+              button: ['Call Work'],
+              type: 'work',
+              display: [formatPhone(pMessaging.office)],
+              private: pMessaging.office_private
+            });
           }
           break;
         }
         case 'email': {
           if (pMessaging.email && (!pMessaging.email_private || allGroups)) {
-            let emailLines = [];
-            if ((pMessaging.email.length < 30) || !isMobile) { returnArray.push(`mailto:${pMessaging.email}~e-Mail ${pMessaging.email}${pMessaging.email_private ? ' *UNPUBLISHED*' : ''}`); }
-            else {
-              emailLines = pMessaging.email.split('@');
-              returnArray.push(`mailto:${pMessaging.email}~e-Mail ${emailLines[0]}@`);
-              returnArray.push(`mailto:${pMessaging.email}~  ${emailLines[1]}`);
-            }
+            returnArray.push({
+              action: [`mailto:${pMessaging.email}`],
+              button: ['e-Mail'],
+              type: 'e-Mail',
+              display: (((pMessaging.email.length < 20) || !isMobile) ? [pMessaging.email] : pMessaging.email.split('@')),
+              private: pMessaging.email_private
+            });
           }
           break;
         }
@@ -632,15 +566,23 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 <Box display='flex' flexDirection='column'>
                                   {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
                                     .map((prefLine, prefIndex) => (
-                                      <a href={prefLine.split('~')[0]}
+                                      <a href={prefLine.action[0]}
                                         key={`prefLink-${index}.${prefIndex}`}
                                         style={{ color: 'inherit', textDecoration: 'none' }}>
                                         <Typography
                                           key={`prefLine-${index}.${prefIndex}`}
                                           className={classes.preferenceLine}
                                         >
-                                          {prefLine.split('~')[1]}
+                                          {prefLine.type} {prefLine.display.join('@')}
                                         </Typography>
+                                        {(prefLine.private) &&
+                                          <Typography
+                                            key={`prefLine-${index}.${prefIndex}`}
+                                            className={classes.preferenceLine}
+                                          >
+                                            *UNPUBLISHED*
+                                          </Typography>
+                                        }
                                       </a>
                                     )))}
                                 </Box>
@@ -724,44 +666,47 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 <Box display='flex' flexDirection='column'>
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                     <Button
-                      className={classes.rowButtonGreen}
+                      className={classes.AVAButton}
+                      style={{ color: 'red' }}
+                      startIcon={<CloseIcon size="small" />}
                       onClick={() => {
                         setOverrideRole(null);
                         onReset();
                       }}
-                      startIcon={<CloseIcon size="small" />}
                     >
                       {'Close'}
                     </Button>
-                    {(pRole === 'admin' || pRole === 'responsible') &&
-                      <React.Fragment>
-                        {!allGroups &&
-                          <Button
-                            className={classes.rowButtonGreen}
-                            onClick={async () => {
-                              await setChoices(peopleList);
-                            }}
-                            startIcon={<GroupAddIcon size="small" />}
-                          >
-                            {'Add Members'}
-                          </Button>
-                        }
+                  </Box>
+                  {(pRole === 'admin' || pRole === 'responsible') &&
+                    <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                      {!allGroups &&
                         <Button
-                          className={classes.rowButtonDefault}
-                          onClick={() => { handlePrintDirectory(pGroup); }}
-                          startIcon={<PrintIcon size='small' />}
+                          className={classes.AVAButton}
+                          onClick={async () => {
+                            await setChoices(peopleList);
+                          }}
+                          startIcon={<GroupAddIcon size="small" />}
                         >
-                          {'Directory'}
+                          {'Add Members'}
                         </Button>
-                        <Button
-                          onClick={() => { handlePrintRoster(pGroup); }}
-                          className={classes.rowButtonGreen}
-                          startIcon={<StorageOutlined size='small' />}
-                        >
-                          {'Roster'}
-                        </Button>
-                      </React.Fragment>
-                    }
+                      }
+                      <Button
+                        className={classes.AVAButton}
+                        onClick={() => { handlePrintDirectory(pGroup); }}
+                        startIcon={<PrintIcon size='small' />}
+                      >
+                        {'Directory'}
+                      </Button>
+                      <Button
+                        onClick={() => { handlePrintRoster(pGroup); }}
+                        className={classes.AVAButton}
+                        startIcon={<StorageOutlined size='small' />}
+                      >
+                        {'Roster'}
+                      </Button>
+                    </Box>
+                  }
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                     {(overrideRole === 'member' || (!overrideRole && (pRole === 'member'))) &&
                       <Button
                         onClick={() => {
@@ -771,7 +716,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           setDeletePending(true);
                           setForceRedisplay(false);
                         }}
-                        className={classes.rowButtonGreen}
+                        className={classes.AVAButton}
                         startIcon={<DeleteIcon fontSize="small" />}
                       >
                         Remove me
@@ -781,7 +726,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       <React.Fragment>
                         {!allGroups &&
                           <Button
-                            className={classes.rowButtonGreen}
+                            className={classes.AVAButton}
                             onClick={async () => {
                               await handleAddPersonToGroup([pPatient], pGroup);
                               setOverrideRole('member');
@@ -804,7 +749,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           });
                           setRecipient(rKey);
                         }}
-                        className={classes.rowButtonGreen}
+                        className={classes.AVAButton}
                         startIcon={<SendIcon size='small' />}
                       >
                         {`Msg Admin`}
@@ -819,7 +764,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           setMessageType('Group');
                           setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
                         }}
-                        className={classes.rowButtonGreen}
+                        className={classes.AVAButton}
                         startIcon={<SendIcon size='small' />}
                       >
                         {`Group Msg`}
@@ -830,21 +775,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           setMessageType('URGENT Group');
                           setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
                         }}
-                        className={classes.rowButtonRed}
+                        className={classes.AVAButton}
                         startIcon={<PhoneInTalkIcon size='small' />}
                       >
-                        {`Call`}
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setPromptForMessage(true);
-                          setMessageType('AVA');
-                          setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
-                        }}
-                        className={classes.rowButtonGreen}
-                        startIcon={<ContactMailOutlinedIcon size='small' />}
-                      >
-                        {`Notify`}
+                        {`Call All`}
                       </Button>
                     </Box>
                   }
@@ -879,31 +813,29 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               }
               {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
                 .map((prefLine, prefIndex) => (
-                  <a href={prefLine.split('~')[0]}
+                  <a href={prefLine.action[0]}
                     key={`prefLink-superSize.${prefIndex}`}
                     style={{ color: 'inherit', textDecoration: 'none' }}>
-                    {(prefLine.split('~')[1].split(' ')[0].trim() !== '')
-                      ?
-                      <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
-                        <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.superSizePreferenceLine1}>
-                          {prefLine.split('~')[1].split(' ')[0]}:
-                        </Typography>
+                    <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
+                      <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.superSizePreferenceLine1}>
+                        {prefLine.type}:
+                      </Typography>
+                      <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
+                        {prefLine.display[0]}
+                      </Typography>
+                      {(prefLine.display.length > 1) &&
                         <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
-                          {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
+                          @{prefLine.display[1]}
                         </Typography>
-                      </Box>
-                      :
-                      <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-                        <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine3}>
-                          {prefLine.split('~')[1].replace(' ', '%%').split('%%')[1]}
-                        </Typography>
-                      </Box>
-                    }
+                      }
+                    </Box>
                   </a>
                 )))}
               <Box display='flex' flexDirection='row' className={classes.giveMoreSpace} justifyContent='center' alignItems='center' >
                 <Button
-                  className={classes.rowButtonBack}
+                  className={classes.AVAButton}
+                  style={{ color: 'red' }}
+                  startIcon={<CloseIcon size="small" />}
                   onClick={() => {
                     setshowSuperSize(false);
                     setForceRedisplay(!forceRedisplay);
@@ -912,16 +844,42 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   {'Back'}
                 </Button>
                 <Button
+                  className={classes.AVAButton}
+                  startIcon={<SendIcon size="small" />}
                   onClick={() => {
                     setPromptForMessage(true);
                     setMessageType('');
                     let rKey = `${superSizeData.name.first} ${superSizeData.name.last}:${superSizeData.person_id}`;
                     setRecipient(rKey.trim());
                   }}
-                  className={classes.rowButtonSend}
                 >
-                  {`Send Msg`}
+                  {`AVA Msg`}
                 </Button>
+              </Box>
+              <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
+                  .map((prefLine, prefIndex) => (
+                    <React.Fragment>
+                      <a href={prefLine.action[0]}
+                        key={`aRefButtonLine0.${prefIndex}`}
+                        style={{ textDecoration: 'none' }}>
+                        <Button
+                          className={classes.AVAButton}
+                        >
+                          {prefLine.button[0]}
+                        </Button>
+                      </a>
+                      {(prefLine.action.length > 1) &&
+                        <a href={prefLine.action[1]}
+                          key={`aRefButtonLine1.${prefIndex}`}
+                          style={{ textDecoration: 'none' }}>
+                          <Button className={classes.AVAButton}>
+                            {prefLine.button[1]}
+                          </Button>
+                        </a>
+                      }
+                    </React.Fragment>
+                  )))}
               </Box>
               {(pRole === 'admin' || pRole === 'responsible') &&
                 <Box display='flex' className={classes.giveSpaceBoth} flexDirection='row' justifyContent='center' alignItems='center' >
@@ -933,7 +891,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
                     <Typography key={`HeadLine-superSize`} className={classes.adName}>{superSizeData.person_id}</Typography>
                   </Box>
-                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                  <Box display='flex' flexDirection='row' className={classes.giveSpace} justifyContent='center' alignItems='center' >
                     <Button
                       onClick={async () => {
                         let switchData = await prepareSwitch(
@@ -947,7 +905,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         window.location.replace(jumpTo);
                       }}
                       startIcon={<SwapHorizIcon size='small' />}
-                      className={classes.rowButtonFlat}
+                      className={classes.AVAButton}
+                      style={{ fontSize: 'small' }}
                     >
                       {'Switch to'}
                     </Button>
@@ -968,7 +927,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       setForceRedisplay(false);
                     }}
                     startIcon={<DeleteIcon size='small' />}
-                    className={classes.rowButtonFlat}
+                    className={classes.AVAButton}
+                    style={{ fontSize: 'small', color: 'red' }}
                   >
                     {`Remove ${superSizeData.name.first || superSizeData.display_name} from the group`}
                   </Button>
@@ -986,7 +946,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       setForceRedisplay(false);
                     }}
                     startIcon={<AddCircleOutlineIcon size='small' />}
-                    className={classes.rowButtonFlat}
+                    className={classes.AVAButton}
+                    style={{ fontSize: 'small' }}
                   >
                     {`Make ${superSizeData.name.first || superSizeData.display_name} an Administrator of the group`}
                   </Button>
@@ -1004,7 +965,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       setForceRedisplay(false);
                     }}
                     startIcon={<RemoveCircleOutlineIcon size='small' />}
-                    className={classes.rowButtonFlat}
+                    className={classes.AVAButton}
+                    style={{ fontSize: 'small', color: 'red' }}
                   >
                     {`Remove ${superSizeData.name.first || superSizeData.display_name} as an Administrator of the group`}
                   </Button>

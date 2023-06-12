@@ -4,7 +4,6 @@ import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, sendMessages, messageHistory } from '../../util/AVAMessages';
-import AVAConfirm from '../forms/AVAConfirm';
 import AVATextInput from '../forms/AVATextInput';
 
 import { useSnackbar } from 'notistack';
@@ -25,7 +24,6 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import TextField from '@material-ui/core/TextField';
 
-import DeleteIcon from '@material-ui/icons/Delete';
 import SendIcon from '@material-ui/icons/Send';
 
 import HomeIcon from '@material-ui/icons/Home';
@@ -66,43 +64,17 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
   },
-  rowButton: {
+  AVAButton: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
-    variant: 'contained',
-    size: 'small'
-  },
-  rowButtonDefault: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
     variant: 'outlined',
+    border: '0.75px solid gray',
     textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
     size: 'small',
-    // color: theme.palette.primary[theme.palette.type],
-  },
-  rowButtonRed: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    color: theme.palette.reject[theme.palette.type],
-  },
-  rowButtonGreen: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.confirm[theme.palette.type],
-  },
-  rowButtonBlue: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.info[theme.palette.type],
   },
   listItem: {
     justifyContent: 'space-between',
@@ -224,11 +196,7 @@ export default ({ session, filter = {}, onClose }) => {
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
-  const [deletePending, setDeletePending] = React.useState(false);
   const showDeleted = false;
-  const [confirmMessage, setConfirmMessage] = React.useState('');
-  const [confirmID, setConfirmID] = React.useState('');
-  const [confirmIndex, setConfirmIndex] = React.useState('');
 
   const [promptForUpdate, setPromptForUpdate] = React.useState(false);
 
@@ -325,6 +293,7 @@ export default ({ session, filter = {}, onClose }) => {
         });
         updateRows.push(r);
         dataRows[x] = await buildRequestDetails(r);
+        dataRows[x].workData.checked = false;
       }
     };
     updateServiceRequest(updateRows.map(u => {
@@ -374,10 +343,6 @@ export default ({ session, filter = {}, onClose }) => {
       }
     }, 500);
 
-  };
-
-  const handleRemoveMessage = async (pMessage_id, pIndex) => {
-    // will mark request as cancelled as send appropriate messages 
   };
 
   function toggleCheck(pI) {
@@ -782,13 +747,10 @@ export default ({ session, filter = {}, onClose }) => {
                           key={'checkbox' + index}
                           onClick={() => { toggleCheck(index); }}
                         />
-                        <DeleteIcon
+                        <SendIcon
                           onClick={() => {
-                            setConfirmMessage(`Cancel this request`);
-                            setConfirmID(this_item.message_id);
-                            setConfirmIndex(index);
-                            setDeletePending(true);
-                            setForceRedisplay(false);
+                            toggleCheck(index);
+                            setPromptForUpdate(true);
                           }}
                         />
                       </Box>
@@ -798,20 +760,6 @@ export default ({ session, filter = {}, onClose }) => {
               ))}
             </List>
           </Paper>
-          {
-            deletePending &&
-            <AVAConfirm
-              promptText={confirmMessage}
-              onCancel={() => {
-                setDeletePending(false);
-              }}
-              onConfirm={() => {
-                handleRemoveMessage(confirmID, confirmIndex);
-                setDeletePending(false);
-              }}
-            >
-            </AVAConfirm>
-          }
           {
             promptForUpdate &&
             <AVATextInput
@@ -830,14 +778,15 @@ export default ({ session, filter = {}, onClose }) => {
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
-                    className={classes.rowButtonGreen}
+                    className={classes.AVAButton}
+                    style={{color: 'red'}}
                     onClick={onClose}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Close'}
                   </Button>
                   <Button
-                    className={classes.rowButtonDefault}
+                    className={classes.AVAButton}
                     onClick={() => {
                       setPromptForUpdate(true);
                     }}
