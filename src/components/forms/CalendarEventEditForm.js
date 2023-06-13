@@ -65,24 +65,22 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(1),
     fontSize: '1.3rem',
   },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  },
   buttonArea: {
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
-  },
-  rowButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'contained',
-    size: 'small'
-  },
-  rowButtonDefault: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.primary[theme.palette.type],
   },
   idText: {
     display: 'inline',
@@ -97,30 +95,6 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 1,
     padding: 0,
     margin: 0,
-  },
-  rowButtonRed: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.reject[theme.palette.type],
-  },
-  rowButtonGreen: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.confirm[theme.palette.type],
-  },
-  rowButtonBlue: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.info[theme.palette.type],
   },
   listItem: {
     justifyContent: 'space-between',
@@ -766,7 +740,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
               <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                 <Tooltip title={`Exit`} placement='top'>
                   <Button
-                    className={classes.rowButtonRed}
+                    className={classes.AVAButton}
+                    style={{color: 'red'}}
                     onClick={onReset}
                     startIcon={<CloseIcon size="small" />}
                   >
@@ -776,7 +751,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 {(pOccData.signup_type === 'none') && browseMode &&
                   <Tooltip title={(isEventOwner ? 'Add a person' : 'Add myself to the list')} placement='top'>
                     <Button
-                      className={classes.rowButtonDefault}
+                      className={classes.AVAButton}
                       onClick={async () => {
                         if (isEventOwner) {
                           await setChoices(peopleList);
@@ -798,7 +773,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 {isEventOwner && browseMode &&
                   <Tooltip title={'Prepare Detail Report'} placement='top'>
                     <Button
-                      className={classes.rowButtonDefault}
+                      className={classes.AVAButton}
                       onClick={async () => {
                         await handlePrint(pEventCode, 'report');
                       }}
@@ -813,7 +788,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                   <Tooltip title={'Prepare Sign-up sheet'} placement='top'>
                     <Button
-                      className={classes.rowButtonDefault}
+                      className={classes.AVAButton}
                       onClick={async () => {
                         await handlePrint(pEventCode, 'sign-up');
                       }}
@@ -824,7 +799,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                   </Tooltip>
                   <Tooltip title={'Send a message to everyone that is signed-up'} >
                     <Button
-                      className={classes.rowButtonDefault}
+                      className={classes.AVAButton}
                       onClick={() => {
                         setPromptForMessage(true);
                         setMessageType('Group');

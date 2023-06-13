@@ -456,7 +456,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
           </DialogContent>
         </React.Fragment>
       }
-      <Box display='flex' flexDirection='column' style={{marginTop: '1em' }}>
+      <Box display='flex' flexDirection='column' style={{ marginTop: '1em' }}>
         <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           <Button className={classes.AVAButton}
             startIcon={<Backward10Icon fontSize="small" />}
@@ -477,12 +477,14 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
             Forward to {makeDate(addDays(makeDate(myCalendar[myCalendar.length - 1].occData.date).date, 10)).relative}
           </Button>
         </Box>
-        <Button className={classes.AVAButton}
-          style={{ color: 'red' }}
-          startIcon={<CloseIcon fontSize="small" />}
-          size='small' onClick={onClose}>
-          {'Done'}
-        </Button>
+        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+          <Button className={classes.AVAButton}
+            style={{ color: 'red' }}
+            startIcon={<CloseIcon fontSize="small" />}
+            size='small' onClick={onClose}>
+            {'Done'}
+          </Button>
+        </Box>
       </Box>
     </Dialog>
   );
