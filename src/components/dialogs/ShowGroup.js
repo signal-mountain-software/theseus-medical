@@ -1,7 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getMemberList, getGroup, getRole } from '../../util/AVAGroups';
-import { dbClient } from '../../util/AVAUtilities';
+import { getMemberList, getGroup, getRole, getGroupsResponsibleFor } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -16,7 +15,6 @@ import GroupForm from '../forms/GroupForm';
 import GroupFilter from '../forms/GroupFilter';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
-
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -117,143 +115,23 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     return memberInfo.peopleList;
   };
 
-  async function getSession(who) {
-    let sRec = await dbClient
-      .get({
-        Key: {
-          session_id: who
-        },
-        TableName: "SessionsV2"
-      })
-      .promise()
-      .catch(error => {
-        console.log({ 'Bad get on SessionsV2 - caught error is': error });
-      });
-    if (sRec && ('Item' in sRec)) { return sRec.Item; }
-    else { return {}; }
-  }
-
-  async function getPerson(pPerson) {
-    let peopleRec = await dbClient
-      .get({
-        Key: {
-          person_id: pPerson
-        },
-        TableName: "People"
-      })
-      .promise()
-      .catch(error => {
-        console.log({ 'Bad get on People - caught error is': error });
-      });
-    if (peopleRec && ('Item' in peopleRec)) { return peopleRec.Item; }
-    else { return {}; }
-  }
-
-  async function getGroupDetails(pClient, pGroup) {
-    let groupRec = await dbClient
-      .get({
-        Key: {
-          client_id: pClient,
-          group_id: pGroup
-        },
-        TableName: "Groups"
-      })
-      .promise()
-      .catch(error => {
-        console.log({ 'Bad get on Groups - caught error is': error });
-      });
-    if ('Item' in groupRec) { return groupRec.Item; }
-    else { return {}; }
-  }
-
   const getGroupsManagedObject = async (pPatient) => {
-    let patientSession = await getSession(pPatient);
-    var returnObject = {};
-    let foundGroups = [];
-
-    // If there are groups in the "responsible for" array, include those
-    let respArray = [];
-    if ('responsible_for' in patientSession) {
-      if (Array.isArray(patientSession.responsible_for)) { respArray.push(...patientSession.responsible_for); }
-      else if (patientSession.responsible_for.startsWith('[')) { respArray = patientSession.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-      else { respArray.push(patientSession.responsible_for); }
+    let gList = await getGroupsResponsibleFor(pPatient);
+    // sort by group name
+    let gSort = [];
+    let gObj = {};
+    for (let gID in gList) {
+      gSort.push(gList[gID].group_name);
+      gObj[gList[gID].group_name] = gID;
     }
-
-    // Get Groups that this person explicitly manages (as per the SessionsV2 table)
-    if ('groups_managed' in patientSession) {
-      patientSession.groups_managed.forEach(group => {
-        let [gID,] = group.split('~');
-        if (!respArray.includes(gID)) { respArray.push(gID); }
-      });
-    }
-
-    // Put group names with these groups
-    for (let g = 0; g < respArray.length; g++) {
-      let checkGroup = await getGroupDetails(pSession.client_id, respArray[g]);
-      if (checkGroup.hasOwnProperty('name') && (checkGroup.group_type !== 'parent')) {
-        returnObject[checkGroup.name.trim()] = {
-          group_id: respArray[g],
-          role: 'responsible'
-        };
-      }
-      foundGroups.push(respArray[g]);
-    };
-
-    // Next, get any other Groups that this person belongs to
-    var personRec = await getPerson(pPatient);
-    for (let g = 0; g < personRec.groups.length; g++) {
-      let group = personRec.groups[g];
-      if (!respArray.includes(group)) {
-        let checkGroup = await getGroupDetails(pSession.client_id, group);
-        if (checkGroup.hasOwnProperty('name') && (checkGroup.group_type !== 'parent')) {
-          returnObject[checkGroup.name.trim()] = {
-            group_id: group.trim(),
-            role: 'member'
-          };
-          foundGroups.push(group.trim());
-        }
-      }
-    };
-
-    // Finally, get nny other Groups that need to be added
-    let openGroups = await dbClient
-      .query({
-        KeyConditionExpression: 'client_id = :c',
-        ExpressionAttributeValues: { ':c': pSession.client_id },
-        TableName: 'Groups',
-      })
-      .promise()
-      .catch(error => {
-        console.log({ 'Bad query on Groups in getGroupsPersonBelongsTo - caught error is': error });
-      });
-    if (openGroups && ('Items' in openGroups)) {
-      openGroups.Items.forEach(groupRec => {
-        if (!foundGroups.includes(groupRec.group_id) && (groupRec.group_type !== 'parent')) {
-          if (respArray.includes('*all') || respArray.includes('*ALL')) {
-            returnObject[groupRec.name] = { group_id: groupRec.group_id, role: 'responsible' };
-          }
-          else if (['open', 'public'].includes(groupRec.group_type)) {
-            returnObject[groupRec.name] = { group_id: groupRec.group_id, role: 'non-member' };
-          }
-        }
-      });
-    }
-
-    // Sort on name
-    // First - Create a sorted array of the Keys (names)
-    let returnArray = Object.keys(returnObject).sort((a, b) => {
-      if (a.toLowerCase() > b.toLowerCase()) { return 1; }
-      else { return -1; }
-    });
-
-    //  ...then build a new Object that delivers the keys in this sorted order
-    let finalObject = {};
-    returnArray.forEach(key => {
-      finalObject[key] = returnObject[key];
-    });
-    setGroupsManagedObject(finalObject);
-    return finalObject;
-
+    gSort.sort();
+    let gManagedObj = {};
+    gSort.forEach(g => { 
+      let gData = gList[gObj[g]];
+      gManagedObj[gObj[g]] = gData; 
+    })
+    setGroupsManagedObject(gManagedObj);
+    return gManagedObj;
   };
 
   const handleAbort = async () => {
