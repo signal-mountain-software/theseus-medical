@@ -27,6 +27,7 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 import EditIcon from '@material-ui/icons/Edit';
 import NotesIcon from '@material-ui/icons/Notes';
+import GroupAddIcon from '@material-ui/icons/GroupAdd';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
@@ -1346,7 +1347,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       onClick={() => {
                         setMorePeople(true);
                       }}
-                      startIcon={<CheckIcon size="small" />}
+                        startIcon={<GroupAddIcon size="small" />}
                     >
                       {'Add People'}
                       </Button>
