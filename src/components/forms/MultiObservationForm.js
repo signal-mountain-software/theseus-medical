@@ -388,17 +388,18 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       // This handles rows in the form "~<instruction[1]>:<instruction[2]>", for example
       //     "~lambda:<instruction[2]>" or 
       //     "~prompt:Who is this order for?"
+      //     "~promptAll:Table Number"
       if (instruction[2]) {
         displayRowList.push({
           checkbox: false,
           required: false,
-          text: instruction[2],
-          oKey: getKey(instruction[2]),
+          text: instruction[2].trim(),
+          oKey: getKey(instruction[2].trim()),
           desc: getDescription(instruction[2]),
-          input: instruction[1],
+          input: instruction[1].trim().toLowerCase(),
           header: false
         });
-        if (dValue) { defaultObj[instruction[2]] = dValue; }
+        if (dValue) { defaultObj[instruction[2].trim()] = dValue; }
         continue;
       }
 
@@ -519,7 +520,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         dataRows.optNeeded = [pObs.text, pPerson, pDisplayName];
       }
     }
-    else {dataRows.radioOn[pPerson][pObs.text] = false;
+    else {
+      dataRows.radioOn[pPerson][pObs.text] = false;
     }
     setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
@@ -577,9 +579,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function checkDuplicate(checkID) {
     let counter = 1;
     let spliceAfter = 0;
-    dataRows.columnList.forEach((c, x) => { 
+    dataRows.columnList.forEach((c, x) => {
       if (c.account_id === checkID) { counter++; spliceAfter = x; }
-    })
+    });
     if (counter === 1) { return [checkID, spliceAfter]; }
     else { return [`${checkID}+++${counter}`, spliceAfter]; }
   }
@@ -595,7 +597,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         let fName = nameParts.pop();
         let lName = nameParts.join(' ');
         let display_name = fName.trim() + ' ' + lName.trim();
-        let a = display_name.split(/\s+/);        
+        let a = display_name.split(/\s+/);
         let [this_id, spliceAfter] = checkDuplicate(pID);
         let newColumn = {
           person_id: this_id,
@@ -607,7 +609,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         else { dataRows.columnList.splice(spliceAfter + 1, 0, newColumn); }
         [defaultChecked, qualChecked] = await checkExistingOrders(this_id, display_name);
         dataRows.radioOn[this_id] = Object.assign({}, defaultChecked);
-        dataRows.qualSelections = Object.assign(dataRows.qualSelections, qualChecked)
+        dataRows.qualSelections = Object.assign(dataRows.qualSelections, qualChecked);
         maxLength = Math.max(a.length, maxLength);
       }
       else {
@@ -632,12 +634,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           else { dataRows.columnList.splice(spliceAfter + 1, 0, newColumn); }
           [defaultChecked, qualChecked] = await checkExistingOrders(this_id, p.display_name);
           dataRows.radioOn[this_id] = Object.assign({}, defaultChecked);
-          dataRows.qualSelections = Object.assign(dataRows.qualSelections, qualChecked)
+          dataRows.qualSelections = Object.assign(dataRows.qualSelections, qualChecked);
           maxLength = Math.max(a.length, maxLength);
         };
       }
     }
-    
+
     setMaxName(maxLength);
     setMorePeople(false);
     setDataRows({
@@ -693,7 +695,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   }
                 }
               }
-            } 
+            }
           };
           break;
         }
@@ -718,6 +720,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   async function sendRequests(pData) {
     let oBo;
+    let everyoneText = {};
+    if (pData.textValue && pData.textValue.hasOwnProperty('*all*')) {
+      Object.keys(pData.textValue['*all*']).forEach(prompt => {
+        everyoneText[prompt] = pData.textValue['*all*'][prompt];
+      });
+    }
     dataRows.columnList.map(async (c) => {
       oBo = await makeName(c.person_id);
       let radioChecked = [];
@@ -764,7 +772,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       if ((radioChecked.length > 0) || textExists) {
         delete textInput['requestType'];
         let requestObj = { 'selections': radioChecked };
-        if (textExists) { requestObj.textInput = textObj; }
+        if (textExists || (Object.keys(everyoneText).length > 0)) { requestObj.textInput = Object.assign(textObj, everyoneText); }
         if (Object.keys(optionObj).length > 0) { requestObj.options = optionObj; }
         await putServiceRequest(
           {
@@ -782,11 +790,24 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (records2Update.length > 0) { await updateServiceRequest(records2Update); }
   }
 
+  function displayValue(prompt) {
+    if (!dataRows.hasOwnProperty('textValue')) { return ''; }
+    if (!dataRows.textValue.hasOwnProperty('*all*')) { return ''; }
+    if (!dataRows.textValue['*all*'].hasOwnProperty(prompt)) { return ''; }
+    return dataRows.textValue['*all*'][prompt];
+  }
+
   function makeConfirm(pData) {
     let warningsExist = false;
     let dataExists = false;
     let warningSection = [' ', `[bold][italic]There are no selections for:`, ' '];
     let responseArray = [' ', `[bold][italic]AVA will send the following:`];
+    let everyoneText = [];
+    if (pData.textValue && pData.textValue.hasOwnProperty('*all*')) {
+      Object.keys(pData.textValue['*all*']).forEach(prompt => {
+        everyoneText.push(`[indent=1]${prompt}: ${pData.textValue['*all*'][prompt]}`);
+      });
+    }
     pData.columnList.forEach(c => {
       let radioChecked = [];
       Object.keys(pData.radioOn[c.person_id]).forEach(r => {
@@ -831,6 +852,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       if ((radioChecked.length === 0) && (noText)) {
         warningsExist = true;
         warningSection.push(`[italic]${c.display_name}${c.person_id.includes('+++') ? (' (' + c.person_id.split('+++')[1] + ')') : ''}`);
+      }
+      else if (everyoneText.length > 0) {
+        everyoneText.forEach(e => { 
+          responseArray.push(e);
+        })
       }
     });
     let returnArray = ['Selection summary'];
@@ -971,56 +997,78 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         justifyContent='flex-end'
                         alignItems='center'
                       >
-                        {this_index !== 0 &&
-                          (this_item.checkbox ?
-                            <Box
-                              display='flex'
-                              flexDirection='row'
-                              minWidth={50}
-                              maxWidth={50}
-                              key={`radiobox-row${this_index}`}
-                              className={classes.listItem}
-                              justifyContent='center'
-                              alignItems='center'
-                            >
-                              <Checkbox
-                                checked={isChecked(this_item.text) === 'all'}
-                                indeterminate={isChecked(this_item.text) === 'some'}
-                                disableRipple
-                                key={'checkbox' + this_index}
-                                onClick={() => {
-                                  // is every person currently check ON for this row?
-                                  let someAreOff = false;
-                                  for (let person in dataRows.radioOn) {
-                                    if (!dataRows.radioOn[person][this_item.text]) { someAreOff = true; }
-                                  }
-                                  for (let person in dataRows.radioOn) {
-                                    dataRows.radioOn[person][this_item.text] = someAreOff;
-                                  }
-                                  setDataRows(dataRows);
-                                  setForceRedisplay(!forceRedisplay);
-                                }}
-                              />
-                            </Box>
-                            :
-                            <Box
-                              display='flex'
-                              flexDirection='row'
-                              minWidth={50}
-                              maxWidth={50}
-                              key={`pencilbox-row${this_index}`}
-                              className={classes.listItem}
-                              justifyContent='center'
-                              alignItems='center'
-                            >
+                        {this_index !== 0 && this_item.checkbox &&
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            minWidth={50}
+                            maxWidth={50}
+                            key={`radiobox-row${this_index}`}
+                            className={classes.listItem}
+                            justifyContent='center'
+                            alignItems='center'
+                          >
+                            <Checkbox
+                              checked={isChecked(this_item.text) === 'all'}
+                              indeterminate={isChecked(this_item.text) === 'some'}
+                              disableRipple
+                              key={'checkbox' + this_index}
+                              onClick={() => {
+                                // is every person currently check ON for this row?
+                                let someAreOff = false;
+                                for (let person in dataRows.radioOn) {
+                                  if (!dataRows.radioOn[person][this_item.text]) { someAreOff = true; }
+                                }
+                                for (let person in dataRows.radioOn) {
+                                  dataRows.radioOn[person][this_item.text] = someAreOff;
+                                }
+                                setDataRows(dataRows);
+                                setForceRedisplay(!forceRedisplay);
+                              }}
+                            />
+                          </Box>
+                        }
+                        {this_index !== 0 && !this_item.checkbox &&
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            minWidth={50}
+                            maxWidth={(this_item.input !== 'promptall') ? 50 : 500}
+                            key={`pencilbox-row${this_index}`}
+                            className={classes.listItem}
+                            justifyContent='center'
+                            alignItems='center'
+                          >
+                            {(this_item.input !== 'promptall') &&
                               <Checkbox
                                 disableRipple
                                 className={classes.hiddenItem}
                                 key={'pencilbox' + this_index}
                                 onClick={() => { }}
                               />
-                            </Box>
-                          )}
+                            }
+                            {(this_item.input === 'promptall') &&
+                              <TextField
+                                className={classes.freeInput}
+                                id={'text' + this_index}
+                                variant={'standard'}
+                                key={'text' + this_index}
+                                multiline
+                                onChange={(event) => {
+                                  if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
+                                  if (!dataRows.textValue.hasOwnProperty('*all*')) {
+                                    dataRows.textValue['*all*'] = {};
+                                  }
+                                  dataRows.textValue['*all*'][this_item.text] = event.target.value;
+                                  setDataRows(dataRows);
+                                  setForceRedisplay(!forceRedisplay);
+                                }}
+                                autoComplete='off'
+                                value={displayValue(this_item.text)}
+                              />
+                            }
+                          </Box>
+                        }
                         {(this_index === 0) &&
                           <Box
                             display='flex'
@@ -1138,20 +1186,22 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                     />
                                   </Tooltip>
                                   :
-                                  <Button
-                                    className={classes.pencilButton}
-                                    onClick={() => {
-                                      setPromptForText(
-                                        {
-                                          person: this_person.person_id,
-                                          prompt: this_item.text,
-                                          title: this_person.display_name
-                                        }
-                                      );
-                                      setForceRedisplay(!forceRedisplay);
-                                    }}
-                                    startIcon={<EditIcon size="small" />}
-                                  />
+                                  (this_item.input !== 'promptall' &&
+                                    <Button
+                                      className={classes.pencilButton}
+                                      onClick={() => {
+                                        setPromptForText(
+                                          {
+                                            person: this_person.person_id,
+                                            prompt: this_item.text,
+                                            title: this_person.display_name
+                                          }
+                                        );
+                                        setForceRedisplay(!forceRedisplay);
+                                      }}
+                                      startIcon={<EditIcon size="small" />}
+                                    />
+                                  )
                                 }
                               </Box>
                             )
@@ -1330,26 +1380,26 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   </Button>
                   {(!factType || (factType !== 'list')) &&
                     <React-Fragment>
-                    <Button
-                      className={classes.AVAButton}
-                      style={{ color: 'green' }}
-                      onClick={() => {
-                        let [cStatus, response] = makeConfirm(dataRows);
-                        setConfirmPrompt(response);
-                        setConfirmStatus(cStatus);
-                      }}
-                      startIcon={<CheckIcon size="small" />}
-                    >
-                      {'Confirm/Send'}
-                    </Button>
-                    <Button
-                      className={classes.AVAButton}
-                      onClick={() => {
-                        setMorePeople(true);
-                      }}
+                      <Button
+                        className={classes.AVAButton}
+                        style={{ color: 'green' }}
+                        onClick={() => {
+                          let [cStatus, response] = makeConfirm(dataRows);
+                          setConfirmPrompt(response);
+                          setConfirmStatus(cStatus);
+                        }}
+                        startIcon={<CheckIcon size="small" />}
+                      >
+                        {'Confirm/Send'}
+                      </Button>
+                      <Button
+                        className={classes.AVAButton}
+                        onClick={() => {
+                          setMorePeople(true);
+                        }}
                         startIcon={<GroupAddIcon size="small" />}
-                    >
-                      {'Add People'}
+                      >
+                        {'Add People'}
                       </Button>
                     </React-Fragment>
                   }
