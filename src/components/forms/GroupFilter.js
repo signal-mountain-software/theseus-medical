@@ -191,8 +191,8 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
 
   function OKtoShow(inObj) { 
     return (
-      inObj.toLowerCase().includes(lower_activity_filter) ||
-      groupsManagedObject[inObj].group_id.toLowerCase().includes(lower_activity_filter)
+      inObj.group_name.toLowerCase().includes(lower_activity_filter) ||
+      inObj.group_id.toLowerCase().includes(lower_activity_filter)
     );
   }
 
@@ -260,7 +260,7 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
           <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
             <List component='nav'>
               {Object.keys(groupsManagedObject).map((listEntry, x) => (
-                (OKtoShow(listEntry) &&
+                (OKtoShow(groupsManagedObject[listEntry]) &&
                     <ListItem
                       key={'activity-list_' + listEntry}
                       onClick={() => {
@@ -273,7 +273,7 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
                           {groupsManagedObject[listEntry].role === 'member' ? classes.listItemAVA :
                             (groupsManagedObject[listEntry].role === 'non-member' ? classes.listItemAVALight :
                               classes.listItemAVABold)}>
-                          {listEntry}
+                        {groupsManagedObject[listEntry].group_name}
                         </Typography>
                         <Typography className={classes.rightEdgeSmall}>
                           {groupsManagedObject[listEntry].role}

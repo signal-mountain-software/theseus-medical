@@ -16,7 +16,7 @@ export function putServiceRequest_nonAsync(body) {
 
 export async function getServiceRequests(body) {
   if (body.filter) { Object.assign(body, body.filter); };
-  let rP = body.person_id || body.person;
+  let rP = body.person_id || body.person || body.requestor;
   let rT = body.request_type;
   let qQ = { TableName: 'ServiceRequests' };
   if (body.local_key) {
@@ -28,6 +28,18 @@ export async function getServiceRequests(body) {
     qQ.IndexName = 'foreign_key-index';
     qQ.KeyConditionExpression = 'client_id = :c and foreign_key = :fK';
     qQ.ExpressionAttributeValues = { ':c': body.client_id, ':fK': body.foreign_key };
+    if (rT) {
+      qQ.FilterExpression = 'request_type = :t';
+      qQ.ExpressionAttributeValues[':t'] = rT;
+      if (rP) { 
+        qQ.FilterExpression += ' and requestor = :p';
+        qQ.ExpressionAttributeValues[':p'] = rP;
+      }
+    }
+    else if (rP) {
+        qQ.FilterExpression += 'requestor = :p';
+        qQ.ExpressionAttributeValues[':p'] = rP;
+    }
   }
   else if (rP) {
     qQ.IndexName = 'requestor-type-index';

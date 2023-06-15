@@ -209,7 +209,7 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
                   }}
                   allowRandom={true}
                   returnValue={pReturnValue}
-                  multiSelect
+                  multiSelect={true}
                 />
               }
             </List>

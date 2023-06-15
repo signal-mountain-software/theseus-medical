@@ -4,7 +4,7 @@ import { useSnackbar } from 'notistack';
 import { recordExists, cl, resolveVariables, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
 import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
-import { getMemberList, getGroupHierarchy, getPublicGroupList, getGroupsBelongTo } from '../../util/AVAGroups';
+import { getMemberList, prepareTargets, getGroupHierarchy, getPublicGroupList, getGroupsBelongTo } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -43,6 +43,7 @@ import LinearProgress from '@material-ui/core/LinearProgress';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 
 import Tooltip from '@material-ui/core/Tooltip';
+import { SET_PATIENTS } from '../../contexts/Session/actions';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -225,7 +226,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const classes = useStyles();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
-  const { state } = useSession();
+  const { state, dispatch } = useSession();
   const { roles, session } = state;
 
   const [selected, setSelected] = React.useState(null);
@@ -847,6 +848,18 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             else { factClient = defaultClient; }
           }
           dPart = await getMemberList(makeArray(dPart, ','), factClient, { sort: true });
+          break;
+        }
+        case 'select': {
+          if (state.patients) {
+            dPart = state.patients;
+          }
+          else {
+            let targetObj = await prepareTargets(session.patient_id, session.client_id, { includeGroups: true });
+            dispatch({ type: SET_PATIENTS, payload: targetObj.responsibleList.sort() });
+            dPart = targetObj.responsibleList.sort();
+          }
+          
           break;
         }
         default: { }
