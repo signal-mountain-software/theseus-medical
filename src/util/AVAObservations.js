@@ -158,6 +158,19 @@ export async function makeObservationList(pObs, pSession) {
   }
 }
 
+export async function getObservationOptions(pObs) {
+  let options = await dbClient
+    .query({
+      KeyConditionExpression: 'observation_key = :p AND characteristic = :o',
+      ExpressionAttributeValues: { ':p': pObs, ':o': 'options' },
+      TableName: "Observation_Items"
+    })
+    .promise()
+    .catch(error => { cl(`Problem reading Observation_Items with key ${pObs} is: ${error}`); });
+  if (recordExists(options)) { return options.Items[0].display_value; }
+  else { return []; }
+}
+
 export async function getActivity(pClient, pCode) {
   let activityRec = await dbClient
     .get({

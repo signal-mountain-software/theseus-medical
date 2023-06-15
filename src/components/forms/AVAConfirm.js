@@ -8,7 +8,6 @@ import Paper from '@material-ui/core/Paper';
 import Button from '@material-ui/core/Button';
 import GoBackIcon from '@material-ui/icons/SettingsBackupRestore';
 import CheckIcon from '@material-ui/icons/DoneSharp';
-import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
@@ -17,15 +16,13 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(3),
     marginRight: theme.spacing(2),
     fontSize: theme.typography.fontSize * 1.5,
-    maxWidth: '90%',
     fontWeight: 'bold',
   },
   page: {
     paddingTop: theme.spacing(2),
-    paddingBottom: theme.spacing(2)
+    paddingBottom: theme.spacing(2),
   },
   notTitle: {
-    maxWidth: '90%',
     marginRight: theme.spacing(2),
   },
   AVAButton: {
@@ -41,8 +38,6 @@ const useStyles = makeStyles(theme => ({
     size: 'small',
   }
 }));
-
-const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', onCancel, onConfirm }) => {
 
@@ -77,12 +72,10 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
 
   return (
     <Dialog
+      key={`confirm-dialog`}
       open={true}
+      fullWidth
       p={2}
-      height={250}
-      width='80%'
-      variant={'elevation'} elevation={2}
-      TransitionComponent={Transition}
     >
       <Box
         key={`box-line`}
