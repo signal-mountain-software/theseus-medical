@@ -825,6 +825,10 @@ export default Component => props => {
             currentSession.client_logo = cRec.icon;
             break;
           }
+          case 'client_name': {
+            currentSession.client_name = cRec.customization_value;
+            break;
+          }
           case 'greeting':
           case 'greetings': {
             let today = new Date();

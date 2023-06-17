@@ -1,6 +1,7 @@
-import { clt, cl, recordExists, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
+import { clt, cl, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
+import { getServiceRequests } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
 
 // Functions
@@ -48,7 +49,6 @@ export async function prepareMessage(inBody) {
     author: inBody.author,
     onBehalfOf: inBody.onBehalfOf,
     local_key: inBody.local_key,
-    requestType: inBody.requestType,
     requestDate: inBody.requestDate,
     requestID: inBody.requestID
   },
@@ -76,6 +76,15 @@ export async function prepareMessage(inBody) {
       case 'checklist':
       case 'factForm': {
         [results.htmlText, results.messageText] = await formatRequestDetails(this_request, this_request.format.type);
+        break;
+      }
+      case 'mealTicket': {
+        [results.htmlText, results.messageText] = await mealTicketFormat(this_request);
+        break;
+      }
+      case 'inBody': {
+        results.htmlText = inBody.htmlText;
+        results.messageText = inBody.messageText;
         break;
       }
       case 'plainText':
@@ -458,6 +467,131 @@ async function formatRequestDetails(body, summaryType) {
   rawMessage += `\n\rAVA reference: ${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})\n***** END *****`;
 
   return [htmlMessage, rawMessage];
+}
+
+export async function mealTicketFormat(body) {
+
+  // *********** GET ALL REQ THAT MATCH LOCAL_KEY IN THE BODY *********** //
+  if (!body.local_key) {
+    let keyRequest = await getServiceRequests({
+      request_id: body.request_id,
+      client_id: body.client || body.client_id
+    });
+    if (keyRequest.length === 0) { return null; } 
+    body.local_key = keyRequest[0].local_key;
+  }
+  let requestList = await getServiceRequests({
+    local_key: body.local_key,
+    client_id: body.client || body.client_id
+  });
+  if (requestList.length === 0) { return null; }
+
+  // Prep the PDF output
+  let htmlText = [];
+  if (!body.margin) { body.margin = {}; }
+  let page = {
+    width: body.pageWidth || '276px',
+    border: body.border || true,
+    font: {
+      family: 'Helvetica',
+      size: { large: '1.2em', medium: '1em', small: '0.8em', tiny: '0.6em' }
+    },
+    layout: body.orientation || 'portrait',
+    info: { author: 'AVA Senior Living', title: 'Meal Ticket' },
+    margin: {
+      top: body.margin.top || '3em',
+      bottom: body.margin.bottom || '1em',
+      left: body.margin.left || '4px',
+      right: body.margin.right || '4px'
+    }
+  };
+  let style = `"padding-top: ${page.margin.top}; padding-bottom: ${page.margin.bottom}; width: ${page.width}; font-family: ${page.font.family}; ${page.border ? 'border: 2px solid black;' : ''} color: black; padding-left: ${page.margin.left}; padding-right: ${page.margin.right}"`;
+  htmlText.push(`<body style=${style}>`)
+
+  // ********** LOGO ********** //
+  if (body.logo) {
+    htmlText.push(`<div style="text-align:center">`);
+    let logo_dimensions = [150, 100];
+    if (body.logo_dimensions) { 
+      logo_dimensions = body.logo_dimensions;
+    }
+    htmlText.push(`<img src="${body.logo}" width="${logo_dimensions[0]}px" height="${logo_dimensions[1]}px" />`);
+    htmlText.push(`</div>`);
+  }
+
+  htmlText.push(`<p>`);
+  
+  // ********** TITLE ********** //
+  let titleWords = body.subject || body?.format?.subject || body.activityName || 'Meal Ticket';
+  titleWords = await resolveMessageVariables(titleWords, body);
+  style = `"text-align:center; font-size: ${page.font.size.large};"`;
+  htmlText.push(`<div style=${style}><b>${titleCase(titleWords)}</b></div>`);
+  if (body.client_name) {
+    htmlText.push(`<div style=${style}><b>${titleCase(body.client_name)}</b></div>`);
+  }
+
+  htmlText.push(`<br />`);
+
+  // ********** HEADER ********** //
+  // Pick-off the first request for Header info for the ticket
+  let this_request = requestList[0];
+  let [server_id, order_timestamp] = this_request.request_id.split('~');
+  let server_name = await makeName(server_id);
+  let table_key = body.tableNumberKey || 'Table Number';
+  style = `"text-align:center; font-size: ${page.font.size.small};"`;
+  htmlText.push(`<dt style=${style}>Server: ${titleCase(server_name)}</dt>`);
+  htmlText.push(`<dt style=${style}>${makeDate(order_timestamp).absolute}</dt>`);
+  if (this_request.original_request.textInput && this_request.original_request.textInput[table_key]) {
+    htmlText.push(`<dt style=${style}><b>Table: ${this_request.original_request.textInput[table_key]}</b></dt>`);
+  }
+  
+  htmlText.push(`</p>`);
+
+  // ********** ORDERS ********** //
+  for (let r = 0; r < requestList.length; r++) {
+    let this_request = requestList[r];
+    let requestor = this_request.on_behalf_of;
+    if (!requestor) { requestor = await makeName(this_request.requestor); }
+    htmlText.push(`<p style="padding-top: 1.5em;">`);
+    style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
+    htmlText.push(`<div style=${style}><b>${titleCase(requestor)}</b></div>`);
+    // eslint-disable-next-line
+    this_request.original_request.selections.forEach(s => {
+      let [selection, options] = s.split(/[()]/);
+      htmlText.push(`<div style=${style}>${selection}</div>`);
+      if (options) {
+        style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
+        let optionList = options.split(',');
+        optionList.forEach(o => {
+          htmlText.push(`<div style=${style}><i>${titleCase(o)}</i></div>`);
+        });
+      }
+    });
+    for (let field in this_request.original_request.textInput) {
+      if (field !== table_key) {
+        style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
+        htmlText.push(`<div style=${style}>${field}</div>`);
+        style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
+        htmlText.push(`<div style=${style}><i>${this_request.original_request.textInput[field]}</i></div>`);
+      }
+    }
+    htmlText.push(`</p>`);
+  }
+
+  // ********** INITIALS ********** //
+  htmlText.push(`<p style="font-size: ${page.font.size.medium}; padding-top: 4em;">Initials _________</p>`);
+
+  // ********** FOOTERS ********** //
+  htmlText.push(`<p style="padding-top: 1.5em;">`);
+  style = `"font-size: ${page.font.size.tiny}; text-align:center;"`;
+  htmlText.push(`<div style=${style}>${this_request.local_key}/${this_request.request_id}</div>`);
+  htmlText.push(`<div style=${style}>AVA Senior Living</div>`);
+  htmlText.push(`<div style=${style}>****** END ******</div>`);
+  htmlText.push(`</p>`);
+
+  htmlText.push(`</body>`);
+
+  return [htmlText.join(''), htmlText.join('')] ;
 }
 
 export async function sendMessage(body) { return await sendMessages(body); }

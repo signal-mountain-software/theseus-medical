@@ -4,6 +4,7 @@ import Dialog from '@material-ui/core/Dialog';
 import List from '@material-ui/core/List';
 import Paper from '@material-ui/core/Paper';
 import { dbClient } from '../../util/AVAUtilities';
+import { getPeopleResponsibleFor } from '../../util/AVAGroups';
 
 import { SET_PATIENT, SET_SESSION, SET_PATIENTS } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
@@ -15,46 +16,14 @@ export default ({ open, roles, onClose, forceSwitch }) => {
   const { state, dispatch } = useSession();
   const { patients, session, profile } = state;
 
-
-  const getPeopleList = async (pClient, pGroupArray) => {
-    let queryExpression = {
-      KeyConditionExpression: 'client_id = :c',
-      ExpressionAttributeValues: { ':c': pClient },
-      ExpressionAttributeNames: { '#n': 'name', '#f': 'first', '#l': 'last' },
-      TableName: "People",
-      IndexName: "client_id-index",
-      ProjectionExpression: "person_id, #n.#f, #n.#l, groups, search_data"
-    };
-    var peopleRecs = await dbClient
-      .query(queryExpression)
-      .promise()
-      .catch(error => {
-        console.log({ 'Bad query on People in getGroupMembers - caught error is': error });
-      });
-    if (!recordExists(peopleRecs)) { return []; }
-    let allPeople = (pGroupArray.find(g => { return (g.toLowerCase() === '*all'); }));
-    let returnArray = [];
-    peopleRecs.Items.forEach(p => {
-      if (allPeople || (p.groups && p.groups.some(g => pGroupArray.includes(g)))) {
-        returnArray.push((`${p.name?.last}, ${p.name?.first}:${p.person_id}:${p.search_data}`).trim());
-      }
-    });
-    return returnArray.sort();
-  };
-
   React.useEffect(() => {
     async function getPatients() {
       if (!patients || (patients.length === 0)) {
         // get a group of patients a user is responsible for
-        let responsibleList = [];
         if (session.responsible_for) {
-          let respArray = [];
-          if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
-          else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-          else { respArray.push(session.responsible_for); }
-          if (respArray.length > 0) {
-            responsibleList = await getPeopleList(profile.client_id, respArray);
-            let myInfo = `${profile.name.last}, ${profile.name.first}:${profile.person_id}:${profile.search_data}`;
+          let responsibleList = await getPeopleResponsibleFor(state.session.user_id);
+          if (responsibleList.length > 0) {
+            let myInfo = `${profile.name.last}, ${profile.name.first} (My account):${profile.person_id}:${profile.search_data}`;
             if (!responsibleList || responsibleList.length === 0) {
               responsibleList = [myInfo];
             }
