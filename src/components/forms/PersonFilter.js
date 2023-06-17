@@ -206,7 +206,12 @@ export default ({
         if (ans[1].startsWith('group=')) { return ''; }
         else { return ans[1].trim(); }
       }
-      default: { return ans[0].trim().split(/[\s]+/)[0]; }
+      default: {
+        let a = ans[0].trim().split(/[\s]+/); 
+        if (a.length === 1) { return ''; }
+        a.pop();
+        return a.join(' ');
+      }
     }
   }
 
@@ -219,7 +224,11 @@ export default ({
         if (ans[1].startsWith('group=')) { return ''; }
         else { return ans[0].trim(); }
       }
-      default: { return ans[0].trim().split(/[\s]+/)[1]; }
+      default: {
+        let a = ans[0].trim().split(/[\s]+/);
+        if (a.length === 1) { return a; }
+        return a.pop();
+      }
     }
   }
 

@@ -66,6 +66,34 @@ export async function getGroupsResponsibleFor(person_id) {
   return returnObject;
 }
 
+export async function getPeopleResponsibleFor(person_id) {
+  if (!session || (session.patient_id !== person_id)) {
+    session = await getSession(person_id);
+  }
+  var respList = [];
+  if ('groups_managed' in session) {
+    for (let g = 0; g < session.groups_managed.length; g++) {
+      let [gID, ] = session.groups_managed[g].split('~').map(s => { return s.trim(); });
+      respList.push(gID);
+    };
+  }
+  let respArray = [];
+  if ('responsible_for' in session) {
+    if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
+    else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
+    else { respArray.push(session.responsible_for); }
+  }
+  for (let g = 0; g < respArray.length; g++) {
+    let rID = respArray[g].trim();
+    if (!respList.includes(rID)) { respList.push(rID); }
+  }
+  let returnObject = await getMemberList(respList, session.client_id, { sortResults: true });
+  return returnObject.peopleList.map(p => { 
+    return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
+  })
+}
+
+
 export async function getGroupsBelongTo(person_id, options) {
   // You belong to all groups that you are responsible for
   var returnObject = await getGroupsResponsibleFor(person_id);
@@ -162,9 +190,11 @@ export async function getMemberList(pGroups, pClient_id, options) {
   // otherwise, people records are return without regard to the directory_option
   let checkExclude = false;
   let sortResults = false;
-  if (options) {
-    checkExclude = options.exclude;
-    sortResults = options.sort;
+  if (options.sort || options.sortResults) {
+    sortResults = options.sort || options.sortResults;
+  }
+  if (options.exclude || options.checkExclude) {
+    checkExclude = options.exclude || options.checkExclude;
   }
   let defaultClient = pClient_id || session.client_id;
   let gList = [];
