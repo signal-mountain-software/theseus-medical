@@ -40,6 +40,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 import Radio from '@material-ui/core/Radio';
 
 import AVAConfirm from './AVAConfirm';
+import { mealTicketFormat, prepareMessage, sendMessages } from '../../util/AVAMessages';
 
 const useStyles = makeStyles(theme => ({
   textLine: {
@@ -726,7 +727,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         everyoneText[prompt] = pData.textValue['*all*'][prompt];
       });
     }
-    dataRows.columnList.map(async (c) => {
+    let writtenRecords = [];
+    let local_key = null;
+    let message_body;
+    for (let a = 1; a < dataRows.columnList.length; a++) {
+      let c = dataRows.columnList[a];
       oBo = await makeName(c.person_id);
       let radioChecked = [];
       let optionObj = {};
@@ -774,7 +779,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         let requestObj = { 'selections': radioChecked };
         if (textExists || (Object.keys(everyoneText).length > 0)) { requestObj.textInput = Object.assign(textObj, everyoneText); }
         if (Object.keys(optionObj).length > 0) { requestObj.options = optionObj; }
-        await putServiceRequest(
+        let result = await putServiceRequest(
           {
             client: pClient,
             author: c.account_id,
@@ -783,10 +788,62 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             onBehalfOf: oBo,
             foreign_key,
             request: requestObj,
-            messaging: fact.messaging
+            messaging: null,
+            local_key
           });
+        local_key = result.requestRec.local_key;
+        message_body = result.body;
+        writtenRecords.push(result.requestRec);
       }
+    };
+    // print tickets...
+    let [html, plain] = await mealTicketFormat({
+      local_key,
+      client_id: pClient,
+      logo: state.session.client_logo,
+      logo_dimensions: state.session.logo_dimensions,
+      client_name: state.session.client_name
     });
+    if (html) {  // if there is a message to send, send it and update all the Service Request records to show that it was sent
+      // prepare message that contains the tickets (one for the whole group)
+      message_body.messaging = fact.messaging;
+      message_body.messaging.format = { 'type': 'inBody', 'subject': 'Meal Ticket' };
+      message_body.htmlText = html;
+      message_body.messageText = plain;
+      let preparedMessages = await prepareMessage(message_body);
+      // send the message
+      if (preparedMessages.length > 0) {
+        preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${message_body.requestType}/${local_key}`; });
+        let rTime = makeDate(new Date().getTime());
+        let rMsg;
+        let last_status;
+        if (message_body.messaging?.format?.method === 'hold') {
+          last_status = 'Prepared & Held';
+          rMsg = `Held for future processing ${rTime.oaDate}`;
+        }
+        else {
+          let sendResults = (await sendMessages(preparedMessages)).pop();
+          if (!sendResults.sent) {
+            last_status = 'Failed to send';
+            rMsg = `Failed to send ${rTime.oaDate}`;
+          }
+          else {
+            last_status = 'Sent';
+            rMsg = `Sent for processing ${rTime.oaDate}`;
+          }
+        }
+        writtenRecords.forEach(w => {
+          w.messages = preparedMessages;
+          w.last_update = rTime.timestamp;
+          w.last_status = last_status;
+          if (('history' in w) && Array.isArray(w.history)) {
+            w.history.unshift(rMsg);
+          }
+          else { w.history = [rMsg]; }
+        });
+        await updateServiceRequest(writtenRecords);
+      }
+    }  // end of "is there a message to send?"
     if (records2Update.length > 0) { await updateServiceRequest(records2Update); }
   }
 

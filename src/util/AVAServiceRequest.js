@@ -19,7 +19,11 @@ export async function getServiceRequests(body) {
   let rP = body.person_id || body.person || body.requestor;
   let rT = body.request_type;
   let qQ = { TableName: 'ServiceRequests' };
-  if (body.local_key) {
+  if (body.request_id) {
+    qQ.KeyConditionExpression = 'client_id = :c and request_id = :r';
+    qQ.ExpressionAttributeValues = { ':c': body.client_id, ':r': body.request_id };
+  }
+  else if (body.local_key) {
     qQ.IndexName = 'local_key-index';
     qQ.KeyConditionExpression = 'client_id = :c and local_key = :lK';
     qQ.ExpressionAttributeValues = { ':c': body.client_id, ':lK': body.local_key };
@@ -31,14 +35,14 @@ export async function getServiceRequests(body) {
     if (rT) {
       qQ.FilterExpression = 'request_type = :t';
       qQ.ExpressionAttributeValues[':t'] = rT;
-      if (rP) { 
+      if (rP) {
         qQ.FilterExpression += ' and requestor = :p';
         qQ.ExpressionAttributeValues[':p'] = rP;
       }
     }
     else if (rP) {
-        qQ.FilterExpression += 'requestor = :p';
-        qQ.ExpressionAttributeValues[':p'] = rP;
+      qQ.FilterExpression += 'requestor = :p';
+      qQ.ExpressionAttributeValues[':p'] = rP;
     }
   }
   else if (rP) {
@@ -126,8 +130,8 @@ export async function putServiceRequest(body) {
     "last_status": body.requestStatus || 'submitted',
     "last_note": body.notes
   };
-  if (body.attachments && (body.attachments.length > 0)) { 
-    serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; })
+  if (body.attachments && (body.attachments.length > 0)) {
+    serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; });
   }
   if (body.messaging) {
     let preparedMessages = await prepareMessage(body);
@@ -172,6 +176,8 @@ export async function putServiceRequest(body) {
     });
   return {
     'request_id': serviceRequestRec.request_id,
+    'requestRec': serviceRequestRec,
+    'body': body,
     'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
   };
 }
