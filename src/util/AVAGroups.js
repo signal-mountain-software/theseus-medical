@@ -190,11 +190,13 @@ export async function getMemberList(pGroups, pClient_id, options) {
   // otherwise, people records are return without regard to the directory_option
   let checkExclude = false;
   let sortResults = false;
-  if (options.sort || options.sortResults) {
-    sortResults = options.sort || options.sortResults;
-  }
-  if (options.exclude || options.checkExclude) {
-    checkExclude = options.exclude || options.checkExclude;
+  if (options) {
+    if (options.sort || options.sortResults) {
+      sortResults = options.sort || options.sortResults;
+    }
+    if (options.exclude || options.checkExclude) {
+      checkExclude = options.exclude || options.checkExclude;
+    }
   }
   let defaultClient = pClient_id || session.client_id;
   let gList = [];
