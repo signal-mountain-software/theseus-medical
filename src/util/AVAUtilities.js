@@ -385,6 +385,7 @@ export async function resolveVariables(pKey, pSession, options = {}) {
         response.push(front, pSession.patient_id);
         break;
       }
+      case 'user_id':
       case 'user': {
         response.push(front, pSession.user_id);
         break;

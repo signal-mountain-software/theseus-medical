@@ -606,7 +606,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           display_name,
           dName: [' ', ' ', ' '].concat(a)
         };
-        if (spliceAfter === 0) { dataRows.columnList[++x] = newColumn; }
+        if (spliceAfter === 0) { dataRows.columnList[x++] = newColumn; }
         else { dataRows.columnList.splice(spliceAfter + 1, 0, newColumn); }
         [defaultChecked, qualChecked] = await checkExistingOrders(this_id, display_name);
         dataRows.radioOn[this_id] = Object.assign({}, defaultChecked);
@@ -631,7 +631,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             display_name,
             dName: [' ', ' ', ' '].concat(a)
           };
-          if (spliceAfter === 0) { dataRows.columnList[++x] = newColumn; }
+          if (spliceAfter === 0) { dataRows.columnList[x++] = newColumn; }
           else { dataRows.columnList.splice(spliceAfter + 1, 0, newColumn); }
           [defaultChecked, qualChecked] = await checkExistingOrders(this_id, p.display_name);
           dataRows.radioOn[this_id] = Object.assign({}, defaultChecked);
@@ -730,7 +730,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let writtenRecords = [];
     let local_key = null;
     let message_body;
-    for (let a = 1; a < dataRows.columnList.length; a++) {
+    for (let a = 0; a < dataRows.columnList.length; a++) {
       let c = dataRows.columnList[a];
       oBo = await makeName(c.person_id);
       let radioChecked = [];
@@ -797,7 +797,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     };
     // print tickets...
-    let [html, plain] = await mealTicketFormat({
+    let [html, plain, attachment] = await mealTicketFormat({
       local_key,
       client_id: pClient,
       logo: state.session.client_logo,
@@ -810,10 +810,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       message_body.messaging.format = { 'type': 'inBody', 'subject': 'Meal Ticket' };
       message_body.htmlText = html;
       message_body.messageText = plain;
-      let preparedMessages = await prepareMessage(message_body);
+      let preparedMessages = await prepareMessage(message_body);      
       // send the message
       if (preparedMessages.length > 0) {
-        preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${message_body.requestType}/${local_key}`; });
+        preparedMessages.forEach((m, x) => {
+          preparedMessages[x].thread_id = `svc_${message_body.requestType}/${local_key}`;
+          if (attachment) { preparedMessages[x].attachments = [attachment.Location]; }
+        });
         let rTime = makeDate(new Date().getTime());
         let rMsg;
         let last_status;
