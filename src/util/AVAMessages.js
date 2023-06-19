@@ -557,6 +557,7 @@ export async function mealTicketFormat(body) {
     htmlText.push(`<div style=${style}><b>${titleCase(requestor)}</b></div>`);
     // eslint-disable-next-line
     this_request.original_request.selections.forEach(s => {
+      style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em; padding-left: 0;"`;
       let [selection, options] = s.split(/[()]/);
       htmlText.push(`<div style=${style}>${selection}</div>`);
       if (options) {
