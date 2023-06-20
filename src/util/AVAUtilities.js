@@ -29,7 +29,7 @@ const sak = () => {
     }
   }
   return [id2.slice(0, 20), id2.slice(20, 60)];
-}
+};
 
 export const dbClient = new AWS.DynamoDB.DocumentClient({
   apiVersion: '2012-08-10',
@@ -385,6 +385,7 @@ export async function resolveVariables(pKey, pSession, options = {}) {
         response.push(front, pSession.patient_id);
         break;
       }
+      case 'user_id':
       case 'user': {
         response.push(front, pSession.user_id);
         break;
@@ -409,7 +410,17 @@ export async function resolveVariables(pKey, pSession, options = {}) {
         }
         let keyDate = makeDate(instruction);
         if (!keyDate.error) { response.push(front, keyDate[dType || 'obs']); }
-        else { response.push(front, d1, middle, d2); }
+        else {
+          let iParts = instruction.split('~');
+          if (iParts[2]) {
+            let now = new Date();
+            let tTime = Number(iParts[1]);  // get time
+            let tNow = (now.getHours() * 100) + now.getMinutes();
+            if (tNow > tTime) { response.push(front, iParts[2]); }
+            else { response.push(front, iParts[0]); }
+          }
+          else { response.push(front, d1, middle, d2); }
+        }
       }
     }
     pKey = back;

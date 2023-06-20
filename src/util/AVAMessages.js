@@ -1,8 +1,10 @@
-import { clt, cl, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getServiceRequests } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
+
+import { jsPDF } from "jspdf";
 
 // Functions
 
@@ -69,7 +71,7 @@ export async function prepareMessage(inBody) {
     results.author = this_request.author;
     results.preferred_method = this_request.method;
     if (!('format' in this_request)) { this_request.format = { 'type': 'factForm' }; }
-    if ('subject' in this_request.format) { results.subject = this_request.format.subject }
+    if ('subject' in this_request.format) { results.subject = this_request.format.subject; }
     if ('method' in this_request.format) { results.preferred_method = this_request.format.method; }
     switch (this_request.format.type) {
       case 'mealOrder':
@@ -79,7 +81,8 @@ export async function prepareMessage(inBody) {
         break;
       }
       case 'mealTicket': {
-        [results.htmlText, results.messageText] = await mealTicketFormat(this_request);
+        [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request);
+        if (results.attachments) { requestInfo.attachments = results.attachments; }
         break;
       }
       case 'inBody': {
@@ -477,7 +480,7 @@ export async function mealTicketFormat(body) {
       request_id: body.request_id,
       client_id: body.client || body.client_id
     });
-    if (keyRequest.length === 0) { return null; } 
+    if (keyRequest.length === 0) { return null; }
     body.local_key = keyRequest[0].local_key;
   }
   let requestList = await getServiceRequests({
@@ -490,29 +493,36 @@ export async function mealTicketFormat(body) {
   let htmlText = [];
   if (!body.margin) { body.margin = {}; }
   let page = {
-    width: body.pageWidth || '276px',
+    width: body.pageWidth || 175,
     border: body.border || true,
     font: {
       family: 'Helvetica',
-      size: { large: '1.2em', medium: '1em', small: '0.8em', tiny: '0.6em' }
+      size: { large: 14, medium: 12, small: 10, tiny: 8 }
     },
     layout: body.orientation || 'portrait',
     info: { author: 'AVA Senior Living', title: 'Meal Ticket' },
     margin: {
-      top: body.margin.top || '3em',
-      bottom: body.margin.bottom || '1em',
-      left: body.margin.left || '4px',
-      right: body.margin.right || '4px'
+      top: body.margin.top || 42,
+      bottom: body.margin.bottom || 14,
+      left: body.margin.left || 4,
+      right: body.margin.right || 4
     }
   };
-  let style = `"padding-top: ${page.margin.top}; padding-bottom: ${page.margin.bottom}; width: ${page.width}; font-family: ${page.font.family}; ${page.border ? 'border: 2px solid black;' : ''} color: black; padding-left: ${page.margin.left}; padding-right: ${page.margin.right}"`;
-  htmlText.push(`<body style=${style}>`)
+  let yPos = page.margin.top;
+  let style = `"padding-top: ${page.margin.top}px; padding-bottom: ${page.margin.bottom}px; width: ${page.width}px; font-family: ${page.font.family}; ${page.border ? 'border: 2px solid black;' : ''} color: black; padding-left: ${page.margin.left}px; padding-right: ${page.margin.right}px"`;
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "px",
+    format: [page.width, page.width * 3]
+  });
+
+  htmlText.push(`<body style=${style}>`);
 
   // ********** LOGO ********** //
   if (body.logo) {
     htmlText.push(`<div style="text-align:center">`);
     let logo_dimensions = [150, 100];
-    if (body.logo_dimensions) { 
+    if (body.logo_dimensions) {
       logo_dimensions = body.logo_dimensions;
     }
     htmlText.push(`<img src="${body.logo}" width="${logo_dimensions[0]}px" height="${logo_dimensions[1]}px" />`);
@@ -520,13 +530,15 @@ export async function mealTicketFormat(body) {
   }
 
   htmlText.push(`<p>`);
-  
+
   // ********** TITLE ********** //
   let titleWords = body.subject || body?.format?.subject || body.activityName || 'Meal Ticket';
   titleWords = await resolveMessageVariables(titleWords, body);
   style = `"text-align:center; font-size: ${page.font.size.large};"`;
+  pdfLine(titleCase(titleWords), page.font.size.large, 'normal', 0, 0, 0, {align: 'center'});
   htmlText.push(`<div style=${style}><b>${titleCase(titleWords)}</b></div>`);
   if (body.client_name) {
+    pdfLine(titleCase(body.client_name), page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
     htmlText.push(`<div style=${style}><b>${titleCase(body.client_name)}</b></div>`);
   }
 
@@ -538,13 +550,16 @@ export async function mealTicketFormat(body) {
   let [server_id, order_timestamp] = this_request.request_id.split('~');
   let server_name = await makeName(server_id);
   let table_key = body.tableNumberKey || 'Table Number';
+  pdfLine(`Server: ${titleCase(server_name)}`, page.font.size.small, 'normal', 0, -0.2, 0, { align: 'center' });
   style = `"text-align:center; font-size: ${page.font.size.small};"`;
   htmlText.push(`<dt style=${style}>Server: ${titleCase(server_name)}</dt>`);
+  pdfLine(`${makeDate(order_timestamp).absolute}`, page.font.size.small, 'normal', 0, 0, 0, { align: 'center' });
   htmlText.push(`<dt style=${style}>${makeDate(order_timestamp).absolute}</dt>`);
   if (this_request.original_request.textInput && this_request.original_request.textInput[table_key]) {
+    pdfLine(`Table: ${this_request.original_request.textInput[table_key]}`, page.font.size.small, 'bold', 0, 0, 0, { align: 'center' });
     htmlText.push(`<dt style=${style}><b>Table: ${this_request.original_request.textInput[table_key]}</b></dt>`);
   }
-  
+
   htmlText.push(`</p>`);
 
   // ********** ORDERS ********** //
@@ -553,24 +568,30 @@ export async function mealTicketFormat(body) {
     let requestor = this_request.on_behalf_of;
     if (!requestor) { requestor = await makeName(this_request.requestor); }
     htmlText.push(`<p style="padding-top: 1.5em;">`);
+    pdfLine(titleCase(requestor), page.font.size.medium, 'bold', 0, 1);
     style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
     htmlText.push(`<div style=${style}><b>${titleCase(requestor)}</b></div>`);
     // eslint-disable-next-line
     this_request.original_request.selections.forEach(s => {
+      style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em; padding-left: 0;"`;
       let [selection, options] = s.split(/[()]/);
+      pdfLine(selection, page.font.size.medium, 'normal');
       htmlText.push(`<div style=${style}>${selection}</div>`);
       if (options) {
         style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
         let optionList = options.split(',');
-        optionList.forEach(o => {
+        optionList.forEach((o, i) => {
+          pdfLine(titleCase(o), page.font.size.small, 'normal', 1, (i === 0 ? -0.2 : -0.1), ((i === (optionList.length - 1)) ? 0.2 : 0));
           htmlText.push(`<div style=${style}><i>${titleCase(o)}</i></div>`);
         });
       }
     });
     for (let field in this_request.original_request.textInput) {
       if (field !== table_key) {
+        pdfLine(field, page.font.size.medium, 'normal');
         style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
         htmlText.push(`<div style=${style}>${field}</div>`);
+        pdfLine(this_request.original_request.textInput[field], page.font.size.small, 'normal', 1, -0.5);
         style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
         htmlText.push(`<div style=${style}><i>${this_request.original_request.textInput[field]}</i></div>`);
       }
@@ -579,9 +600,13 @@ export async function mealTicketFormat(body) {
   }
 
   // ********** INITIALS ********** //
+  pdfLine('Initials _________', page.font.size.medium, 'normal', 0, 2, 1);
   htmlText.push(`<p style="font-size: ${page.font.size.medium}; padding-top: 4em;">Initials _________</p>`);
 
   // ********** FOOTERS ********** //
+  pdfLine('AVA Senior Living', page.font.size.tiny, 'normal', 0, 0, 0, { align: 'center' });
+  pdfLine(`ID ${this_request.local_key}`, page.font.size.tiny, 'normal', 0, 0, 0, { align: 'center' });
+  pdfLine('****** END ******', page.font.size.tiny, 'normal', 0, 0, 4, { align: 'center' });
   htmlText.push(`<p style="padding-top: 1.5em;">`);
   style = `"font-size: ${page.font.size.tiny}; text-align:center;"`;
   htmlText.push(`<div style=${style}>${this_request.local_key}/${this_request.request_id}</div>`);
@@ -591,7 +616,44 @@ export async function mealTicketFormat(body) {
 
   htmlText.push(`</body>`);
 
-  return [htmlText.join(''), htmlText.join('')] ;
+  doc.rect(page.margin.left - 2, page.margin.top - page.font.size.large - 2, page.width - 4, yPos - page.margin.top);
+
+  let pBlob = doc.output('blob')
+  let s3Resp = await s3
+    .upload({
+      Bucket: 'theseus-medical-storage',
+      Key: `${body.client || body.client_id}_${this_request.local_key}_mealticket.pdf`,
+      Body: pBlob,
+      ACL: 'public-read-write',
+      ContentType: 'application/pdf'
+    })
+    .promise()
+    .catch(err => {
+      cl(`PDF not saved by AVA.  The reason is ${err.message}`);
+    });
+  cl(s3Resp);
+  doc.save();
+  return [htmlText.join(''), htmlText.join(''), s3Resp];
+
+  function pdfLine(text, size, style, indent = 0, before, after, options) {
+    if (style) { doc.setFont(page.font.family, style); }
+    let lastSize = page.font.size.medium;
+    if (size) {
+      doc.setFontSize(size);
+      lastSize = size;
+    }
+    if (before) { yPos += before * size; }
+    let i = 0;
+    if (indent) { i = indent * page.font.size.medium; }
+    if (options) {
+      if (options.align === 'center') { doc.text(text, page.width / 2, yPos, options); }
+      else { doc.text(text, page.margin.left + i, yPos, options); }
+    }
+    else { doc.text(text, page.margin.left + i, yPos); }
+    yPos += lastSize;
+    if (after) { yPos += (after * size); }
+    return;
+  }
 }
 
 export async function sendMessage(body) { return await sendMessages(body); }

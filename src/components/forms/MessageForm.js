@@ -546,10 +546,14 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
           let m = mRecs.Items[x];
           let language = m.language || 'EN-US';
           // convert inline link to an attachment
-          let hLink = extract(m.content.current[language].text, 'http', ' ', {
-            fuzzyRight: true,  // allow end-of-string as a right delimeter 
-            includeLeft: true,  // return the left delimeter
-          });
+          let hLink;
+          if (m.content.current[language].hasOwnProperty('text') && m.content.current[language].text) {
+            hLink = extract(m.content.current[language].text, 'http', ' ', {
+              fuzzyRight: true,  // allow end-of-string as a right delimeter 
+              includeLeft: true,  // return the left delimeter
+            });
+          }
+          else { continue; }
           if (hLink) {
             if (!m.content.current.attachments) { m.content.current.attachments = []; }
             m.content.current.attachments.push(hLink);
