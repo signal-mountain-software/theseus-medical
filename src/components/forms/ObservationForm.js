@@ -194,7 +194,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     confirmPrompt: false,
     checkedToSave: null,
     attachmentList: [],
-    textInput: null,
+    textInput: {},
     initialLoadComplete: null,
     popupMenuOpen: false
   });
@@ -548,6 +548,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   }
 
   function makeConfirm(pDisplayRows, pChecked, textInput = { 'empty': true }) {
+    if (!textInput) { textInput = { 'empty': true }; }
     let workChecked = [];
     let errorsExist = false;
     let errorMessage = ['Please correct these errors', ''];
@@ -557,7 +558,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         errorsExist = true;
         errorMessage.push(`[italic]You left "${r.text}" blank!`);
       }
-      if (r.checkbox || textInput.hasOwnProperty(r.text)) {
+      if (r.checkbox || (textInput && textInput.hasOwnProperty(r.text))) {
         let rText = '';
         if (pChecked.includes(r.text)) { rText = r.text; }
         if (textInput.hasOwnProperty(r.text) && (textInput[r.text].length > 0)) { rText = textInput[r.text]; }
