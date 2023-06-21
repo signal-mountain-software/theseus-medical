@@ -107,8 +107,9 @@ export async function getPersonFromLocation(pClient, pLoc) {
 export async function getPersonByName(pClient, pFirstName, pLastName) {
     if (!pLastName) { [pFirstName, pLastName] = pFirstName.split(' '); }
     let qQ = { TableName: 'People' };
-    qQ.IndexName = 'display_name-index';
-    qQ.KeyConditionExpression = 'client_id = :c and contains(#f, :f) and contains(#f, :l)';
+    qQ.IndexName = 'client_id-index';
+    qQ.KeyConditionExpression = 'client_id = :c';
+    qQ.FilterExpression = 'contains(#f, :f) and contains(#f, :l)'
     qQ.ExpressionAttributeValues = { ':c': pClient, ':f': sentenceCase(pFirstName), ':l': sentenceCase(pLastName) };
     qQ.ExpressionAttributeNames = { '#f': 'display_name' }
     let qR = await dbClient
