@@ -3,7 +3,7 @@ import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
 import { getPerson, makeName } from '../../util/AVAPeople';
-import { getObject, cl, dbClient, s3, lambda, cloudfront } from '../../util/AVAUtilities';
+import { getObject, cl, dbClient, s3, lambda, cloudfront, titleCase } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
@@ -365,6 +365,40 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     onClose();
   };
 
+  function makeSearchData(iArray) {
+    let search_words = [];
+    iArray.forEach(i => {
+      if (i.searchTerm) { search_words.push(...(i.searchTerm.trim().split(/\s+/))); };
+      if (i.location) {
+        search_words.push(...(i.location.replace(/,/g, ' ').trim().split(/\s+/)));
+        let digits = i.location.replace(/\D+/g, '').trim();
+        if (digits) {
+          search_words.push(...(digits.split(/\s+/)));
+        }
+      }
+      let names = [i.firstName, i.lastName, i.display_name];
+      names.forEach(n => {
+        if (n) {
+          search_words.push(...(n.trim().toLowerCase().split(/\s+/)));
+          search_words.push(...(titleCase(n.trim()).split(/\s+/)));
+        }
+      });
+      let phone = [i.cell, i.sms, i.office, i.voice];
+      phone.forEach(p => {
+        if (p) {
+          let iC = p.replace(/\D/g, '');
+          search_words.push(iC);
+          search_words.push(iC.slice(-4));
+        }
+      });
+    });
+    let wordCheck = [];
+    search_words.forEach(w => { 
+      if (!wordCheck.includes(w) && (w !== 'undefined')) { wordCheck.push(w) }
+    })
+    return wordCheck.join(' ');
+  }
+
   const handleUpdate = async () => {
     if (patient.person_id.startsWith('*NEW~')) {
       let tryAgain;
@@ -398,7 +432,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       voice_private: (localData.voice_private && 'true'),
       office_private: (localData.office_private && 'true'),
       surrogate: localData.surrogate,
-      search_data: localData.searchTerm,
+      search_data: makeSearchData([localData]),
       preferred_method: localData.preferred_method || 'AVA',
       requirePassword: localData.requirePassword,
       priority_activities: localData.priority_activities,
@@ -432,7 +466,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
         office_private: !!updatePerson.office_private,
         surrogate: localData.surrogate,
       },
-      search_data: localData.searchTerm,
+      search_data: updatePerson.search_data,
       preferred_method: localData.preferred_method || 'AVA',
       priority_activities: localData.priority_activities,
       favorite_activities: localData.favorite_activities,
