@@ -216,7 +216,8 @@ export default ({ session, filter = {}, onClose }) => {
     guest_room: 'Guest Room Reservation Request',
     trans: 'Transportation Request',
     breakfast: 'Breakfast Order',
-    prayer: 'Prayer Request'
+    prayer: 'Prayer Request',
+    checkout: 'Check-in/Check-out'
   };
 
   const statusWords = {

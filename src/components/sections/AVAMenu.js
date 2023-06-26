@@ -510,9 +510,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setForceRedisplay(!forceRedisplay);
     makeGreeting();
     let activityRow = mainMenu[activityRowIndex];
-    let activityLine = activityRow.activity_code;
-    if (activityRow.default_value) { activityLine += `~[default=${activityRow.default_value}]`; }
-    if (activityRow.activity_name) { activityLine += `~[title=${activityRow.activity_name}]`; }
+    let activityLine = activityRow.raw_data;
+    // let activityLine = activityRow.activity_code;
+    // if (activityRow.default_value) { activityLine += `~[default=${activityRow.default_value}]`; }
+    // if (activityRow.activity_name) { activityLine += `~[title=${activityRow.activity_name}]`; }
     let changeMade = false;
     let personRec = await dbClient
       .get({
@@ -602,6 +603,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           mainMenu.splice(activityRowIndex, 1);
         };
       }
+      window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
       setMainMenu(mainMenu);
       setLoading(false);
       setForceRedisplay(!forceRedisplay);
@@ -1299,7 +1301,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               className={classes.listItem}
                               onContextMenu={async (e) => {
                                 e.preventDefault();
-                                enqueueSnackbar(`AVA function=${this_row.activity_code} **** type=${this_row.row_type} **** reason=${this_row.reason} **** user=${session.user_id}`, { variant: 'info', persist: true });
+                                enqueueSnackbar(<div>1. Function={this_row.activity_code}<br />2. Type={this_row.row_type}<br />3. Reason={this_row.reason}<br />4. User={session.user_id}<br />5. Inst={this_row.raw_data}</div>, { variant: 'info', persist: true });
                               }}
                             >
                               <Box
