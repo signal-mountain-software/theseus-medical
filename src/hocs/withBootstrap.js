@@ -1,5 +1,6 @@
 import React from 'react';
-import { dbClient, lambda } from '../util/AVAUtilities';
+import { dbClient, lambda, makeArray } from '../util/AVAUtilities';
+import { isMemberOf } from '../util/AVAGroups';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
@@ -829,6 +830,10 @@ export default Component => props => {
             currentSession.client_name = cRec.customization_value;
             break;
           }
+          case 'group_assignments': { 
+            currentSession.group_assignments = cRec.customization_value;
+            break;
+          }
           case 'greeting':
           case 'greetings': {
             let today = new Date();
@@ -845,11 +850,17 @@ export default Component => props => {
             }
             break;
           }
-          default: { break; }
+          default: {
+            if (cRec.customization_value) {
+              currentSession[cRec.custom_key] = cRec.customization_value;
+            }
+            break;
+          }
         }
       }
     }
 
+    currentSession.adminAccount = await adminAccount(currentSession);
 
     enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
 
@@ -876,6 +887,19 @@ export default Component => props => {
     localAVAReady = true;
     setAVAFollowUpData({ 'Completed': true });
     return true;
+  }
+
+  async function adminAccount(currentSession) {
+    if (!currentSession.hasOwnProperty('group_assignments')) { return true; }
+    let groupObject = currentSession.group_assignments;
+    let adminArray = [];
+    if (groupObject.hasOwnProperty('admin')) { adminArray.push(...(makeArray(groupObject.admin))); }
+    if (groupObject.hasOwnProperty('staff')) { adminArray.push(...(makeArray(groupObject.staff))); }
+    if (adminArray.length === 0) { return true; }
+    for (let x = 0; x < adminArray.length; x++) {
+      if (await isMemberOf(currentSession.user_id, adminArray[x])) { return true; }
+    }
+    return false;
   }
 
   function recordExists(recordId) {

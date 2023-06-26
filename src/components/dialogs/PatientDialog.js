@@ -2,8 +2,8 @@ import React from 'react';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
-import { getPerson, makeName } from '../../util/AVAPeople';
-import { getObject, cl, dbClient, s3, lambda, cloudfront, titleCase } from '../../util/AVAUtilities';
+import { getPerson, makeName, makeSearchData } from '../../util/AVAPeople';
+import { getObject, cl, dbClient, s3, lambda, cloudfront } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
@@ -365,40 +365,6 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     onClose();
   };
 
-  function makeSearchData(iArray) {
-    let search_words = [];
-    iArray.forEach(i => {
-      if (i.searchTerm) { search_words.push(...(i.searchTerm.trim().split(/\s+/))); };
-      if (i.location) {
-        search_words.push(...(i.location.replace(/,/g, ' ').trim().split(/\s+/)));
-        let digits = i.location.replace(/\D+/g, '').trim();
-        if (digits) {
-          search_words.push(...(digits.split(/\s+/)));
-        }
-      }
-      let names = [i.firstName, i.lastName, i.display_name];
-      names.forEach(n => {
-        if (n) {
-          search_words.push(...(n.trim().toLowerCase().split(/\s+/)));
-          search_words.push(...(titleCase(n.trim()).split(/\s+/)));
-        }
-      });
-      let phone = [i.cell, i.sms, i.office, i.voice];
-      phone.forEach(p => {
-        if (p) {
-          let iC = p.replace(/\D/g, '');
-          search_words.push(iC);
-          search_words.push(iC.slice(-4));
-        }
-      });
-    });
-    let wordCheck = [];
-    search_words.forEach(w => { 
-      if (!wordCheck.includes(w) && (w !== 'undefined')) { wordCheck.push(w) }
-    })
-    return wordCheck.join(' ');
-  }
-
   const handleUpdate = async () => {
     if (patient.person_id.startsWith('*NEW~')) {
       let tryAgain;
@@ -535,7 +501,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     if (resettingPwd) {
       attributeValues[':ll'] = (localData.storePassword ? localData.inputPWD : '<not retained>');
       attributeValues[':pcd'] = new Date().toLocaleString();
-      updateExpression += 'last_login = :ll, password_change_date = :pcd';
+      updateExpression += 'last_login = :ll, password_change_date = :pcd, ';
     }
     attributeValues[':rp'] = localData.requirePassword;
     updateExpression += 'requirePassword = :rp, ';

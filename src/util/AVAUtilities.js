@@ -337,6 +337,15 @@ export function isPromise(p) {
   return p && Object.prototype.toString.call(p) === "[object Promise]";
 }
 
+export function isEmpty(o) {
+  if (!o) { return true; }
+  else if (Array.isArray(o)) { return (o.length === 0); }
+  else if (typeof (o) === 'object') { return (Object.keys(o).length === 0); }
+  else if (typeof (o) === 'string') { return (o.length === 0); }
+  else if (typeof (o) === 'number') { return (o === 0); }
+  else {return false;}
+}
+
 export function uuid(pLen) {
   let key = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
   if (!pLen || (pLen < 6)) { pLen = 6; }

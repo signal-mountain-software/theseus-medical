@@ -1,4 +1,4 @@
-import { isPromise, cl, recordExists, sentenceCase, dbClient } from '../util/AVAUtilities';
+import { isPromise, cl, recordExists, sentenceCase, titleCase, isEmpty, dbClient } from '../util/AVAUtilities';
 
 let foundPeople = {};
 let savedSession;
@@ -73,7 +73,7 @@ export async function getPersonFromLocation(pClient, pLoc) {
         North: 'N',
         South: 'S',
         Unit: ' '
-    }
+    };
     for (let v in replacements) {
         pLoc = pLoc.replace(v, replacements[v]);
         pLoc = pLoc.replace(v.toLowerCase(), replacements[v]);
@@ -109,9 +109,39 @@ export async function getPersonByName(pClient, pFirstName, pLastName) {
     let qQ = { TableName: 'People' };
     qQ.IndexName = 'client_id-index';
     qQ.KeyConditionExpression = 'client_id = :c';
-    qQ.FilterExpression = 'contains(#f, :f) and contains(#f, :l)'
+    qQ.FilterExpression = 'contains(#f, :f) and contains(#f, :l)';
     qQ.ExpressionAttributeValues = { ':c': pClient, ':f': sentenceCase(pFirstName), ':l': sentenceCase(pLastName) };
-    qQ.ExpressionAttributeNames = { '#f': 'display_name' }
+    qQ.ExpressionAttributeNames = { '#f': 'display_name' };
+    let qR = await dbClient
+        .query(qQ)
+        .promise()
+        .catch(error => {
+            if (error.code === 'NetworkingError') {
+                console.log(`Security Violation or no Internet Connection`);
+            }
+            console.log({ 'Error reading People by Name': error });
+        });
+    if (recordExists(qR)) {
+        for (let p = 0; p < qR.Items.length; p++) {
+            foundPeople[qR.Items[p].person_id] = qR.Items[p];
+        }
+        return qR.Items;
+    }
+    else { return []; }
+}
+
+export async function getPersonByWords(pClient, pWords) {
+    if (!pWords || pWords.length === 0) { return []; }
+    let qQ = { TableName: 'People' };
+    qQ.IndexName = 'client_id-index';
+    qQ.KeyConditionExpression = 'client_id = :c';
+    qQ.FilterExpression = 'contains(#d, :f)';
+    qQ.ExpressionAttributeNames = { '#d': 'search_data' };
+    qQ.ExpressionAttributeValues = { ':c': pClient, ':f': pWords[0] };
+    for (let x = 1; x < pWords.length; x++) {
+        qQ.FilterExpression += ` and contains(#d, :f${x})`;
+        qQ.ExpressionAttributeValues[`:f${x}`] = pWords[x];
+    }
     let qR = await dbClient
         .query(qQ)
         .promise()
@@ -217,3 +247,110 @@ export async function getSession(pID) {
     }
     return {};
 };
+
+export async function addGuest(body) {
+    if (!body
+        || !body.name
+        || !body.name.first
+        || !body.name.last
+        || (!body.phone && !body.sms && (!body.messaging || !body.messaging.sms))
+        || !body.client_id
+    ) { return { result: 'failed', message: 'Missing data in request' }; }
+    let tryAgain;
+    let availableID = '';
+    let namePart = `${body.client_id}_guest_`;
+    if (body.id || body.person_id) { namePart += body.id || body.person_id; }
+    else { namePart += body.name.first.trim().substr(0, 1).toLowerCase() + body.name.last.toLowerCase().replace(/\W/g, ''); }
+    let numberPart = 1;
+    let lookupID = namePart;
+    do {
+        let found = await getPerson(lookupID);
+        if (!isEmpty(found)) {
+            tryAgain = true;
+            lookupID = `${namePart}${numberPart}`;
+            numberPart++;
+        }
+        else {
+            tryAgain = false;
+            availableID = lookupID;
+        }
+    } while (tryAgain);
+    cl(`User ID ${availableID} assigned`);
+    let putPerson = {
+        person_id: availableID,
+        client_id: body.client_id,
+        "name": {
+            first: body.name.first,
+            last: body.name.last,
+        },
+        messaging: {
+            email: body.email || (body.messaging ? body.messaging.email : null),
+            sms: body.phone || body.sms || (body.messaging ? body.messaging.sms : null),
+            voice: body.voice || (body.messaging ? body.messaging.voice : null),
+            office: body.office || (body.messaging ? body.messaging.office : null),
+            email_private: true,
+            sms_private: true,
+            voice_private: true,
+            office_private: true
+        },
+        search_data: makeSearchData([body]) + ' guest',
+        preferred_method: 'sms',
+        requirePassword: false,
+        storePassword: true,
+        directory_option: 'normal',
+        clients: {
+            id: body.client_id,
+            groups: ['guest']
+        },
+        groups: 'guest',
+        location: body.location ? body.location.replace(/,/g, '') : body.client_id
+    };
+    await dbClient
+        .put({
+            Item: putPerson,
+            TableName: "People",
+        })
+        .promise()
+        .catch(error => {
+            cl(`caught error updating People; error is:`, error);
+            return { result: 'failed', message: error };
+        });
+    return { result: 'success', personRec: putPerson };
+}
+
+
+export function makeSearchData(iArray) {
+    let search_words = [];
+    iArray.forEach(i => {
+        if (i.searchTerm) { search_words.push(...(i.searchTerm.trim().split(/\s+/))); };
+        if (i.location) {
+            search_words.push(...(i.location.replace(/,/g, ' ').trim().toLowerCase().split(/\s+/)));
+            let digits = i.location.replace(/\D+/g, '').trim();
+            if (digits) {
+                search_words.push(...(digits.split(/\s+/)));
+            }
+        }
+        let names = [i.firstName, i.lastName, (i.display_name ? i.display_name.replace(/,/g, ' ') : '')];
+        if (i.name) (names.push(...(Object.values(i.name))))
+        names.forEach(n => {
+            if (n) {
+                search_words.push(...(n.trim().toLowerCase().split(/\s+/)));
+                search_words.push(...(titleCase(n.trim()).split(/\s+/)));
+            }
+        });
+        let phone = [i.cell, i.sms, i.office, i.voice];
+        if (i.messaging) (phone.push(...(Object.values(i.messaging))));
+        phone.forEach(p => {
+            if (p && (typeof (p) === 'string')) {
+                let iC = p.replace(/\D/g, '');
+                search_words.push(iC);
+                search_words.push(iC.slice(-4));
+            }
+        });
+    });
+    let wordCheck = [];
+    search_words.forEach(w => {
+        if (!wordCheck.includes(w) && (w !== 'undefined')) { wordCheck.push(w); }
+    });
+    return wordCheck.join(' ');
+}
