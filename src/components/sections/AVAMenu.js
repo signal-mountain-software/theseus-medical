@@ -266,6 +266,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 5 * oneMinute;
 
+  const subMenuHead = React.useRef(null);
+
   let idleTimer = React.createRef();
 
   let nowTime = new Date().getTime();
@@ -510,9 +512,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setForceRedisplay(!forceRedisplay);
     makeGreeting();
     let activityRow = mainMenu[activityRowIndex];
-    let activityLine = activityRow.activity_code;
-    if (activityRow.default_value) { activityLine += `~[default=${activityRow.default_value}]`; }
-    if (activityRow.activity_name) { activityLine += `~[title=${activityRow.activity_name}]`; }
+    let activityLine = activityRow.raw_data;
+    // let activityLine = activityRow.activity_code;
+    // if (activityRow.default_value) { activityLine += `~[default=${activityRow.default_value}]`; }
+    // if (activityRow.activity_name) { activityLine += `~[title=${activityRow.activity_name}]`; }
     let changeMade = false;
     let personRec = await dbClient
       .get({
@@ -602,6 +605,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           mainMenu.splice(activityRowIndex, 1);
         };
       }
+      window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
       setMainMenu(mainMenu);
       setLoading(false);
       setForceRedisplay(!forceRedisplay);
@@ -712,6 +716,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setShowNewFactDialog(-1);
     setForceRedisplay(!forceRedisplay);
   };
+
+  React.useEffect(() => {
+    if (subMenuHead && subMenuHead.current) {
+      subMenuHead.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end',
+      });
+    }
+  }, [currentMenu])
 
   React.useEffect(() => {
     let response = (
@@ -1223,7 +1236,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                       <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
                         <Box display='flex' flexDirection='column'>
                           <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                            <Typography variant='h5' className={classes.lastName} >{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
+                            <Typography variant='h5' ref={subMenuHead}
+                              className={classes.lastName} >{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
                           </Box>
                         </Box>
                       </Box>
@@ -1299,7 +1313,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               className={classes.listItem}
                               onContextMenu={async (e) => {
                                 e.preventDefault();
-                                enqueueSnackbar(`AVA function=${this_row.activity_code} **** type=${this_row.row_type} **** reason=${this_row.reason} **** user=${session.user_id}`, { variant: 'info', persist: true });
+                                enqueueSnackbar(<div>1. Function={this_row.activity_code}<br />2. Type={this_row.row_type}<br />3. Reason={this_row.reason}<br />4. User={session.user_id}<br />5. Inst={this_row.raw_data}</div>, { variant: 'info', persist: true });
                               }}
                             >
                               <Box

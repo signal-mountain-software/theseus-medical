@@ -186,6 +186,9 @@ export function makeArray(input, delimiter = null) {
       response.push(`${o}=${rObj[o]}`);
     });
   }
+  else if (input.charAt(0) === '[') {
+    response = input.replace(/\[\]/, '').split(',');
+  }
   else if (delimiter) {
     response = input.split(delimiter).map(e => { return e.trim(); });
   }
