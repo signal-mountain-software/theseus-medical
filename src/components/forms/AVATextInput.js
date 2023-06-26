@@ -75,7 +75,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ titleText, promptText, valueText, buttonText, onCancel, onSave, allowCancel = true }) => {
+export default ({ titleText, promptText, valueText, errorText, buttonText, onCancel, onSave, allowCancel = true }) => {
 
   const classes = useStyles();
 
@@ -164,10 +164,11 @@ export default ({ titleText, promptText, valueText, buttonText, onCancel, onSave
                   </Box>
                   :
                   <TextField
-                    classes={{ root: classes.idText }}
+                    className={classes.idText}
                     id={`prompt-${ndx}`}
                     key={`prompt-${ndx}`}
                     multiline
+                    error={!!(errorText && errorText[ndx])}
                     label={(prompt === titleText) ? '' : prompt}
                     value={textInput[ndx] || ''}
                     onChange={(event) => {
@@ -176,6 +177,7 @@ export default ({ titleText, promptText, valueText, buttonText, onCancel, onSave
                     onKeyPress={(event) => {
                       onCheckEnter(event);
                     }}
+                    helperText={(errorText && errorText[ndx]) ? errorText[ndx] : null}
                     autoComplete='off'
                   />
                 }
@@ -185,7 +187,7 @@ export default ({ titleText, promptText, valueText, buttonText, onCancel, onSave
         </DialogContent>
       </Box>
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+        <Box display='flex' style={{ marginTop: '2em'}} flexDirection='row' justifyContent='center' alignItems='center'>
           {allowCancel &&
             <Button
               className={classes.AVAButton}

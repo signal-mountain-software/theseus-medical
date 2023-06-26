@@ -9,6 +9,7 @@ import MessageForm from '../forms/MessageForm';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 import MultiObservationForm from '../forms/MultiObservationForm';
+import CheckInCheckOut from '../forms/CheckInCheckOut';
 import RequestDashboard from '../dialogs/RequestDashboard';
 import CalendarDashboard from '../dialogs/CalendarDashboard';
 import ShowCalendar from '../dialogs/ShowCalendar';
@@ -352,6 +353,13 @@ export default ({
           pClient={session.client_id}
           qualifiers={qualifierTable}
           listValues={values}
+          onSave={onSave}
+          onClose={onClose}
+        />
+      );
+    case 'checkout':
+      return (
+        <CheckInCheckOut
           onSave={onSave}
           onClose={onClose}
         />

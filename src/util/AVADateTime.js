@@ -22,7 +22,8 @@ export function makeDate(pInput) {
             'timestamp': 0,
             'ymd': '2099.01.01',
             'obs': '2099.1.1',
-            'numeric': 20990101
+            'numeric': 20990101,
+            'dayPart': 'day'
         };
     }
     let targetDateStamp, targetDate;
@@ -71,7 +72,8 @@ export function makeDate(pInput) {
                 'timestamp': 0,
                 'ymd': '2099.01.01',
                 'obs': '2099.1.1',
-                'numeric': 20990101
+                'numeric': 20990101,
+                'dayPart': 'day'
             };
         }
     }
@@ -120,11 +122,16 @@ export function makeDate(pInput) {
         if (daysDiff(targetDate, new Date()) > 21) { relDate += ` ${targetDate.getFullYear()}`; }
     }
     oaDate = `on ${absDate}`;
+    let dayPart = 'day';
     if ((targetDate.getHours() > 0) || (targetDate.getMinutes() > 0)) {
         let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
         absDate += tOfDay;
         oaDate += tOfDay;
         relDate += tOfDay;
+        let hour = targetDate.getHours();
+        if (hour < 12) { dayPart = "morning"; }
+        else if (hour < 17) { dayPart = "afternoon"; }
+        else (dayPart = "evening");
     }
     let targetDateYMD = targetDate.getFullYear()
         + '.' + (targetDate.getMonth() + 101).toString().slice(1)
@@ -139,7 +146,8 @@ export function makeDate(pInput) {
         'timestamp': targetDateStamp,
         'ymd': targetDateYMD,
         'obs': targetDateYMD.replace(regEx, '.'),
-        'numeric': Number(targetDateYMD.replace(/\./g,''))
+        'numeric': Number(targetDateYMD.replace(/\./g, '')),
+        'dayPart': dayPart
     };
 
     function buildDate(pString) {

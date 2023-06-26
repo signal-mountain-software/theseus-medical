@@ -2,7 +2,7 @@ import React from 'react';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
-import { getPerson, makeName } from '../../util/AVAPeople';
+import { getPerson, makeName, makeSearchData } from '../../util/AVAPeople';
 import { getObject, cl, dbClient, s3, lambda, cloudfront } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import { getSession } from '../../graphql/queries';
@@ -398,7 +398,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       voice_private: (localData.voice_private && 'true'),
       office_private: (localData.office_private && 'true'),
       surrogate: localData.surrogate,
-      search_data: localData.searchTerm,
+      search_data: makeSearchData([localData]),
       preferred_method: localData.preferred_method || 'AVA',
       requirePassword: localData.requirePassword,
       priority_activities: localData.priority_activities,
@@ -432,7 +432,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
         office_private: !!updatePerson.office_private,
         surrogate: localData.surrogate,
       },
-      search_data: localData.searchTerm,
+      search_data: updatePerson.search_data,
       preferred_method: localData.preferred_method || 'AVA',
       priority_activities: localData.priority_activities,
       favorite_activities: localData.favorite_activities,
@@ -501,7 +501,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     if (resettingPwd) {
       attributeValues[':ll'] = (localData.storePassword ? localData.inputPWD : '<not retained>');
       attributeValues[':pcd'] = new Date().toLocaleString();
-      updateExpression += 'last_login = :ll, password_change_date = :pcd';
+      updateExpression += 'last_login = :ll, password_change_date = :pcd, ';
     }
     attributeValues[':rp'] = localData.requirePassword;
     updateExpression += 'requirePassword = :rp, ';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getMemberList, getGroup, getRole, getGroupsResponsibleFor } from '../../util/AVAGroups';
+import { getMemberList, getGroup, getRole, getGroupsBelongTo, getGroupsResponsibleFor } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -142,28 +142,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   React.useEffect(() => {
     async function prepare() {
-      if (pGroup_id) {
-        let gList = [];
-        if (Array.isArray(pGroup_id)) {
-          pGroup_id.forEach(grp => { gList.push(...(grp.replace(/[[\]]/g, '').split(/,|~/g))); });
-        }
-        else if (pGroup_id.includes('[')) { gList = pGroup_id.replace(/[[\]]/g, '').split(/,|~/g); }
-        else { gList = [pGroup_id]; }
-        setShowGroupSelect(false);
-        await getGroupMemberList(gList);
-        if (!(pGroup_name.trim())) {
-          let gName = ``;
-          if (gList.length === 1) {
-            let gRec = await getGroup(gList[0], pSession.client_id);
-            if (gRec && gRec.name) { gName = gRec.name; }
-          }
-          setGroupName(gName);
-        }
-      }
-      else if (pSession.patient_id && (!groupsManagedObject || Object.keys(groupsManagedObject).length === 0)) {
-        setShowGroupSelect(true);
-        await getGroupsManagedObject(pSession.patient_id);
-      }
+      let groupList = await getGroupsBelongTo(pSession.patient_id, { sort: true });
+      setGroupsManagedObject(groupList);
+       setShowGroupSelect(true);
     }
     prepare();
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -227,7 +208,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             }}
             onSelect={async (selectedGroup) => {
               setShowGroupSelect(false);
-              setGroupName(selectedGroup);
+              setGroupName(groupsManagedObject[selectedGroup].group_name);
               setGroupID(groupsManagedObject[selectedGroup].group_id);
               setGroupRole(groupsManagedObject[selectedGroup].role);
               await getGroupMemberList([groupsManagedObject[selectedGroup].group_id]);
