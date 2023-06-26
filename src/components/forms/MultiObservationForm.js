@@ -797,20 +797,32 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     };
     // print tickets...
-    let [html, plain, attachment] = await mealTicketFormat({
+    let formatCallObj = {
       local_key,
       client_id: pClient,
-      logo: state.session.client_logo,
-      logo_dimensions: state.session.logo_dimensions,
       client_name: state.session.client_name
-    });
+    };
+    if (!fact.messaging.format.hasOwnProperty('logo') || fact.messaging.format.logo) {
+      formatCallObj.logo = state.session.client_logo;
+      formatCallObj.logo_dimensions = state.session.logo_dimensions;
+    }
+    if (!fact.messaging.format.hasOwnProperty('initials') || fact.messaging.format.initials) {
+      formatCallObj.initials = true; 
+    }
+    let html, plain, attachment;
+    switch (fact.messaging.format.type) {
+      case 'mealTicket':
+      default: {
+        [html, plain, attachment] = await mealTicketFormat(formatCallObj);
+      }
+    }
     if (html) {  // if there is a message to send, send it and update all the Service Request records to show that it was sent
       // prepare message that contains the tickets (one for the whole group)
       message_body.messaging = fact.messaging;
       message_body.messaging.format = { 'type': 'inBody', 'subject': 'Meal Ticket' };
       message_body.htmlText = html;
       message_body.messageText = plain;
-      let preparedMessages = await prepareMessage(message_body);      
+      let preparedMessages = await prepareMessage(message_body);
       // send the message
       if (preparedMessages.length > 0) {
         preparedMessages.forEach((m, x) => {
@@ -914,9 +926,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         warningSection.push(`[italic]${c.display_name}${c.person_id.includes('+++') ? (' (' + c.person_id.split('+++')[1] + ')') : ''}`);
       }
       else if (everyoneText.length > 0) {
-        everyoneText.forEach(e => { 
+        everyoneText.forEach(e => {
           responseArray.push(e);
-        })
+        });
       }
     });
     let returnArray = ['Selection summary'];
