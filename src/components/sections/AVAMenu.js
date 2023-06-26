@@ -266,6 +266,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const oneHour = 60 * oneMinute;
   const msBeforeSleeping = 5 * oneMinute;
 
+  const subMenuHead = React.useRef(null);
+
   let idleTimer = React.createRef();
 
   let nowTime = new Date().getTime();
@@ -714,6 +716,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setShowNewFactDialog(-1);
     setForceRedisplay(!forceRedisplay);
   };
+
+  React.useEffect(() => {
+    if (subMenuHead && subMenuHead.current) {
+      subMenuHead.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end',
+      });
+    }
+  }, [currentMenu])
 
   React.useEffect(() => {
     let response = (
@@ -1225,7 +1236,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                       <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
                         <Box display='flex' flexDirection='column'>
                           <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                            <Typography variant='h5' className={classes.lastName} >{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
+                            <Typography variant='h5' ref={subMenuHead}
+                              className={classes.lastName} >{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
                           </Box>
                         </Box>
                       </Box>
