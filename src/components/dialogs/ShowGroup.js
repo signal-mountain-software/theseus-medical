@@ -13,6 +13,7 @@ import Typography from '@material-ui/core/Typography';
 
 import GroupForm from '../forms/GroupForm';
 import GroupFilter from '../forms/GroupFilter';
+import { makeArray } from '../../util/AVAUtilities';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -142,9 +143,15 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   React.useEffect(() => {
     async function prepare() {
-      let groupList = await getGroupsBelongTo(pSession.patient_id, { sort: true });
-      setGroupsManagedObject(groupList);
-       setShowGroupSelect(true);
+      if (pGroup_id) { 
+        await getGroupMemberList(makeArray(pGroup_id));
+        setShowGroupSelect(false);
+      }
+      else {
+        let groupList = await getGroupsBelongTo(pSession.patient_id, { sort: true });
+        setGroupsManagedObject(groupList);
+        setShowGroupSelect(true);
+      }
     }
     prepare();
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
