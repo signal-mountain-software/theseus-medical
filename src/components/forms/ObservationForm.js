@@ -311,6 +311,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           required,
           text: instruction[0],
           oKey: getKey(instruction[0]),
+          altValue: (listValues[vIndex].includes(":") ? instruction[1] : null),
           desc: getDescription(instruction[0]),
           input: false,
           bold: displayBold,
@@ -563,7 +564,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if (pChecked.includes(r.text)) { rText = r.text; }
         if (textInput.hasOwnProperty(r.text) && (textInput[r.text].length > 0)) { rText = textInput[r.text]; }
         if (rText) {
-          if (pChecked.includes(r.text)) { workChecked.push(rText); }
+          if (pChecked.includes(r.text)) { workChecked.push(`${rText}${(r.altValue ? (':' + r.altValue) : '')}`); }
           responseArray.push(rText);
           if (dataRows.hasOwnProperty('chosenQual') && dataRows.chosenQual[r.text]) {
             for (let key in dataRows.chosenQual[r.text]) {
@@ -612,6 +613,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
       });
     reactData.attachmentList.push(s3Resp);
+    if (!reactData.textInput) { reactData.textInput = { 's3file': s3Resp.Location }; }
+    else { reactData.textInput.s3file = s3Resp.Location; }
     setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
     return s3Resp;
