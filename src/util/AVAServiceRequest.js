@@ -57,17 +57,15 @@ export async function getServiceRequests(body) {
     qQ.IndexName = 'requestor-type-index';
     qQ.KeyConditionExpression = 'requestor = :rP';
     qQ.ExpressionAttributeValues = { ':rP': rP };
-    if (rT) {
+    if (rT) {     
       let rTarray = makeArray(rT);
-      qQ.FilterExpression = '(request_type = :t';
-      qQ.ExpressionAttributeValues[':t'] = rTarray[0];
-      if (rTarray.length > 1) {
-        rTarray.forEach((rTa, x) => {
-          qQ.FilterExpression += ` or request_type = :t${x}`;
-          qQ.ExpressionAttributeValues[`:t${x}`] = rTa;
-        });
+      if (rTarray.length === 1) {
+        qQ.KeyConditionExpression += ' and request_type = :rT';
+        qQ.ExpressionAttributeValues[':rT'] = rTarray[0];
       }
-      qQ.FilterExpression += ')'
+      else {
+        return [];
+      }
     }
   }
   else if (rT) {

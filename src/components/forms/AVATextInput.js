@@ -1,11 +1,10 @@
 import React from 'react';
 
-import { titleCase } from '../../util/AVAUtilities';
+import { titleCase, makeArray } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
-import DialogContentText from '@material-ui/core/DialogContentText';
 
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -44,6 +43,8 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     marginBottom: 0,
+  },
+  titleRow: {
     fontSize: '1.3rem',
     fontWeight: 'bold'
   },
@@ -110,6 +111,8 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
     promptArray = [promptText];
     if (!titleText) { titleText = titleCase(promptText); }
   }
+  let titleArray = makeArray(titleText);
+
 
   let buttonArray = [];
   if (Array.isArray(buttonText)) { buttonArray = buttonText; }
@@ -129,11 +132,11 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
         justifyContent='center'
         alignItems='flex-start'
       >
-        {titleText &&
-          <DialogContentText className={classes.title} id='dialog-title'>
-            {titleText}
-          </DialogContentText>
-        }
+        <DialogContent id='dialog-title'>
+        {titleText && titleArray.map((t, tx) => (
+          <Typography key={`title-${tx}`}  className={classes.titleRow}>{t}</Typography>
+        ))}
+        </DialogContent>
         <DialogContent className={classes.contentBox} id='dialog-content'>
           <Box
             display='flex'
@@ -187,11 +190,11 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
         </DialogContent>
       </Box>
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Box display='flex' style={{ marginTop: '2em'}} flexDirection='row' justifyContent='center' alignItems='center'>
+        <Box display='flex' style={{ marginTop: '2em' }} flexDirection='row' justifyContent='center' alignItems='center'>
           {allowCancel &&
             <Button
               className={classes.AVAButton}
-              style={{color: 'red'}}
+              style={{ color: 'red' }}
               size='small'
               onClick={() => {
                 onCancel();
