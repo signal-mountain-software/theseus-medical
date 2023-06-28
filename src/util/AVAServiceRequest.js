@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, dbClient } from '../util/AVAUtilities';
+import { clt, cl, recordExists, dbClient, makeArray } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
 import { prepareMessage, sendMessages } from '../util/AVAMessages';
@@ -33,8 +33,16 @@ export async function getServiceRequests(body) {
     qQ.KeyConditionExpression = 'client_id = :c and foreign_key = :fK';
     qQ.ExpressionAttributeValues = { ':c': body.client_id, ':fK': body.foreign_key };
     if (rT) {
-      qQ.FilterExpression = 'request_type = :t';
-      qQ.ExpressionAttributeValues[':t'] = rT;
+      let rTarray = makeArray(rT);
+      qQ.FilterExpression = '(request_type = :t';
+      qQ.ExpressionAttributeValues = { ':t': rTarray[0] };
+      if (rTarray.length > 1) {
+        rTarray.forEach((rTa, x) => {
+          qQ.FilterExpression += ` or request_type = :t${x}`;
+          qQ.ExpressionAttributeValues[`:t${x}`] = rTa;
+        });
+      }
+      qQ.FilterExpression += ')'
       if (rP) {
         qQ.FilterExpression += ' and requestor = :p';
         qQ.ExpressionAttributeValues[':p'] = rP;
@@ -50,14 +58,37 @@ export async function getServiceRequests(body) {
     qQ.KeyConditionExpression = 'requestor = :rP';
     qQ.ExpressionAttributeValues = { ':rP': rP };
     if (rT) {
-      qQ.KeyConditionExpression += ' and request_type = :rT';
-      qQ.ExpressionAttributeValues[':rT'] = rT;
+      let rTarray = makeArray(rT);
+      qQ.FilterExpression = '(request_type = :t';
+      qQ.ExpressionAttributeValues[':t'] = rTarray[0];
+      if (rTarray.length > 1) {
+        rTarray.forEach((rTa, x) => {
+          qQ.FilterExpression += ` or request_type = :t${x}`;
+          qQ.ExpressionAttributeValues[`:t${x}`] = rTa;
+        });
+      }
+      qQ.FilterExpression += ')'
     }
   }
   else if (rT) {
-    qQ.IndexName = 'request_type-index';
-    qQ.KeyConditionExpression = 'client_id = :c and request_type = :rT';
-    qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rT': rT };
+    let rTarray = makeArray(rT);
+    if (rTarray.length === 1) {
+      qQ.IndexName = 'request_type-index';
+      qQ.KeyConditionExpression = 'client_id = :c and request_type = :rT';
+      qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rT': rTarray[0] };
+    }
+    else {
+      qQ.KeyConditionExpression = 'client_id = :c';
+      qQ.FilterExpression = '(request_type = :t';
+      qQ.ExpressionAttributeValues = { ':c': body.client_id, ':t': rTarray[0] };
+      if (rTarray.length > 1) {
+        for (let x = 1; x < rTarray.length;  x++) {
+          qQ.FilterExpression += ` or request_type = :t${x}`;
+          qQ.ExpressionAttributeValues[`:t${x}`] = rTarray[x];
+        };
+      }
+      qQ.FilterExpression += ')';
+    }
   }
 
   let qR = await dbClient
