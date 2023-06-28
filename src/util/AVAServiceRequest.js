@@ -35,7 +35,7 @@ export async function getServiceRequests(body) {
     if (rT) {
       let rTarray = makeArray(rT);
       qQ.FilterExpression = '(request_type = :t';
-      qQ.ExpressionAttributeValues = { ':t': rTarray[0] };
+      qQ.ExpressionAttributeValues[':t'] = rTarray[0];
       if (rTarray.length > 1) {
         rTarray.forEach((rTa, x) => {
           qQ.FilterExpression += ` or request_type = :t${x}`;
