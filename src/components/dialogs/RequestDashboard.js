@@ -1,5 +1,5 @@
 import React from 'react';
-import { makeNumber, sentenceCase, titleCase } from '../../util/AVAUtilities';
+import { sentenceCase, makeArray, cl, titleCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
@@ -209,17 +209,7 @@ export default ({ session, filter = {}, onClose }) => {
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
-
-  const requestNames = {
-    maint: 'Maintenance Request',
-    meal: 'Meal Order',
-    guest_room: 'Guest Room Reservation Request',
-    trans: 'Transportation Request',
-    breakfast: 'Breakfast Order',
-    prayer: 'Prayer Request',
-    checkout: 'Check-in/Check-out'
-  };
-
+  
   const statusWords = {
     delivery: 'Delivered',
     open: 'Opened'
@@ -241,7 +231,7 @@ export default ({ session, filter = {}, onClose }) => {
     let linkWord = '';
     for (let t in mData) {
       let mL = mData[t].length - 1;
-      pM += `${linkWord} ${requestNames[t] || 'request'}`;
+      pM += `${linkWord} ${session.service_request_types[t].description || 'request'}`;
       if (mL > 0) { pM += 's'; }
       pM += ' from';
       for (let x = 0; x <= mL; x++) {
@@ -421,6 +411,8 @@ export default ({ session, filter = {}, onClose }) => {
     if (filter) { filter.client_id = session.client_id; }
     else { filter = { 'person': session.patient_id }; }
     filter.limit = Math.min(filters.rowLimit, 5) * 3;
+    filter.request_type = makeArray(filter.request_type, ',');
+    // if (!filter.hasOwnProperty('client_id')) { filter.client_id = session.client_id; } 
     qList = await getServiceRequests(filter);
     let limit = Math.min(filter.limit, qList.length);
     for (let x = 0; x < limit; x++) {
@@ -447,21 +439,25 @@ export default ({ session, filter = {}, onClose }) => {
 
   async function buildRequestDetails(i) {
     i.workData = {};
-    i.workData.formatted_type = requestNames[i.request_type] || `${titleCase(i.request_type)}`;
+    if (session.service_request_types.hasOwnProperty(i.request_type)) {
+      i.workData.formatted_type = session.service_request_types[i.request_type].description || `${titleCase(i.request_type)}`;
+    }
+    else {
+      cl(`request type "${i.request_type}" not in session.service_request_types`);
+      i.workData.formatted_type = titleCase(i.request_type);
+    }
     if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
-    let AVArequestDate = makeDate(i.request_date);
-    i.workData.display_date = AVArequestDate.relative;
+    let AVAupdateDate = makeDate(i.last_update);
+    i.workData.display_date = AVAupdateDate.relative;
     let anonymous = false;
     let requestorRec = await getPerson(i.requestor, '*all');
     i.workData.requestor_name = await makeName(i.requestor);
     i.workData.requestor_location = requestorRec.location;
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
-    if (makeNumber(i.last_update) > makeNumber(i.request_date)) {
-      let AVAupdateDate = makeDate(i.last_update);
-      i.workData.update_date = AVAupdateDate.relative;
-      i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
-    }
+    let AVArequestDate = makeDate(i.request_date);
+    i.workData.update_date = AVArequestDate.relative;
+    i.workData.formatted_request.push(['head', `Since: ${i.workData.update_date}`]);
     i.workData.formatted_request.push(['head', `Current status: ${sentenceCase(i.last_status)}`]);
     i.workData.formatted_request.push(['head', 'Details']);
     if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
@@ -695,7 +691,11 @@ export default ({ session, filter = {}, onClose }) => {
                               <Box
                                 className={classes.imageArea}
                                 component="img"
-                                alt={''}
+                                minWidth={50}
+                                minHeight={50}
+                                maxWidth={50}
+                                border={1}
+                                alt=' '
                                 src={this_item.workData.requestor_image}
                               />
                               <Box display='flex' flexDirection='column'>
@@ -741,13 +741,20 @@ export default ({ session, filter = {}, onClose }) => {
                             }
                           </Box>
                         </Box>
-                        <Checkbox
-                          edge='start'
-                          checked={this_item.workData.checked || false}
-                          disableRipple
-                          key={'checkbox' + index}
-                          onClick={() => { toggleCheck(index); }}
-                        />
+                        {filter.request_type
+                          && (makeArray(filter.request_type).length === 1)
+                          && (
+                            !(session.service_request_types[filter.request_type].hasOwnProperty('allowStatusUpdateFromDashboard'))
+                            || session.service_request_types[filter.request_type].allowStatusUpdateFromDashboard)
+                          &&
+                          <Checkbox
+                            edge='start'
+                            checked={this_item.workData.checked || false}
+                            disableRipple
+                            key={'checkbox' + index}
+                            onClick={() => { toggleCheck(index); }}
+                          />
+                        }
                         <SendIcon
                           onClick={() => {
                             toggleCheck(index);
@@ -780,21 +787,28 @@ export default ({ session, filter = {}, onClose }) => {
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
                     className={classes.AVAButton}
-                    style={{color: 'red'}}
+                    style={{ color: 'red' }}
                     onClick={onClose}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Close'}
                   </Button>
-                  <Button
-                    className={classes.AVAButton}
-                    onClick={() => {
-                      setPromptForUpdate(true);
-                    }}
-                    startIcon={<SendIcon size="small" />}
-                  >
-                    {'Reply / Status Update'}
-                  </Button>
+                  {filter.request_type
+                    && (makeArray(filter.request_type).length === 1)
+                    && (
+                      !(session.service_request_types[filter.request_type].hasOwnProperty('allowStatusUpdateFromDashboard'))
+                      || session.service_request_types[filter.request_type].allowStatusUpdateFromDashboard)
+                    &&
+                    <Button
+                      className={classes.AVAButton}
+                      onClick={() => {
+                        setPromptForUpdate(true);
+                      }}
+                      startIcon={<SendIcon size="small" />}
+                    >
+                      {'Message / Update'}
+                    </Button>
+                  }
                 </Box>
               </Box>
             </DialogActions>
