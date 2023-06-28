@@ -395,7 +395,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           checkbox: false,
           required: false,
           text: instruction[2].trim(),
-          oKey: getKey(instruction[2].trim()),
+          oKey: instruction[3] || getKey(instruction[2].trim()),
           desc: getDescription(instruction[2]),
           input: instruction[1].trim().toLowerCase(),
           header: false
@@ -484,6 +484,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   }
 
   function isQualChecked(pText, pPerson, pOption, pSelection) {
+    if (!dataRows.hasOwnProperty('qualSelections')) { return false; }
+    if (!dataRows.qualSelections.hasOwnProperty(pText)) { return false; }
     if (!dataRows.qualSelections[pText].hasOwnProperty(pPerson)) { return false; }
     if (!dataRows.qualSelections[pText][pPerson].hasOwnProperty(pOption)) { return false; }
     if (!dataRows.qualSelections[pText][pPerson][pOption].hasOwnProperty(pSelection)) { return false; }
@@ -530,21 +532,31 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   function optSelected(qOpt, qChoice, qValue) {
     let [pObsText, pPerson,] = dataRows.optNeeded;
-    let sArray = dataRows.qualSelections[pObsText][pPerson];
-    if (!sArray.hasOwnProperty(qOpt)) {
-      sArray[qOpt] = {};
-      sArray[qOpt][qChoice] = (qValue || true);
+    let sArray = [];
+    if (pPerson === '*all') { 
+      if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
+      if (!dataRows.textValue.hasOwnProperty('*all*')) {
+        dataRows.textValue['*all*'] = {};
+      }
+      dataRows.textValue['*all*'][pObsText] = qValue || qChoice;
     }
     else {
-      if (sArray[qOpt].hasOwnProperty(qChoice)) {
-        if (typeof (sArray[qOpt][qChoice]) === 'boolean') {
-          sArray[qOpt][qChoice] = !sArray[qOpt][qChoice];
-        }
-        else { sArray[qOpt][qChoice] = qValue; }
+      sArray = dataRows.qualSelections[pObsText][pPerson];
+      if (!sArray.hasOwnProperty(qOpt)) {
+        sArray[qOpt] = {};
+        sArray[qOpt][qChoice] = (qValue || true);
       }
-      else { sArray[qOpt][qChoice] = (qValue || true); }
+      else {
+        if (sArray[qOpt].hasOwnProperty(qChoice)) {
+          if (typeof (sArray[qOpt][qChoice]) === 'boolean') {
+            sArray[qOpt][qChoice] = !sArray[qOpt][qChoice];
+          }
+          else { sArray[qOpt][qChoice] = qValue; }
+        }
+        else { sArray[qOpt][qChoice] = (qValue || true); }
+      }
+      dataRows.qualSelections[pObsText][pPerson] = sArray;
     }
-    dataRows.qualSelections[pObsText][pPerson] = sArray;
     setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
   }
@@ -807,7 +819,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       formatCallObj.logo_dimensions = state.session.logo_dimensions;
     }
     if (!fact.messaging.format.hasOwnProperty('initials') || fact.messaging.format.initials) {
-      formatCallObj.initials = true; 
+      formatCallObj.initials = true;
     }
     let html, plain, attachment;
     switch (fact.messaging.format.type) {
@@ -1126,6 +1138,18 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                 variant={'standard'}
                                 key={'text' + this_index}
                                 multiline
+                                onFocus={async () => {
+                                  if (this_item.oKey) {
+                                    if (!dataRows.qualData || !dataRows.qualData[this_item.text]) {
+                                      if (!dataRows.qualData) { dataRows.qualData = {}; }
+                                      if (!dataRows.qualData[this_item.text]) { dataRows.qualData[this_item.text] = []; }
+                                      dataRows.qualData[this_item.text] = await getObservationOptions(this_item.oKey);
+                                    }
+                                    dataRows.optNeeded = [this_item.text, '*all', 'Everyone'];
+                                    setDataRows(dataRows);
+                                    setForceRedisplay(!forceRedisplay);
+                                  }
+                                }}
                                 onChange={(event) => {
                                   if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
                                   if (!dataRows.textValue.hasOwnProperty('*all*')) {
