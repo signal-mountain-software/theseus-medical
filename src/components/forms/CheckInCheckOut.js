@@ -318,6 +318,7 @@ export default ({ onSave, onClose }) => {
                 display='flex'
                 flexDirection='row'
                 justifyContent='flex-start'
+                key={`outList_${outNdx}`}
                 alignItems='center'
                 onClick={async () => {
                   reactData.adminOverride = 'in';
@@ -333,7 +334,7 @@ export default ({ onSave, onClose }) => {
                   minHeight={50}
                   maxWidth={50}
                   border={1}
-                  alt=''
+                  alt=' '
                   src={getImage(outRow.person_id)}
                 />
                 <Box display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
@@ -357,6 +358,7 @@ export default ({ onSave, onClose }) => {
               <Box style={{ paddingBottom: '2em' }}
                 display='flex'
                 flexDirection='row'
+                key={`inList_${inNdx}`}
                 justifyContent='flex-start'
                 alignItems='center'
                 onClick={async () => {
