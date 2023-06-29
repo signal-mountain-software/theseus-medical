@@ -280,18 +280,14 @@ export async function addGuest(body) {
         person_id: availableID,
         client_id: body.client_id,
         "name": {
-            first: body.name.first,
-            last: body.name.last,
+            first: titleCase(body.name.first),
+            last: titleCase(body.name.last),
         },
         messaging: {
             email: body.email || (body.messaging ? body.messaging.email : null),
             sms: body.phone || body.sms || (body.messaging ? body.messaging.sms : null),
             voice: body.voice || (body.messaging ? body.messaging.voice : null),
-            office: body.office || (body.messaging ? body.messaging.office : null),
-            email_private: true,
-            sms_private: true,
-            voice_private: true,
-            office_private: true
+            office: body.office || (body.messaging ? body.messaging.office : null)
         },
         search_data: makeSearchData([body]) + ' guest',
         preferred_method: 'sms',
@@ -300,9 +296,9 @@ export async function addGuest(body) {
         directory_option: 'normal',
         clients: {
             id: body.client_id,
-            groups: ['guest']
+            groups: ['guests']
         },
-        groups: 'guest',
+        groups: ['guests'],
         location: body.location ? body.location.replace(/,/g, '') : body.client_id
     };
     await dbClient
@@ -318,6 +314,72 @@ export async function addGuest(body) {
     return { result: 'success', personRec: putPerson };
 }
 
+export async function addVendor(body) {
+    if (!body
+        || !body.name
+        || !body.name.first
+        || !body.name.last
+        || !body.location
+        || !body.client_id
+        || (!body.phone && !body.sms && (!body.messaging || !body.messaging.sms))
+    ) { return { result: 'failed', message: 'Missing data in request' }; }
+    let tryAgain;
+    let availableID = '';
+    let namePart = `${body.client_id}_vendor_`;
+    if (body.id || body.person_id) { namePart += body.id || body.person_id; }
+    else { namePart += body.name.first.trim().substr(0, 1).toLowerCase() + body.name.last.toLowerCase().replace(/\W/g, ''); }
+    let numberPart = 1;
+    let lookupID = namePart;
+    do {
+        let found = await getPerson(lookupID);
+        if (!isEmpty(found)) {
+            tryAgain = true;
+            lookupID = `${namePart}${numberPart}`;
+            numberPart++;
+        }
+        else {
+            tryAgain = false;
+            availableID = lookupID;
+        }
+    } while (tryAgain);
+    cl(`User ID ${availableID} assigned`);
+    let putPerson = {
+        person_id: availableID,
+        client_id: body.client_id,
+        "name": {
+            first: titleCase(body.name.first),
+            last: titleCase(body.name.last),
+        },
+        messaging: {
+            email: body.email || (body.messaging ? body.messaging.email : null),
+            sms: body.phone || body.sms || (body.messaging ? body.messaging.sms : null),
+            voice: body.voice || (body.messaging ? body.messaging.voice : null),
+            office: body.office || (body.messaging ? body.messaging.office : null)
+        },
+        search_data: makeSearchData([body]) + ' vendor',
+        preferred_method: 'sms',
+        requirePassword: false,
+        storePassword: true,
+        directory_option: 'normal',
+        clients: {
+            id: body.client_id,
+            groups: ['vendors']
+        },
+        groups: ['vendors'],
+        location: body.location ? body.location.replace(/,/g, '') : body.client_id
+    };
+    await dbClient
+        .put({
+            Item: putPerson,
+            TableName: "People",
+        })
+        .promise()
+        .catch(error => {
+            cl(`caught error updating People; error is:`, error);
+            return { result: 'failed', message: error };
+        });
+    return { result: 'success', personRec: putPerson };
+}
 
 export function makeSearchData(iArray) {
     let search_words = [];
