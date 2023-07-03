@@ -5,6 +5,9 @@ import { getServiceRequests } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
+// import * as PDFprint from 'unix-print';
+
+const os = require('os'); 
 
 // Functions
 
@@ -649,10 +652,11 @@ export async function mealTicketFormat(body) {
   doc.rect(page.margin.left - 2, page.margin.top - page.font.size.large - 2, page.width - 4, yPos - page.margin.top);
 
   let pBlob = doc.output('blob')
+  let fileName = `${body.client || body.client_id}_${this_request.local_key}_mealticket.pdf`;
   let s3Resp = await s3
     .upload({
       Bucket: 'theseus-medical-storage',
-      Key: `${body.client || body.client_id}_${this_request.local_key}_mealticket.pdf`,
+      Key: fileName,
       Body: pBlob,
       ACL: 'public-read-write',
       ContentType: 'application/pdf'
@@ -661,8 +665,37 @@ export async function mealTicketFormat(body) {
     .catch(err => {
       cl(`PDF not saved by AVA.  The reason is ${err.message}`);
     });
+  // let printWindow = window.open('', '', `width=${body.pageWidth},height=100`);
+  // let printWindow = window.open('', '');
+  let printWindow = window.open(s3Resp.Location, '');
+  printWindow.document.write(htmlText.join(''));
+  printWindow.document.close();
+ // printWindow.focus();
+  printWindow.resizeTo(body.pageWidth, 1000)
+  printWindow.print();
+  printWindow.close();
+  // window.open(s3Resp.Location);
+  // printWindow.window.focus();
+  // printWindow.window.print();
+  // printWindow.window.close();
   cl(s3Resp);
-  doc.save();
+  cl(os.platform());
+  doc.autoPrint({ variant: 'non-conform' });
+  await doc.save(fileName, {returnPromise: true});
+  // PDFprint.print(fileName).then(console.log);
+  /*
+  {
+    var myWindow=window.open('','','width=200,height=100');
+    myWindow.document.write("<p>This is 'myWindow'</p>");
+    
+    myWindow.document.close();
+myWindow.focus();
+myWindow.print();
+myWindow.close();
+    
+  }
+  */
+  
   return [htmlText.join(''), plainText.join('\n'), s3Resp];
 
   function pdfLine(text, size, style, indent = 0, before, after, options) {

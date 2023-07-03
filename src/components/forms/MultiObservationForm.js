@@ -830,7 +830,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     if (html) {  // if there is a message to send, send it and update all the Service Request records to show that it was sent
       // prepare message that contains the tickets (one for the whole group)
-      message_body.messaging = fact.messaging;
+      message_body.messaging = Object.assign({}, fact.messaging);
       message_body.messaging.format = { 'type': 'inBody', 'subject': 'Meal Ticket' };
       message_body.htmlText = html;
       message_body.messageText = plain;
