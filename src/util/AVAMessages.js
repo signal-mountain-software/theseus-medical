@@ -7,7 +7,7 @@ import { makeDate } from './AVADateTime';
 import { jsPDF } from "jspdf";
 // import * as PDFprint from 'unix-print';
 
-const os = require('os'); 
+const os = require('os');
 
 // Functions
 
@@ -541,7 +541,7 @@ export async function mealTicketFormat(body) {
   titleWords = await resolveMessageVariables(titleWords, body);
   style = `"text-align:center; font-size: ${page.font.size.large};"`;
   let outTitle = titleCase(titleWords);
-  pdfLine(outTitle, page.font.size.large, 'normal', 0, 0, 0, {align: 'center'});
+  pdfLine(outTitle, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
   htmlText.push(`<div style=${style}><b>${outTitle}</b></div>`);
   plainText.push(outTitle);
   if (body.client_name) {
@@ -630,7 +630,7 @@ export async function mealTicketFormat(body) {
     plainText.push(' ');
     plainText.push('Initials _________');
   }
-  
+
   // ********** FOOTERS ********** //
   pdfLine('AVA Senior Living', page.font.size.tiny, 'normal', 0, 2, 0, { align: 'center' });
   pdfLine(`ID ${this_request.local_key}`, page.font.size.tiny, 'normal', 0, 0, 0, { align: 'center' });
@@ -651,7 +651,7 @@ export async function mealTicketFormat(body) {
 
   doc.rect(page.margin.left - 2, page.margin.top - page.font.size.large - 2, page.width - 4, yPos - page.margin.top);
 
-  let pBlob = doc.output('blob')
+  let pBlob = doc.output('blob');
   let fileName = `${body.client || body.client_id}_${this_request.local_key}_mealticket.pdf`;
   let s3Resp = await s3
     .upload({
@@ -670,32 +670,14 @@ export async function mealTicketFormat(body) {
   let printWindow = window.open(s3Resp.Location, '');
   printWindow.document.write(htmlText.join(''));
   printWindow.document.close();
- // printWindow.focus();
-  printWindow.resizeTo(body.pageWidth, 1000)
+  printWindow.resizeTo(body.pageWidth, 1000);
   printWindow.print();
   printWindow.close();
-  // window.open(s3Resp.Location);
-  // printWindow.window.focus();
-  // printWindow.window.print();
-  // printWindow.window.close();
   cl(s3Resp);
   cl(os.platform());
   doc.autoPrint({ variant: 'non-conform' });
-  await doc.save(fileName, {returnPromise: true});
-  // PDFprint.print(fileName).then(console.log);
-  /*
-  {
-    var myWindow=window.open('','','width=200,height=100');
-    myWindow.document.write("<p>This is 'myWindow'</p>");
-    
-    myWindow.document.close();
-myWindow.focus();
-myWindow.print();
-myWindow.close();
-    
-  }
-  */
-  
+  await doc.save(fileName, { returnPromise: true });
+
   return [htmlText.join(''), plainText.join('\n'), s3Resp];
 
   function pdfLine(text, size, style, indent = 0, before, after, options) {
@@ -713,7 +695,7 @@ myWindow.close();
       let tWords = text.split(/\s+/);
       nextLine = tWords.pop();
       text = tWords.join(' ');
-      if (doc.getTextWidth(text) > page.printableArea) { 
+      if (doc.getTextWidth(text) > page.printableArea) {
         let t2Words = text.split(/\s+/);
         nextLine += ' ' + t2Words.pop();
         text = t2Words.join(' ');

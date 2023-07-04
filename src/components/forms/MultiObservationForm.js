@@ -533,7 +533,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function optSelected(qOpt, qChoice, qValue) {
     let [pObsText, pPerson,] = dataRows.optNeeded;
     let sArray = [];
-    if (pPerson === '*all') { 
+    if (pPerson === '*all') {
       if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
       if (!dataRows.textValue.hasOwnProperty('*all*')) {
         dataRows.textValue['*all*'] = {};
