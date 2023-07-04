@@ -34,6 +34,7 @@
     "react-idle-timer": "^4.6.4",
     "react-images": "^1.2.0-beta.7",
     "react-marquee-slider": "^1.1.5",
+    "react-native": "^0.63.0",
     "react-native-device-info": "^10.0.0",
     "react-pdf": "^5.2.0",
     "react-player": "^2.9.0",
