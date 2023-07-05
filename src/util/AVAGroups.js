@@ -433,11 +433,11 @@ export async function getGroupHierarchy(pClient_id, options) {
   if (!recordExists(groupRec)) { return {}; }
   let hierarchy = {};
   let customRec = await getCustomizations('client_name', pClient_id);
-  let nameObj = { 'ALL': `All ${customRec.customization_value} Accounts` };
-  let parentObj = { 'ALL': '' };
+  let nameObj = { '__TOP__': customRec.customization_value };
+  let parentObj = { '__TOP__': '' };
   // first pass - all admin level groups are added to their parent
   for (let g = 0; g < groupRec.Items.length; g++) {
-    if (!groupRec.Items[g].belongs_to) { groupRec.Items[g].belongs_to = 'ALL'; }
+    if (!groupRec.Items[g].belongs_to) { groupRec.Items[g].belongs_to = '__TOP__'; }
     let thisGroup = groupRec.Items[g];
     if (thisGroup.group_type === 'admin') {
       if (!hierarchy.hasOwnProperty(thisGroup.belongs_to)) {
