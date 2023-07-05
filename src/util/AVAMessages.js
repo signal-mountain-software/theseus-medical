@@ -139,6 +139,7 @@ export async function prepareMessage(inBody) {
       let passedTest = false;
       if (!t.test) {   // No test condition?  Testing to see if the t.check was selected
         if (requestToTest.selections && requestToTest.selections.includes(t.check)) { passedTest = true; }
+        else if (requestToTest.textInput && requestToTest.textInput.hasOwnProperty(t.check)) { passedTest = true; }
       }
       // there is a test condition
       else if (requestToTest.textInput && (requestToTest.textInput.hasOwnProperty(t.check))) {  // checking text input against t.test
