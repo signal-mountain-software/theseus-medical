@@ -5,9 +5,6 @@ import { getServiceRequests } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
-// import * as PDFprint from 'unix-print';
-
-const os = require('os');
 
 // Functions
 
@@ -85,7 +82,9 @@ export async function prepareMessage(inBody) {
       }
       case 'mealTicket': {
         [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request);
-        if (results.attachments) { requestInfo.attachments = results.attachments; }
+        if (results.attachments) {
+          requestInfo.attachments = results.attachments;
+        }
         break;
       }
       case 'inBody': {
@@ -652,6 +651,7 @@ export async function mealTicketFormat(body) {
   doc.rect(page.margin.left - 2, page.margin.top - page.font.size.large - 2, page.width - 4, yPos - page.margin.top);
 
   let pBlob = doc.output('blob');
+  let data64 = (doc.output('datauri')).split(';base64,')[1];
   let fileName = `${body.client || body.client_id}_${this_request.local_key}_mealticket.pdf`;
   let s3Resp = await s3
     .upload({
@@ -665,18 +665,8 @@ export async function mealTicketFormat(body) {
     .catch(err => {
       cl(`PDF not saved by AVA.  The reason is ${err.message}`);
     });
-  // let printWindow = window.open('', '', `width=${body.pageWidth},height=100`);
-  // let printWindow = window.open('', '');
-  let printWindow = window.open(s3Resp.Location, '');
-  printWindow.document.write(htmlText.join(''));
-  printWindow.document.close();
-  printWindow.resizeTo(body.pageWidth, 1000);
-  printWindow.print();
-  printWindow.close();
-  cl(s3Resp);
-  cl(os.platform());
-  doc.autoPrint({ variant: 'non-conform' });
   await doc.save(fileName, { returnPromise: true });
+  s3Resp.data = data64;
 
   return [htmlText.join(''), plainText.join('\n'), s3Resp];
 
@@ -732,6 +722,7 @@ export async function sendMessages(body) {
           recipientList: <person_id or array of person_id's list can include "GRP//<group_id>" as well>
           subject: <subject>
           attachments: [<string>, <string>, ...]
+          attachment_data: <optional> exists when the attahment(s) are actual file attachments and not links
           preffered_method: <attempt to force this method>
           thread_id: <if present, add this message to the indicated thread; otherwise, create a new thread>    
   */
@@ -773,7 +764,12 @@ export async function sendMessages(body) {
       TableName: "PostOffice"
     };
     if (env.testMode) { PostOfficeRec.TableName = "TestPostOffice"; };
-    if (env.attachments) { PostOfficeRec.Item.attachments = makeArray(env.attachments); }
+    if (env.attachments) {
+      PostOfficeRec.Item.attachments = makeArray(env.attachments);
+      if (env.attachment_data) {
+        PostOfficeRec.Item.attachment_data = Object.assign({}, env.attachment_data);
+      }
+    }
     if (env.allowReplyAll) { PostOfficeRec.Item.allowReplyAll = env.allowReplyAll; }
     if (!('subject' in PostOfficeRec.Item)) {
       PostOfficeRec.Item["subject"] = `Message from ${await makeName(env.author)}`;

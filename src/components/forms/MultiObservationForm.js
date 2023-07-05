@@ -839,7 +839,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       if (preparedMessages.length > 0) {
         preparedMessages.forEach((m, x) => {
           preparedMessages[x].thread_id = `svc_${message_body.requestType}/${local_key}`;
-          if (attachment) { preparedMessages[x].attachments = [attachment.Location]; }
+          if (attachment) {
+            preparedMessages[x].attachments = [attachment.Location];
+            if (message_body.messaging.hasOwnProperty('attachment_method')
+              && (message_body.messaging.attachment_method === 'file')) {
+              if (attachment.data) {
+                preparedMessages[x].attachment_data = {
+                  filename: `MealTicket-${local_key}.pdf`,
+                  content: attachment.data,
+                  type: 'application/pdf',
+                  disposition: 'attachment',
+                  content_id: local_key
+                };
+              }
+            }
+          }
         });
         let rTime = makeDate(new Date().getTime());
         let rMsg;
