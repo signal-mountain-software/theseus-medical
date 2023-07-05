@@ -20,7 +20,7 @@ export async function isMemberOf(person_id, pGroup_id) {
 };
 
 export async function getGroupsResponsibleFor(person_id) {
-  if (!session || (session.patient_id !== person_id)) {
+  if (!session || (session.session_id !== person_id)) {
     session = await getSession(person_id);
   }
   var returnObject = {};

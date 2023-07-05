@@ -533,7 +533,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function optSelected(qOpt, qChoice, qValue) {
     let [pObsText, pPerson,] = dataRows.optNeeded;
     let sArray = [];
-    if (pPerson === '*all') { 
+    if (pPerson === '*all') {
       if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
       if (!dataRows.textValue.hasOwnProperty('*all*')) {
         dataRows.textValue['*all*'] = {};
@@ -830,7 +830,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     if (html) {  // if there is a message to send, send it and update all the Service Request records to show that it was sent
       // prepare message that contains the tickets (one for the whole group)
-      message_body.messaging = fact.messaging;
+      message_body.messaging = Object.assign({}, fact.messaging);
       message_body.messaging.format = { 'type': 'inBody', 'subject': 'Meal Ticket' };
       message_body.htmlText = html;
       message_body.messageText = plain;
@@ -839,7 +839,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       if (preparedMessages.length > 0) {
         preparedMessages.forEach((m, x) => {
           preparedMessages[x].thread_id = `svc_${message_body.requestType}/${local_key}`;
-          if (attachment) { preparedMessages[x].attachments = [attachment.Location]; }
+          if (attachment) {
+            preparedMessages[x].attachments = [attachment.Location];
+            if (message_body.messaging.hasOwnProperty('attachment_method')
+              && (message_body.messaging.attachment_method === 'file')) {
+              if (attachment.data) {
+                preparedMessages[x].attachment_data = {
+                  filename: `MealTicket-${local_key}.pdf`,
+                  content: attachment.data,
+                  type: 'application/pdf',
+                  disposition: 'attachment',
+                  content_id: local_key
+                };
+              }
+            }
+          }
         });
         let rTime = makeDate(new Date().getTime());
         let rMsg;

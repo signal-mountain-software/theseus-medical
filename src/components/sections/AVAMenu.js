@@ -724,7 +724,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         block: 'end',
       });
     }
-  }, [currentMenu])
+  }, [currentMenu]);
 
   React.useEffect(() => {
     let response = (
@@ -872,7 +872,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             dispatch({ type: SET_PATIENTS, payload: targetObj.responsibleList.sort() });
             dPart = targetObj.responsibleList.sort();
           }
-          
+
           break;
         }
         default: { }
@@ -1454,8 +1454,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   "id": defaultClient
                 }
               ],
-          }}
-          groupData={groupData}
+            }}
+            groupData={groupData}
             open={true}
             onClose={() => {
               setShowAddAccount(false);

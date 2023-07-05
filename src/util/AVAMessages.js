@@ -82,7 +82,9 @@ export async function prepareMessage(inBody) {
       }
       case 'mealTicket': {
         [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request);
-        if (results.attachments) { requestInfo.attachments = results.attachments; }
+        if (results.attachments) {
+          requestInfo.attachments = results.attachments;
+        }
         break;
       }
       case 'inBody': {
@@ -538,7 +540,7 @@ export async function mealTicketFormat(body) {
   titleWords = await resolveMessageVariables(titleWords, body);
   style = `"text-align:center; font-size: ${page.font.size.large};"`;
   let outTitle = titleCase(titleWords);
-  pdfLine(outTitle, page.font.size.large, 'normal', 0, 0, 0, {align: 'center'});
+  pdfLine(outTitle, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
   htmlText.push(`<div style=${style}><b>${outTitle}</b></div>`);
   plainText.push(outTitle);
   if (body.client_name) {
@@ -627,7 +629,7 @@ export async function mealTicketFormat(body) {
     plainText.push(' ');
     plainText.push('Initials _________');
   }
-  
+
   // ********** FOOTERS ********** //
   pdfLine('AVA Senior Living', page.font.size.tiny, 'normal', 0, 2, 0, { align: 'center' });
   pdfLine(`ID ${this_request.local_key}`, page.font.size.tiny, 'normal', 0, 0, 0, { align: 'center' });
@@ -648,11 +650,13 @@ export async function mealTicketFormat(body) {
 
   doc.rect(page.margin.left - 2, page.margin.top - page.font.size.large - 2, page.width - 4, yPos - page.margin.top);
 
-  let pBlob = doc.output('blob')
+  let pBlob = doc.output('blob');
+  let data64 = (doc.output('datauri')).split(';base64,')[1];
+  let fileName = `${body.client || body.client_id}_${this_request.local_key}_mealticket.pdf`;
   let s3Resp = await s3
     .upload({
       Bucket: 'theseus-medical-storage',
-      Key: `${body.client || body.client_id}_${this_request.local_key}_mealticket.pdf`,
+      Key: fileName,
       Body: pBlob,
       ACL: 'public-read-write',
       ContentType: 'application/pdf'
@@ -661,8 +665,9 @@ export async function mealTicketFormat(body) {
     .catch(err => {
       cl(`PDF not saved by AVA.  The reason is ${err.message}`);
     });
-  cl(s3Resp);
-  doc.save();
+  await doc.save(fileName, { returnPromise: true });
+  s3Resp.data = data64;
+
   return [htmlText.join(''), plainText.join('\n'), s3Resp];
 
   function pdfLine(text, size, style, indent = 0, before, after, options) {
@@ -680,7 +685,7 @@ export async function mealTicketFormat(body) {
       let tWords = text.split(/\s+/);
       nextLine = tWords.pop();
       text = tWords.join(' ');
-      if (doc.getTextWidth(text) > page.printableArea) { 
+      if (doc.getTextWidth(text) > page.printableArea) {
         let t2Words = text.split(/\s+/);
         nextLine += ' ' + t2Words.pop();
         text = t2Words.join(' ');
@@ -717,6 +722,7 @@ export async function sendMessages(body) {
           recipientList: <person_id or array of person_id's list can include "GRP//<group_id>" as well>
           subject: <subject>
           attachments: [<string>, <string>, ...]
+          attachment_data: <optional> exists when the attahment(s) are actual file attachments and not links
           preffered_method: <attempt to force this method>
           thread_id: <if present, add this message to the indicated thread; otherwise, create a new thread>    
   */
@@ -758,7 +764,12 @@ export async function sendMessages(body) {
       TableName: "PostOffice"
     };
     if (env.testMode) { PostOfficeRec.TableName = "TestPostOffice"; };
-    if (env.attachments) { PostOfficeRec.Item.attachments = makeArray(env.attachments); }
+    if (env.attachments) {
+      PostOfficeRec.Item.attachments = makeArray(env.attachments);
+      if (env.attachment_data) {
+        PostOfficeRec.Item.attachment_data = Object.assign({}, env.attachment_data);
+      }
+    }
     if (env.allowReplyAll) { PostOfficeRec.Item.allowReplyAll = env.allowReplyAll; }
     if (!('subject' in PostOfficeRec.Item)) {
       PostOfficeRec.Item["subject"] = `Message from ${await makeName(env.author)}`;
