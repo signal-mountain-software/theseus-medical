@@ -27,15 +27,16 @@ export async function getGroupsResponsibleFor(person_id) {
   // First, get Groups that this person explicitly manages (as per the SessionsV2 table)
   if ('groups_managed' in session) {
     for (let g = 0; g < session.groups_managed.length; g++) {
-      let [gID, gName] = session.groups_managed[g].split('~').map(s => { return s.trim(); });
+      let gID = session.groups_managed[g].split('~')[0].trim();
       let gRec = await getGroup(gID, session.client_id);
-      if (gRec.name) { gName = gRec.name; }
-      returnObject[gID] = {
-        group_name: gName,
-        group_id: gID,
-        role: 'responsible'
+      if (gRec.name) {
+        returnObject[gID] = {
+          group_name: gRec.name,
+          group_id: gID,
+          role: 'responsible'
+        };
       };
-    };
+    }
   }
   // If there are groups in the "responsible for" array, include those
   let respArray = [];
@@ -62,6 +63,34 @@ export async function getGroupsResponsibleFor(person_id) {
       }
     };
   }
+  let qParm = {
+    KeyConditionExpression: 'client_id = :c',
+    ExpressionAttributeValues: { ':c': session.client_id },
+    TableName: "Groups"
+  };
+  let everyGroup = await dbClient
+    .query(qParm)
+    .promise()
+    .catch(error => {
+      cl({
+        'Error reading Groups': error,
+        client_id: `<${session.client_id}>`
+      });
+    });
+  if (recordExists(everyGroup)) {
+    for (let g = 0; g < everyGroup.Items.length; g++) {
+      let this_group = everyGroup.Items[g];
+      if (!(this_group.group_id in returnObject)) {
+        if (this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id)) {
+          returnObject[this_group.group_id] = {
+            group_name: this_group.name,
+            group_id: this_group.group_id,
+            role: 'responsible'
+          };
+        }
+      };
+    }
+  }
   loadedPerson = person_id;
   return returnObject;
 }
@@ -73,7 +102,7 @@ export async function getPeopleResponsibleFor(person_id) {
   var respList = [];
   if ('groups_managed' in session) {
     for (let g = 0; g < session.groups_managed.length; g++) {
-      let [gID, ] = session.groups_managed[g].split('~').map(s => { return s.trim(); });
+      let [gID,] = session.groups_managed[g].split('~').map(s => { return s.trim(); });
       respList.push(gID);
     };
   }
@@ -88,9 +117,9 @@ export async function getPeopleResponsibleFor(person_id) {
     if (!respList.includes(rID)) { respList.push(rID); }
   }
   let returnObject = await getMemberList(respList, session.client_id, { sortResults: true });
-  return returnObject.peopleList.map(p => { 
+  return returnObject.peopleList.map(p => {
     return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
-  })
+  });
 }
 
 
@@ -570,7 +599,7 @@ export async function getAllGroups(person_id, client_id) {
   if (!client_id) {
     let session = await getSession(person_id);
     if (session) { client_id = session.client_id; }
-    if (!client_id) { return { adminHierarchy: [], publicGroups: {}, privateGroups: {}}; }
+    if (!client_id) { return { adminHierarchy: [], publicGroups: {}, privateGroups: {} }; }
   }
   responseData.adminHierarchy = await getGroupHierarchy(client_id, { sort: true });
   responseData.adminHierarchy.forEach(a => {

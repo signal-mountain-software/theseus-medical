@@ -1,4 +1,6 @@
 import React from 'react';
+import { useSnackbar } from 'notistack';
+
 import { lambda } from '../../util/AVAUtilities';
 
 import Paper from '@material-ui/core/Paper';
@@ -183,6 +185,8 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
   const [promptForName, setPromptForName] = React.useState(false);
 
   const classes = useStyles();
+  const { enqueueSnackbar } = useSnackbar();
+
 
   const handleChangeActivityFilter = event => {
     setActivityFilter(event.target.value);
@@ -190,11 +194,14 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
   };
 
   function OKtoShow(inObj) { 
-    return (
-      inObj.group_name.toLowerCase().includes(lower_activity_filter) ||
-      inObj.group_id.toLowerCase().includes(lower_activity_filter)
-    );
-  }
+    if (!lower_activity_filter) { return true; }
+    if (inObj.hasOwnProperty('group_name')) {
+      if (inObj.group_name.toLowerCase().includes(lower_activity_filter)) {
+        return true;
+      }
+    }
+    return (inObj.group_id.toLowerCase().includes(lower_activity_filter))
+  };
 
   const handleCreateAGroup = async pGroupName => {
     let params = {
@@ -265,7 +272,11 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
                       key={'activity-list_' + listEntry}
                       onClick={() => {
                         onSelect(listEntry);
-                      }}
+                    }}
+                    onContextMenu={async (e) => {
+                      e.preventDefault();
+                      enqueueSnackbar(`Group ID = ${listEntry}`, { variant: 'info', persist: true });
+                    }}
                       button
                     >
                       <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
