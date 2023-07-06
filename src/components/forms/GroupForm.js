@@ -731,7 +731,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               await handleAddPersonToGroup([pPatient], pGroup);
                               setOverrideRole('member');
                             }}
-                            startIcon={<GroupAddIcon sisetMessageTypeze="small" />}
+                            startIcon={<GroupAddIcon size="small" />}
                           >
                             {'Add Myself'}
                           </Button>
