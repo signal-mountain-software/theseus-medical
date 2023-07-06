@@ -270,7 +270,7 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
             });
           }
           if (openRecs.length > 0) {
-            // step 2 - get all of the four+ letter words that are in the spreadsheet's dsecription columns
+            // step 2 - get all of the four+ letter words that are in the spreadsheet's description columns
             let descriptive_words = [];
             for (let h in headers) {
               if (headers[h].description_data && sheetData[activeRow][headers[h].column]) {
@@ -291,7 +291,7 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
                 }
                 else {
                   Object.keys(gRec.original_request.textInput).forEach(k => {
-                    if (headers[k].description_data) {
+                    if (headers.hasOwnProperty(k) && headers[k].description_data) {
                       gRec.original_request.textInput[k].split(/\s/).forEach(w => {
                         if ((w.length > 3) && !(request_words.includes(w))) { request_words.push(w); }
                       });
