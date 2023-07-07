@@ -76,17 +76,23 @@ export default ({ person, groupData, updateGroups }) => {
       // eslint-disable-next-line
       reactData.adminHierarchy.forEach(gObj => {
         if ((gObj.id === checkGroup) && (gObj.belongs_to)) {
-          memberOf.push(gObj.belongs_to);
+          if (!memberOf.includes(gObj.belongs_to)) { memberOf.push(gObj.belongs_to); }
           nextGroup = gObj.belongs_to;
         }
       });
       checkGroup = nextGroup;
     } while (checkGroup && (loopCount < 20))
     for (let gID in reactData.publicGroups) {
-      if (!reactData.publicGroups[gID].role.startsWith('non')) { memberOf.push(gID); }
+      if (!reactData.publicGroups[gID].role.startsWith('non')
+        && !memberOf.includes(gID)) {
+        memberOf.push(gID);
+      }
     }
     for (let gID in reactData.privateGroups) {
-      if (!reactData.privateGroups[gID].role.startsWith('non')) { memberOf.push(gID); }
+      if (!reactData.privateGroups[gID].role.startsWith('non')
+        && !memberOf.includes(gID)) {
+        memberOf.push(gID);
+      }
     };
     updateGroups(memberOf);
     setForceRedisplay(!forceRedisplay);

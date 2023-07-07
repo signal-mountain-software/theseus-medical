@@ -408,7 +408,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || null,
       time_based_rules: patient.time_based_rules,
-      groups: patientGroups,
+      groups: patientGroups || ['inactive'],
       location: localData.location ? localData.location.replace(/,/g, '') : null,
       pwdReset: resettingPwd,
       newPassword: localData.inputPWD
@@ -444,9 +444,9 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       time_based_rules: patient.time_based_rules,
       clients: {
         id: myClient,
-        groups: patientGroups
+        groups: patientGroups || ['inactive']
       },
-      groups: patientGroups,
+      groups: patientGroups || ['inactive'],
       location: localData.location ? localData.location.replace(/,/g, '') : null,
       pwdReset: resettingPwd,
       newPassword: localData.inputPWD
