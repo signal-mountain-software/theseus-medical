@@ -16,6 +16,8 @@ import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
+import DialogContent from '@material-ui/core/DialogContent';
+import CircularProgress from '@material-ui/core/CircularProgress';
 
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
@@ -38,6 +40,11 @@ const useStyles = makeStyles(theme => ({
   page: {
     height: 950,
     maxWidth: 1000
+  },
+  dialogBox: {
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    minWidth: '100%',
   },
   freeInput: {
     marginLeft: '25px',
@@ -187,10 +194,7 @@ export default ({ session, filter = {}, onClose }) => {
   const { enqueueSnackbar } = useSnackbar();
 
   const [dataRows, setDataRows] = React.useState();
-
-  // const [request_filter, setRequestFilter] = React.useState('');
-  // const [request_filter_lower, setRequestFilterLower] = React.useState('');
-  // const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
   const [filters, setFilters] = React.useState({
     rowLimit: 5
   });
@@ -407,6 +411,7 @@ export default ({ session, filter = {}, onClose }) => {
   }
 
   const buildDashboard = async () => {
+    setLoading(true);
     let qList = [];
     if (filter) { filter.client_id = session.client_id; }
     else { filter = { 'person': session.patient_id }; }
@@ -419,7 +424,8 @@ export default ({ session, filter = {}, onClose }) => {
       qList[x] = await buildRequestDetails(qList[x]);
     }
     setDataRows(qList);
-    delete filter.limit;
+    setLoading(false);
+    filter.limit = Math.min(filters.rowLimit, 5) * 40;
     getServiceRequests(filter)
       .then(result => {
         let finalLimit = result.length;
@@ -580,7 +586,40 @@ export default ({ session, filter = {}, onClose }) => {
       p={2}
       fullScreen
     >
-      {dataRows && dataRows.length > 0 &&
+      {loading &&
+        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+          <Box
+            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+            key={'loadingBox'}
+            ml={2} mr={2} mb={2} mt={8}
+          >
+            <Box
+              component="img"
+              mb={2}
+              minWidth={150}
+              maxWidth={150}
+              alt=''
+              src={session.client_logo || process.env.REACT_APP_AVA_LOGO}
+            />
+            <React.Fragment>
+              <Box
+                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                key={'loadingBox'}
+                mb={2}
+              >
+                <Typography variant='h5' >{`Retrieving`}</Typography>
+                <Typography variant='h5' className={classes.lastName} sx={{ marginBottom: '15px' }}>
+                  {(filter.request_type && session.service_request_types[filter.request_type]) ? session.service_request_types[filter.request_type].description : 'Request'}s
+                </Typography>
+                <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+              </Box>
+              <CircularProgress />
+            </React.Fragment>
+          </Box>
+        </DialogContent>
+      }
+      {!loading && dataRows && dataRows.length > 0 &&
         <React.Fragment>
           {/* Header with Avatar, Message, and VertMenu */}
           <Box

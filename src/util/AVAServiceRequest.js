@@ -63,20 +63,19 @@ export async function getServiceRequests(body) {
         qQ.KeyConditionExpression += ' and request_type = :rT';
         qQ.ExpressionAttributeValues[':rT'] = rTarray[0];
       }
-      else {
-        return [];
-      }
     }
   }
   else if (rT) {
+    qQ.IndexName = 'last_update-index';
+    qQ.KeyConditionExpression = 'client_id = :c';
+    qQ.Limit = 500;
+    qQ.ScanIndexForward = false;
     let rTarray = makeArray(rT);
     if (rTarray.length === 1) {
-      qQ.IndexName = 'request_type-index';
-      qQ.KeyConditionExpression = 'client_id = :c and request_type = :rT';
+      qQ.FilterExpression = 'request_type = :rT';
       qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rT': rTarray[0] };
     }
     else {
-      qQ.KeyConditionExpression = 'client_id = :c';
       qQ.FilterExpression = '(request_type = :t';
       qQ.ExpressionAttributeValues = { ':c': body.client_id, ':t': rTarray[0] };
       if (rTarray.length > 1) {
@@ -88,26 +87,36 @@ export async function getServiceRequests(body) {
       qQ.FilterExpression += ')';
     }
   }
-
-  let qR = await dbClient
-    .query(qQ)
-    .promise()
-    .catch(error => {
-      if (error.code === 'NetworkingError') {
-        console.log(`Security Violation or no Internet Connection`);
+  let loopCount = 0;
+  let sortedList = [];
+  do {
+    let qR = await dbClient
+      .query(qQ)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          console.log(`Security Violation or no Internet Connection`);
+        }
+        console.log({ 'Error reading ServiceRequests': error, index: qQ.IndexName, qQ });
+      });
+    if (recordExists(qR)) {
+      let thisSort = qR.Items.sort((a, b) => {
+        a.sort = a.request_date || Number(a.request_id.split(/~/g).pop());
+        b.sort = b.request_date || Number(b.request_id.split(/~/g).pop());
+        if (a.sort > b.sort) { return -1; }
+        if (a.sort < b.sort) { return 1; }
+        return 0;
+      });
+      sortedList = sortedList.concat(thisSort);
+      if (!qR.LastEvaluatedKey || (sortedList.length > body.limit)) {
+        return sortedList;
       }
-      console.log({ 'Error reading ServiceRequests': error, index: qQ.IndexName, qQ });
-    });
-  if (recordExists(qR)) {
-    return qR.Items.sort((a, b) => {
-      a.sort = a.request_date || Number(a.request_id.split(/~/g).pop());
-      b.sort = b.request_date || Number(b.request_id.split(/~/g).pop());
-      if (a.sort > b.sort) { return -1; }
-      if (a.sort < b.sort) { return 1; }
-      return 0;
-    });
-  }
-  else { return []; }
+    }
+    else { return []; }
+    qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
+    loopCount++;
+  } while (qQ.ExclusiveStartKey && (loopCount < 10))
+  return sortedList;
 }
 
 export async function putServiceRequest(body) {

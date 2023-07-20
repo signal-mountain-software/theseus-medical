@@ -117,6 +117,12 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       });
     if (recordExists(mRecs) && (mRecs.Count > 0)) {
       for (let m = 0; m < mRecs.Items.length; m++) {
+        if (!mRecs.Items[m].sort_order) {
+          if (mRecs.Items[m].sequence) {
+            mRecs.Items[m].sort_order = (Number.MAX_SAFE_INTEGER - mRecs.Items[m].sequence).toString();
+          }
+          else { mRecs.Items[m].sort_order = ''; }
+        }
         mRecs.Items[m].resolved = await resolveVariables(`%%${mRecs.Items[m].sort_order}%%`, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });
         mRecs.Items[m].resolved = mRecs.Items[m].resolved.replace(/%%/g,'');
       }
