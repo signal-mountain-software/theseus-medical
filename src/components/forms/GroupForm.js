@@ -824,7 +824,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         {prefLine.display[0]}
                       </Typography>
                       {(prefLine.display.length > 1) &&
-                        <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
+                        <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine2}>
                           @{prefLine.display[1]}
                         </Typography>
                       }
