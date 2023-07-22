@@ -14,6 +14,27 @@ export function putMessage_nonAsync(body) {
 }
 */
 
+export async function getObservationItems(pObsKey) {
+  let returnObj = {};
+  let pObsQkey = {
+    KeyConditionExpression: 'observation_key = :c',
+    ExpressionAttributeValues: {
+      ':c': pObsKey,
+    },
+    TableName: "Observation_Items",
+  };
+  let obsItemRec = await dbClient
+    .query(pObsQkey)
+    .promise()
+    .catch(error => { cl('ERROR reading Observation_Items.  Caught error is:', error); });
+  if (recordExists(obsItemRec)) {
+    obsItemRec.Items.forEach((oiRec) => {
+      returnObj[oiRec.characteristic] = oiRec;
+    });
+  };
+  return returnObj;
+}
+
 export async function makeObservationList(pObs, pSession) {
   let returnList = [];
   let returnQObj = {};

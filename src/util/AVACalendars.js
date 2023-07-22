@@ -393,7 +393,12 @@ export async function getCalendarEntries(body, statusUpdate) {
         to_date: makeDate(addDays(makeDate(end_Date).date, 366)).numeric,
         number_of_occurrences: 10
       });
-      if (nextOcc && nextOcc.occArray && (nextOcc.occArray.length > 0) && nextOcc.occArray[0]) {
+      if (nextOcc
+        && nextOcc.occArray
+        && (nextOcc.occArray.length > 0)
+        && nextOcc.occArray[0]
+        && (nextOcc.occArray[0] <= end_Date) 
+      ) {
         let newKey = `${returnArr[a].event_id}#${nextOcc.occArray[0]}`;
         if (returnArr.some(a => { return (a.event_key === newKey); })) { continue; }    // found occurrence was already in retrunArr
         else {
