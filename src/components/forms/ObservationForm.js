@@ -1,8 +1,9 @@
 import React from 'react';
-import { s3, lambda } from '../../util/AVAUtilities';
+import { s3 } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { makeName } from '../../util/AVAPeople';
 import { putServiceRequest } from '../../util/AVAServiceRequest';
+import { getObservationItems } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { useSnackbar } from 'notistack';
@@ -201,20 +202,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   const [dataRows, setDataRows] = React.useState();
   const [anchorEl, setAnchorEl] = React.useState(null);
+  const [linkURL, setLinkURL] = React.useState(null);
 
   const factType = fact.activity_key.split('.')[0];
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
-
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
 
   /* value                       | meaning                                  | example                                                   */
   /* ---------                   | ----------                               | -------------                                             */
@@ -386,43 +380,35 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       setForceRedisplay(!forceRedisplay);
       return;
     }
-    params.Payload = JSON.stringify({
-      action: "get_observation_items",
-      clientId: pClient,
-      request: {
-        "observation_key": pObsKey
-      }
-    });
-    let invokeFailed = false;
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(() => {
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let oRecs = JSON.parse(fResp.Payload);
-      if (oRecs.status === 200) {
-        if (oRecs.body.options) {
-          workDataRows[pText] = oRecs.body.options.display_value;
-          let workChosenQ = {};
-          if (workDataRows.hasOwnProperty('chosenQual')) {
-            workChosenQ = workDataRows.chosenQual;
-          }
-          if (!workChosenQ.hasOwnProperty(pText)) {
-            workChosenQ[pText] = {};
-            oRecs.body.options.display_value.forEach(v => {
-              if (v.default) {
-                if (Array.isArray(v.default)) { workChosenQ[pText][v.title] = v.default; }
-                else { workChosenQ[pText][v.title] = [v.default]; }
-              }
-              else { workChosenQ[pText][v.title] = []; }
-            });
-          }
-          workDataRows.chosenQual = workChosenQ;
+    if (pObsKey) {
+      let oItem = await getObservationItems(pObsKey);
+      if (oItem && oItem.hasOwnProperty('options')) {
+        workDataRows[pText] = oItem.options.display_value;
+        let workChosenQ = {};
+        if (workDataRows.hasOwnProperty('chosenQual')) {
+          workChosenQ = workDataRows.chosenQual;
         }
+        if (!workChosenQ.hasOwnProperty(pText)) {
+          workChosenQ[pText] = {};
+          oItem.options.display_value.forEach(v => {
+            if (v.default) {
+              if (Array.isArray(v.default)) { workChosenQ[pText][v.title] = v.default; }
+              else { workChosenQ[pText][v.title] = [v.default]; }
+            }
+            else { workChosenQ[pText][v.title] = []; }
+          });
+        }
+        workDataRows.chosenQual = workChosenQ;
       }
-    };
+      if (oItem && oItem.hasOwnProperty('links')) {
+        if (!workDataRows.hasOwnProperty('links')) {
+          workDataRows.links = {};
+        }
+        oItem.links.display_value.forEach(l => {
+          workDataRows.links[l.display] = l.link;
+        })
+      }
+    }
     setDataRows(workDataRows);
     setForceRedisplay(!forceRedisplay);
   }
@@ -554,6 +540,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let errorsExist = false;
     let errorMessage = ['Please correct these errors', ''];
     let responseArray = [`Please confirm your selections`, ''];
+    setLinkURL(null);
     pDisplayRows.forEach(r => {
       if (r.required && (!textInput.hasOwnProperty(r.text) || textInput[r.text] === '')) {
         errorsExist = true;
@@ -566,11 +553,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if (rText) {
           if (pChecked.includes(r.text)) { workChecked.push(`${rText}${(r.altValue ? (':' + r.altValue) : '')}`); }
           responseArray.push(rText);
+          if (dataRows.links && dataRows.links[rText]) {
+            setLinkURL(dataRows.links[rText]);
+          }
           if (dataRows.hasOwnProperty('chosenQual') && dataRows.chosenQual[r.text]) {
             for (let key in dataRows.chosenQual[r.text]) {
               if (dataRows.chosenQual[r.text][key] && (dataRows.chosenQual[r.text][key].length > 0)) {
                 dataRows.chosenQual[r.text][key].forEach(qRow => {
                   responseArray.push(`[indent=1]${qRow}`);
+                  if (dataRows.links && dataRows.links[qRow]) {
+                    setLinkURL(dataRows.links[qRow]);
+                  }
                 });
               }
             }
@@ -967,6 +960,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   }
                   rObj = await putServiceRequest(putSR);
                 }
+                if (linkURL) {
+                  window.open(linkURL, (rObj.request_id || 'AVA_request_postURL'));
+                }
                 onSave((rObj ? rObj.request_id : ''), reactData.checkedToSave, reactData.textInput, dataRows.chosenQual);
               }}
             >
@@ -1035,7 +1031,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   {(!factType || (factType !== 'list')) &&
                     <Button
                       className={classes.AVAButton}
-                      style={{color: 'green'}}
+                      style={{ color: 'green' }}
                       size='small'
                       onClick={() => {
                         let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, reactData.textInput);
