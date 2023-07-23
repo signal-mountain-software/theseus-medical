@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { getCalendarEntries } from '../../util/AVACalendars';
-import { makeTime } from '../../util/AVADateTime';
+import { makeTime, addDays } from '../../util/AVADateTime';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import Box from '@material-ui/core/Box';
@@ -267,13 +267,13 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const extendDates = async (factor) => {
     let previousReactData = Object.assign({}, reactData );
     if (factor > 0) {
-      reactData.start_date = new Date(reactData.end_date);
+      reactData.start_date = addDays(new Date(reactData.end_date), 1);
       let myDate = new Date(reactData.end_date);
       myDate.setDate(myDate.getDate() + factor);
       reactData.end_date = myDate;
     }
     else {
-      reactData.end_date = new Date(reactData.start_date);
+      reactData.end_date = addDays(new Date(reactData.start_date), -1);
       let myDate = new Date(reactData.start_date);
       myDate.setDate(myDate.getDate() + factor);
       reactData.start_date = myDate;

@@ -371,7 +371,7 @@ export async function formatRequestDetails(body, summaryType) {
   htmlMessage += `</h2>`;
 
   const pTime = makeDate(new Date().getTime()).absolute + ' by ' + await makeName(body.author);
-  htmlMessage += `<p style = "color: black;">created:&nbsp;<strong>${pTime}</strong>`;
+  htmlMessage += `<p style = "color: black;">created: <strong>${pTime}</strong>`;
   rawMessage += `${pTime}\n\r`;
 
   for (let cTyp in pRec.messaging) {
@@ -383,7 +383,7 @@ export async function formatRequestDetails(body, summaryType) {
         case 'email': { cLab = 'e-Mail'; break; }
         default: { cLab = cTyp; }
       }
-      htmlMessage += `<br />${cLab}:&nbsp;<strong>${pRec[cTyp]}</strong>&nbsp;&nbsp;${(cTyp === pRec.preferred_method) ? '(pref)' : ''}`;
+      htmlMessage += `<br />${cLab}: <strong>${pRec[cTyp]}</strong>  ${(cTyp === pRec.preferred_method) ? '(pref)' : ''}`;
     }
   }
 
@@ -403,14 +403,14 @@ export async function formatRequestDetails(body, summaryType) {
         htmlMessage += pTag + aVal.trim();
         rawMessage += `${aVal}\r\n`;
         pXTag = '</h2>';
-        pTag = '&nbsp;/&nbsp;';
+        pTag = ' / ';
         body.selections.splice(x, 1);
         x--;
       }
     };
-    htmlMessage += `${pXTag}<h2 style = "color: black;" >Order filled by:&nbsp;_______________________</h2>`;
+    htmlMessage += `${pXTag}<h2 style = "color: black;" >Order filled by: _______________________</h2>`;
     rawMessage += '\n\nOrder filled by: ________________________\n\n';
-    renderCheckBox = '&#8414;&nbsp;&nbsp;&nbsp;';
+    renderCheckBox = '&#8414;   ';
     htmlMessage += `<h2 style="color: black;">Order Details</h2><dl style="padding-left: 40px;">`;
   }
   else {
@@ -464,11 +464,11 @@ export async function formatRequestDetails(body, summaryType) {
   htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
 
   if (body.local_key) {
-    htmlMessage += `<div>AVA request number:&nbsp;<strong>${body.local_key}</strong></div>`;
+    htmlMessage += `<div>AVA request number: <strong>${body.local_key}</strong></div>`;
     rawMessage += `\n\rAVA request number: ${body.local_key}`;
   }
 
-  htmlMessage += `<div>AVA reference:&nbsp;${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})</div>`;
+  htmlMessage += `<div>AVA reference: ${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})</div>`;
   htmlMessage += `<div>***** END *****</div></p>`;
   rawMessage += `\n\rAVA reference: ${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})\n***** END *****`;
 
