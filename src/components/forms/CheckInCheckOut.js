@@ -8,7 +8,7 @@ import Button from '@material-ui/core/Button';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 
-import { isEmpty, makeArray, titleCase } from '../../util/AVAUtilities';
+import { isEmpty, makeArray, titleCase, getCustomizations } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getPerson, getImage, getPersonByWords, addGuest, addVendor, formatPhone, makeName } from '../../util/AVAPeople';
@@ -59,9 +59,30 @@ export default ({ onSave, onClose }) => {
       adminOverride: 'none',
       adminIndex: -1,
       outList: [],
-      adminView: false
+      adminView: false,
+      initialized: false
     }
   );
+
+  // Initialization
+
+  React.useEffect(() => {
+    async function initialize() {
+      if (!reactData.kiosk_mode && !reactData.initialized && !state.session.adminAccount) {
+        reactData.currentStatus = await getCurrentStatus(state.session.client_id, reactData.personRec.person_id, 'resident');
+        reactData.resident_mode = true;
+        reactData.validated_user = true;
+      }
+      let customRec = await getCustomizations('resident_checkout_prompts', state.session.client_id);
+      reactData.residentPrompts = customRec.customization_value || [];
+      reactData.initialized = true;
+      setReactData(reactData);
+      setForceRedisplay(!forceRedisplay);
+    }
+    initialize();
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
+
 
   // Functions
 
@@ -156,7 +177,7 @@ export default ({ onSave, onClose }) => {
           client_id,
           "request_id": `${person_id}_checkout`,
           "requestor": person_id,
-          "on_behalf_of": '',
+          "on_behalf_of": `${state.patient.name.first} ${state.patient.name.last}`,
           "request_type": 'checkout',
           "request_date": now,
           "original_request": {},
@@ -250,7 +271,8 @@ export default ({ onSave, onClose }) => {
       adminOverride: 'none',
       adminIndex: -1,
       outList: [],
-      adminView: false
+      adminView: false,
+      initialized: true
     });
     setForceRedisplay(!forceRedisplay);
   }
@@ -262,7 +284,7 @@ export default ({ onSave, onClose }) => {
 
   return (
     <Dialog
-      open={true || forceRedisplay}
+      open={(!!reactData.initialized) && (true || forceRedisplay)}
       p={2}
       fullScreen
     >
@@ -308,7 +330,7 @@ export default ({ onSave, onClose }) => {
                 setForceRedisplay(!forceRedisplay);
               }}
             >
-              Resident
+                {reactData.kiosk_mode ? 'Resident' : 'Me'}
             </Button>
             <Button
               className={AVAClass.AVAButton}
@@ -603,7 +625,7 @@ export default ({ onSave, onClose }) => {
         && !reactData.select_user
         &&
         <AVATextInput
-          titleText={(!reactData.kiosk_mode ? makeGreeting(reactData.personRec.name.first) : `${state.session.client_name} resident Check-in/Check-out`)}
+          titleText={[(!reactData.kiosk_mode ? makeGreeting(reactData.personRec.name.first) : `${state.session.client_name}`), (!reactData.kiosk_mode ? null : `Resident Check-in/Check-out`)]}
           promptText={["Name or AVA ID", "Apartment, Phone number, or AVA password"]}
           valueText={[
             (!reactData.kiosk_mode ? reactData.residentName : ''),
@@ -707,26 +729,31 @@ export default ({ onSave, onClose }) => {
         && (['in', 'none'].includes(reactData.currentStatus.last_status))
         &&
         <AVATextInput
-          titleText={makeGreeting(reactData.personRec.name.first)}
-          promptText={["(Optional) What is your destination?", "How long will you be gone?"]}
+          titleText={[makeGreeting(reactData.personRec.name.first), `Check out - ${makeDate(new Date()).absolute}`]}
+          promptText={reactData.residentPrompts}
           buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
           onCancel={() => {
-            reactData.validated_user = false;
-            reactData.kiosk_mode = true;
-            setReactData(reactData);
-            setForceRedisplay(!forceRedisplay);
+            if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+            else {
+              reactData.validated_user = false;
+              reactData.kiosk_mode = true;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }
           }}
-          onSave={async ([destination, time_away]) => {
+          onSave={async (responses) => {
             let now = makeDate(new Date());
             reactData.currentStatus.reqRec.last_status = 'out';
             reactData.currentStatus.reqRec.last_update = now.timestamp;
             let hNote = `Checked out on ${now.absolute}`;
-            if (destination) { hNote += ` Destination: ${destination}.`; }
-            if (time_away) { hNote += ` Planned time away: ${time_away}.`; }
+            responses.forEach((r, x) => {
+              if (r) { hNote += ` ${reactData.residentPrompts[x]}: ${r}.`; }
+            })
             reactData.currentStatus.reqRec.history.unshift(hNote);
             await updateServiceRequest(reactData.currentStatus.reqRec);
             enqueueSnackbar(`Got it!  Thank you!`, { variant: 'success', persist: false });
-            reset();
+            if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+            else { reset(); }
           }}
           allowCancel={true}
         />
@@ -741,14 +768,17 @@ export default ({ onSave, onClose }) => {
         && (reactData.currentStatus.last_status === 'out')
         &&
         <AVAConfirm
-          promptText={[`Welcome home, ${reactData.personRec.name.first}!`, `[italic]${reactData.currentStatus.reqRec.history[0]}`]}
+          promptText={[`Welcome home, ${reactData.personRec.name.first}!`, `[italic]Checked out ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`]}
           cancelText={`Cancel`}
           confirmText={`Check-in`}
           onCancel={() => {
-            reactData.validated_user = false;
-            reactData.kiosk_mode = true;
-            setReactData(reactData);
-            setForceRedisplay(!forceRedisplay);
+            if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+            else {
+              reactData.validated_user = false;
+              reactData.kiosk_mode = true;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }
           }}
           onConfirm={async () => {
             let now = makeDate(new Date());
@@ -758,7 +788,8 @@ export default ({ onSave, onClose }) => {
             reactData.currentStatus.reqRec.history.unshift(hNote);
             await updateServiceRequest(reactData.currentStatus.reqRec);
             enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
-            reset();
+            if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+            else { reset(); }
           }}
           allowCancel={true}
         />
@@ -930,7 +961,8 @@ export default ({ onSave, onClose }) => {
             reactData.currentStatus.reqRec.history.unshift(hNote);
             await updateServiceRequest(reactData.currentStatus.reqRec);
             enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
-            reset();
+            if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+            else { reset(); }
           }}
           allowCancel={true}
         />
@@ -949,12 +981,15 @@ export default ({ onSave, onClose }) => {
           promptText={["Who are you visiting today?"]}
           valueText={[(reactData.currentStatus ? reactData.currentStatus.reqRec.on_behalf_of : '')]}
           buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
+          errorText={reactData.errorText}
           onCancel={() => {
+            reactData.errorText = [];
             reactData.validated_user = false;
             setReactData(reactData);
             setForceRedisplay(!forceRedisplay);
           }}
           onSave={async ([destination]) => {
+            reactData.errorText = [];
             let hWho;
             if (destination !== reactData.currentStatus.reqRec.on_behalf_of) {
               let residentRec = await getPersonByWords(state.session.client_id, destination.trim().split(/\s+/));
@@ -985,7 +1020,8 @@ export default ({ onSave, onClose }) => {
               reactData.currentStatus.reqRec.history.unshift(hNote);
               await updateServiceRequest(reactData.currentStatus.reqRec);
               enqueueSnackbar(`Got it!  Thank you!`, { variant: 'success', persist: false });
-              reset();
+              if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+              else { reset(); }
             }
             else {
               setReactData(reactData);
@@ -1014,6 +1050,7 @@ export default ({ onSave, onClose }) => {
           }}
           errorText={reactData.errorText}
           onSave={async ([enteredID, enteredNumber]) => {
+            reactData.errorText = [];
             if (!enteredID) {
               reactData.errorText[0] = `Please enter your name so we can properly identify you!`;
             }
@@ -1061,6 +1098,7 @@ export default ({ onSave, onClose }) => {
           valueText={[titleCase(reactData.enteredID), '', formatPhone(reactData.enteredNumber), '']}
           buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
           onCancel={() => {
+            reactData.errorText = [];
             reactData.validated_user = false;
             reactData.add_vendor_mode = false;
             setReactData(reactData);
@@ -1151,7 +1189,7 @@ export default ({ onSave, onClose }) => {
         && ((reactData.currentStatus) && (reactData.currentStatus.last_status) && (reactData.currentStatus.last_status === 'in'))
         &&
         <AVAConfirm
-          promptText={[`Thanks for visiting ${state.session.client_name}, ${reactData.personRec.name.first}!`, `[italic]${reactData.currentStatus.reqRec.history[0]}`]}
+          promptText={[`Thanks for visiting ${state.session.client_name}, ${reactData.personRec.name.first}!`, `[italic]Checked in ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`]}
           cancelText={`Cancel`}
           confirmText={`Check-out`}
           onCancel={() => {
