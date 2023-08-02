@@ -27,21 +27,25 @@ export default ({ person }) => {
           <TableHead>
             <TableRow>
               <TableCell>Name</TableCell>
+              <TableCell>ID</TableCell>
+              <TableCell>Description</TableCell>
               <TableCell>Type</TableCell>
             </TableRow>
           </TableHead>
-          {person && person.relationships ? (
+          {person && person.relationships &&
             <TableBody>
               {person.relationships.map(relationship => (
                 (!relationship.name ? null :
                   <TableRow key={relationship.person_id}>
                     <TableCell>{relationship.name}</TableCell>
-                    <TableCell>{relationship.type}</TableCell>
+                    <TableCell>{relationship.person_id}</TableCell>
+                    <TableCell>{relationship.description}</TableCell>
+                    <TableCell>{relationship.access_type}</TableCell>
                   </TableRow>
                 )
               ))}
             </TableBody>
-          ) : null}
+          }
         </Table>
       </TableContainer>
     </Section>

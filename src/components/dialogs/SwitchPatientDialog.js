@@ -1,43 +1,107 @@
 import React from 'react';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
+import DialogContentText from '@material-ui/core/DialogContentText';
 import List from '@material-ui/core/List';
+import ListItem from '@material-ui/core/ListItem';
+import Slide from '@material-ui/core/Slide';
+
+import DialogActions from '@material-ui/core/DialogActions';
+import Button from '@material-ui/core/Button';
+import CloseIcon from '@material-ui/icons/Close';
+
+import TextField from '@material-ui/core/TextField';
+
 import Paper from '@material-ui/core/Paper';
-import { dbClient } from '../../util/AVAUtilities';
-import { getPeopleResponsibleFor } from '../../util/AVAGroups';
+import { switchActiveAccount } from '../../util/AVAUtilities';
+import { getImage } from '../../util/AVAPeople';
 
-import { SET_PATIENT, SET_SESSION, SET_PATIENTS } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
-import PersonFilter from '../forms/PersonFilter';
+import makeStyles from '@material-ui/core/styles/makeStyles';
 
-export default ({ open, roles, onClose, forceSwitch }) => {
-  // const [selected, setSelected] = React.useState(null);
+import Typography from '@material-ui/core/Typography';
 
-  const { state, dispatch } = useSession();
-  const { patients, session, profile } = state;
+const useStyles = makeStyles(theme => ({
+  formControl: {
+    margin: 0,
+    paddingTop: 0,
+  },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  },
+  noDisplay: {
+    display: 'none',
+    visibility: 'hidden'
+  },
+  freeInput: {
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    width: '90%',
+    verticalAlign: 'middle',
+    fontSize: theme.typography.fontSize * 0.4,
+    minHeight: theme.typography.fontSize * 1.8,
+  },
+  title: {
+    marginTop: theme.spacing(3),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: 0,
+    fontSize: '1.3rem',
+  },
+  firstName: {
+    marginLeft: theme.spacing(1),
+  },
+  lastName: {
+    fontWeight: 'bold',
+  },
+  groupName: {
+    fontWeight: 'bold',
+    color: 'red'
+  },
+  orSeparator: {
+    marginTop: theme.spacing(1),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+    fontSize: theme.typography.fontSize * 0.8,
+  },
+  idText: {
+    paddingTop: 6,
+    fontSize: theme.typography.fontSize * 0.8,
+    marginLeft: theme.spacing(1)
+  },
+}));
 
-  React.useEffect(() => {
-    async function getPatients() {
-      if (!patients || (patients.length === 0)) {
-        // get a group of patients a user is responsible for
-        if (session.responsible_for) {
-          let responsibleList = await getPeopleResponsibleFor(state.session.user_id);
-          if (responsibleList.length > 0) {
-            let myInfo = `${profile.name.last}, ${profile.name.first} (My account):${profile.person_id}:${profile.search_data}`;
-            if (!responsibleList || responsibleList.length === 0) {
-              responsibleList = [myInfo];
-            }
-            else if (responsibleList[0].split(':')[1] !== profile.person_id) {
-              responsibleList.unshift(myInfo);
-            }
-            dispatch({ type: SET_PATIENTS, payload: responsibleList });
-          }
-        };
-      }
-    };
-    if (forceSwitch) { handleConfirmation(forceSwitch); }
-    else { getPatients(); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
+
+export default ({ open, roles, onClose }) => {
+
+  const { state } = useSession();
+  const { accessList, session } = state;
+
+  const [person_filter, setPersonFilter] = React.useState('');
+  const [client_filter, setClientFilter] = React.useState('');
+  const [visible_filter, setVisibleFilter] = React.useState('');
+  const [forceRedisplay, setForceRedisplay] = React.useState(true);
+  const [selectedClient, setSelectedClient] = React.useState('*none');
+  const [rowLimit, setRowLimit] = React.useState(20);
+
+  const multiClient = (Object.keys(accessList).length > 1);
+  if (!multiClient && (selectedClient === '*none')) { setSelectedClient(Object.keys(accessList)[0]); }
+
+  const classes = useStyles();
 
   const handleClose = () => {
     if (session) {
@@ -47,91 +111,181 @@ export default ({ open, roles, onClose, forceSwitch }) => {
     onClose();
   };
 
-  const handleConfirmation = (newPatient) => {
-    (async () => {
+  const scrollValue = 20;
+  var rowsWritten;
 
-      if (session) {
-        let [pName, pID] = newPatient.split(':');
-        session.patient_id = pID;
-        let ans = pName.split(',');
-        switch (ans.length) {
-          case 3: {
-            session.patient_display_name = `${ans[2].trim()} ${ans[0].trim()}, ${ans[1].trim()}`;
-            break;
-          }
-          case 2: {
-            if (ans[1].startsWith('group=')) { session.patient_display_name = ''; }
-            else { session.patient_display_name = `${ans[1].trim()} ${ans[0].trim()}`; }
-            break;
-          }
-          default: { session.patient_display_name = ans[0].trim(); }
-        }
-        await dbClient
-          .update({
-            Key: { session_id: session.user_id },
-            UpdateExpression: 'set patient_id = :p, patient_display_name = :d',
-            ExpressionAttributeValues: {
-              ':p': session.patient_id,
-              ':d': session.patient_display_name
-            },
-            TableName: "SessionsV2",
-          })
-          .promise()
-          .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
-        let personRec = await dbClient
-          .get({
-            Key: { person_id: (session.patient_id || session.user_id) },
-            TableName: "People"
-          })
-          .promise()
-          .catch(error => { console.log(`caught error getting People record; error is:`, error); });
-        if (recordExists(personRec)) {
-          dispatch({ type: SET_PATIENT, payload: personRec.Item });
-        }
-        dispatch({ type: SET_SESSION, payload: session });
+  const onScroll = event => {
+    let newLimit = rowLimit + scrollValue;
+    setRowLimit(newLimit);
+    /*
+      let currentY = window.scrollY;
+      if (currentY - (previousY + 50)) {
+        setCurrentY(currentY);
+        let newLimit = rowLimit + scrollValue;
+        setRowLimit(newLimit);
+        setMaxY(Math.max(maxY, newLimit));
+        setForceRedisplay(!forceRedisplay);
       }
-      let jumpTo = window.location.href.replace('refresh', 'theseus');
-      window.location.replace(jumpTo);
-      //    onClose();
-    })();
+      */
   };
 
-  function recordExists(recordId) {
-    if (!recordId) { return false; }
-    if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
-    else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
-  }
-
-  React.useEffect(() => {
-    if (session) {
-      // const { patient_id, patient_display_name } = session;
-      // setSelected({ patient_id, patient_display_name });
+  const handleChangePersonFilter = event => {
+    setVisibleFilter(event.target.value);
+    if (!event.target.value) {
+      setPersonFilter(null);
+      setClientFilter(null);
     }
-  }, [session]);
+    else {
+      let filterInput = event.target.value.trim();
+      if (selectedClient !== '*none') { setPersonFilter(filterInput.toLowerCase()); }
+      else { setClientFilter(filterInput.toLowerCase()); }
+    }
+    setForceRedisplay(!forceRedisplay);
+    return;
+  };
+
+  async function onSelect(newClient, newPatient) {
+    await switchActiveAccount(state.session, newClient, newPatient);
+    onClose();
+  };
+
+  function okToShow(pLine) {
+    if (!pLine) { return false; }
+    if (pLine.access === 'none') { return false; }
+    if (pLine.access === 'view') { return false; }
+    if (!person_filter) { return true; }
+    return Object.values(pLine).toString().toLowerCase().includes(person_filter);
+  };
+
+  function okClient(cLine) {
+    if (!cLine) { return false; }
+    if (!client_filter) { return true; }
+    return Object.values(cLine).toString().toLowerCase().includes(client_filter);
+  };
 
   return (
-    <Dialog open={open} onClose={handleClose}>
-      {patients &&
-        <Box p={3}>
-          <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
-            <List component='nav'>
-              {(patients.length > 0) &&
-                <PersonFilter
-                  prompt={'Switch to which account?'}
-                  peopleList={patients}
-                  onCancel={() => {
-                    onClose();
+    accessList &&
+    <Dialog open={open || forceRedisplay}
+      onScroll={onScroll}
+      p={2}
+      height={250}
+      fullWidth
+      variant={'elevation'}
+      elevation={2}
+      TransitionComponent={Transition}
+      onClose={handleClose}>
+      <DialogContentText
+        className={classes.title}
+        id='scroll-dialog-title'
+      >
+        {`Switch to which ${(selectedClient === '*none') ? 'client' : 'account'}?`}
+      </DialogContentText>
+      <TextField
+        id='Type a few letters to filter the list'
+        value={visible_filter}
+        onChange={handleChangePersonFilter}
+        className={classes.freeInput}
+        autoComplete='off'
+        variant="standard"
+      />
+      <Typography variant='h5' className={classes.orSeparator}>
+        {`You may filter the list below`}
+      </Typography>
+      <Paper p={2} component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
+        {(selectedClient === '*none') && Object.keys(accessList).map((client, c) => (
+          <List component='nav'>
+            {okClient({ i: client, n: accessList[client].name }) &&
+              <ListItem onClick={() => {
+                setSelectedClient(client);
+                setVisibleFilter(person_filter);
+                setRowLimit(scrollValue);
+                setForceRedisplay(!forceRedisplay);
+              }}
+              >
+                <Box display='flex' height={50} flexDirection='row' ml={1} justifyContent='flex-start' alignItems='center'>
+                  <Box
+                    component="img"
+                    mr={1}
+                    minWidth={50}
+                    maxWidth={50}
+                    alt=''
+                    src={accessList[client].logo}
+                  />
+                  <Typography variant='h5' className={classes.lastName}>{accessList[client].name}</Typography>
+                </Box>
+              </ListItem>
+            }
+          </List>
+        ))}
+        {(selectedClient !== '*none') &&
+          <React.Fragment>
+            <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+              {rowsWritten = 0}
+            </Typography>
+            {accessList[selectedClient].list.map((listEntry, x) => (
+              ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
+                <ListItem
+                  key={'person-list_' + x}
+                  onClick={async () => {
+                    await onSelect(selectedClient, listEntry);
                   }}
-                  onSelect={(selectedPerson) => {
-                    handleConfirmation(selectedPerson);
-                  }}
-                  showID={true}
-                />
-              }
-            </List>
-          </Paper>
-        </Box>
-      }
-    </Dialog>
+                  button
+                >
+                  <Box height={50} key={'name_box_' + x} display='flex' flexDirection='row' ml={3} justifyContent='flex-start' alignItems='center'>
+                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                      {rowsWritten++}
+                    </Typography>
+                    <Box
+                      key={'person_image_' + x}
+                      component="img"
+                      border={1}
+                      mr={1}
+                      minWidth={50}
+                      maxWidth={50}
+                      alt=''
+                      src={getImage(listEntry.id)}
+                    />
+                    <Box key={'name_line_' + x} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                      <Typography variant='h5' className={classes.lastName}>{listEntry.last}</Typography>
+                      <Typography variant='h5' className={classes.firstName}>{listEntry.first}</Typography>
+                      {(x > 0) && (x < (accessList[selectedClient].list.length - 1)) &&
+                        ((accessList[selectedClient].list[x - 1].first === listEntry.first)
+                          || (accessList[selectedClient].list[x + 1].first === listEntry.first)) &&
+                        ((accessList[selectedClient].list[x - 1].last === listEntry.last)
+                          || (accessList[selectedClient].list[x + 1].last === listEntry.last)) &&
+                        <Typography variant='h5' className={classes.idText}>({listEntry.id})</Typography>
+                      }
+                    </Box>
+                  </Box>
+                </ListItem>
+              )))}
+            {(rowsWritten === 0) &&
+              <Box key={'empty_line'} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                <Typography variant='h5' className={classes.firstName}>{'No selections available'}</Typography>
+              </Box>
+            }
+          </React.Fragment>
+        }
+      </Paper>
+      <DialogActions style={{ justifyContent: 'center' }}>
+        <Button
+          className={classes.AVAButton}
+          style={{ color: 'red' }}
+          onClick={() => {
+            if ((selectedClient === '*none') || (!multiClient)) {
+              onClose();
+            }
+            else {
+              setSelectedClient('*none');
+              setVisibleFilter(client_filter);
+              setForceRedisplay(!forceRedisplay);
+            }
+          }}
+          startIcon={<CloseIcon fontSize="small" />}
+        >
+          {((selectedClient === '*none') || (!multiClient)) ? 'Exit' : 'Back'}
+        </Button>
+      </DialogActions>
+    </Dialog >
   );
 };

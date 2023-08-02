@@ -59,7 +59,6 @@ export const cloudfront = new AWS.CloudFront({
   secretAccessKey: sak()[1],
 });
 
-
 export function recordExists(recordId) {
   if (!recordId) { return false; }
   if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
@@ -83,7 +82,6 @@ export function listFromArray(inArray) {
   });
   return makeList$;
 }
-
 
 export async function getCustomizations(pKey, pClient) {
   if (!pKey || !pClient) { return false; }
@@ -123,7 +121,6 @@ export async function getCustomizations(pKey, pClient) {
     else { return false; }
   }
 }
-
 
 export function makeString(inP, pNum = 0, pLink) {
   if (!inP) { return null; }
@@ -335,7 +332,6 @@ export async function updateACL(pObjIn, pTyp) {
     });
 };
 
-
 export function isPromise(p) {
   return p && Object.prototype.toString.call(p) === "[object Promise]";
 }
@@ -363,7 +359,6 @@ export function uuid(pLen) {
   }
   return ans.join('');
 }
-
 
 export async function resolveVariables(pKey, pSession, options = {}) {
   if (!pKey) { return ''; }
@@ -457,3 +452,22 @@ export function parseSpreadsheet(pWorkbook) {
   });
   return returnObj;
 }
+
+export async function switchActiveAccount(session, newClient, newPatient) {
+  await dbClient
+      .update({
+        Key: { session_id: session.user_id },
+        UpdateExpression: 'set client_id = :c, patient_id = :p, patient_display_name = :d, user_homeClient = :h',
+        ExpressionAttributeValues: {
+          ':c': newClient,
+          ':p': newPatient.id,
+          ':d': newPatient.name || (`${newPatient.first} ${newPatient.first}`),
+          ':h': (session.user_homeClient || session.client_id)
+        },
+        TableName: "SessionsV2",
+      })
+      .promise()
+      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+  let jumpTo = window.location.href.replace('refresh', 'theseus');
+  window.location.replace(jumpTo);
+};

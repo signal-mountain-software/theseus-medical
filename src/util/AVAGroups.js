@@ -1,5 +1,6 @@
 import { cl, clt, recordExists, makeArray, getCustomizations, dbClient } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
+import { SET_ACCESSLIST } from '../contexts/Session/actions';
 
 let profile, session;
 let groupRecs = {};
@@ -10,7 +11,154 @@ let targetPerson = null;
 let loadedGroupObj = {};
 let loadedPerson = null;
 
+/* 
+**********************
+
+   AVA GROUPS
+
+   group_type        
+   --------------
+   admin           groups based on who you are; an account belongs to exactly ONE admin group 
+   parent          a group that owns one or more other groups; an account is assigned to this group because it belongs to one of its children or grandchildren
+   open            groups available for any account to join - equivalient to "public"
+   public          groups available for any account to join - equivalient to "open"
+   private         groups that require a group administrator to add you to
+
+   admin_class     associated with the single admin group this account belongs to, describes what information is available to members of this group        
+   --------------
+   local           see table below <local is the default if missing admin_class is invalid or missing> 
+   family          see table below
+   inactive        all actions prohibited for any account in the client that this group is a part of
+   support         members may view, proxy, and edit any account in the client that this group is a part of
+   master          members may view, proxy, and edit any account from any client
+
+   local and family class access rules
+   ------------------------------------
+   Other members of a group I am a member of = local may view; family has no access (respect privacy rules)
+   Other members of a group that I manage = view (ignore privacy rules)
+   Members of a group that I am not a member of = depends on "allow_view" attribute of group you are viewing
+   Specific individual accounts or groups that I am responsible for or manage (SessionsV2 table) = view, proxy, and edit
+   Specific individual accounts or groups that I have a relationship with = based on the access_type of the specific relationship
+
+
+**********************   
+*/
+
 // Functions
+
+export async function accountAccess(person_id, pClient_id, dispatch) {
+  // Does my person account designate an account_class?
+  let myPeopleRec = await getPerson(person_id);
+  let myClass;
+  if (myPeopleRec.account_class) {
+    myClass = myPeopleRec.account_class;
+  }
+  else {
+    // What admin group do I belong to in the client_id?
+    let allGroupObject = await getAllGroups(person_id, pClient_id);
+    let myAdminGroup = await getGroup(allGroupObject.selectedID);
+    myClass = myAdminGroup.admin_class || 'local';
+  }
+  // Now get a list of people that I can access
+  let accessList = {};
+  let crossRef = {};
+  if (myClass !== 'inactive') {
+    let accessLevelTable = ['none', 'view', 'proxy', 'full'];
+    let groupLevel = {};
+    let clientList = [pClient_id];
+    if ((myClass === 'support') 
+      && (myPeopleRec.hasOwnProperty('clients') && Array.isArray(myPeopleRec.clients))) {
+      myPeopleRec.clients.forEach(c => { 
+        if (clientList.indexOf(c) > -1) { clientList.push(c); }
+      })
+    }
+    else if (myClass === 'master') {
+      let allClients = await getAllClients();
+      clientList.push(...allClients);
+    };
+    for (let c = 0; c < clientList.length; c++) {
+      let client_id = clientList[c];
+      let clientName = await getCustomizations('client_name', client_id);
+      let clientLogo = await getCustomizations('logo', client_id);
+      accessList[client_id] = {
+        name: clientName.customization_value,
+        logo: clientLogo.icon,
+        list: []
+      };
+      let allPeople = await getMemberList('*all', client_id);
+      let pxL = allPeople.peopleList.length;
+      for (let pX = 0; pX < pxL; pX++) {
+        let p = allPeople.peopleList[pX];
+        if (!crossRef.hasOwnProperty(p.person_id)) {      // not already loaded, so load it
+          let accessLevel = 'none';
+          if ((myClass === 'support') || (myClass === 'master')) { accessLevel = 'full'; }
+          else {
+            let maxLevel = -1;
+            if (p.groups) {
+              let gL = p.groups.length;
+              for (let x = 0; ((x < gL) && (maxLevel < 3)); x++) {
+                let g = p.groups[x];
+                if (!groupLevel.hasOwnProperty(g)) {
+                  let myRole = await getRole(g, person_id);
+                  if (myRole === 'responsible') { groupLevel[g] = 3; }
+                  else {
+                    let this_group = getGroup(g, client_id);
+                    if (!this_group.hasOwnProperty('view_group')) { groupLevel[g] = 0; }
+                    else { groupLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]); }
+                    if ((myRole === 'member') && (myClass === 'local')) {
+                      groupLevel[g] = Math.max(1, groupLevel[g]);
+                    }
+                  }
+                }
+                if (groupLevel[g] > maxLevel) { maxLevel = groupLevel[g]; }
+              }
+            }
+            if (maxLevel > 0) { accessLevel = accessLevelTable[maxLevel]; }
+          }
+          if (accessLevel !== 'none') {
+            accessList[client_id].list.push({
+              first: p.name.first,
+              last: p.name.last,
+              id: p.person_id,
+              access: accessLevel
+            });
+          }
+        }
+      };
+      // sort client names
+      accessList[client_id].list.sort((a, b) => {
+        if (a.last > b.last) { return 1; }
+        else if (a.last < b.last) { return -1; }
+        else if (a.first > b.first) { return 1; }
+        else if (a.first < b.first) { return -1; }
+        else { return 0; }
+      });
+    }
+  }
+  dispatch({ type: SET_ACCESSLIST, payload: accessList });
+  return accessList;
+}
+
+export async function getAllClients() {
+  let qParm = {
+    FilterExpression: 'custom_key = :c',
+    ExpressionAttributeValues: { ':c': 'client_name' },
+    TableName: "Customizations"
+  };
+  let everyClient = await dbClient
+    .scan(qParm)
+    .promise()
+    .catch(error => {
+      cl({'Error reading for Clients': error});
+    });
+  let returnArray = [];
+  if (recordExists(everyClient)) {
+    for (let g = 0; g < everyClient.Items.length; g++) {
+      returnArray.push(everyClient.Items[g].client_id);
+    }
+  }
+  return returnArray;
+}
 
 export async function isMemberOf(person_id, pGroup_id) {
   if (!loadedPerson || (loadedPerson !== person_id)) {
@@ -121,7 +269,6 @@ export async function getPeopleResponsibleFor(person_id) {
     return `${p.name.last}, ${p.name.first}:${p.person_id}:${p.search_data}`;
   });
 }
-
 
 export async function getGroupsBelongTo(person_id, options) {
   // You belong to all groups that you are responsible for
@@ -251,6 +398,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
     if (grp !== '*all') {
       qParm.FilterExpression = 'contains(groups, :n) OR (person_id = :n)';
       qParm.ExpressionAttributeValues[':n'] = grp;
+
     }
     let gPeopleRecs = await dbClient
       .query(qParm)
@@ -381,6 +529,9 @@ export async function removeAdministrator(pPerson, pGroup) {
 }
 
 export async function prepareTargets(pPerson, pClient_id, options) {
+  // make a list of all accounts that you are allowed to proxy into
+  // You will see options and authorities based on your OWN user ID (session.user_id),
+  // but will be making requests on behalf of whoever you proxy into...
   if (targetPerson === pPerson) {
     return { targetArray, targetObj };
   }
@@ -434,10 +585,12 @@ export async function prepareTargets(pPerson, pClient_id, options) {
 }
 
 export async function getGroupHierarchy(pClient_id, options) {
-  /* options can be as follows (all optional and treated as FALSE is missing)
+  /* 
+  if options.sort is TRUE, getGroupHierarchy returns an array with [ {id: <group_id>, belongs_to: <parent_id>, level: <n>, name: <name>, selectable: <boolean>}, {}, ... ] sorted by name within level
+  otherwise, getGroupHierarchy returns an object as {'__TOP__': { firstChild-group_ID: { grandchild-group_ID: { great_grandchild-group_ID: {...}}}, secondChild-group_ID: {...}, ...} 
+  options can be as follows (all optional and treated as FALSE is missing)
   {
-    sort: true,    return the names sorted at each level of the hierarchy
-    displayList: true     returns an array with [ {level: <n>, name: <name>, selectable: <boolean>}, {}, ... ]
+    sort: true,    return the names sorted at each level of the hierarchy   
   }
   */
   if (!pClient_id) {
@@ -460,10 +613,10 @@ export async function getGroupHierarchy(pClient_id, options) {
       });
     });
   if (!recordExists(groupRec)) { return {}; }
-  let hierarchy = {};
+  let hierarchy = {};  // keys are '__TOP__' and any group that has children; value is an object whose keys are the clidren of this entry's key
   let customRec = await getCustomizations('client_name', pClient_id);
-  let nameObj = { '__TOP__': customRec.customization_value };
-  let parentObj = { '__TOP__': '' };
+  let nameObj = { '__TOP__': customRec.customization_value };   // this object delivers the groups name for each nameObj[group_id]
+  let parentObj = { '__TOP__': '' };   // this object tells who the parent is for each parentObj[group_id]
   // first pass - all admin level groups are added to their parent
   for (let g = 0; g < groupRec.Items.length; g++) {
     if (!groupRec.Items[g].belongs_to) { groupRec.Items[g].belongs_to = '__TOP__'; }
@@ -481,8 +634,9 @@ export async function getGroupHierarchy(pClient_id, options) {
       g--;
     }
   }
-  // what's left behind is an array of all the parents
-  // loop through looking for a parent that was mentioned in the prior loop
+  // we've passed through every record returned by the query above (get all 'parent' and 'admin' records in the client)
+  // since we ignore parents and delete admins, what's left behind is an array of all the parent records
+  // loop through these (but no more than 20 times as a safety valve against a run-away loop)
   let count = 0;
   let thisGroup;
   let withChildren;
@@ -491,6 +645,8 @@ export async function getGroupHierarchy(pClient_id, options) {
     for (let g = 0; g < groupRec.Items.length; g++) {
       thisGroup = groupRec.Items[g];
       if (hierarchy.hasOwnProperty(thisGroup.group_id)) {
+        // if this parent was identified when building the "admin" loop above, 
+        // it will already have a key in the hierarchy
         withChildren = Object.assign({}, hierarchy[thisGroup.group_id]);
         delete hierarchy[thisGroup.group_id];
         // does my parent already exist in the tree somewhere?
@@ -594,6 +750,15 @@ export async function getPublicGroupList(pClient_id, person_id, options) {
 }
 
 export async function getAllGroups(person_id, client_id) {
+  /*
+   returns the single admin group that this person_id belongs to in the client_id
+     selectedID = admin group that this person_id belongs to in the client_id
+   AND three objects containing different types of groups:
+     adminHierarchy: [], 
+     publicGroups: {}, 
+     privateGroups: {}
+  */
+
   let responseData = {};
   let profile = await getPerson(person_id);
   if (!client_id) {
