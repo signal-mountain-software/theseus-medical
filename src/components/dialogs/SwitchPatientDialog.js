@@ -13,7 +13,7 @@ import CloseIcon from '@material-ui/icons/Close';
 import TextField from '@material-ui/core/TextField';
 
 import Paper from '@material-ui/core/Paper';
-import { switchActiveAccount } from '../../util/AVAUtilities';
+import { switchActiveAccount, cl } from '../../util/AVAUtilities';
 import { getImage } from '../../util/AVAPeople';
 
 import useSession from '../../hooks/useSession';
@@ -113,6 +113,7 @@ export default ({ open, roles, onClose }) => {
 
   const scrollValue = 20;
   var rowsWritten;
+  let filterTimeOut;
 
   const onScroll = event => {
     let newLimit = rowLimit + scrollValue;
@@ -129,18 +130,23 @@ export default ({ open, roles, onClose }) => {
       */
   };
 
-  const handleChangePersonFilter = event => {
-    setVisibleFilter(event.target.value);
-    if (!event.target.value) {
-      setPersonFilter(null);
-      setClientFilter(null);
-    }
-    else {
-      let filterInput = event.target.value.trim();
-      if (selectedClient !== '*none') { setPersonFilter(filterInput.toLowerCase()); }
-      else { setClientFilter(filterInput.toLowerCase()); }
-    }
-    setForceRedisplay(!forceRedisplay);
+  const handleChangePersonFilter = vCheck => {
+    clearTimeout(filterTimeOut);
+    cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
+    filterTimeOut = setTimeout(() => {
+      cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
+      setVisibleFilter(vCheck);
+      if (!vCheck) {
+        setPersonFilter(null);
+        setClientFilter(null);
+      }
+      else {
+        let filterInput = vCheck.trim();
+        if (selectedClient !== '*none') { setPersonFilter(filterInput.toLowerCase()); }
+        else { setClientFilter(filterInput.toLowerCase()); }
+      }
+      setForceRedisplay(!forceRedisplay);
+    }, 500);
     return;
   };
 
@@ -182,8 +188,7 @@ export default ({ open, roles, onClose }) => {
       </DialogContentText>
       <TextField
         id='Type a few letters to filter the list'
-        value={visible_filter}
-        onChange={handleChangePersonFilter}
+        onChange={event => (handleChangePersonFilter(event.target.value))}
         className={classes.freeInput}
         autoComplete='off'
         variant="standard"
@@ -193,7 +198,7 @@ export default ({ open, roles, onClose }) => {
       </Typography>
       <Paper p={2} component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
         {(selectedClient === '*none') && Object.keys(accessList).map((client, c) => (
-          <List component='nav'>
+          <List key={`client_master_line_${c}`} component='nav'>
             {okClient({ i: client, n: accessList[client].name }) &&
               <ListItem onClick={() => {
                 setSelectedClient(client);
@@ -231,7 +236,7 @@ export default ({ open, roles, onClose }) => {
                   }}
                   button
                 >
-                  <Box height={50} key={'name_box_' + x} display='flex' flexDirection='row' ml={3} justifyContent='flex-start' alignItems='center'>
+                  <Box height={50} key={'name_box_' + x} display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsWritten++}
                     </Typography>
