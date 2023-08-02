@@ -254,6 +254,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
           groupMemberList: (workingGroupMemberList || []),
           directoryOption: (localPersonRec.directory_option || 'normal'),
           directoryPartner: (localPersonRec.directory_partner || 'na'),
+          account_class: (localPersonRec.account_class || ''),
           patientGroups: (localPersonRec.groups)
         };
         if (isNaN(localPersonRec.messaging?.surrogate)) { workLocalData.surrogate = localPersonRec.messaging?.surrogate; }
@@ -408,6 +409,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || null,
       time_based_rules: patient.time_based_rules,
+      account_class: localData.account_class || '',
       groups: patientGroups || ['inactive'],
       location: localData.location ? localData.location.replace(/,/g, '') : null,
       pwdReset: resettingPwd,
@@ -442,6 +444,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || 'na',
       time_based_rules: patient.time_based_rules,
+      account_class: localData.account_class,
       clients: {
         id: myClient,
         groups: patientGroups || ['inactive']

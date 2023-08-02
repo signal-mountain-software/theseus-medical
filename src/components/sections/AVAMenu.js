@@ -1033,7 +1033,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                       id: session.user_id,
                       name: session.user_display_name
                     }
-                  )
+                  );
                 }}>
                   <Box
                     display='flex' flexDirection='row' alignItems={'center'}
@@ -1062,7 +1062,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 </MenuItem>
               )
               }
-              {session?.responsible_for && (
+              {(session?.responsible_for
+                || (state.patient.account_class && ((state.patient.account_class === 'master') || (state.patient.account_class === 'support')))
+              )
+                &&
                 <MenuItem onClick={() => {
                   setPopupMenuOpen(false);
                   setShowPersonSelect(true);
@@ -1075,8 +1078,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     <Typography className={classes.popUpMenuRow} >{'Switch Account'}</Typography>
                   </Box>
                 </MenuItem>
-              )}
-              {session?.responsible_for && (
+              }
+              {(session?.responsible_for
+                || (state.patient.account_class && ((state.patient.account_class === 'master') || (state.patient.account_class === 'support')))
+              )
+                &&
                 <MenuItem onClick={async () => {
                   setGroupData(await getAllGroups('*NEW~0'));
                   setPopupMenuOpen(false);
@@ -1090,7 +1096,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     <Typography className={classes.popUpMenuRow} >{'Create Account'}</Typography>
                   </Box>
                 </MenuItem>
-              )}
+              }
               <MenuItem onClick={async () => {
                 await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                 removeCookie("AVAuser");

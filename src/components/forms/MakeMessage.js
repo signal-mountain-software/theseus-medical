@@ -24,6 +24,8 @@ import Button from '@material-ui/core/Button';
 import SendMessageDialog from '../dialogs/SendMessageDialog';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import useSession from '../../hooks/useSession';
+
 const useStyles = makeStyles(theme => ({
   containerBox: {
     marginTop: theme.spacing(3),
@@ -124,6 +126,10 @@ export default ({
 
   const classes = useStyles();
   const { enqueueSnackbar } = useSnackbar();
+  const { state } = useSession();
+
+  const setFocus = React.useRef(null);
+
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [reactData, setReactData] = React.useState({
     recipientID: pRecipientID,
@@ -132,7 +138,7 @@ export default ({
     newAccount: false,
     titleText: titleText,
     attachmentList: [],
-    textInput: seedText || '',
+    textInput: makeArray(seedText) || [],
     multipleRecipients: false,
     nameInput: '',
     isUrgent: setUrgent,
@@ -141,9 +147,14 @@ export default ({
     imageURL: ''
   });
 
-  const handleChangeTextInput = (event) => {
-    reactData.textInput = event.target.value;
-    // setTextInput(event.target.value);
+  React.useEffect(() => {
+    if (setFocus && setFocus.current) {
+      setFocus.current.focus();
+    }
+  }, []);
+
+  const handleChangeTextInput = (event, x) => {
+    reactData.textInput[x] = event.target.value;
     setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
   };
@@ -183,79 +194,36 @@ export default ({
   };
 
   const noInput = () => {
-    return (!reactData.textInput);
-    // return (!textInput);
+    return (!reactData.textInput[makeArray(promptText).length - 1]);
   };
 
   const handleSave = async () => {
-    /*
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:messageEngine';
-    let pRecipient = recipientName + ':';
-    if (recipientID.startsWith('GRP//')) {
-      pRecipient += 'group=' + recipientID.split('//')[1].replace('/', '~');
-    }
-    else 
-    */
     let sendToID = reactData.recipientID;
     let sendToName = reactData.recipientName;
     if (reactData.newAccount) {
-      // pRecipient += await handleAddAccount();
       [sendToID, sendToName] = await handleAddAccount();
       reactData.newAccount = false;
       setReactData(reactData);
     }
-    /*
-    else {
-      pRecipient += recipientID;
-    }
-    let lambdaPayload = {
-      "body": {
-        "client": sender.client_id,
-        "author": sender.patient_id,
-        "values": pRecipient + ' ~ MessageText = ' + textInput + hyperlink
-      }
-    };
-    lambdaPayload.body.values += ' ~ Urgent = ' + (isUrgent ? 'urgent' : 'normal');
-    if (forceMethod) { lambdaPayload.body.method = forceMethod; }
-    if (thread_id) { lambdaPayload.body.thread_id = thread_id; }
-    params.Payload = JSON.stringify(lambdaPayload);
-    */
-    let senderName = await makeName(sender.patient_id);
+    let senderName = await makeName(state.session.user_id);
     let request = {
       client: sender.client_id,
-      author: sender.patient_id,
-      messageText: reactData.textInput,
-      // messageText: textInput,
+      author: state.session.user_id,
+      messageText: reactData.textInput[makeArray(promptText).length - 1],
       recipientList: Array.isArray(sendToID) ? sendToID : [sendToID],
-      subject: `Message from ${senderName}`
+      subject: (makeArray(promptText).length > 1 ? reactData.textInput[0] : `Message from ${senderName}`)
     };
+    if (state.session.user_id !== state.session.patient_id) {
+      let pName = await makeName(state.session.patient_id);
+      let hMessage = request.messageText;
+      request.messageText = `[This message was sent by ${senderName} while accessing ${pName}'${(pName.charAt(pName.length - 1) !== 's' ? 's' : '')} account.]\r\n\n${hMessage}`;
+    }
     if (reactData.attachmentList.length > 0) { request.attachments = reactData.attachmentList.map(a => { return a.Location; }); }
     if (reactData.isUrgent) { request.preffered_method = 'urgent'; }
     if (reactData.allowReplyAll) { request.allowReplyAll = true; }
     else if (reactData.forceMethod) { request.preffered_method = reactData.forceMethod; }
     if (thread_id) { request.thread_id = thread_id; }
-    /*
-    lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while sending a Message.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-      });
-    */
     await sendMessages(request);
-    /*
-    let sentTo;
-    if (typeof pRecipient === 'string') { sentTo = await makeName(pRecipient); }
-    else if (pRecipient.length === 1) { sentTo = await makeName(pRecipient[0]); }
-    else {
-      let random = Math.floor(Math.random() * pRecipient.length);
-      let randomName = await makeName(pRecipient[random]);
-      sentTo = `${pRecipient.length} people, including ${randomName}`;
-    };
-    sendToName = sendTo;
-    */
     enqueueSnackbar(`Your ${reactData.isUrgent ? 'urgent ' : ''}message is on the way to ${sendToName}`, { variant: 'success' });
     onComplete();
   };
@@ -466,20 +434,22 @@ export default ({
                     autoComplete='off'
                   />
                 }
-                <TextField
+                {makeArray(promptText).map((p, x) =>
+                  <TextField
                   classes={{ root: classes.idText }}
                   id={`prompt-msg`}
-                  key={`prompt-msg`}
+                  key={`prompt-msg_${x}`}
                   fullWidth
-                  multiline
-                  helperText={promptText}
-                  value={reactData.textInput || ''}
-                  // value={textInput || ''}
+                    multiline
+                    ref={(x === (makeArray(promptText).length - 1)) ? setFocus : null}
+                  helperText={p}
+                  value={reactData.textInput[x] || ''}
                   onChange={(event) => {
-                    handleChangeTextInput(event);
+                    handleChangeTextInput(event, x);
                   }}
                   autoComplete='off'
-                />
+                  />
+                )}
                 {reactData.multipleRecipients &&
                   <Box
                     key={'qMulti'}
@@ -593,6 +563,8 @@ export default ({
                   {'Back'}
                 </Button>
               }
+            </Box>
+            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
               <Button
                 className={classes.AVAButton}
                 style={{ color: 'green' }}

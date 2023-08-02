@@ -1,5 +1,5 @@
 import React from 'react';
-import { lambda, cl } from '../../util/AVAUtilities';
+import { lambda, cl, sentenceCase, listFromArray } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 import { getImage, formatPhone } from '../../util/AVAPeople';
@@ -194,15 +194,14 @@ const useStyles = makeStyles(theme => ({
 export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, onReset }) => {
 
   const classes = useStyles();
-  const { dispatch } = useSession();
+  const { state, dispatch } = useSession();
 
   const [person_filter_lower, setPersonFilterLower] = React.useState(' ');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
-  const [filtering, setFiltering] = React.useState(false);
   const [showAddPrompt, setShowAddPrompt] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
-  const [workingMemberList, setGroupMemberList] = React.useState(groupMemberList);
+  const [workingMemberList, setGroupMemberList] = React.useState(Array.isArray(groupMemberList) ? groupMemberList : groupMemberList[pClient].list);
 
   const [deletePending, setDeletePending] = React.useState(false);
   const [confirmMessage, setConfirmMessage] = React.useState('');
@@ -223,7 +222,14 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   var rowsWritten;
   let filterTimeOut;
 
-  let allGroups = (pGroup && (pGroup.toLowerCase === '*all'));
+  let newVersion = !Array.isArray(groupMemberList);
+  let allGroups = (
+    (pGroup && (pGroup.toLowerCase === '*all'))
+    || (newVersion && (peopleList.includes('*all') || (peopleList.length === 0)))
+    || (!pGroup && !peopleList)
+  );
+
+  
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -244,12 +250,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       if (vCheck.length === 0) {
         setPersonFilterLower('');
         setSingleFilterDigit(false);
-        setFiltering(false);
       }
       else {
         setPersonFilterLower(vCheck.toLowerCase());
         setSingleFilterDigit(vCheck.length === 1);
-        setFiltering(true);
       }
       setRowLimit(scrollValue);
     }, 500);
@@ -371,28 +375,38 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   const setChoices = async (inList) => {
     let response = [];
-    let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });
-    /* getMemberList returns
-        {
-          peopleList: [<People records of the members>],
-          groupList: [<Group records for the selected groups>]
+    if (state.accessList) {
+      state.accessList[state.session.client_id].list.forEach(a => {
+        if ((a.access === 'proxy') || (a.access === 'full')) {
+          // list is of the form <name>:<id>:<search_string>
+          response.push(`${a.display_name}:${a.id}:${a.display_name}_${a.location}`);
         }
-    */
-    let mInfo;
-    let pLL = memberInfo.peopleList.length;
-    for (let e = 0; e < pLL; e++) {
-      let p = memberInfo.peopleList[e];
-      let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
-      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
-      // list is of the form <name>:<id>:<search_string>
-      try {
-        mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
-        response.push(mInfo);
-      }
-      catch (error) {
-        cl(`response push error at index ${e} with ${mInfo}`);
-      }
-    };
+      });
+    }
+    else {
+      let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });
+      /* getMemberList returns
+          {
+            peopleList: [<People records of the members>],
+            groupList: [<Group records for the selected groups>]
+          }
+      */
+      let mInfo;
+      let pLL = memberInfo.peopleList.length;
+      for (let e = 0; e < pLL; e++) {
+        let p = memberInfo.peopleList[e];
+        let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+        if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+        // list is of the form <name>:<id>:<search_string>
+        try {
+          mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+          response.push(mInfo);
+        }
+        catch (error) {
+          cl(`response push error at index ${e} with ${mInfo}`);
+        }
+      };
+    }
     setChoiceList(response);
     setShowAddPrompt(true);
   };
@@ -410,11 +424,14 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   function okToShow(pPerson) {
     try {
+      if (newVersion && !allGroups && !(peopleList.includes(pPerson.member_of))) {
+        return false;
+      }
       if (singleFilterDigit) {
         return (pPerson.name.last.toLowerCase().startsWith(person_filter_lower.trim()) || pPerson.location.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
       }
       else {
-        let searchString = [...Object.values(pPerson.name), pPerson.search_data, pPerson.location].join(' ');
+        let searchString = [...Object.values(pPerson.name), pPerson.search_data, pPerson.location, pPerson.member_of].join(' ');
         if (pPerson.messaging) { searchString += Object.values(pPerson.messaging).join; }
         return searchString.toLowerCase().includes(person_filter_lower.trim());
       }
@@ -500,9 +517,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   className={classes.title}
                   id='scroll-dialog-title'
                 >
-                  {(!pGroup || allGroups) ?
+                  {allGroups ?
                     'Administrative View - All Accounts' :
-                    `Members of the ${pGroupName} Group`
+                    (newVersion ? `All ${listFromArray(peopleList, { sentenceCase: true })} accounts`:
+                    `Members of the ${pGroupName} Group`)
                   }
                 </DialogContentText>
                 <TextField
@@ -521,7 +539,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   {rowsWritten = 0}
                 </Typography>
                 {workingMemberList.map((this_item, index) => (
-                  ((rowsWritten <= rowLimit) && (!filtering || okToShow(this_item)) &&
+                  ((rowsWritten <= rowLimit) && (okToShow(this_item)) &&
                     <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                       <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                         {rowsWritten++}
@@ -547,8 +565,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 </Box>
                                 {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
                               </Box>
-                              {(this_item.member_of) &&
-                                <Typography key={`member_of-${index}`} className={classes.lastName}>{this_item.member_of}</Typography>
+                              {(newVersion && ((peopleList.length > 1) || allGroups) && this_item.hasOwnProperty('member_of')) &&
+                                <Typography key={`member_of-${index}`} className={classes.lastName}>{sentenceCase(this_item.member_of)}</Typography>
                               }
                               {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
                                 <Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>
@@ -859,7 +877,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
                 {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
                   .map((prefLine, prefIndex) => (
-                    <React.Fragment>
+                    <React.Fragment key={`Frag_${prefIndex}`}>
                       <a href={prefLine.action[0]}
                         key={`aRefButtonLine0.${prefIndex}`}
                         style={{ textDecoration: 'none' }}>

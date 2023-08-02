@@ -65,7 +65,7 @@ export function recordExists(recordId) {
   else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
 }
 
-export function listFromArray(inArray) {
+export function listFromArray(inArray, options) {
   if (!Array.isArray(inArray)) {
     if (!inArray || (inArray.trim() === '')) { return 'None'; }
     return inArray;
@@ -75,6 +75,7 @@ export function listFromArray(inArray) {
   let nextToLast = inArray.length - 2;
   let threeOrMore = (inArray.length > 2);
   inArray.forEach((s, x) => {
+    if (options && options.sentenceCase) { s = sentenceCase(s); }
     makeList$ += link + s;
     if (threeOrMore) { link = ', '; }
     if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + 'and ');
@@ -184,7 +185,7 @@ export function makeArray(input, delimiter = null) {
     });
   }
   else if (input.charAt(0) === '[') {
-    response = input.replace(/\[\]/, '').split(',');
+    response = input.replace(/[[\]]/, '').split(',');
   }
   else if (delimiter) {
     response = input.split(delimiter).map(e => { return e.trim(); });

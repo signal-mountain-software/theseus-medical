@@ -61,25 +61,35 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   }
   // Now get a list of people that I can access
   let accessList = {};
-  let crossRef = {};
   if (myClass !== 'inactive') {
     let accessLevelTable = ['none', 'view', 'proxy', 'full'];
     let groupLevel = {};
     let clientList = [pClient_id];
-    if ((myClass === 'support') 
+    if ((myClass === 'support')
       && (myPeopleRec.hasOwnProperty('clients') && Array.isArray(myPeopleRec.clients))) {
-      myPeopleRec.clients.forEach(c => { 
-        if (clientList.indexOf(c) > -1) { clientList.push(c); }
-      })
+      myPeopleRec.clients.forEach(c => {
+        if (!clientList.includes(c.id)) { clientList.push(c.id); }
+      });
     }
     else if (myClass === 'master') {
-      let allClients = await getAllClients();
-      clientList.push(...allClients);
+      clientList = await getAllClients();
     };
     for (let c = 0; c < clientList.length; c++) {
       let client_id = clientList[c];
       let clientName = await getCustomizations('client_name', client_id);
       let clientLogo = await getCustomizations('logo', client_id);
+      let clientGroupAssignments = await getCustomizations('group_assignments', client_id);
+      let groupFlavor = {};
+      let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'guest', 'vendor'];
+      if (clientGroupAssignments && clientGroupAssignments.customization_value) {
+        Object.keys(clientGroupAssignments.customization_value).forEach(t => {
+          let groups = makeArray(clientGroupAssignments.customization_value[t]);
+          groups.forEach(g => {
+            if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = groupHierarchy.indexOf(t); }
+            else { groupFlavor[g] = Math.min(groupHierarchy.indexOf(t), groupFlavor[g]); }
+          });
+        });
+      }
       accessList[client_id] = {
         name: clientName.customization_value,
         logo: clientLogo.icon,
@@ -89,43 +99,58 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       let pxL = allPeople.peopleList.length;
       for (let pX = 0; pX < pxL; pX++) {
         let p = allPeople.peopleList[pX];
-        if (!crossRef.hasOwnProperty(p.person_id)) {      // not already loaded, so load it
-          let accessLevel = 'none';
-          if ((myClass === 'support') || (myClass === 'master')) { accessLevel = 'full'; }
-          else {
-            let maxLevel = -1;
-            if (p.groups) {
-              let gL = p.groups.length;
-              for (let x = 0; ((x < gL) && (maxLevel < 3)); x++) {
-                let g = p.groups[x];
-                if (!groupLevel.hasOwnProperty(g)) {
-                  let myRole = await getRole(g, person_id);
-                  if (myRole === 'responsible') { groupLevel[g] = 3; }
-                  else {
-                    let this_group = getGroup(g, client_id);
-                    if (!this_group.hasOwnProperty('view_group')) { groupLevel[g] = 0; }
-                    else { groupLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]); }
-                    if ((myRole === 'member') && (myClass === 'local')) {
-                      groupLevel[g] = Math.max(1, groupLevel[g]);
-                    }
-                  }
+        let accessLevel = 'none';
+        let maxLevel = -1;
+        if ((myClass === 'support') || (myClass === 'master')) { maxLevel = 3; }
+        let member_of = 99;
+        if (p.groups) {
+          let gL = p.groups.length;
+          for (let x = 0; x < gL; x++) {
+            let g = p.groups[x];
+            if (groupFlavor.hasOwnProperty(g)) {
+              member_of = Math.min(member_of, groupFlavor[g]);
+            }
+            if (!groupLevel.hasOwnProperty(g) && (maxLevel < 3)) {
+              let myRole = await getRole(g, person_id);
+              if (myRole === 'responsible') { groupLevel[g] = 3; }
+              else {
+                // the Group table record for a group MAY contain a view_group attribute
+                // if it does, this attribute will contain an object
+                // that object is keyed by class of user
+                // each key should have a single value with the word (see accessLevelTable above) indicating
+                // the level of access granted to users of this class
+                // example... the staff group may have a view_group = {'local': 'view'} which would allow 
+                //       local users to see (but not proxy to) its members
+                let this_group = getGroup(g, client_id);
+                if (!this_group.hasOwnProperty('view_group')) { groupLevel[g] = 0; }
+                else { groupLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]); }
+                if ((myRole === 'member') && (myClass === 'local')) {
+                  groupLevel[g] = Math.max(1, groupLevel[g]);
                 }
-                if (groupLevel[g] > maxLevel) { maxLevel = groupLevel[g]; }
               }
             }
-            if (maxLevel > 0) { accessLevel = accessLevelTable[maxLevel]; }
-          }
-          if (accessLevel !== 'none') {
-            accessList[client_id].list.push({
-              first: p.name.first,
-              last: p.name.last,
-              id: p.person_id,
-              access: accessLevel
-            });
+            if (groupLevel[g] > maxLevel) { maxLevel = groupLevel[g]; }
           }
         }
+        if (maxLevel > 0) { accessLevel = accessLevelTable[maxLevel]; }
+        if (accessLevel !== 'none') {
+          accessList[client_id].list.push({
+            person_id: p.person_id,
+            name: p.name,
+            first: p.name.first,
+            member_of: ((member_of < 99) ? groupHierarchy[member_of] : null),
+            last: p.name.last,
+            display_name: `${p.name.first} ${p.name.last}`,
+            location: p.location,
+            directory_option: p.directory_option,
+            messaging: p.messaging,
+            preferred_method: p.preferred_method,
+            id: p.person_id,
+            access: accessLevel
+          });
+        }
       };
-      // sort client names
+      // sort names within this client
       accessList[client_id].list.sort((a, b) => {
         if (a.last > b.last) { return 1; }
         else if (a.last < b.last) { return -1; }
@@ -149,7 +174,7 @@ export async function getAllClients() {
     .scan(qParm)
     .promise()
     .catch(error => {
-      cl({'Error reading for Clients': error});
+      cl({ 'Error reading for Clients': error });
     });
   let returnArray = [];
   if (recordExists(everyClient)) {

@@ -17,6 +17,7 @@ import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
 import LoadWorkOrderSpreadsheet from '../forms/LoadWorkOrderSpreadsheet';
 import ShowGroup from '../dialogs/ShowGroup';
+import GroupForm from '../forms/GroupForm';
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
@@ -24,6 +25,7 @@ import MakeMessage from './MakeMessage';
 
 import { createPutFact } from '../../graphql/mutations';
 import { useSnackbar } from 'notistack';
+import useSession from '../../hooks/useSession';
 
 import Box from '@material-ui/core/Box';
 
@@ -47,6 +49,8 @@ export default ({
   onSave,
   onClose,
 }) => {
+
+  const { state } = useSession();
 
   const [value, setValue] = React.useState(defaultValue || '');
   const [nums, setNums] = React.useState(['', '']);
@@ -304,7 +308,7 @@ export default ({
           promptText={defaultValueObj.prompt || `What's the Message?`}
           buttonText={defaultValueObj.button || 'Send'}
           sender={session}
-          pRecipientID={defaultValueObj.recipientID}
+          pRecipientID={defaultValueObj.recipientID || '*select'}
           pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
           peopleList={defaultValueObj.peopleList || []}
           onCancel={onClose}
@@ -463,6 +467,17 @@ export default ({
           peopleList={values}
           showList={true}
           onClose={onSave}
+        />
+      );
+    case 'group_form':
+      return (
+        <GroupForm
+          groupMemberList={state.accessList}
+          peopleList={defaultValue || values}
+          pPatient={session.patient_id}
+          pPatientName={session.patient_display_name}
+          pClient={session.client_id}
+          onReset={onSave}
         />
       );
     default:

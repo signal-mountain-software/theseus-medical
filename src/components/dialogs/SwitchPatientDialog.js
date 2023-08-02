@@ -93,7 +93,6 @@ export default ({ open, roles, onClose }) => {
 
   const [person_filter, setPersonFilter] = React.useState('');
   const [client_filter, setClientFilter] = React.useState('');
-  const [visible_filter, setVisibleFilter] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [selectedClient, setSelectedClient] = React.useState('*none');
   const [rowLimit, setRowLimit] = React.useState(20);
@@ -135,7 +134,6 @@ export default ({ open, roles, onClose }) => {
     cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
     filterTimeOut = setTimeout(() => {
       cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
-      setVisibleFilter(vCheck);
       if (!vCheck) {
         setPersonFilter(null);
         setClientFilter(null);
@@ -202,7 +200,6 @@ export default ({ open, roles, onClose }) => {
             {okClient({ i: client, n: accessList[client].name }) &&
               <ListItem onClick={() => {
                 setSelectedClient(client);
-                setVisibleFilter(person_filter);
                 setRowLimit(scrollValue);
                 setForceRedisplay(!forceRedisplay);
               }}
@@ -282,7 +279,6 @@ export default ({ open, roles, onClose }) => {
             }
             else {
               setSelectedClient('*none');
-              setVisibleFilter(client_filter);
               setForceRedisplay(!forceRedisplay);
             }
           }}
