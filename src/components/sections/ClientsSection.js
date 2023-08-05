@@ -64,7 +64,7 @@ export default ({ person, groupData, updateGroups }) => {
 
   const [adminSelected, setAdminSelected] = React.useState(groupData.selectedID);
   const [reactData, setReactData] = React.useState(groupData);
-  const [accountClass, setAccountClass] = React.useState(person.account_class);
+  const [accountClass, setAccountClass] = React.useState(person.account_class || null);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
@@ -99,7 +99,7 @@ export default ({ person, groupData, updateGroups }) => {
       }
     };
     updateGroups(memberOf);
-    if (!person.account_class) {
+    if (!person.account_class || (person.account_class === '')) {
       setAccountClass(determineClass(memberOf));
     }
     setForceRedisplay(!forceRedisplay);

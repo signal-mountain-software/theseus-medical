@@ -1,12 +1,11 @@
 import React from 'react';
-import { lambda, cl, sentenceCase, listFromArray } from '../../util/AVAUtilities';
+import { lambda, cl, sentenceCase, listFromArray, switchActiveAccount } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 import { getImage, formatPhone } from '../../util/AVAPeople';
 import { getMemberList, addMember, getRole, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
-import { SET_PATIENT, SET_SESSION } from '../../contexts/Session/actions';
 import useSession from '../../hooks/useSession';
 
 import List from '@material-ui/core/List';
@@ -194,7 +193,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, onReset }) => {
 
   const classes = useStyles();
-  const { state, dispatch } = useSession();
+  const { state } = useSession();
 
   const [person_filter_lower, setPersonFilterLower] = React.useState(' ');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
@@ -257,38 +256,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       }
       setRowLimit(scrollValue);
     }, 500);
-  };
-
-  const prepareSwitch = async (pUser, pSwitchTo, pSwitchName) => {
-    let invokeFailed = false;
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:SwitchAccount';
-    params.Payload = JSON.stringify({
-      action: "prepare_switch",
-      request: {
-        current_session_user: pUser,
-        switch_to_person: pSwitchTo,
-        switch_to_name: pSwitchName
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving Group list.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let switchResponse = JSON.parse(fResp.Payload);
-      if (switchResponse.status === 200) {
-        if (Array.isArray(switchResponse.body[0].groups_managed)) {
-          switchResponse.body[0].groups_managed = JSON.stringify(switchResponse.body[0].groups_managed);
-        }
-        return switchResponse.body;
-      }
-    };
-    return [];
   };
 
   const handleAddPersonToGroup = async (pPerson, pGroup) => {
@@ -912,15 +879,14 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   <Box display='flex' flexDirection='row' className={classes.giveSpace} justifyContent='center' alignItems='center' >
                     <Button
                       onClick={async () => {
-                        let switchData = await prepareSwitch(
-                          pPatient,
-                          superSizeData.person_id,
-                          `${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name}:`
+                        await switchActiveAccount(
+                          state.session,
+                          state.session.client_id,
+                          {
+                            id: superSizeData.person_id,
+                            name: `${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name}`
+                          }
                         );
-                        dispatch({ type: SET_SESSION, payload: switchData[0] });
-                        dispatch({ type: SET_PATIENT, payload: switchData[1] });
-                        let jumpTo = window.location.href.replace('refresh', 'theseus');
-                        window.location.replace(jumpTo);
                       }}
                       startIcon={<SwapHorizIcon size='small' />}
                       className={classes.AVAButton}

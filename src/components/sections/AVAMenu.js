@@ -44,7 +44,6 @@ import LinearProgress from '@material-ui/core/LinearProgress';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 
 import Tooltip from '@material-ui/core/Tooltip';
-import { SET_PATIENTS } from '../../contexts/Session/actions';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -227,7 +226,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const classes = useStyles();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
-  const { state, dispatch } = useSession();
+  const { state } = useSession();
   const { roles, session } = state;
 
   const [selected, setSelected] = React.useState(null);
@@ -864,15 +863,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           break;
         }
         case 'select': {
-          if (state.patients) {
+          if (dPart === 'accessList') {
+            dPart = state.accessList[state.session.client_id].shortList;
+            dField = 'selectionList';
+          }
+          else if (state.patients) {
             dPart = state.patients;
           }
           else {
             let targetObj = await prepareTargets(session.patient_id, session.client_id, { includeGroups: true });
-            dispatch({ type: SET_PATIENTS, payload: targetObj.responsibleList.sort() });
             dPart = targetObj.responsibleList.sort();
           }
-
           break;
         }
         default: { }
