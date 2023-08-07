@@ -1,5 +1,6 @@
 export const SET_PATIENT = 'SET_PATIENT';
 export const SET_PATIENTS = 'SET_PATIENTS';
+export const SET_ACCESSLIST = 'SET_ACCESSLIST';
 export const SET_MESSAGE_TARGETS = 'SET_MESSAGE_TARGETS';
 export const SET_PROFILE = 'SET_PROFILE';
 export const SET_ROLES = 'SET_ROLES';

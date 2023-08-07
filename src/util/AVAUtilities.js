@@ -59,14 +59,13 @@ export const cloudfront = new AWS.CloudFront({
   secretAccessKey: sak()[1],
 });
 
-
 export function recordExists(recordId) {
   if (!recordId) { return false; }
   if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
   else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
 }
 
-export function listFromArray(inArray) {
+export function listFromArray(inArray, options) {
   if (!Array.isArray(inArray)) {
     if (!inArray || (inArray.trim() === '')) { return 'None'; }
     return inArray;
@@ -76,6 +75,7 @@ export function listFromArray(inArray) {
   let nextToLast = inArray.length - 2;
   let threeOrMore = (inArray.length > 2);
   inArray.forEach((s, x) => {
+    if (options && options.sentenceCase) { s = sentenceCase(s); }
     makeList$ += link + s;
     if (threeOrMore) { link = ', '; }
     if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + 'and ');
@@ -83,7 +83,6 @@ export function listFromArray(inArray) {
   });
   return makeList$;
 }
-
 
 export async function getCustomizations(pKey, pClient) {
   if (!pKey || !pClient) { return false; }
@@ -123,7 +122,6 @@ export async function getCustomizations(pKey, pClient) {
     else { return false; }
   }
 }
-
 
 export function makeString(inP, pNum = 0, pLink) {
   if (!inP) { return null; }
@@ -187,7 +185,7 @@ export function makeArray(input, delimiter = null) {
     });
   }
   else if (input.charAt(0) === '[') {
-    response = input.replace(/\[\]/, '').split(',');
+    response = input.replace(/[[\]]/, '').split(',');
   }
   else if (delimiter) {
     response = input.split(delimiter).map(e => { return e.trim(); });
@@ -335,7 +333,6 @@ export async function updateACL(pObjIn, pTyp) {
     });
 };
 
-
 export function isPromise(p) {
   return p && Object.prototype.toString.call(p) === "[object Promise]";
 }
@@ -363,7 +360,6 @@ export function uuid(pLen) {
   }
   return ans.join('');
 }
-
 
 export async function resolveVariables(pKey, pSession, options = {}) {
   if (!pKey) { return ''; }
@@ -457,3 +453,22 @@ export function parseSpreadsheet(pWorkbook) {
   });
   return returnObj;
 }
+
+export async function switchActiveAccount(session, newClient, newPatient) {
+  await dbClient
+      .update({
+        Key: { session_id: session.user_id },
+        UpdateExpression: 'set client_id = :c, patient_id = :p, patient_display_name = :d, user_homeClient = :h',
+        ExpressionAttributeValues: {
+          ':c': newClient,
+          ':p': newPatient.id,
+          ':d': newPatient.name || (`${newPatient.first} ${newPatient.first}`),
+          ':h': (session.user_homeClient || session.client_id)
+        },
+        TableName: "SessionsV2",
+      })
+      .promise()
+      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+  let jumpTo = window.location.href.replace('refresh', 'theseus');
+  window.location.replace(jumpTo);
+};

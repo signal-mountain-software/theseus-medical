@@ -317,7 +317,7 @@ export default ({
                   }
                   <Box
                     component="img"
-                  //  ml={1}
+                    border={1}
                     mr={1}
                     minWidth={50}
                     maxWidth={50}

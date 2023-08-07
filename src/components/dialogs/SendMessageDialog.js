@@ -1,7 +1,5 @@
 import React from 'react';
 
-import { prepareTargets } from '../../util/AVAGroups';
-
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import List from '@material-ui/core/List';
@@ -10,11 +8,9 @@ import DialogContent from '@material-ui/core/DialogContent';
 import Typography from '@material-ui/core/Typography';
 import CircularProgress from '@material-ui/core/CircularProgress';
 
-// import useMediaQuery from '@material-ui/core/useMediaQuery';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useSession from '../../hooks/useSession';
 import PersonFilter from '../forms/PersonFilter';
-
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -137,11 +133,22 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
 
   const { state } = useSession();
   const { session } = state;
-  const [message_targets, setMessageTargets] = React.useState();
-  const [loading, setLoading] = React.useState(false);
+  const [message_targets, setMessageTargets] = React.useState(state.accessList[state.session.client_id].list);
+  const [loading, setLoading] = React.useState(true);
 
   const classes = useStyles();
 
+  if (loading) {
+    let response = [];
+    state.accessList[state.session.client_id].list.forEach(a => {
+        // list is of the form <name>:<id>:<search_string>
+        response.push(`${a.last}, ${a.first}:${a.id}:${a.display_name}_${a.location}`);
+    });
+    setMessageTargets(response);
+    setLoading(false);
+  }
+
+  /*
   React.useEffect(() => {
     let getTargets = (     // get a list of people a user may send messages to: 
       async () => {
@@ -153,7 +160,8 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
     );
     getTargets();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+  */
+  
   const handleClose = () => {
     if (session) {
     }

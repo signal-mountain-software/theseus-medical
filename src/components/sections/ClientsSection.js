@@ -1,7 +1,8 @@
 import React from 'react';
-import { titleCase } from '../../util/AVAUtilities';
+import { titleCase, makeArray, sentenceCase } from '../../util/AVAUtilities';
 import Box from '@material-ui/core/Box';
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import useSession from '../../hooks/useSession';
 
 import Checkbox from '@material-ui/core/Checkbox';
 import Typography from '@material-ui/core/Typography';
@@ -59,12 +60,15 @@ const useStyles = makeStyles(theme => ({
 export default ({ person, groupData, updateGroups }) => {
 
   const classes = useStyles();
+  const { state } = useSession();
+
   const [adminSelected, setAdminSelected] = React.useState(groupData.selectedID);
   const [reactData, setReactData] = React.useState(groupData);
+  const [accountClass, setAccountClass] = React.useState(person.account_class || null);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
-  
+
   function handleUpdate(adminGroup) {
     let memberOf = [adminGroup || adminSelected];
     let checkGroup = memberOf[0];
@@ -81,7 +85,7 @@ export default ({ person, groupData, updateGroups }) => {
         }
       });
       checkGroup = nextGroup;
-    } while (checkGroup && (loopCount < 20))
+    } while (checkGroup && (loopCount < 20));
     for (let gID in reactData.publicGroups) {
       if (!reactData.publicGroups[gID].role.startsWith('non')
         && !memberOf.includes(gID)) {
@@ -95,7 +99,33 @@ export default ({ person, groupData, updateGroups }) => {
       }
     };
     updateGroups(memberOf);
+    if (!person.account_class || (person.account_class === '')) {
+      setAccountClass(determineClass(memberOf));
+    }
     setForceRedisplay(!forceRedisplay);
+  }
+
+  function determineClass(gList) {
+    let groupFlavor = {};
+    let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'guest', 'vendor', 'other'];
+    if (state.session.group_assignments) {
+      Object.keys(state.session.group_assignments).forEach(t => {
+        let groups = makeArray(state.session.group_assignments[t]);
+        groups.forEach(g => {
+          if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = groupHierarchy.indexOf(t); }
+          else { groupFlavor[g] = Math.min(groupHierarchy.indexOf(t), groupFlavor[g]); }
+        });
+      });
+    }
+    let member_of = groupHierarchy.length;
+    let gL = gList.length;
+    for (let x = 0; x < gL; x++) {
+      let g = gList[x];
+      if (groupFlavor.hasOwnProperty(g)) {
+        member_of = Math.min(member_of, groupFlavor[g]);
+      }
+    }
+    return groupHierarchy[member_of];
   }
 
   return (
@@ -141,10 +171,10 @@ export default ({ person, groupData, updateGroups }) => {
         </List>
       </Box>
       <Typography className={classes.HeadTextWIthTopSpacing}>{`Public (optional) Groups`}</Typography>
-        {Object.keys(reactData.publicGroups).length > 0
-          ? <Typography className={classes.InstructionText}>{`Choose any from this list you're interested in`}</Typography>
-          : <Typography className={classes.InstructionText}>{`No Public Groups are available at this time`}</Typography>
-        }
+      {Object.keys(reactData.publicGroups).length > 0
+        ? <Typography className={classes.InstructionText}>{`Choose any from this list you're interested in`}</Typography>
+        : <Typography className={classes.InstructionText}>{`No Public Groups are available at this time`}</Typography>
+      }
       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
         <List className={classes.root}>
           {Object.keys(reactData.publicGroups).map((gID, ndx) => (
@@ -179,34 +209,41 @@ export default ({ person, groupData, updateGroups }) => {
             </Box>
           ))}
         </List>
-        </Box>
-        <Typography className={classes.HeadTextWIthTopSpacing}>{`Private Groups`}</Typography>
-        {Object.keys(reactData.privateGroups).length > 0
-          ? <Typography className={classes.InstructionText}>{`You have been added to these Groups by an Administrator`}</Typography>
-          : <Typography className={classes.InstructionText}>{`You are not a member of any Private Groups`}</Typography>
-        }
-        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-          <List className={classes.root}>
-            {Object.keys(reactData.privateGroups).map((gID, ndx) => (
-              <Box display='flex' style={{ height: 40, marginLeft: 20 }} flexDirection='row' justifyContent='flex-start'
-                alignItems='center' flexWrap='wrap' key={`private-${ndx}`}
-                onContextMenu={async (e) => {
-                  e.preventDefault();
-                  enqueueSnackbar(`Group ID=${gID}`, { variant: 'info', persist: true });
-                }}
+      </Box>
+      <Typography className={classes.HeadTextWIthTopSpacing}>{`Private Groups`}</Typography>
+      {Object.keys(reactData.privateGroups).length > 0
+        ? <Typography className={classes.InstructionText}>{`You have been added to these Groups by an Administrator`}</Typography>
+        : <Typography className={classes.InstructionText}>{`You are not a member of any Private Groups`}</Typography>
+      }
+      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+        <List className={classes.root}>
+          {Object.keys(reactData.privateGroups).map((gID, ndx) => (
+            <Box display='flex' style={{ height: 40, marginLeft: 20 }} flexDirection='row' justifyContent='flex-start'
+              alignItems='center' flexWrap='wrap' key={`private-${ndx}`}
+              onContextMenu={async (e) => {
+                e.preventDefault();
+                enqueueSnackbar(`Group ID=${gID}`, { variant: 'info', persist: true });
+              }}
+            >
+              <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                alignItems='center' flexWrap='wrap' key={`pubopt-${ndx}`}
               >
-                <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                  alignItems='center' flexWrap='wrap' key={`pubopt-${ndx}`}
-                >
-                  <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{reactData.privateGroups[gID].group_name || gID}</Typography>
-                  {reactData.privateGroups[gID].role !== 'member' &&
-                    <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>({titleCase(reactData.privateGroups[gID].role)})</Typography>
-                  }
-                </Box>
+                <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{reactData.privateGroups[gID].group_name || gID}</Typography>
+                {reactData.privateGroups[gID].role !== 'member' &&
+                  <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>({titleCase(reactData.privateGroups[gID].role)})</Typography>
+                }
               </Box>
-            ))}
-          </List>
-        </Box>
+            </Box>
+          ))}
+        </List>
+      </Box>
+      <Typography className={classes.HeadTextWIthTopSpacing}>{`Account Type`}</Typography>
+      <Typography className={classes.InstructionText}>{`Automatically assigned by AVA.  Contact Support for more info`}</Typography>
+      <Box display='flex' style={{ height: 40, marginLeft: 20 }} flexDirection='row' justifyContent='flex-start'
+        alignItems='center' flexWrap='wrap'
+      >
+        <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{sentenceCase(accountClass || determineClass(person.groups))}</Typography>
+      </Box>
     </Section>
   );
 };

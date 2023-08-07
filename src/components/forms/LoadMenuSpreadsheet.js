@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { s3, lambda } from '../../util/AVAUtilities';
+import { s3, lambda, sentenceCase } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -106,9 +107,21 @@ export default ({ pClient, showUpload, handleClose }) => {
   const [changeDetected, setChangeDetected] = React.useState(false);
   const [bulkItemList, setBulkItemList] = React.useState([]);
 
-  const entryTypes = ['header', 'message', 'entree', 'soft_entree', 'AL_lunch_entree', 'AL_dinner_entree', 'soup', 'salad', 'side', 'bread', 'dessert'];
+  const entryTypes = [
+    'header',
+    'message',
+    'entree',
+    'soft_entree',
+    'AL_lunch_entree',
+    'AL_dinner_entree',
+    'soup',
+    'salad',
+    'side',
+    'bread',
+    'dessert'
+  ];
 
- let params = {
+  let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',
     InvocationType: 'RequestResponse',
     LogType: 'Tail',
@@ -149,9 +162,8 @@ export default ({ pClient, showUpload, handleClose }) => {
     req.onload = function (e) {
       var data = new Uint8Array(req.response);
       var workbook = XLSX.read(data, { type: "array" });
-      parseSpreadsheet(workbook);
-      /**************************************** 
-       ****************************************/
+      if (pClient === 'SMSoft') { parseSpreadsheet(workbook); }
+      else { parseTemplateMenu(workbook); }
       setChangeDetected(true);
     };
     req.send();
@@ -178,7 +190,7 @@ export default ({ pClient, showUpload, handleClose }) => {
         let valueArray = fullValue.toString().split('~');
         if (!valueArray || valueArray.length < 2) {
           cellValue = (isNaN(fullValue) ? fullValue.trim() : fullValue);
-          cellOKey = null
+          cellOKey = null;
         }
         else {
           cellValue = valueArray[0].trim();
@@ -271,6 +283,42 @@ export default ({ pClient, showUpload, handleClose }) => {
       }
     });
     results.forEach(o => { o.sort_order = o.date.getFullYear() + '.' + (o.date.getMonth() + 101) + '.' + (o.date.getDate() + 100).toString() + '.' + (entryTypes.indexOf(o.type) + 100).toString() + o.item; });
+    results.sort((a, b) => { return (a.sort_order > b.sort_order ? 1 : -1); });
+    setBulkItemList(results);
+  }
+
+  function parseTemplateMenu(pWorkbook) {
+    let headers = [];
+    let results = [];
+    pWorkbook.SheetNames.forEach((sheetName) => {
+      let currentSheet = pWorkbook.Sheets[sheetName];
+      for (const currentCell in currentSheet) {
+        if (!currentSheet[currentCell].v) { continue; }   // skip if no value in the cell
+        if (typeof (currentSheet[currentCell].v) !== 'string') { continue; }
+        if (!currentSheet[currentCell].v.startsWith('###')) { continue; }   // skip if not flagged as a key cell
+        let values = currentSheet[currentCell].v.replace('###', '').split('//');
+        let split_value = values[2].split('_');
+        let this_date = makeDate(values[0]);
+        let hKey = `~~${this_date.absolute}${split_value[1] ? (' ' + sentenceCase(split_value[0])) : ''}`;
+        if (!headers.includes(hKey)) {
+          results.push({
+            date: this_date.date,
+            sort_order: `${this_date.ymd}.${split_value[1] ? split_value[0] : 'ava'}`,
+            item: hKey,
+            type: 'header'
+          });
+          headers.push(hKey);
+        }
+        let sort_key = entryTypes.indexOf(split_value[split_value.length - 1]);
+        if (sort_key === -1) { sort_key = 99; }
+        results.push({
+          date: this_date.date,
+          sort_order: `${this_date.ymd}.${split_value[1] ? split_value[0] : 'ava'}.${100 + sort_key}`,
+          item: values[1],
+          type: values[2]
+        });
+      }
+    });
     results.sort((a, b) => { return (a.sort_order > b.sort_order ? 1 : -1); });
     setBulkItemList(results);
   }

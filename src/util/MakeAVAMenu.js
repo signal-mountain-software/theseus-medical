@@ -1,4 +1,4 @@
-import { resolveVariables, stringToColor, cl, clt, recordExists, dbClient } from '../util/AVAUtilities';
+import { resolveVariables, stringToColor, cl, clt, recordExists, dbClient, makeArray } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
 import { getGroup } from '../util/AVAGroups';
@@ -589,10 +589,13 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       addClient = true;
     }
     for (let p = 1; p < parts.length; p++) {
-      let [iType, iData] = parts[p].split(/[=\]]/);
+      let [iType, iData] = parts[p].split(/[=<>\]]/);
       switch (iType) {
         case 'default': {
           overrideDefault = await resolveVariables(iData, { client_id: pClient, patient_id: pPerson, user_id: pPerson });
+          if (overrideDefault.charAt(0) === '[') {
+            overrideDefault = makeArray(overrideDefault);
+          }
           break;
         }
         case 'title': {

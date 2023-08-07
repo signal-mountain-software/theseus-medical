@@ -37,8 +37,6 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ pClient, workingList, showList }) => {
 
-  let working_date = '';
-
   const classes = useStyles();
   const [bulkItemList, setBulkItemList] = React.useState(workingList);
   const [forceRedisplay, setForceRedisplay] = React.useState(1);
@@ -91,7 +89,7 @@ export default ({ pClient, workingList, showList }) => {
       <List >
         {bulkItemList.map((this_item, index) => (
           <React-fragment key={this_item.item + 'frag' + index} >
-            {this_item.date.toDateString() !== working_date ?
+            {(this_item.type === 'header') ?
               <ListItem
                 key={this_item.item + 'rhead' + index}
                 style={{
@@ -108,7 +106,7 @@ export default ({ pClient, workingList, showList }) => {
                     className={classes.noDisplay}
                     variant='h5'
                   >
-                    {working_date = this_item.date.toDateString()}
+                    {this_item.item.substring(2)}
                   </Typography>
                 </Box>
               </ListItem>
@@ -128,7 +126,7 @@ export default ({ pClient, workingList, showList }) => {
                   className={classes.listRow}
                 >
                   <Box className={classes.detailRow}>
-                    <Typography noWrap={true} variant='subtitle1'>{sentenceCase(this_item.type)}</Typography>
+                    <Typography noWrap={true} variant='subtitle1'>{sentenceCase(this_item.type.split('_').pop())}</Typography>
                   </Box>
                   <Box flexGrow={1}>
                     <Typography noWrap={false} variant='h6'>{this_item.item}</Typography>

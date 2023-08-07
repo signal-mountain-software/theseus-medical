@@ -1,10 +1,10 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, cl, resolveVariables, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
+import { recordExists, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
 import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
-import { getMemberList, prepareTargets, getGroupHierarchy, getPublicGroupList, getGroupsBelongTo } from '../../util/AVAGroups';
+import { getMemberList, prepareTargets, getAllGroups } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -38,12 +38,12 @@ import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
+import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import LinearProgress from '@material-ui/core/LinearProgress';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 
 import Tooltip from '@material-ui/core/Tooltip';
-import { SET_PATIENTS } from '../../contexts/Session/actions';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -226,7 +226,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const classes = useStyles();
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
-  const { state, dispatch } = useSession();
+  const { state } = useSession();
   const { roles, session } = state;
 
   const [selected, setSelected] = React.useState(null);
@@ -246,7 +246,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showProfileEdit, setShowProfileEdit] = React.useState(false);
   const [showAddAccount, setShowAddAccount] = React.useState(false);
-  const [switchToSelf, setSwitchToSelf] = React.useState(false);
   const [showNewFactDialog, setShowNewFactDialog] = React.useState(-1);
   const [needsConfirmation, setNeedsConfirmation] = React.useState(-1);
   const [toggleClick, setToggleClick] = React.useState(false);
@@ -864,15 +863,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           break;
         }
         case 'select': {
-          if (state.patients) {
+          if (dPart === 'accessList') {
+            dPart = state.accessList[state.session.client_id].shortList;
+            dField = 'selectionList';
+          }
+          else if (state.patients) {
             dPart = state.patients;
           }
           else {
             let targetObj = await prepareTargets(session.patient_id, session.client_id, { includeGroups: true });
-            dispatch({ type: SET_PATIENTS, payload: targetObj.responsibleList.sort() });
             dPart = targetObj.responsibleList.sort();
           }
-
           break;
         }
         default: { }
@@ -891,21 +892,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
     return returnArray;
   }
-
-  async function getAllGroups(pPatient) {
-    let responseData = {};
-    responseData.adminHierarchy = await getGroupHierarchy(session.client_id, { sort: true });
-    responseData.adminHierarchy.forEach(a => {
-      if (a.selectable && patient.groups.includes(a.id)) {
-        responseData.selectedID = a.id;
-      }
-    });
-    responseData.publicGroups = await getPublicGroupList(session.client_id, pPatient);
-    responseData.privateGroups = await getGroupsBelongTo(pPatient, { sort: true });
-    responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
-    for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
-    return responseData;
-  };
 
   function makeGreetingName(pString) {
     setGreetingName(pString);
@@ -1039,9 +1025,16 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             keepMounted>
             <MenuList className={classes.popUpMenu}>
               {(session?.patient_id !== session?.user_id) && (
-                <MenuItem onClick={() => {
+                <MenuItem onClick={async () => {
                   setPopupMenuOpen(false);
-                  setSwitchToSelf(true);
+                  await switchActiveAccount(
+                    session,
+                    (session.user_homeClient || session.client_id),
+                    {
+                      id: session.user_id,
+                      name: session.user_display_name
+                    }
+                  );
                 }}>
                   <Box
                     display='flex' flexDirection='row' alignItems={'center'}
@@ -1070,7 +1063,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 </MenuItem>
               )
               }
-              {session?.responsible_for && (
+              {(session?.responsible_for
+                || (state.patient.account_class && ((state.patient.account_class === 'master') || (state.patient.account_class === 'support')))
+              )
+                &&
                 <MenuItem onClick={() => {
                   setPopupMenuOpen(false);
                   setShowPersonSelect(true);
@@ -1083,8 +1079,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     <Typography className={classes.popUpMenuRow} >{'Switch Account'}</Typography>
                   </Box>
                 </MenuItem>
-              )}
-              {session?.responsible_for && (
+              }
+              {(session?.responsible_for
+                || (state.patient.account_class && ((state.patient.account_class === 'master') || (state.patient.account_class === 'support')))
+              )
+                &&
                 <MenuItem onClick={async () => {
                   setGroupData(await getAllGroups('*NEW~0'));
                   setPopupMenuOpen(false);
@@ -1098,7 +1097,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     <Typography className={classes.popUpMenuRow} >{'Create Account'}</Typography>
                   </Box>
                 </MenuItem>
-              )}
+              }
               <MenuItem onClick={async () => {
                 await accessLog(session.user_id, `*na*`, `Manual sign-out`);
                 removeCookie("AVAuser");
@@ -1118,21 +1117,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               <MenuItem
                 onClick={async () => {
                   window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
-                  /*
-                  setPopupMenuOpen(false);
-                  setLoading('Resetting greeting');
-                  setForceRedisplay(!forceRedisplay);
-                  makeGreeting();
-                  setLoading('Restarting AVA');
-                  setForceRedisplay(!forceRedisplay);
-                  await updateAVA(sectionOpen, mainMenu);
-                  await buildMenu(true);
-                  setCurrentMenu('main');
-                  setMenuArray(['main']);
-                  setMenuNames([]);
-                  setLoading(false);
-                  setForceRedisplay(!forceRedisplay);
-                  */
                 }}>
                 <Box
                   display='flex' flexDirection='row' alignItems={'center'}
@@ -1142,6 +1126,22 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
                 </Box>
               </MenuItem>
+              {(window.location.href.split('//')[1].slice(0, 1).toUpperCase() !== 'T') &&
+                <MenuItem
+                  onClick={async () => {
+                    let l = window.location.href;
+                    let n = l.replace('dev', 'test');
+                    window.location.replace(`${n.split('?')[0]}?rel=${new Date().getTime()}`);
+                  }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowRefresh'}
+                  >
+                    <NewReleasesOutlinedIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Use Beta Version'}</Typography>
+                  </Box>
+                </MenuItem>
+              }
               <MenuItem>
                 <Box
                   display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
@@ -1411,16 +1411,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         }
         {showPersonSelect &&
           <SwitchPatientDialog
-            open={showPersonSelect}
-            roles={roles}
-            onClose={() => {
-              setShowPersonSelect(false);
-            }}
-          />
-        }
-        {switchToSelf &&
-          <SwitchPatientDialog
-            forceSwitch={`${session.user_display_name}:${session.user_id}`}
             open={showPersonSelect}
             roles={roles}
             onClose={() => {

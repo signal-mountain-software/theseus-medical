@@ -1,6 +1,6 @@
 import React from 'react';
 import { dbClient, lambda, makeArray } from '../util/AVAUtilities';
-import { isMemberOf } from '../util/AVAGroups';
+import { isMemberOf, accountAccess } from '../util/AVAGroups';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
@@ -792,6 +792,7 @@ export default Component => props => {
       setDoneTrying(true);
       return false;
     }
+    accountAccess(pLaunchUser, currentSession.client_id, dispatch);
     // Get the Patient's profile (info about the active person - usually the same as the logged in user)
     let currentPatient;
     if (currentSession.patient_id === pLaunchUser) {

@@ -217,13 +217,13 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
     });
     if (!threadHeaderRec || (threadHeaderRec.length === 0)) { return []; }
     let responseList = [];
-    Object.values(threadHeaderRec[0].recipient_list).forEach(r => { 
+    Object.values(threadHeaderRec[0].recipient_list).forEach(r => {
       let resp;
       if (r.name) { resp = (r.name.first + ' ' + r.name.last).trim(); }
       else { resp = r.destination; }
       resp += ':' + r.id;
       responseList.push(resp);
-    })
+    });
     return responseList;
   }
 
@@ -781,15 +781,22 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             promptForMessage &&
             <MakeMessage
               titleText={''}
-              promptText={`What's the Message?`}
+              promptText={[`Subject`, `Message`]}
               buttonText={'Send'}
               sender={pSession}
-              pRecipientID={Array.isArray(recipient) ? recipient.map(r => {return r.split(':')[1]}) : [recipient.split(':')[1]]}
+              pRecipientID={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[1]; }) : [recipient.split(':')[1]]}
               pRecipientName={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[0]; }) : [recipient.split(':')[0]]}
-              onCancel={() => { setPromptForMessage(false); }}
-              onComplete={() => { setPromptForMessage(false); }}
+              onCancel={() => {
+                setPromptForMessage(false);
+                setForceRedisplay(!forceRedisplay);
+              }}
+              onComplete={() => {
+                setPromptForMessage(false);
+                setForceRedisplay(!forceRedisplay);
+              }}
               allowCancel={true}
               thread_id={(recipientIndex >= 0) ? messageList[recipientIndex].thread_id : ''}
+              seedText={[((recipientIndex >= 0) ? messageList[recipientIndex].subject : ''), '']}
             />
           }
           {
@@ -813,9 +820,16 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               onClose={() => {
                 setShowAddPrompt(false);
               }}
+              pReturnValue={'object'}
+              multiSelect={true}
               onSelect={(selectedPerson) => {
                 setPromptForMessage(true);
-                setRecipient(selectedPerson);
+                setShowAddPrompt(false);
+                let rList = [];
+                Object.keys(selectedPerson).forEach(r => {
+                  rList.push(`${selectedPerson[r]}:${r}`);
+                });
+                setRecipient(rList);
               }}
             >
             </SendMessageDialog>
