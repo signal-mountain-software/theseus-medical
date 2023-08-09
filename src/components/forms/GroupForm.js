@@ -322,9 +322,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     params.Payload = JSON.stringify({
       "body": {
         "client_id": pClient,
-        "person_id": pPatient,
+        "person_id": state.session.user_id,
         "values": pGroupName + ':group=' + pClient + '~' + pGroup,
-        "showCognito": "true"
+        "showCognito": "true",
+        "test": true
       }
     });
     lambda
