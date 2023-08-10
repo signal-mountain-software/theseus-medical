@@ -3,7 +3,8 @@ import { lambda, cl, sentenceCase, listFromArray, switchActiveAccount } from '..
 
 import { useSnackbar } from 'notistack';
 import { getImage, formatPhone } from '../../util/AVAPeople';
-import { getMemberList, addMember, getRole, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
+import { makeDate } from '../../util/AVADateTime';
+import { getMemberList, addMember, getPublicGroupList, determineClass, getRole, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import useSession from '../../hooks/useSession';
@@ -92,7 +93,8 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 'bold'
   },
   adName: {
-    fontSize: '0.9rem',
+    fontSize: '1.1rem',
+    marginRight: theme.spacing(1),
   },
   AVAButton: {
     marginLeft: theme.spacing(1),
@@ -176,7 +178,6 @@ const useStyles = makeStyles(theme => ({
   },
   superSizePreferenceLine2: {
     lineHeight: `${theme.spacing(3)}px`,
-    // marginTop: theme.spacing(0),
     fontSize: theme.typography.fontSize * 2.0,
     fontWeight: 'bold'
   },
@@ -228,7 +229,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     || (!pGroup && !peopleList)
   );
 
-  
+
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -487,8 +488,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 >
                   {allGroups ?
                     'Administrative View - All Accounts' :
-                    (newVersion ? `All ${listFromArray(peopleList, { sentenceCase: true })} accounts`:
-                    `Members of the ${pGroupName} Group`)
+                    (newVersion ? `All ${listFromArray(peopleList, { sentenceCase: true })} accounts` :
+                      `Members of the ${pGroupName} Group`)
                   }
                 </DialogContentText>
                 <TextField
@@ -522,6 +523,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                             <Box
                               onClick={async () => {
                                 this_item.role = await getRole(pGroup, this_item.person_id);
+                                this_item.public_groups = await getPublicGroupList(state.session.client_id, this_item.person_id);
+                                if (!this_item.account_class) {
+                                  this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
+                                }
                                 setSuperSizeData(this_item);
                                 setshowSuperSize(true);
                               }}
@@ -803,46 +808,159 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     key={`prefLink-superSize.${prefIndex}`}
                     style={{ color: 'inherit', textDecoration: 'none' }}>
                     <Box className={classes.upSizePreferenceBox} display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
-                      <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.superSizePreferenceLine1}>
-                        {prefLine.type}:
+                      <Typography key={`prefLine-superSize.${prefIndex}a`} className={classes.adName}>
+                        {prefLine.type}
                       </Typography>
                       <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
                         {prefLine.display[0]}
                       </Typography>
-                      {(prefLine.display.length > 1) &&
+                    </Box>
+                    {(prefLine.display.length > 1) &&
+                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start' >
                         <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine2}>
                           @{prefLine.display[1]}
                         </Typography>
-                      }
-                    </Box>
+                      </Box>
+                    }
                   </a>
                 )))}
-              <Box display='flex' flexDirection='row' className={classes.giveMoreSpace} justifyContent='center' alignItems='center' >
-                <Button
-                  className={classes.AVAButton}
-                  style={{ color: 'red' }}
-                  startIcon={<CloseIcon size="small" />}
-                  onClick={() => {
-                    setshowSuperSize(false);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                >
-                  {'Back'}
-                </Button>
-                <Button
-                  className={classes.AVAButton}
-                  startIcon={<SendIcon size="small" />}
-                  onClick={() => {
-                    setPromptForMessage(true);
-                    setMessageType('');
-                    let rKey = `${superSizeData.name.first} ${superSizeData.name.last}:${superSizeData.person_id}`;
-                    setRecipient(rKey.trim());
-                  }}
-                >
-                  {`AVA Msg`}
-                </Button>
+              <Box display='flex' className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
+                <Typography key={`HeadLine-superSize`} className={classes.adHead}>
+                  {`${sentenceCase(superSizeData.account_class)}${(['master', 'support'].includes(superSizeData.account_class.toLowerCase())) ? ' account' : ''}`}
+                </Typography>
+                {superSizeData.public_groups && (Object.keys(superSizeData.public_groups).length > 0) &&
+                  <Box display='flex' className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
+                    {Object.keys(superSizeData.public_groups).map((pG, g) => (
+                      <React.Fragment key={`pubGFrag_${g}-superSize`}>
+                        {(superSizeData.public_groups[pG].role !== 'non-member') &&
+                          <Typography key={`pubG_${g}-superSize`} className={classes.adHead}>
+                            {sentenceCase(superSizeData.public_groups[pG].group_name)}
+                          </Typography>
+                        }
+                      </React.Fragment>
+                    ))}
+                  </Box>
+                }
+                {superSizeData.date_of_birth &&
+                  <React.Fragment>
+                    <Typography key={`dobtext-superSize`} className={classes.adName}>
+                      {`Birth date: `}
+                    </Typography>
+                    <Typography key={`dob-superSize`} className={classes.adHead}>
+                      {makeDate(superSizeData.date_of_birth).absolute}
+                    </Typography>
+                  </React.Fragment>
+                }
+                {superSizeData.local_data && (Object.keys(superSizeData.local_data).length > 0) &&
+                  <Box display='flex' className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
+                    {Object.keys(superSizeData.local_data).map((local, l) => (
+                      <React.Fragment>
+                        <Typography key={`localtext_${l}-superSize`} className={classes.adName}>
+                          {`${sentenceCase(local)}:`}
+                        </Typography>
+                        <Typography key={`local_${l}-superSize`} className={classes.adHead}>
+                          {sentenceCase(superSizeData.local_data[local])}
+                        </Typography>
+                      </React.Fragment>
+                    ))
+                    }
+                  </Box>
+                }
               </Box>
-              <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+              {(pRole === 'admin'
+                || pRole === 'responsible'
+                || (state.profile.account_class === 'master')
+                || (state.profile.account_class === 'support')
+              ) &&
+                <React.Fragment>
+                  <Box display='flex' className={classes.giveSpaceBoth} flexDirection='row' justifyContent='center' alignItems='center' >
+                    <React.Fragment>
+                      <Typography key={`HeadText-superSize`} className={classes.adName}>
+                        {`User ID: `}
+                      </Typography>
+                      <Typography key={`HeadLine-superSize`} className={classes.adHead}>
+                        {superSizeData.person_id}
+                      </Typography>
+                    </React.Fragment>
+                  </Box>
+                  <Box display='flex' flexDirection='row' className={classes.giveSpace} justifyContent='center' alignItems='center' >
+                    <Button
+                      onClick={async () => {
+                        await switchActiveAccount(
+                          state.session,
+                          state.session.client_id,
+                          {
+                            id: superSizeData.person_id,
+                            name: `${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name}`
+                          }
+                        );
+                      }}
+                      startIcon={<SwapHorizIcon size='small' />}
+                      className={classes.AVAButton}
+                      style={{ fontSize: 'small' }}
+                    >
+                      {'Switch to'}
+                    </Button>
+                  </Box>
+                </React.Fragment>
+              }
+              {(pRole === 'admin'
+                || pRole === 'responsible'
+                || (state.profile.account_class === 'master')
+                || (state.profile.account_class === 'support')
+              )
+                && pGroup
+                && (!pGroup.toLowerCase().includes('*all'))
+                && (!pGroup.includes('~')) &&
+                <React.Fragment>
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                    <Button
+                      onClick={() => {
+                        setConfirmMessage(`Confirm removing ${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                        setConfirmPerson(superSizeData.person_id);
+                        setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === superSizeData.person_id; }));
+                        setDeletePending(true);
+                        setForceRedisplay(false);
+                      }}
+                      startIcon={<DeleteIcon size='small' />}
+                      className={classes.AVAButton}
+                      style={{ fontSize: 'small', color: 'red' }}
+                    >
+                      {`Remove ${superSizeData.name.first || superSizeData.display_name} from the group`}
+                    </Button>
+                  </Box>
+                  {(superSizeData.role === 'member') ?
+                    <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                      <Button
+                        onClick={async () => {
+                          await addAdministrator(superSizeData.person_id, pGroup);
+                          setForceRedisplay(false);
+                        }}
+                        startIcon={<AddCircleOutlineIcon size='small' />}
+                        className={classes.AVAButton}
+                        style={{ fontSize: 'small' }}
+                      >
+                        {`Make ${superSizeData.name.first || superSizeData.display_name} an Administrator of the group`}
+                      </Button>
+                    </Box>
+                    :
+                    <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                      <Button
+                        onClick={async () => {
+                          await removeAdministrator(superSizeData.person_id, pGroup);
+                          setForceRedisplay(false);
+                        }}
+                        startIcon={<RemoveCircleOutlineIcon size='small' />}
+                        className={classes.AVAButton}
+                        style={{ fontSize: 'small', color: 'red' }}
+                      >
+                        {`Remove ${superSizeData.name.first || superSizeData.display_name} as an Administrator of the group`}
+                      </Button>
+                    </Box>
+                  }
+                </React.Fragment>
+              }
+              <Box display='flex' className={classes.giveSpace} flexDirection='row' justifyContent='center' alignItems='center' >
                 {(makeContactLines(superSizeData.messaging, superSizeData.preferred_method, superSizeData)
                   .map((prefLine, prefIndex) => (
                     <React.Fragment key={`Frag_${prefIndex}`}>
@@ -867,100 +985,35 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     </React.Fragment>
                   )))}
               </Box>
-              {(pRole === 'admin' || pRole === 'responsible') &&
-                <Box display='flex' className={classes.giveSpaceBoth} flexDirection='row' justifyContent='center' alignItems='center' >
-                  <Typography key={`HeadLine-superSize`} className={classes.adHead}>{'Administrator Options'}</Typography>
-                </Box>
-              }
-              {(pRole === 'admin' || pRole === 'responsible') &&
-                <React.Fragment>
-                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-                    <Typography key={`HeadLine-superSize`} className={classes.adName}>{superSizeData.person_id}</Typography>
-                  </Box>
-                  <Box display='flex' flexDirection='row' className={classes.giveSpace} justifyContent='center' alignItems='center' >
-                    <Button
-                      onClick={async () => {
-                        await switchActiveAccount(
-                          state.session,
-                          state.session.client_id,
-                          {
-                            id: superSizeData.person_id,
-                            name: `${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name}`
-                          }
-                        );
-                      }}
-                      startIcon={<SwapHorizIcon size='small' />}
-                      className={classes.AVAButton}
-                      style={{ fontSize: 'small' }}
-                    >
-                      {'Switch to'}
-                    </Button>
-                  </Box>
-                </React.Fragment>
-              }
-              {(pRole === 'admin' || pRole === 'responsible')
-                && pGroup
-                && (!pGroup.toLowerCase().includes('*all'))
-                && (!pGroup.includes('~')) &&
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-                  <Button
-                    onClick={() => {
-                      setConfirmMessage(`Confirm removing ${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                      setConfirmPerson(superSizeData.person_id);
-                      setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === superSizeData.person_id; }));
-                      setDeletePending(true);
-                      setForceRedisplay(false);
-                    }}
-                    startIcon={<DeleteIcon size='small' />}
-                    className={classes.AVAButton}
-                    style={{ fontSize: 'small', color: 'red' }}
-                  >
-                    {`Remove ${superSizeData.name.first || superSizeData.display_name} from the group`}
-                  </Button>
-                </Box>
-              }
-              {(pRole === 'admin' || pRole === 'responsible')
-                && pGroup
-                && (!pGroup.toLowerCase().includes('*all'))
-                && (!pGroup.includes('~'))
-                && (superSizeData.role === 'member') &&
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-                  <Button
-                    onClick={async () => {
-                      await addAdministrator(superSizeData.person_id, pGroup);
-                      setForceRedisplay(false);
-                    }}
-                    startIcon={<AddCircleOutlineIcon size='small' />}
-                    className={classes.AVAButton}
-                    style={{ fontSize: 'small' }}
-                  >
-                    {`Make ${superSizeData.name.first || superSizeData.display_name} an Administrator of the group`}
-                  </Button>
-                </Box>
-              }
-              {(pRole === 'admin' || pRole === 'responsible')
-                && pGroup
-                && (!pGroup.toLowerCase().includes('*all'))
-                && (!pGroup.includes('~'))
-                && (superSizeData.role !== 'member') &&
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-                  <Button
-                    onClick={async () => {
-                      await removeAdministrator(superSizeData.person_id, pGroup);
-                      setForceRedisplay(false);
-                    }}
-                    startIcon={<RemoveCircleOutlineIcon size='small' />}
-                    className={classes.AVAButton}
-                    style={{ fontSize: 'small', color: 'red' }}
-                  >
-                    {`Remove ${superSizeData.name.first || superSizeData.display_name} as an Administrator of the group`}
-                  </Button>
-                </Box>
-              }
+              <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+                <Button
+                  className={classes.AVAButton}
+                  style={{ color: 'red' }}
+                  startIcon={<CloseIcon size="small" />}
+                  onClick={() => {
+                    setshowSuperSize(false);
+                    setForceRedisplay(!forceRedisplay);
+                  }}
+                >
+                  {'Back'}
+                </Button>
+                <Button
+                  className={classes.AVAButton}
+                  startIcon={<SendIcon size="small" />}
+                  onClick={() => {
+                    setPromptForMessage(true);
+                    setMessageType('');
+                    let rKey = `${superSizeData.name.first} ${superSizeData.name.last}:${superSizeData.person_id}`;
+                    setRecipient(rKey.trim());
+                  }}
+                >
+                  {`AVA Msg`}
+                </Button>
+              </Box>
             </Box>
           </List>
         }
       </Dialog >
-    </React.Fragment>
+    </React.Fragment >
   );
 };

@@ -410,6 +410,29 @@ export async function getRole(pGroup, pPerson) {
   else { return 'non-member'; }
 }
 
+export function determineClass(gList, group_assignments) {
+  let groupFlavor = {};
+  let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'guest', 'vendor', 'other'];
+  if (group_assignments) {
+    Object.keys(group_assignments).forEach(t => {
+      let groups = makeArray(group_assignments[t]);
+      groups.forEach(g => {
+        if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = groupHierarchy.indexOf(t); }
+        else { groupFlavor[g] = Math.min(groupHierarchy.indexOf(t), groupFlavor[g]); }
+      });
+    });
+  }
+  let member_of = groupHierarchy.length;
+  let gL = gList.length;
+  for (let x = 0; x < gL; x++) {
+    let g = gList[x];
+    if (groupFlavor.hasOwnProperty(g)) {
+      member_of = Math.min(member_of, groupFlavor[g]);
+    }
+  }
+  return groupHierarchy[member_of];
+}
+
 export async function getMemberList(pGroups, pClient_id, options) {
   // returns an array of peopleRecs that are members of the group(s) in pGroups
   // if you happen to include a person_id in the pGroups list, getMemberList returns those too
