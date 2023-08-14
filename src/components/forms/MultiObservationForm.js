@@ -42,6 +42,8 @@ import Radio from '@material-ui/core/Radio';
 import AVAConfirm from './AVAConfirm';
 import { mealTicketFormat, prepareMessage, sendMessages } from '../../util/AVAMessages';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   textLine: {
     fontSize: theme.typography.fontSize * 1.3,
@@ -74,18 +76,6 @@ const useStyles = makeStyles(theme => ({
     marginTop: 0,
     paddingLeft: 0,
     paddingRight: 50,
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
   },
   descText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -215,6 +205,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const { enqueueSnackbar, closeSnackbar } = useSnackbar();
   const { state } = useSession();
@@ -566,15 +557,25 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let response = '';
       const snackAction = (
         <React-Fragment>
-          <Button className={classes.AVAButton}
-            style={{ color: 'green' }} onClick={() => { response = 'use'; resolve(response); }}>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'use'; resolve(response); }}
+          >
             Use the order
           </Button>
-          <Button className={classes.AVAButton}
-            style={{ color: 'red' }} onClick={() => { response = 'delete'; resolve(response); }}>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'delete'; resolve(response); }}
+          >
             Delete the order
           </Button>
-          <Button className={classes.AVAButton} onClick={() => { response = 'keep'; resolve(response); }}>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'blue', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'keep'; resolve(response); }}
+          >
             Keep the order and create another one, too
           </Button>
         </React-Fragment>
@@ -1479,8 +1480,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
-                    className={classes.AVAButton}
-                    style={{ color: 'red' }}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
                     onClick={() => {
                       ((factType === 'list') ? onClose() : setCancelPending(true));
                     }}
@@ -1491,8 +1493,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   {(!factType || (factType !== 'list')) &&
                     <React-Fragment>
                       <Button
-                        className={classes.AVAButton}
-                        style={{ color: 'green' }}
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'green', color: 'white' }}
+                        size='small'
                         onClick={() => {
                           let [cStatus, response] = makeConfirm(dataRows);
                           setConfirmPrompt(response);
@@ -1503,7 +1506,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         {'Confirm/Send'}
                       </Button>
                       <Button
-                        className={classes.AVAButton}
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'blue', color: 'white' }}
+                        size='small'
                         onClick={() => {
                           setMorePeople(true);
                         }}

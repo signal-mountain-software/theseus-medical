@@ -26,6 +26,8 @@ import SendMessageDialog from '../dialogs/SendMessageDialog';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useSession from '../../hooks/useSession';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   containerBox: {
     marginTop: theme.spacing(3),
@@ -35,7 +37,7 @@ const useStyles = makeStyles(theme => ({
   },
   contentBox: {
     minWidth: '100%',
-    paddingLeft: theme.spacing(1),
+    paddingLeft: theme.spacing(3),
   },
   dialogBox: {
     paddingTop: theme.spacing(1),
@@ -55,18 +57,6 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '100px',
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
   },
   buttonArea: {
     justifyContent: 'center',
@@ -126,6 +116,8 @@ export default ({
 }) => {
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
+
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
@@ -489,6 +481,7 @@ export default ({
                 <Box
                   key={'qRow'}
                   display={"flex"}
+                  marginTop={'16px'}
                   className={classes.qualOption}
                   flexDirection='column'
                   justifyContent="center"
@@ -541,7 +534,8 @@ export default ({
               alignItems='center' key={'qrOpt_attachmentbox'}
             >
               <Button
-                className={classes.AVAButton}
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'blue', color: 'white' }}
                 size='small'
                 startIcon={<CloudUploadIcon />}
                 onClick={handleFileUpload}
@@ -563,8 +557,8 @@ export default ({
             <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
               {allowCancel &&
                 <Button
-                  className={classes.AVAButton}
-                  style={{ color: 'red' }}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'red', color: 'white' }}
                   size='small'
                   onClick={() => {
                     onCancel();
@@ -577,8 +571,8 @@ export default ({
             </Box>
             <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
               <Button
-                className={classes.AVAButton}
-                style={{ color: 'green' }}
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
                 size='small'
                 disabled={noInput()}
                 onClick={async () => {

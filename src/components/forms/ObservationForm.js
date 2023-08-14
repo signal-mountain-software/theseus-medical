@@ -32,6 +32,8 @@ import MenuItem from '@material-ui/core/MenuItem';
 
 import AVAConfirm from './AVAConfirm';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   textLine: {
     fontSize: theme.typography.fontSize * 1.3,
@@ -171,24 +173,13 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
   }
 }));
 
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
   const { enqueueSnackbar } = useSnackbar();
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -1000,7 +991,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   {reactData?.textInput?.requestType && !(['meal'].includes(reactData.textInput.requestType)) &&
                     <React.Fragment>
                       <Button
-                        className={classes.AVAButton}
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'blue', color: 'white' }}
                         startIcon={<CloudUploadIcon />}
                         size='small'
                         onClick={handleFileUpload}
@@ -1021,8 +1013,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     </React.Fragment>
                   }
                   <Button
-                    className={classes.AVAButton}
-                    style={{ color: 'red' }}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
                     size='small'
                     onClick={() => {
                       if (factType === 'list') { onClose(); }
@@ -1038,8 +1030,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   </Button>
                   {(!factType || (factType !== 'list')) &&
                     <Button
-                      className={classes.AVAButton}
-                      style={{ color: 'green' }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color:'white' }}
                       size='small'
                       onClick={() => {
                         let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, reactData.textInput);
