@@ -87,9 +87,11 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       if (clientGroupAssignments && clientGroupAssignments.customization_value) {
         Object.keys(clientGroupAssignments.customization_value).forEach(t => {
           let groups = makeArray(clientGroupAssignments.customization_value[t]);
+          let foundAt = groupHierarchy.indexOf(t);
+          if (foundAt < 0) { foundAt = groupHierarchy.length - 1; }
           groups.forEach(g => {
-            if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = groupHierarchy.indexOf(t); }
-            else { groupFlavor[g] = Math.min(groupHierarchy.indexOf(t), groupFlavor[g]); }
+            if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = foundAt; }
+            else { groupFlavor[g] = Math.min(foundAt, groupFlavor[g]); }
           });
         });
       }
@@ -416,9 +418,11 @@ export function determineClass(gList, group_assignments) {
   if (group_assignments) {
     Object.keys(group_assignments).forEach(t => {
       let groups = makeArray(group_assignments[t]);
+      let foundAt = groupHierarchy.indexOf(t);
+      if (foundAt < 0) { foundAt = groupHierarchy.length - 1; }
       groups.forEach(g => {
-        if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = groupHierarchy.indexOf(t); }
-        else { groupFlavor[g] = Math.min(groupHierarchy.indexOf(t), groupFlavor[g]); }
+        if (!groupFlavor.hasOwnProperty(g)) { groupFlavor[g] = foundAt; }
+        else { groupFlavor[g] = Math.min(foundAt, groupFlavor[g]); }
       });
     });
   }
