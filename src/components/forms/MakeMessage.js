@@ -34,7 +34,8 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0
   },
   contentBox: {
-    minWidth: '100%'
+    minWidth: '100%',
+    paddingLeft: theme.spacing(1),
   },
   dialogBox: {
     paddingTop: theme.spacing(1),
@@ -435,20 +436,30 @@ export default ({
                   />
                 }
                 {makeArray(promptText).map((p, x) =>
-                  <TextField
-                  classes={{ root: classes.idText }}
-                  id={`prompt-msg`}
-                  key={`prompt-msg_${x}`}
-                  fullWidth
-                    multiline
-                    ref={(x === (makeArray(promptText).length - 1)) ? setFocus : null}
-                  helperText={p}
-                  value={reactData.textInput[x] || ''}
-                  onChange={(event) => {
-                    handleChangeTextInput(event, x);
-                  }}
-                  autoComplete='off'
-                  />
+                  <Box display='flex'
+                    flexDirection='row'
+                    paddingLeft={2}
+                    paddingRight={2}
+                    minWidth={'100%'}
+                    border={reactData.textInput[x] ? 1 : 0}
+                    borderRadius={'16px'}
+                    key={'fullRow' + x}
+                  >
+                    <TextField
+                      classes={{ root: classes.idText }}
+                      id={`prompt-msg`}
+                      key={`prompt-msg_${x}`}
+                      fullWidth
+                      multiline
+                      ref={(x === (makeArray(promptText).length - 1)) ? setFocus : null}
+                      helperText={p}
+                      value={reactData.textInput[x] || ''}
+                      onChange={(event) => {
+                        handleChangeTextInput(event, x);
+                      }}
+                      autoComplete='off'
+                    />
+                  </Box>
                 )}
                 {reactData.multipleRecipients &&
                   <Box

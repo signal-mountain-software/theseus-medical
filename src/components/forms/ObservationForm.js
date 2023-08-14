@@ -114,7 +114,7 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 1,
   },
   freeInput: {
-    marginLeft: 20,
+    marginLeft: 0,
     paddingLeft: 0,
     paddingRight: 0,
     flexGrow: 2,
@@ -124,13 +124,16 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
   inputRow: {
-    marginTop: theme.spacing(1.5),
+    marginTop: theme.spacing(0.75),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
+    marginBottom: theme.spacing(0.75),
   },
   listItem: {
+    marginTop: theme.spacing(0.75),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(0.75),
   },
   page: {
     height: 950,
@@ -139,7 +142,7 @@ const useStyles = makeStyles(theme => ({
     marginTop: 0,
     marginLeft: theme.spacing(3),
     marginRight: theme.spacing(2),
-    marginBottom: 0,
+    marginBottom: theme.spacing(0.9375),
     fontSize: theme.typography.fontSize * 0.8
   },
   qualItem: {
@@ -232,9 +235,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   /* ~time:<text>                | prompt for time response with <text>     | ~time:What time would you like your meal?                */
   /* ~date:<text>                | prompt for date response with <text>     | ~date:What date would you like your meal?                */
 
-  /* special cases...
-  /* ~+<key>~<value>             | use value only when <key> is selected    | ~+Filet Mignon~~!How would you like your filet cooked?      */
-
   let displayRowList = [];
   let checkbox = true;
   let ignore = false;
@@ -300,7 +300,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       // This handles any row without a leading "~"
       // These will be checkbox fields UNLESS a previous instruction turned checkbox OFF (~[checkbox=OFF])
       if (instruction[0]) {
-        displayRowList.push({
+        let rObj = {
           checkbox,
           required,
           text: instruction[0],
@@ -310,7 +310,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           input: false,
           bold: displayBold,
           italic: displayItalic
-        });
+        };
+        displayRowList.push(rObj);
         // default the checkbox to checked if either:
         //   a previous instruction set the default for all checkboxes to ON (~[default=checked]), OR
         //   a passed in default for this item instructs AVA to set the checkbox ON
@@ -327,14 +328,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       //     "~lambda:ServiceRequestMaintenance" or
       //     "~prompt:Notes for the Dining Staff..."
       if (instruction[2]) {
-        displayRowList.push({
+        let rObj = {
           checkbox: (instruction[1].includes('withCheckBox')),
           required: required || (instruction[1].includes('required')),
           text: instruction[2],
           oKey: getKey(instruction[2]),
           desc: getDescription(instruction[2]),
           input: instruction[1]
-        });
+        };
+        displayRowList.push(rObj);
         if (dValue) { defaultObj[instruction[2]] = dValue; }
         if (defaultObj.hasOwnProperty(`private~${instruction[2]}`)) {
           if (!reactData.textInput) { reactData.textInput = {}; }
@@ -406,7 +408,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         oItem.links.display_value.forEach(l => {
           workDataRows.links[l.display] = l.link;
-        })
+        });
       }
     }
     setDataRows(workDataRows);
@@ -591,6 +593,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     hiddenFileInput.current.click();
   };
 
+  function textIsPresent(fieldName) {
+    return (reactData.textInput
+      && (Object.keys(reactData.textInput).length > 0)
+      && reactData.textInput[fieldName]);
+  }
+
   async function handleSaveFile(pTarget) {
     let pType = pTarget.type;
     let s3Resp = await s3
@@ -698,18 +706,22 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               </MenuList>
             </Menu>
           </Box>
+          {/* Selections */}
           <Paper component={Box} className={classes.page} overflow='auto' square>
             <List  >
               {dataRows.displayRows.map((this_item, this_index) => (
                 <Box display='flex'
                   flexDirection='column'
-                  margin={isChecked(this_item) ? 2 : 0}
-                  border={isChecked(this_item) ? 1 : 0}
+                  marginLeft={(this_item.checkbox || this_item.input) ? 2 : 0}
+                  marginRight={2}
+                  border={(isChecked(this_item) || textIsPresent(this_item.text)) ? 1 : 0}
+                  borderRadius={'16px'}
                   key={'fullRow' + this_index}
                 >
                   <Box
                     display='flex'
                     flexDirection='row'
+                    flexWrap='wrap'
                     key={'row' + this_index}
                     className={this_item.input ? classes.inputRow : classes.listItem}
                     justifyContent='flex-start'
@@ -743,41 +755,37 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         }}
                       />
                     }
-                    <Typography
-                      className={this_item.header ? classes.headerLine : classes.textLine}
-                    >
-                      {this_item.bold
-                        ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
-                        : (this_item.italic ? <i>{this_item.text}</i> : `${this_item.text}`)}
-                    </Typography>
+                    {!this_item.input &&
+                      <Typography
+                        className={this_item.header ? classes.headerLine : classes.textLine}
+                      >
+                        {this_item.bold
+                          ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
+                          : (this_item.italic ? <i>{this_item.text}</i> : `${this_item.text}`)}
+                      </Typography>
+                    }
                     {this_item.input &&
                       <TextField
                         className={classes.freeInput}
                         id={'text' + this_index}
                         variant={'standard'}
                         key={'text' + this_index}
+                        helperText={this_item.text}
                         multiline
                         onKeyPress={(event) => {
                           onCheckEnter(event, this_item);
                         }}
                         onChange={(event) => {
-                          if (!reactData.textInput || (Object.keys(reactData.textInput).length === 0)) {
-                            let tempText = {};
-                            tempText[this_item.text] = event.target.value;
-                            setReactData(reactData);
-                            setForceRedisplay(!forceRedisplay);
-                          }
-                          else {
-                            reactData.textInput[this_item.text] = event.target.value;
-                            setReactData(reactData);
-                            setForceRedisplay(!forceRedisplay);
-                          }
+                          if (!reactData.textInput) { reactData.textInput = {}; }
+                          reactData.textInput[this_item.text] = event.target.value;
+                          setReactData(reactData);
+                          setForceRedisplay(!forceRedisplay);
                         }}
                         onBlur={(event) => {
                           onCheckEnter(event, this_item);
                         }}
                         autoComplete='off'
-                        value={(reactData.textInput && (Object.keys(reactData.textInput).length > 0)) ? reactData.textInput[this_item.text] : ''}
+                        value={textIsPresent(this_item.text) ? reactData.textInput[this_item.text] : ''}
                       />
                     }
                   </Box>
@@ -844,7 +852,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 </Box>
               ))}
             </List>
-            { /* Attachment List */}
+            { /* Show list of already uploaded attachments (if applicable) */}
             {(reactData.attachmentList.length > 0) &&
               <Box display='flex' flexDirection='column' pl={'24px'} justifyContent='flex-start'
                 alignItems='flex-start' key={'qrOpt_attachmentlist'}
