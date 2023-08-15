@@ -1129,9 +1129,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               {(window.location.href.split('//')[1].slice(0, 1).toUpperCase() !== 'T') &&
                 <MenuItem
                   onClick={async () => {
-                    let l = window.location.href;
-                    let n = l.replace('dev', 'test');
-                    window.location.replace(`${n.split('?')[0]}?rel=${new Date().getTime()}`);
+                    window.location.replace(`https://test.smsoftware.io?rel=${new Date().getTime()}`);
                   }}>
                   <Box
                     display='flex' flexDirection='row' alignItems={'center'}
@@ -1139,6 +1137,20 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   >
                     <NewReleasesOutlinedIcon />
                     <Typography className={classes.popUpMenuRow} >{'Use Beta Version'}</Typography>
+                  </Box>
+                </MenuItem>
+              }
+              {(window.location.href.split('//')[1].slice(0, 1).toUpperCase() === 'T') &&
+                <MenuItem
+                  onClick={async () => {
+                    window.location.replace(`https://dev.smsoftware.io?rel=${new Date().getTime()}`);
+                  }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowRefresh'}
+                  >
+                    <NewReleasesOutlinedIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Use Public Version'}</Typography>
                   </Box>
                 </MenuItem>
               }
