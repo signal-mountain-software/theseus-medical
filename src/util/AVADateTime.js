@@ -15,15 +15,16 @@ export function makeDate(pInput) {
     if (!pInput) {
         return {
             'error': true,
-            'relative': '',
-            'absolute': '',
-            'oaDate': '',
+            'relative': '',  // next Tuesday
+            'absolute': '',  // Tue, Aug 22, 2023
+            'dateOnly': '',  // August 22
+            'oaDate': '',   // on Tue, Aug 22, 2023 at 2:45pm
             'date': null,
             'timestamp': 0,
             'ymd': '2099.01.01',
             'obs': '2099.1.1',
             'numeric': 20990101,
-            'dayPart': 'day'
+            'dayPart': 'day'   // afternoon
         };
     }
     let targetDateStamp, targetDate;
@@ -67,6 +68,7 @@ export function makeDate(pInput) {
                 'error': true,
                 'relative': `${pInput} is not a valid date`,
                 'absolute': `${pInput} is not a valid date`,
+                'dateOnly': `${pInput} is not a valid date`,
                 'oaDate': `${pInput} is not a valid date`,
                 'date': null,
                 'timestamp': 0,
@@ -78,7 +80,7 @@ export function makeDate(pInput) {
         }
     }
     let currentDate = new Date();
-    let relDate, absDate, oaDate;
+    let relDate, absDate, oaDate, dateOnly;
     // Make relative date
     let hours = 60 * 60 * 1000;
     let beginningOfCurrentDay = currentDate.setHours(0, 0, 0, 0);
@@ -116,6 +118,7 @@ export function makeDate(pInput) {
     }
     // Make absolute date
     absDate = `${targetDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
+    dateOnly = `${targetDate.toLocaleString([], { month: 'long', day: 'numeric' })}`;
     if (!relDate) { relDate = absDate; }
     if (targetDate.getFullYear() !== currentDate.getFullYear()) {
         absDate += ` ${targetDate.getFullYear()}`;
@@ -141,6 +144,7 @@ export function makeDate(pInput) {
         'error': false,
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
+        'dateOnly': dateOnly,
         'oaDate': titleCase(oaDate),
         'date': targetDate,
         'timestamp': targetDateStamp,
