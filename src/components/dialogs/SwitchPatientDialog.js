@@ -21,6 +21,8 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Typography from '@material-ui/core/Typography';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   formControl: {
     margin: 0,
@@ -101,6 +103,7 @@ export default ({ open, roles, onClose }) => {
   if (!multiClient && (selectedClient === '*none')) { setSelectedClient(Object.keys(accessList)[0]); }
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const handleClose = () => {
     if (session) {
@@ -271,8 +274,9 @@ export default ({ open, roles, onClose }) => {
       </Paper>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
-          className={classes.AVAButton}
-          style={{ color: 'red' }}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
           onClick={() => {
             if ((selectedClient === '*none') || (!multiClient)) {
               onClose();
