@@ -478,6 +478,7 @@ export async function formatRequestDetails(body, summaryType) {
 export async function mealTicketFormat(body) {
 
   // *********** GET ALL REQ THAT MATCH LOCAL_KEY IN THE BODY *********** //
+  let seat_key = body.tableNumberKey || 'Seat Assignment';
   if (!body.local_key) {
     let keyRequest = await getServiceRequests({
       request_id: body.request_id,
@@ -491,6 +492,17 @@ export async function mealTicketFormat(body) {
     client_id: body.client || body.client_id
   });
   if (requestList.length === 0) { return null; }
+  //  Sort the requests
+  requestList.sort((a, b) => {
+    let aSort, bSort;
+    if (a.original_request.textInput && a.original_request.textInput[seat_key]) { 
+      aSort = a.original_request.textInput[seat_key];
+    } 
+    if (b.original_request.textInput && b.original_request.textInput[seat_key]) {
+      bSort = b.original_request.textInput[seat_key];
+    }
+    return ((aSort < bSort) ? -1 : 1);
+  })
 
   // Prep the PDF output
   let htmlText = [];
@@ -585,7 +597,11 @@ export async function mealTicketFormat(body) {
     htmlText.push(`<p style="padding-top: 1.5em;">`);
     plainText.push(' ');
     style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
-    let outRequestor = titleCase(requestor);
+    let outSeat = '';
+    if (this_request.original_request.textInput && this_request.original_request.textInput[seat_key]) { 
+      outSeat = this_request.original_request.textInput[seat_key] + ' - ';
+    }
+    let outRequestor = outSeat + titleCase(requestor);
     pdfLine(outRequestor, page.font.size.medium, 'bold', 0, 1);
     htmlText.push(`<div style=${style}><b>${outRequestor}</b></div>`);
     plainText.push(outRequestor);
@@ -608,15 +624,20 @@ export async function mealTicketFormat(body) {
       }
     });
     for (let field in this_request.original_request.textInput) {
-      if (field !== table_key) {
+      if ((field !== table_key) && (field !== seat_key)) {
+        /*
         pdfLine(field, page.font.size.medium, 'normal');
         style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
         htmlText.push(`<div style=${style}>${field}</div>`);
         plainText.push(field);
-        pdfLine(this_request.original_request.textInput[field], page.font.size.small, 'normal', 1, -0.5);
-        style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
-        htmlText.push(`<div style=${style}><i>${this_request.original_request.textInput[field]}</i></div>`);
-        plainText.push(`--${this_request.original_request.textInput[field]}`);
+        */
+        let tLine = `>>> ${this_request.original_request.textInput[field]} <<<`; 
+        // pdfLine(tLine, page.font.size.small, 'normal', 1, -0.5);
+        pdfLine(tLine, page.font.size.medium, 'normal');
+        // style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
+        style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
+        htmlText.push(`<div style=${style}><i>${tLine}</i></div>`);
+        plainText.push(`--${tLine}`);
       }
     }
     htmlText.push(`</p>`);
