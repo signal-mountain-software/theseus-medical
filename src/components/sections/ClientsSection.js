@@ -1,5 +1,6 @@
 import React from 'react';
-import { titleCase, makeArray, sentenceCase } from '../../util/AVAUtilities';
+import { titleCase, sentenceCase } from '../../util/AVAUtilities';
+import { determineClass } from '../../util/AVAGroups';
 import Box from '@material-ui/core/Box';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useSession from '../../hooks/useSession';
@@ -100,11 +101,11 @@ export default ({ person, groupData, updateGroups }) => {
     };
     updateGroups(memberOf);
     if (!person.account_class || (person.account_class === '')) {
-      setAccountClass(determineClass(memberOf));
+      setAccountClass(determineClass(memberOf), state.session.group_assignments);
     }
     setForceRedisplay(!forceRedisplay);
   }
-
+/*
   function determineClass(gList) {
     let groupFlavor = {};
     let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'guest', 'vendor', 'other'];
@@ -127,7 +128,7 @@ export default ({ person, groupData, updateGroups }) => {
     }
     return groupHierarchy[member_of];
   }
-
+*/
   return (
     (forceRedisplay || true) &&
     <Section title='Groups' outlined>

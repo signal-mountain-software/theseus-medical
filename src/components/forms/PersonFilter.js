@@ -21,22 +21,12 @@ import CloseIcon from '@material-ui/icons/Close';
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   formControl: {
     margin: 0,
     paddingTop: 0,
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
   },
   noDisplay: {
     display: 'none',
@@ -109,6 +99,8 @@ export default ({
   const [selectedNames, setSelectedNames] = React.useState([]);
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
+
 
   const scrollValue = 20;
   var rowsWritten;
@@ -362,8 +354,9 @@ export default ({
       </Paper>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
-          className={classes.AVAButton}
-          style={{ color: 'red' }}
+          className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'red', color: 'white' }}
+          size='small'
           onClick={() => {
             onCancel();
           }}
@@ -373,8 +366,9 @@ export default ({
         </Button>
         {multiSelect &&
           <Button
-            className={classes.AVAButton}
-            style={{color: 'green'}}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
             onClick={() => {
               if (returnValue === 'object') { onSelect(checkList); }
               else { onSelect(Object.keys(checkList)); }

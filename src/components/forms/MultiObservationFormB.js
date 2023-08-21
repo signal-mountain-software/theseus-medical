@@ -6,15 +6,13 @@ import { listFromArray } from '../../util/AVAUtilities';
 import { getObservationOptions } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { putServiceRequest, getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
-import PersonFilter from '../forms/PersonFilter';
-import AVATextInput from '../forms/AVATextInput';
+import PersonFilter from './PersonFilter';
 import { useSnackbar } from 'notistack';
 
 import useSession from '../../hooks/useSession';
 import TextField from '@material-ui/core/TextField';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
-import Tooltip from '@material-ui/core/Tooltip';
 
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
@@ -25,8 +23,6 @@ import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
-import EditIcon from '@material-ui/icons/Edit';
-import NotesIcon from '@material-ui/icons/Notes';
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
 
 import HomeIcon from '@material-ui/icons/Home';
@@ -125,7 +121,7 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 1,
   },
   freeInput: {
-    marginLeft: 20,
+    marginLeft: theme.spacing(1),
     paddingLeft: 0,
     paddingRight: 0,
     flexGrow: 2,
@@ -150,18 +146,18 @@ const useStyles = makeStyles(theme => ({
   listTopRow: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
-    width: 'max-content'
   },
   listItemSticky: {
     marginLeft: theme.spacing(1),
     marginRight: 0,
     padding: theme.spacing(1),
     position: 'sticky',
-    background: 'lightgray',
+    //    background: 'lightgray',
     top: 0,
     opacity: 1,
     zIndex: 1,
-    width: 'max-content'
+    // width: 'max-content'
+    width: '90%'
   },
   page: {
     height: 950,
@@ -220,8 +216,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const [foreign_key, setForeignKey] = React.useState('');
   const [records2Update, setRecords2Update] = React.useState([]);
 
-  const [promptForText, setPromptForText] = React.useState({});
-
   const [textInput, setTextInput] = React.useState();
   const [initialLoadComplete, setLoadComplete] = React.useState();
   const [dataRows, setDataRows] = React.useState();
@@ -230,6 +224,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const [anchorEl, setAnchorEl] = React.useState(null);
 
   const [maxName, setMaxName] = React.useState(1);
+  const [selectedColumn, setSelectedColumn] = React.useState(0);
 
   const factType = fact.activity_key.split('.')[0];
 
@@ -463,16 +458,79 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
   }
 
-  function isChecked(pText) {
-    let numberOn = 0;
-    let numberOfPeople = Object.keys(dataRows.radioOn).length;
-    for (let person in dataRows.radioOn) {
-      if (dataRows.radioOn[person][pText]) { numberOn++; }
+  const handleChangeTextField = (vText, this_item, pPersonID) => {
+    if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
+    if (!dataRows.textValue.hasOwnProperty(pPersonID)) { dataRows.textValue[pPersonID] = {}; }
+    if (!vText || (vText === '')) {
+      handleTextExit(vText, this_item, pPersonID);
     }
-    if (numberOn === 0) { return 'none'; }
-    else if (numberOn < numberOfPeople) { return 'some'; }
-    else { return 'all'; }
-  }
+    else {
+      if (this_item.input === 'date') { handleDateExit(vText, this_item, pPersonID); }
+      else if (this_item.input === 'time') { handleTimeExit(vText, this_item, pPersonID); }
+      else if (this_item.input.toLowerCase() === 'promptall') { handleTextAll(vText, this_item); }  
+      else { handleTextExit(vText, this_item, pPersonID); }
+    }
+    setForceRedisplay(!forceRedisplay);
+    return;
+  };
+
+  const handleDateExit = async (vText, this_item, pPersonID) => {
+    let AVAdate = makeDate(vText);
+    dataRows.textValue[pPersonID][this_item.text] = AVAdate.absolute;
+    setDataRows(dataRows);
+    setForceRedisplay(!forceRedisplay);
+  };
+
+  const handleTimeExit = (vText, this_item, pPersonID) => {
+    let ampm = null;
+    if (vText.includes('p')) { ampm = 'pm'; }
+    else if (vText.includes('a')) { ampm = 'am'; };
+    let [hh$, mm$] = vText.split(':');
+    let hh = Number(hh$.replace(/\D+/g, ''));
+    let mm = 0;
+    if (hh > 100) {
+      if (!mm$) { mm = hh % 100; }
+      hh = Math.floor(hh / 100);
+    }
+    if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
+    if (mm > 59) {
+      let hAdd = Math.floor(mm / 60);
+      mm -= (hAdd * 60);
+      hh += hAdd;
+    }
+    if (hh >= 23) {
+      hh = hh % 24;
+    }
+    if (hh >= 12) {
+      hh -= 12;
+      ampm = 'pm';
+    }
+    if (hh === 0) {
+      hh = 12;
+      ampm = 'pm';
+    }
+    if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
+    dataRows.textValue[pPersonID][this_item.text] = `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
+    setDataRows(dataRows);
+    setForceRedisplay(!forceRedisplay);
+  };
+
+  const handleTextExit = (vText, this_item, pPersonID) => {
+    dataRows.textValue[pPersonID][this_item.text] = vText;
+    setDataRows(dataRows);
+    setForceRedisplay(!forceRedisplay);
+  };
+  
+  const handleTextAll = (vText, this_item) => {
+    dataRows.columnList.forEach(this_person => {
+      if (!dataRows.textValue.hasOwnProperty(this_person.person_id)) {
+        dataRows.textValue[this_person.person_id] = {};
+      }
+      dataRows.textValue[this_person.person_id][this_item.text] = vText;
+    });
+    setDataRows(dataRows);
+    setForceRedisplay(!forceRedisplay);
+  };
 
   function isQualChecked(pText, pPerson, pOption, pSelection) {
     if (!dataRows.hasOwnProperty('qualSelections')) { return false; }
@@ -484,26 +542,23 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   }
 
   function textPresent(pText, pPerson) {
-    if (!pPerson) {
-      for (let person in dataRows.radioOn) {
-        if (dataRows.textValue && dataRows.textValue[person] && dataRows.textValue[person][pText]
-          && (dataRows.textValue[person][pText].trim() !== '')) { return true; }
-      }
-    }
-    else {
-      if (dataRows.textValue && dataRows.textValue[pPerson] && dataRows.textValue[pPerson][pText]
-        && (dataRows.textValue[pPerson][pText].trim() !== '')) { return true; }
-    }
-    return false;
+    if (dataRows.textValue && dataRows.textValue[pPerson] && dataRows.textValue[pPerson][pText]
+      && (dataRows.textValue[pPerson][pText].trim() !== '')) { return true; }
+    else { return false; }
   }
 
   async function itemSelected(pPerson, pObs, pDisplayName) {
+    // They selected the radio button for the pObs.text for person = pPerson
+    // Load up qualSelections object with qualifier data
     dataRows.optNeeded = [];
     if ((!dataRows.radioOn[pPerson].hasOwnProperty(pObs.text))
       || (!dataRows.radioOn[pPerson][pObs.text])) {
+      // this pPerson was not previously checked off for pObs.text; check it off now 
       dataRows.radioOn[pPerson][pObs.text] = true;
+      // since it is checked off, figure out if there are any qualifiers associated with this pObs.text
       if (!dataRows.qualData) { dataRows.qualData = {}; }
       if (!dataRows.qualData[pObs.text]) {
+        // first time we've seen anybody check off this pObs.text in this session
         if (pObs.oKey) { dataRows.qualData[pObs.text] = await getObservationOptions(pObs.oKey); }
         else { dataRows.qualData[pObs.text] = []; }
       }
@@ -515,6 +570,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     }
     else {
+      // this pPerson was previously checked off for pObs.text; remove that
+      // we will leave any qualifier options that had been previously selected, principally
+      //    because if this was an error, you don't want to lose all the work you've
+      //    already done
       dataRows.radioOn[pPerson][pObs.text] = false;
     }
     setDataRows(dataRows);
@@ -603,6 +662,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const handleAddPersonToList = async (pPeople) => {
     let defaultChecked = { AVA: false };
     let qualChecked = {};
+    let textFields = {};
     let x = dataRows.columnList.length;
     let maxLength = maxName;
     for (let pID in pPeople) {
@@ -621,9 +681,27 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         };
         if (spliceAfter === 0) { dataRows.columnList[x++] = newColumn; }
         else { dataRows.columnList.splice(spliceAfter + 1, 0, newColumn); }
-        [defaultChecked, qualChecked] = await checkExistingOrders(this_id, display_name);
+        [defaultChecked, qualChecked, textFields] = await checkExistingOrders(this_id, display_name);
+        for (let key in textFields) {
+          if (!dataRows.textValue.hasOwnProperty(this_id)) {
+            dataRows.textValue[this_id] = {};
+          }
+          dataRows.textValue[this_id][key] = textFields[key];
+        }
         dataRows.radioOn[this_id] = Object.assign({}, defaultChecked);
         dataRows.qualSelections = Object.assign(dataRows.qualSelections, qualChecked);
+        for (let key in defaultChecked) {
+          if (defaultChecked[key]) {
+            if (!dataRows.qualData) { dataRows.qualData = {}; }
+            if (!dataRows.qualData[key]) {
+              let foundAt = dataRows.displayRows.findIndex(r => { return (r.text === key); })
+              if ((foundAt > -1) && dataRows.displayRows[foundAt].oKey) {
+                dataRows.qualData[key] = await getObservationOptions(dataRows.displayRows[foundAt].oKey);
+              }
+              else { dataRows.qualData[key] = []; }
+            }
+          }
+        }
         maxLength = Math.max(a.length, maxLength);
       }
       else {
@@ -646,9 +724,27 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           };
           if (spliceAfter === 0) { dataRows.columnList[x++] = newColumn; }
           else { dataRows.columnList.splice(spliceAfter + 1, 0, newColumn); }
-          [defaultChecked, qualChecked] = await checkExistingOrders(this_id, p.display_name);
+          [defaultChecked, qualChecked, textFields] = await checkExistingOrders(this_id, p.display_name);
+          for (let key in textFields) {
+            if (!dataRows.textValue.hasOwnProperty(this_id)) {
+              dataRows.textValue[this_id] = {};
+            }
+            dataRows.textValue[this_id][key] = textFields[key];
+          }
           dataRows.radioOn[this_id] = Object.assign({}, defaultChecked);
           dataRows.qualSelections = Object.assign(dataRows.qualSelections, qualChecked);
+          for (let key in defaultChecked) {
+            if (defaultChecked[key]) {
+              if (!dataRows.qualData) { dataRows.qualData = {}; }
+              if (!dataRows.qualData[key]) {
+                let foundAt = dataRows.displayRows.findIndex(r => { return (r.text === key); });
+                if ((foundAt > -1) && dataRows.displayRows[foundAt].oKey) {
+                  dataRows.qualData[key] = await getObservationOptions(dataRows.displayRows[foundAt].oKey);
+                }
+                else { dataRows.qualData[key] = []; }
+              }
+            }
+          }
           maxLength = Math.max(a.length, maxLength);
         };
       }
@@ -664,6 +760,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       checked: dataRows.checked,
       columnList: dataRows.columnList,
       qualSelections: dataRows.qualSelections,
+      qualData: dataRows.qualData,
       selectionList: dataRows.selectionList
     });
   };
@@ -672,6 +769,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     // Does this person already have a request for this requestype amd foreignkey?
     let defaultChecked = { AVA: false };
     let qualChecked = {};
+    let textFields = {};
     let existingRequest = await getServiceRequests({
       client_id: pClient,
       foreign_key,
@@ -711,6 +809,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               }
             }
           };
+          if (existingRequest[0].original_request.hasOwnProperty('textInput')) {
+            textFields = Object.assign({}, existingRequest[0].original_request.textInput);
+          }
           break;
         }
         case 'delete': {
@@ -725,11 +826,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
 
     }
-    return [defaultChecked, qualChecked];
+    return [defaultChecked, qualChecked, textFields];
   }
 
   function isRadioSelected(person, item) {
-    return (dataRows.radioOn[person].hasOwnProperty(item) && dataRows.radioOn[person][item]);
+    let returnValue = (dataRows.radioOn[person].hasOwnProperty(item) && dataRows.radioOn[person][item]);
+    return returnValue;
+  }
+
+  function personAppearsTwiceInTheList(personID) {
+    return personID.includes('+++');
+  }
+
+  function personOccurrenceNumber(personID) {
+    return personID.split('+++')[1];
   }
 
   async function sendRequests(pData) {
@@ -889,19 +999,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (records2Update.length > 0) { await updateServiceRequest(records2Update); }
   }
 
-  function displayValue(prompt) {
-    if (!dataRows.hasOwnProperty('textValue')) { return ''; }
-    if (!dataRows.textValue.hasOwnProperty('*all*')) { return ''; }
-    if (!dataRows.textValue['*all*'].hasOwnProperty(prompt)) { return ''; }
-    return dataRows.textValue['*all*'][prompt];
-  }
-
   function makeConfirm(pData) {
     let warningsExist = false;
     let dataExists = false;
     let warningSection = [' ', `[bold][italic]There are no selections for:`, ' '];
     let responseArray = [' ', `[bold][italic]AVA will send the following:`];
     let everyoneText = [];
+    let promptAllFields = [];
     if (pData.textValue && pData.textValue.hasOwnProperty('*all*')) {
       Object.keys(pData.textValue['*all*']).forEach(prompt => {
         everyoneText.push(`[indent=1]${prompt}: ${pData.textValue['*all*'][prompt]}`);
@@ -928,21 +1032,37 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         return;
       });
+      pData.displayRows.forEach(d => {
+        if ((typeof(d.input) === 'string') && d.input.toLowerCase() === 'promptall') {
+          if (!promptAllFields.includes(d.text)) {
+            promptAllFields.push(d.text);
+            let allRecorded = false;
+            Object.keys(pData.textValue).forEach(person => {
+              if (!allRecorded && pData.textValue[person][d.text] && (pData.textValue[person][d.text] !== '')) {
+                responseArray.push(' ', `${d.text}: ${pData.textValue[person][d.text]}`);
+                allRecorded = true;
+              }
+            });
+          }
+        }
+      })
       if (radioChecked.length > 0) {
         dataExists = true;
         responseArray.push(` `);
-        responseArray.push(`[italic]${c.display_name}${c.person_id.includes('+++') ? (' (' + c.person_id.split('+++')[1] + ')') : ''}`);
+        responseArray.push(`[italic]${c.display_name}${personAppearsTwiceInTheList(c.person_id) ? (' (' + personOccurrenceNumber(c.person_id) + ')') : ''}`);
         responseArray.push(`[indent=1]${listFromArray(radioChecked)}`);
       }
       let noText = true;
       if (pData.textValue && pData.textValue.hasOwnProperty(c.person_id)) {
         Object.keys(pData.textValue[c.person_id]).forEach(textIn => {
-          if (pData.textValue[c.person_id][textIn].trim() !== '') {
+          if (!promptAllFields.includes(textIn) && (pData.textValue[c.person_id][textIn].trim() !== '')) {
             dataExists = true;
             noText = false;
-            if (radioChecked.length === 0) {
+            let headerAlreadyPrinted = false;
+            if ((radioChecked.length === 0) && !headerAlreadyPrinted) {
+              headerAlreadyPrinted = true;
               responseArray.push(` `);
-              responseArray.push(`[italic]${c.display_name}${c.person_id.includes('+++') ? (' (' + c.person_id.split('+++')[1] + ')') : ''}`);
+              responseArray.push(`[italic]${c.display_name}${personAppearsTwiceInTheList(c.person_id) ? (' (' + personOccurrenceNumber(c.person_id) + ')') : ''}`);
             }
             responseArray.push(`[indent=1]${textIn}: ${pData.textValue[c.person_id][textIn]}`);
           }
@@ -950,7 +1070,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
       if ((radioChecked.length === 0) && (noText)) {
         warningsExist = true;
-        warningSection.push(`[italic]${c.display_name}${c.person_id.includes('+++') ? (' (' + c.person_id.split('+++')[1] + ')') : ''}`);
+        warningSection.push(`[italic]${c.display_name}${personAppearsTwiceInTheList(c.person_id) ? (' (' + personOccurrenceNumber(c.person_id) + ')') : ''}`);
       }
       else if (everyoneText.length > 0) {
         everyoneText.forEach(e => {
@@ -1048,16 +1168,130 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             </Menu>
           </Box>
 
+          { /* MAIN */}
+
+          { /* Person Selection Row */}
+          {(dataRows.columnList.length > 0) &&
+            <Box display='flex'
+              flexDirection='column'
+              margin={0}
+              borderBottom={2}
+              key={'peopleSelectionBox'}
+              className={classes.listItemSticky}
+            >
+              <Box
+                display='flex'
+                flexDirection='row'
+                key={'person'}
+                className={classes.listItem}
+                mb={0.5}
+                mt={0.5}
+                justifyContent='space-between'
+                alignItems='flex-end'
+              >
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  key={'rowP'}
+                  className={classes.listItem}
+                  justifyContent='flex-end'
+                  alignItems='flex-end'
+                >
+                  <Box
+                    display='flex'
+                    flexDirection='column'
+                    minWidth={50}
+                    maxWidth={50}
+                    marginBottom={'10px'}
+                    key={`radiobox-rowP-colSelect`}
+                    className={classes.listItem}
+                    justifyContent='flex-end'
+                    alignItems='flex-start'
+                  >
+                    <Typography key={`selectWord`} className={classes.smallTextLine}>{'Select'}</Typography>
+                  </Box>
+                  {dataRows.columnList.map((this_person, this_column) => (
+                    <Box
+                      display='flex'
+                      flexDirection='column'
+                      minWidth={50}
+                      maxWidth={50}
+                      key={`radiobox-rowP-col${this_column}`}
+                      className={classes.listItem}
+                      justifyContent='flex-end'
+                      alignItems='center'
+                    >
+                      {(dataRows.hasOwnProperty('textValue')
+                        && dataRows.textValue.hasOwnProperty(this_person.person_id)
+                        && dataRows.textValue[this_person.person_id].hasOwnProperty('Seat Assignment')
+                        && (dataRows.textValue[this_person.person_id]['Seat Assignment'])
+                        && (dataRows.textValue[this_person.person_id]['Seat Assignment'] !== ''))
+                        ?
+                        <Box
+                          mt={0}
+                          mb={1}
+                          minWidth={50}
+                          maxWidth={50}
+                          minHeight={50}
+                          maxHeight={50}
+                          display='flex'
+                          flexDirection='row'
+                          justifyContent='center'
+                          alignItems='center'
+                        >
+                          <Typography key={`number-${this_column}`} style={{ fontSize: '3em', fontWeight: 'bold' }}>
+                            { dataRows.textValue[this_person.person_id]['Seat Assignment'].slice(0,2) }
+                          </Typography>
+                        </Box>
+                        :
+                        <Box
+                          component="img"
+                          mt={0}
+                          mb={1}
+                          border={1}
+                          minWidth={50}
+                          maxWidth={50}
+                          minHeight={50}
+                          maxHeight={50}
+                          alt=''
+                          src={getImage(this_person.person_id)}
+                        />
+                      }
+                      {this_person.dName.slice(-1 * maxName).map((n, nx) => (
+                        <Typography key={`name-${nx}-${this_column}`} className={classes.smallTextLine}>{n.slice(0, 10)}</Typography>
+                      ))}
+                      <Radio
+                        key={`radio-rowP-col${this_column}`}
+                        checked={(selectedColumn === this_column)}
+                        value={(selectedColumn === this_column)}
+                        onClick={() => {
+                          setSelectedColumn(this_column);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                        disableRipple
+                        className={classes.radioButton}
+                        size='small'
+                      />
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            </Box>
+          }
+
           { /* Data rows */}
           <Paper component={Box} className={classes.page} overflow='auto' square>
             {(dataRows.columnList.length > 0) &&
               dataRows.displayRows.map((this_item, this_index) => (
                 <Box display='flex'
                   flexDirection='column'
-                  margin={((isChecked(this_item.text) !== 'none') || textPresent(this_item.text)) ? 2 : 0}
-                  border={((isChecked(this_item.text) !== 'none') || textPresent(this_item.text)) ? 2 : 0}
+                  borderRadius={'16px'}
+                  marginLeft={2}
+                  paddingBottom={1}
+                  paddingTop={1}
+                  border={(isRadioSelected(dataRows.columnList[selectedColumn].person_id, this_item.text) || textPresent(this_item.text, dataRows.columnList[selectedColumn].person_id)) ? 1 : 0}
                   key={'fullRow' + this_index}
-                  className={(this_index === 0 ? classes.listItemSticky : classes.listTopRow)}
+                  className={classes.listTopRow}
                 >
                   <Box
                     display='flex'
@@ -1066,261 +1300,116 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     className={classes.listItem}
                     mb={0.5}
                     mt={0.5}
-                    justifyContent='space-between'
+                    justifyContent='flex-start'
                     alignItems='center'
                   >
-                    <Box
-                      display='flex'
-                      flexDirection='row'
-                      minWidth={200}
-                      maxWidth={(this_item.header && (this_index > 0)) ? 2000 : 200}
-                      key={`descriptor-row${this_index}`}
-                      className={classes.listItem}
-                      justifyContent='flex-start'
-                      alignItems='center'
-                    >
-                      <Typography
-                        className={this_item.header ? (this_index === 0 ? classes.headerLineSticky : classes.headerLine) : classes.textLine}
-                      >
-                        {this_item.bold
-                          ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
-                          : (this_item.italic ? <i>{this_item.text}</i> : `${this_item.text}`)}
-                      </Typography>
-                    </Box>
-                    {(!this_item.header || (this_index === 0)) &&
+                    {this_item.checkbox &&
+                      <Radio
+                        key={`radio-row${this_index}`}
+                        checked={isRadioSelected(dataRows.columnList[selectedColumn].person_id, this_item.text)}
+                        value={isRadioSelected(dataRows.columnList[selectedColumn].person_id, this_item.text)}
+                        onClick={async () => {
+                          await itemSelected(dataRows.columnList[selectedColumn].person_id, this_item, dataRows.columnList[selectedColumn].display_name);
+                        }}
+                        disableRipple
+                        className={classes.radioButton}
+                        size='small'
+                      />
+                    }
+                    { /* Descriptive text for this row - every row has some */}
+                    {!this_item.input &&
                       <Box
                         display='flex'
                         flexDirection='row'
-                        key={'row' + this_index}
+                        key={`descriptor-row${this_index}`}
                         className={classes.listItem}
-                        justifyContent='flex-end'
+                        justifyContent='flex-start'
                         alignItems='center'
                       >
-                        {this_index !== 0 && this_item.checkbox &&
-                          <Box
-                            display='flex'
-                            flexDirection='row'
-                            minWidth={50}
-                            maxWidth={50}
-                            key={`radiobox-row${this_index}`}
-                            className={classes.listItem}
-                            justifyContent='center'
-                            alignItems='center'
-                          >
-                            <Checkbox
-                              checked={isChecked(this_item.text) === 'all'}
-                              indeterminate={isChecked(this_item.text) === 'some'}
-                              disableRipple
-                              key={'checkbox' + this_index}
-                              onClick={() => {
-                                // is every person currently check ON for this row?
-                                let someAreOff = false;
-                                for (let person in dataRows.radioOn) {
-                                  if (!dataRows.radioOn[person][this_item.text]) { someAreOff = true; }
-                                }
-                                for (let person in dataRows.radioOn) {
-                                  dataRows.radioOn[person][this_item.text] = someAreOff;
-                                }
-                                setDataRows(dataRows);
-                                setForceRedisplay(!forceRedisplay);
-                              }}
-                            />
-                          </Box>
-                        }
-                        {this_index !== 0 && !this_item.checkbox &&
-                          <Box
-                            display='flex'
-                            flexDirection='row'
-                            minWidth={50}
-                            maxWidth={(this_item.input !== 'promptall') ? 50 : 500}
-                            key={`pencilbox-row${this_index}`}
-                            className={classes.listItem}
-                            justifyContent='center'
-                            alignItems='center'
-                          >
-                            {(this_item.input !== 'promptall') &&
-                              <Checkbox
-                                disableRipple
-                                className={classes.hiddenItem}
-                                key={'pencilbox' + this_index}
-                                onClick={() => { }}
-                              />
-                            }
-                            {(this_item.input === 'promptall') &&
-                              <TextField
-                                className={classes.freeInput}
-                                id={'text' + this_index}
-                                variant={'standard'}
-                                key={'text' + this_index}
-                                multiline
-                                onFocus={async () => {
-                                  if (this_item.oKey) {
-                                    if (!dataRows.qualData || !dataRows.qualData[this_item.text]) {
-                                      if (!dataRows.qualData) { dataRows.qualData = {}; }
-                                      if (!dataRows.qualData[this_item.text]) { dataRows.qualData[this_item.text] = []; }
-                                      dataRows.qualData[this_item.text] = await getObservationOptions(this_item.oKey);
-                                    }
-                                    dataRows.optNeeded = [this_item.text, '*all', 'Everyone'];
-                                    setDataRows(dataRows);
-                                    setForceRedisplay(!forceRedisplay);
-                                  }
-                                }}
-                                onChange={(event) => {
-                                  if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
-                                  if (!dataRows.textValue.hasOwnProperty('*all*')) {
-                                    dataRows.textValue['*all*'] = {};
-                                  }
-                                  dataRows.textValue['*all*'][this_item.text] = event.target.value;
-                                  setDataRows(dataRows);
-                                  setForceRedisplay(!forceRedisplay);
-                                }}
-                                autoComplete='off'
-                                value={displayValue(this_item.text)}
-                              />
-                            }
-                          </Box>
-                        }
-                        {(this_index === 0) &&
-                          <Box
-                            display='flex'
-                            flexDirection='column'
-                            minWidth={50}
-                            maxWidth={50}
-                            key={`radiobox-row${this_index}`}
-                            className={classes.listItem}
-                            justifyContent='flex-end'
-                            alignItems='center'
-                          >
-                            <Typography className={classes.smallTextLine}>Select</Typography>
-                            <Typography className={classes.smallTextLine}>all</Typography>
-                          </Box>
-                        }
-                        {dataRows.columnList.map((this_person, this_column) => (
-                          (this_index === 0 ?
-                            <Box
-                              display='flex'
-                              flexDirection='column'
-                              minWidth={50}
-                              maxWidth={50}
-                              key={`radiobox-row${this_index}-col${this_column}`}
-                              className={classes.listItem}
-                              justifyContent='flex-end'
-                              alignItems='center'
-                            >
-                              {this_person.person_id.includes('+++') ?
-                                <Box
-                                  mt={0}
-                                  mb={1}
-                                  minWidth={50}
-                                  maxWidth={50}
-                                  minHeight={50}
-                                  maxHeight={50}
-                                  display='flex'
-                                  flexDirection='row'
-                                  justifyContent='center'
-                                  alignItems='center'
-                                >
-                                  <Typography key={`number-${this_column}`} style={{ fontSize: '3em', fontWeight: 'bold' }}>
-                                    {this_person.person_id.split('+++')[1]}
-                                  </Typography>
-                                </Box>
-                                :
-                                <Box
-                                  component="img"
-                                  mt={0}
-                                  mb={1}
-                                  minWidth={50}
-                                  maxWidth={50}
-                                  minHeight={50}
-                                  maxHeight={50}
-                                  alt=''
-                                  src={getImage(this_person.person_id)}
-                                />
-                              }
-                              {this_person.dName.slice(-1 * maxName).map((n, nx) => (
-                                <Typography key={`name-${nx}-${this_column}`} className={classes.smallTextLine}>{n}</Typography>
-                              ))}
-                            </Box>
-                            :
-                            (this_item.checkbox ?
-                              <Box
-                                display='flex'
-                                flexDirection='row'
-                                minWidth={50}
-                                maxWidth={50}
-                                key={`radiobox-row${this_index}-col${this_column}`}
-                                className={classes.listItem}
-                                justifyContent='center'
-                                alignItems='center'
-                              >
-                                <Radio
-                                  key={`radio-row${this_index}-col${this_column}`}
-                                  checked={isRadioSelected(this_person.person_id, this_item.text)}
-                                  value={isRadioSelected(this_person.person_id, this_item.text)}
-                                  onClick={async () => {
-                                    await itemSelected(this_person.person_id, this_item, this_person.display_name);
-                                  }}
-                                  disableRipple
-                                  className={classes.radioButton}
-                                  size='small'
-                                />
-                              </Box>
-                              :
-                              <Box
-                                display='flex'
-                                flexDirection='row'
-                                minWidth={50}
-                                maxWidth={50}
-                                key={`pencilbox-row${this_index}-col${this_column}`}
-                                className={classes.listItem}
-                                justifyContent='center'
-                                alignItems='center'
-                              >
-                                {(dataRows.hasOwnProperty('textValue')
-                                  && dataRows.textValue.hasOwnProperty(this_person.person_id)
-                                  && dataRows.textValue[this_person.person_id].hasOwnProperty(this_item.text)
-                                  && dataRows.textValue[this_person.person_id][this_item.text].trim() !== '')
-                                  ?
-                                  <Tooltip title={dataRows.textValue[this_person.person_id][this_item.text]}>
-                                    <Button
-                                      className={classes.pencilButton}
-                                      onClick={() => {
-                                        setPromptForText({
-                                          person: this_person.person_id,
-                                          prompt: this_item.text,
-                                          title: this_person.display_name,
-                                          value: dataRows.textValue[this_person.person_id][this_item.text]
-                                        });
-                                        setForceRedisplay(!forceRedisplay);
-                                      }}
-                                      startIcon={<NotesIcon size="small" />}
-                                    />
-                                  </Tooltip>
-                                  :
-                                  (this_item.input !== 'promptall' &&
-                                    <Button
-                                      className={classes.pencilButton}
-                                      onClick={() => {
-                                        setPromptForText(
-                                          {
-                                            person: this_person.person_id,
-                                            prompt: this_item.text,
-                                            title: this_person.display_name
-                                          }
-                                        );
-                                        setForceRedisplay(!forceRedisplay);
-                                      }}
-                                      startIcon={<EditIcon size="small" />}
-                                    />
-                                  )
-                                }
-                              </Box>
-                            )
-                          )
-                        ))}
+                        <Typography
+                          className={this_item.header ? classes.headerLine : classes.textLine}
+                        >
+                          {this_item.bold
+                            ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
+                            : (this_item.italic ? <i>{this_item.text}</i> : `${this_item.text}`)}
+                        </Typography>
                       </Box>
                     }
+                    { /* Text prompt line for this row - headers don't have this */}
+                    {this_item.input &&
+                      <TextField
+                        className={classes.freeInput}
+                        id={'text' + this_index}
+                        variant={'standard'}
+                        key={'text' + this_index}
+                        helperText={this_item.text}
+                        multiline
+                        onChange={event => (handleChangeTextField(event.target.value, this_item, dataRows.columnList[selectedColumn].person_id))}
+                        autoComplete='off'
+                        value={textPresent(this_item.text, dataRows.columnList[selectedColumn].person_id) ? dataRows.textValue[dataRows.columnList[selectedColumn].person_id][this_item.text] : ''}
+                      />
+                    }
                   </Box>
+                  {isRadioSelected(dataRows.columnList[selectedColumn].person_id, this_item.text) &&
+                    dataRows.qualData[this_item.text].map((qR, qRndx) => (
+                      <Box
+                        key={'qRow' + qRndx}
+                        display="flex"
+                        className={classes.qualOption}
+                        flexDirection='column'
+                        justifyContent="center"
+                      >
+                        <Box display='flex' flexDirection='column' justifyContent='center'
+                          alignItems='flex-start' key={'qrRow' + qR.title}>
+                          <Typography className={classes.qualText}>{qR.title}</Typography>
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                            alignItems='center' flexWrap='wrap' key={'qrOpt' + qR.title}
+                          >
+                            {qR.option && qR.option.map((opt, oX) => (
+                              <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                alignItems='center' key={'qrOpt2' + oX}
+                                onClick={() => {
+                                  optSelected(qR.title, opt.display);
+                                }}
+                              >
+                                {(!opt.type || (opt.type === 'checkbox')) &&
+                                  <React.Fragment>
+                                    <Checkbox
+                                      className={classes.radioButton}
+                                      size="small"
+                                      checked={isQualChecked(this_item.text, dataRows.columnList[selectedColumn].person_id, qR.title, opt.display)}
+                                    />
+                                    <Typography className={classes.radioText}>{opt.display}</Typography>
+                                  </React.Fragment>
+                                }
+                                {opt.type === 'prompt' &&
+                                  <React.Fragment>
+                                    <Checkbox
+                                      className={classes.radioButton}
+                                      size="small"
+                                      checked={dataRows.qualSelections[this_item.text][dataRows.optNeeded[1]][qR.title][opt.display]}
+                                    />
+                                    <TextField
+                                      className={classes.radioText}
+                                      id={'text' + qRndx + oX}
+                                      variant={'standard'}
+                                      key={'text' + qRndx + oX}
+                                      multiline
+                                      onChange={(event) => {
+                                        optSelected(qR.title, opt.display, event.target.value);
+                                      }}
+                                      autoComplete='off'
+                                    />
+                                    <Typography className={classes.radioText}>{opt.display}</Typography>
+                                  </React.Fragment>
+                                }
+                              </Box>
+                            ))}
+                          </Box>
+                        </Box>
+                      </Box>
+                    ))
+                  }
                 </Box>
               ))}
 
@@ -1340,96 +1429,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               allowRandom={true}
               multiSelect={true}
               returnValue={'object'}
-            />
-          }
-
-          { /* Prompt for Options */}
-          {(dataRows.optNeeded && dataRows.optNeeded.length > 0) &&
-            dataRows.qualData[dataRows.optNeeded[0]].map((qR, qRndx) => (
-              <Box
-                key={'qRow' + qRndx}
-                display="flex"
-                className={classes.qualOption}
-                flexDirection='column'
-                justifyContent="center"
-              >
-                <Box display='flex' flexDirection='column' justifyContent='center'
-                  alignItems='flex-start' key={'qrRow' + qR.title}>
-                  {qRndx === 0 &&
-                    <Typography className={classes.qualText}>{dataRows.optNeeded[0]} for {dataRows.optNeeded[2]}</Typography>
-                  }
-                  <Typography className={classes.qualText}>{qR.title}</Typography>
-                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                    alignItems='center' flexWrap='wrap' key={'qrOpt' + qR.title}
-                  >
-                    {qR.option && qR.option.map((opt, oX) => (
-                      <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                        alignItems='center' key={'qrOpt2' + oX}
-                        onClick={() => {
-                          optSelected(qR.title, opt.display);
-                        }}
-                      >
-                        {(!opt.type || (opt.type === 'checkbox')) &&
-                          <React.Fragment>
-                            <Checkbox
-                              className={classes.radioButton}
-                              size="small"
-                              checked={isQualChecked(dataRows.optNeeded[0], dataRows.optNeeded[1], qR.title, opt.display)}
-                            />
-                            <Typography className={classes.radioText}>{opt.display}</Typography>
-                          </React.Fragment>
-                        }
-                        {opt.type === 'prompt' &&
-                          <React.Fragment>
-                            <Checkbox
-                              className={classes.radioButton}
-                              size="small"
-                              checked={dataRows.qualSelections[dataRows.optNeeded[0]][dataRows.optNeeded[1]][qR.title][opt.display]} />
-                            <TextField
-                              className={classes.radioText}
-                              id={'text' + qRndx + oX}
-                              variant={'standard'}
-                              key={'text' + qRndx + oX}
-                              multiline
-                              onChange={(event) => {
-                                optSelected(qR.title, opt.display, event.target.value);
-                              }}
-                              autoComplete='off'
-                            />
-                            <Typography className={classes.radioText}>{opt.display}</Typography>
-                          </React.Fragment>
-                        }
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-              </Box>
-            ))
-          }
-
-
-
-          { /* Prompt for Text */}
-          {(Object.keys(promptForText).length > 0) &&
-            <AVATextInput
-              titleText={promptForText.title}
-              promptText={promptForText.prompt}
-              valueText={promptForText.value || ''}
-              buttonText='Save'
-              onCancel={() => {
-                setPromptForText({});
-                setForceRedisplay(!forceRedisplay);
-              }}
-              onSave={(updatedText) => {
-                if (!dataRows.hasOwnProperty('textValue')) { dataRows.textValue = {}; }
-                if (!dataRows.textValue.hasOwnProperty(promptForText.person)) {
-                  dataRows.textValue[promptForText.person] = {};
-                }
-                dataRows.textValue[promptForText.person][promptForText.prompt] = updatedText;
-                setDataRows(dataRows);
-                setPromptForText({});
-                setForceRedisplay(!forceRedisplay);
-              }}
             />
           }
 
@@ -1475,53 +1474,51 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
 
           { /* Command Area */}
-          {
-            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-              <Box display='flex' flexDirection='column'>
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+          <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+            <Box display='flex' flexDirection='column'>
+              <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'red', color: 'white' }}
+                  size='small'
+                  onClick={() => {
+                    ((factType === 'list') ? onClose() : setCancelPending(true));
+                  }}
+                  startIcon={<CloseIcon size="small" />}
+                >
+                  {'Exit'}
+                </Button>
+                {(!factType || (factType !== 'list')) &&
                   <Button
                     className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'red', color: 'white' }}
+                    style={{ backgroundColor: 'green', color: 'white' }}
                     size='small'
                     onClick={() => {
-                      ((factType === 'list') ? onClose() : setCancelPending(true));
+                      let [cStatus, response] = makeConfirm(dataRows);
+                      setConfirmPrompt(response);
+                      setConfirmStatus(cStatus);
                     }}
-                    startIcon={<CloseIcon size="small" />}
+                    startIcon={<CheckIcon size="small" />}
                   >
-                    {'Exit'}
+                    {'Confirm/Send'}
                   </Button>
-                  {(!factType || (factType !== 'list')) &&
-                    <React-Fragment>
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'green', color: 'white' }}
-                        size='small'
-                        onClick={() => {
-                          let [cStatus, response] = makeConfirm(dataRows);
-                          setConfirmPrompt(response);
-                          setConfirmStatus(cStatus);
-                        }}
-                        startIcon={<CheckIcon size="small" />}
-                      >
-                        {'Confirm/Send'}
-                      </Button>
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'blue', color: 'white' }}
-                        size='small'
-                        onClick={() => {
-                          setMorePeople(true);
-                        }}
-                        startIcon={<GroupAddIcon size="small" />}
-                      >
-                        {'Add People'}
-                      </Button>
-                    </React-Fragment>
-                  }
-                </Box>
+                }
+                {(!factType || (factType !== 'list')) &&
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white' }}
+                    size='small'
+                    onClick={() => {
+                      setMorePeople(true);
+                    }}
+                    startIcon={<GroupAddIcon size="small" />}
+                  >
+                    {'Add People'}
+                  </Button>
+                }
               </Box>
-            </DialogActions>
-          }
+            </Box>
+          </DialogActions>
         </React.Fragment>
       }
     </Dialog >

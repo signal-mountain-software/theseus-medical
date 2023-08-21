@@ -16,6 +16,9 @@ import Typography from '@material-ui/core/Typography';
 import Checkbox from '@material-ui/core/Checkbox';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   containerBox: {
     marginTop: theme.spacing(3),
@@ -79,6 +82,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ titleText, promptText, valueText, errorText, buttonText, onCancel, onSave, allowCancel = true }) => {
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const [textInput, setTextInput] = React.useState(valueText ? (Array.isArray(valueText) ? valueText : [valueText]) : []);
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
@@ -133,9 +137,9 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
         alignItems='flex-start'
       >
         <DialogContent id='dialog-title'>
-        {titleText && titleArray.map((t, tx) => (
-          <Typography key={`title-${tx}`}  className={classes.titleRow}>{t}</Typography>
-        ))}
+          {titleText && titleArray.map((t, tx) => (
+            <Typography key={`title-${tx}`} className={classes.titleRow}>{t}</Typography>
+          ))}
         </DialogContent>
         <DialogContent className={classes.contentBox} id='dialog-content'>
           <Box
@@ -166,23 +170,32 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                     <Typography>{prompt.slice(10)}</Typography>
                   </Box>
                   :
-                  <TextField
-                    className={classes.idText}
-                    id={`prompt-${ndx}`}
-                    key={`prompt-${ndx}`}
-                    multiline
-                    error={!!(errorText && errorText[ndx])}
-                    label={(prompt === titleText) ? '' : prompt}
-                    value={textInput[ndx] || ''}
-                    onChange={(event) => {
-                      handleChangeTextInput(event, ndx);
-                    }}
-                    onKeyPress={(event) => {
-                      onCheckEnter(event);
-                    }}
-                    helperText={(errorText && errorText[ndx]) ? errorText[ndx] : null}
-                    autoComplete='off'
-                  />
+                  <Box display='flex'
+                    flexDirection='row'
+                    paddingLeft={2}
+                    paddingRight={2}
+                    minWidth={'100%'}
+                    border={textInput[ndx] ? 1 : 0}
+                    borderRadius={'16px'}
+                    key={'fullRow' + ndx}
+                  >
+                    <TextField
+                      className={classes.idText}
+                      id={`prompt-${ndx}`}
+                      key={`prompt-${ndx}`}
+                      multiline
+                      error={!!(errorText && errorText[ndx])}
+                      value={textInput[ndx] || ''}
+                      onChange={(event) => {
+                        handleChangeTextInput(event, ndx);
+                      }}
+                      onKeyPress={(event) => {
+                        onCheckEnter(event);
+                      }}
+                      helperText={(errorText && errorText[ndx]) ? errorText[ndx] : ((prompt === titleText) ? '' : prompt)}
+                      autoComplete='off'
+                    />
+                  </Box>
                 }
               </React.Fragment>
             ))}
@@ -193,8 +206,8 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
         <Box display='flex' style={{ marginTop: '2em' }} flexDirection='row' justifyContent='center' alignItems='center'>
           {allowCancel &&
             <Button
-              className={classes.AVAButton}
-              style={{ color: 'red' }}
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
               size='small'
               onClick={() => {
                 onCancel();
@@ -205,7 +218,8 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
             </Button>
           }
           <Button
-            className={classes.AVAButton}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
             size='small'
             onClick={handleSave}
             startIcon={<LoadIcon size="small" />}

@@ -170,7 +170,9 @@ export function clt() {
 };
 
 export function sentenceCase(pString) {
-  return (!pString ? '' : pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase());
+  if (!pString) { return ''; }
+  if (typeof (pString) === 'object') { return JSON.stringify(pString); }
+  return (pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase());
 }
 
 export function makeArray(input, delimiter = null) {

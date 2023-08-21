@@ -23,7 +23,7 @@ import CopyMenu from '../forms/CopyMenu';
 import MenuForm from '../forms/MenuForm';
 import LoadMenuSpreadsheet from '../forms/LoadMenuSpreadsheet';
 
-// import useMediaQuery from '@material-ui/core/useMediaQuery';
+import { AVAclasses } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   pageHead: {
@@ -97,6 +97,7 @@ export default ({ pClient, showMenu, onClose }) => {
   const [selectedObservation, setSelectedObservation] = React.useState({});
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const entryTypes = ['header', 'message', 'entree', 'soft_entree', 'AL_lunch_entree', 'AL_dinner_entree', 'soup', 'salad', 'side', 'bread', 'dessert'];
 
@@ -295,7 +296,8 @@ export default ({ pClient, showMenu, onClose }) => {
         </DialogContent>
         <DialogActions style={{ justifyContent: 'center' }}>
           <Button
-            className={classes.rowButtonRed}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
             size='small'
             onClick={handleAbort}
             startIcon={<CloseIcon size="small" />}
@@ -303,7 +305,8 @@ export default ({ pClient, showMenu, onClose }) => {
             {'Done'}
           </Button>
           <Button
-            className={classes.rowButtonGreen}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
             size='small'
             onClick={handleLoad}
             startIcon={<LoadIcon size="small" />}
@@ -311,7 +314,8 @@ export default ({ pClient, showMenu, onClose }) => {
             {'Load'}
           </Button>
           <Button
-            className={classes.rowButtonGreen}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'brown', color: 'white' }}
             size='small'
             onClick={() => { handleCopy(); }}
             startIcon={<FileCopyIcon size="small" />}
@@ -319,7 +323,8 @@ export default ({ pClient, showMenu, onClose }) => {
             {'Copy'}
           </Button>
           <Button
-            className={classes.rowButtonGreen}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'blue', color: 'white' }}
             size='small'
             onClick={() => { handleAddObservation(); }}
             startIcon={<AddCircleOutlineIcon size="small" />}

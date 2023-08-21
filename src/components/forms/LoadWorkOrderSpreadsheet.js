@@ -29,6 +29,8 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import Slide from '@material-ui/core/Slide';
 import { parseSpreadsheet } from '../../util/AVAUtilities';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 var XLSX = require("xlsx");
 
 const useStyles = makeStyles(theme => ({
@@ -103,6 +105,7 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ pClient, showSheet, session, defaults, onClose }) => {
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const [changeDetected, setChangeDetected] = React.useState(false);
   const [s3Filename, setS3Filename] = React.useState();
@@ -422,8 +425,8 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
           <Paper component={Box} className={classes.page} overflow='auto' square>
             <DialogContent className={classes.dialogBox}>
               <Button
-                className={classes.uploadButton}
-                variant='contained'
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'blue', color: 'white' }}
                 size='small'
                 startIcon={<CloudUploadIcon />}
                 onClick={handleFileUpload}
@@ -462,7 +465,8 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                   <Button
-                    className={classes.rowButtonRed}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
                     size='small'
                     variant='outlined'
                     onClick={onClose}
@@ -472,7 +476,8 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
                   </Button>
                   {changeDetected &&
                     <Button
-                      className={classes.rowButtonGreen}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
                       size='small'
                       variant='outlined'
                       onClick={async () => {

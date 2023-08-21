@@ -34,7 +34,7 @@ import Dialog from '@material-ui/core/Dialog';
 
 import Button from '@material-ui/core/Button';
 
-// import useMediaQuery from '@material-ui/core/useMediaQuery';
+import { AVAclasses } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -148,6 +148,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   const { enqueueSnackbar } = useSnackbar();
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const [detailEdit, setDetailEdit] = React.useState(false);
   const [request_filter_lower, setRequestFilterLower] = React.useState('');
@@ -458,18 +459,22 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
       }
       <Box display='flex' flexDirection='column' style={{ marginTop: '1em' }}>
         <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-          <Button className={classes.AVAButton}
-            startIcon={<Backward10Icon fontSize="small" />}
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'purple', color: 'white' }}
             size='small'
+            startIcon={<Backward10Icon fontSize="small" />}
             onClick={async () => {
               await handleMore(-10);
             }}
           >
             Back to {makeDate(addDays(makeDate(myCalendar[0].occData.date).date, -10)).relative}
           </Button>
-          <Button className={classes.AVAButton}
-            startIcon={<Forward10Icon fontSize="small" />}
+          <Button 
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'blue', color: 'white' }}
             size='small'
+            startIcon={<Forward10Icon fontSize="small" />}
             onClick={async () => {
               await handleMore(10);
             }}
@@ -478,10 +483,12 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
           </Button>
         </Box>
         <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-          <Button className={classes.AVAButton}
-            style={{ color: 'red' }}
+          <Button 
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
             startIcon={<CloseIcon fontSize="small" />}
-            size='small' onClick={onClose}>
+            onClick={onClose}>
             {'Done'}
           </Button>
         </Box>

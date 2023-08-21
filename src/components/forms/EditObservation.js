@@ -52,14 +52,13 @@ export default ({ observation, showDialog, handleClose, handleCancel }) => {
 
   const classes = useStyles();
 
-  let oCode = observation.composite_key.split(/[~_]/g);
-  const [observationType, setObservationType] = React.useState(oCode.slice(1, -1).join('_').trim() || '');
+  const [observationType, setObservationType] = React.useState(observation.composite_key.split('~').slice(1, -1).join('_').trim() || '');
   const [observationCode, setObservationCode] = React.useState(observation.observation_code);
   const [observationKey, setObservationKey] = React.useState(observation.observation_key);
   const [changeDetected, setChangeDetected] = React.useState(false);
   const [entryTypes, setEntryTypes] = React.useState([]);
-  const observationClient = oCode[0];
-  const observationDate = oCode.pop();
+  const observationClient = observation.composite_key.split('~')[0];
+  const observationDate = observation.composite_key.split(/[~_]/g).pop();
   let oD = observationDate.split('.');
   const observationLongDate = oD[0] + '.' + ((Number(oD[1]) + 100).toString()).substring(1) + '.' + ((Number(oD[2]) + 100).toString()).substring(1);
 

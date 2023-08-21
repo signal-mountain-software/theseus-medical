@@ -36,6 +36,8 @@ import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   page: {
     height: 950,
@@ -191,6 +193,8 @@ export default ({ session, filter = {}, onClose }) => {
   */
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
+
   const { enqueueSnackbar } = useSnackbar();
 
   const [dataRows, setDataRows] = React.useState();
@@ -825,8 +829,9 @@ export default ({ session, filter = {}, onClose }) => {
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
-                    className={classes.AVAButton}
-                    style={{ color: 'red' }}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
                     onClick={onClose}
                     startIcon={<CloseIcon size="small" />}
                   >
@@ -839,7 +844,9 @@ export default ({ session, filter = {}, onClose }) => {
                       || session.service_request_types[filter.request_type].allowStatusUpdateFromDashboard)
                     &&
                     <Button
-                      className={classes.AVAButton}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
                       onClick={() => {
                         setPromptForUpdate(true);
                       }}

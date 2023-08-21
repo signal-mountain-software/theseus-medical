@@ -34,6 +34,8 @@ import SendIcon from '@material-ui/icons/Send';
 import AVAConfirm from './AVAConfirm';
 import SendMessageDialog from '../dialogs/SendMessageDialog';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   page: {
     height: 950,
@@ -143,6 +145,7 @@ const useStyles = makeStyles(theme => ({
 export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValue }) => {
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const [message_filter, setMessageFilter] = React.useState('');
   const [message_filter_lower, setMessageFilterLower] = React.useState('');
@@ -839,14 +842,18 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   <Button
-                    className={classes.AVAButton}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
                     onClick={onReset}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Close'}
                   </Button>
                   <Button
-                    className={classes.AVAButton}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white' }}
+                    size='small'
                     onClick={() => {
                       if (inOut_mode === 'in') { setinOut('out'); }
                       else { setinOut('in'); }
@@ -861,7 +868,9 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
                     onClick={async () => {
                       setShowAddPrompt(true);
                     }}
-                    className={classes.AVAButton}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
                     startIcon={<SendIcon size='small' />}
                   >
                     {`New Message`}
@@ -874,4 +883,4 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
       }
     </Dialog >
   );
-};;
+};

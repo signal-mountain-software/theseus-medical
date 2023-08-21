@@ -11,6 +11,8 @@ import CheckIcon from '@material-ui/icons/DoneSharp';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   title: {
     marginTop: theme.spacing(3),
@@ -21,7 +23,6 @@ const useStyles = makeStyles(theme => ({
   page: {
     paddingTop: theme.spacing(2),
     paddingBottom: theme.spacing(2),
-    marginBottom: theme.spacing(2)
   },
   notTitle: {
     marginRight: theme.spacing(2),
@@ -30,6 +31,8 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
     marginBottom: theme.spacing(1),
+    paddingRight: '16px',
+    paddingLeft: '16px',
     variant: 'outlined',
     border: '0.75px solid gray',
     textTransform: 'none',
@@ -41,7 +44,6 @@ const useStyles = makeStyles(theme => ({
 }));
 
 export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', onCancel, onConfirm }) => {
-
 
   function makeLine(str) {
     let work = str.match(/[<[].*?[>\]]/g);
@@ -68,6 +70,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
   else { promptLines = [promptText]; }
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   // **************************
 
@@ -121,9 +124,9 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       <DialogActions style={{ justifyContent: 'center' }}>
         {(cancelText !== '*none*') &&
           <Button
-            className={classes.AVAButton}
+            className={AVAClass.AVAButton}
             startIcon={<GoBackIcon />}
-            style={{ color: 'red' }}
+            style={{ backgroundColor: 'red', color: 'white' }}
             size='small'
             onClick={() => {
               onCancel();
@@ -133,7 +136,8 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
         }
         {(confirmText !== '*none*') &&
           <Button
-            className={classes.AVAButton}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
             startIcon={<CheckIcon />}
             size='small'
             onClick={() => {

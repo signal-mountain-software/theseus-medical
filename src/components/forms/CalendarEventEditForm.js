@@ -38,6 +38,8 @@ import AVATextInput from '../forms/AVATextInput';
 
 import Input from '@material-ui/core/Input';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   page: {
     height: 950,
@@ -145,6 +147,7 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientRec, onReset, pMode }) => {
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const [eventSlotList, setEventSlotList] = React.useState([]);
 
@@ -740,8 +743,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
               <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                 <Tooltip title={`Exit`} placement='top'>
                   <Button
-                    className={classes.AVAButton}
-                    style={{color: 'red'}}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
                     onClick={onReset}
                     startIcon={<CloseIcon size="small" />}
                   >
@@ -751,7 +755,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 {(pOccData.signup_type === 'none') && browseMode &&
                   <Tooltip title={(isEventOwner ? 'Add a person' : 'Add myself to the list')} placement='top'>
                     <Button
-                      className={classes.AVAButton}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
                       onClick={async () => {
                         if (isEventOwner) {
                           await setChoices(peopleList);
@@ -773,7 +779,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 {isEventOwner && browseMode &&
                   <Tooltip title={'Prepare Detail Report'} placement='top'>
                     <Button
-                      className={classes.AVAButton}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
                       onClick={async () => {
                         await handlePrint(pEventCode, 'report');
                       }}
@@ -788,7 +796,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                   <Tooltip title={'Prepare Sign-up sheet'} placement='top'>
                     <Button
-                      className={classes.AVAButton}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'brown', color: 'white' }}
+                      size='small'
                       onClick={async () => {
                         await handlePrint(pEventCode, 'sign-up');
                       }}
@@ -799,7 +809,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                   </Tooltip>
                   <Tooltip title={'Send a message to everyone that is signed-up'} >
                     <Button
-                      className={classes.AVAButton}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'orange', color: 'white' }}
+                      size='small'
                       onClick={() => {
                         setPromptForMessage(true);
                         setMessageType('Group');

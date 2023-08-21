@@ -25,6 +25,8 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 
 import AVATextInput from '../forms/AVATextInput';
 
+import { AVAclasses } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   page: {
     height: 800,
@@ -185,6 +187,8 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
   const [promptForName, setPromptForName] = React.useState(false);
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
+
   const { enqueueSnackbar } = useSnackbar();
 
 
@@ -311,8 +315,9 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
       }
         <DialogActions className={classes.buttonArea} >
           <Button
-          className={classes.AVAButton}
-          style={{ color: 'red' }}
+          className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'red', color: 'white' }}
+          size='small'
           startIcon={<CloseIcon fontSize="small" />}
             onClick={() => {
               onCancel();
@@ -325,7 +330,9 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
               onClick={() => {
                 setPromptForName(true);
               }}
-              className={classes.AVAButton}
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
               startIcon={<GroupAddIcon fontSize="small" />}
             >
               {`New Group`}
