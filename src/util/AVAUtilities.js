@@ -421,7 +421,8 @@ export async function resolveVariables(pKey, pSession, options = {}) {
         let keyDate = makeDate(instruction);
         if (!keyDate.error) { response.push(front, keyDate[dType || 'obs']); }
         else {
-          let iParts = instruction.split('~');
+          let iParts = [];
+          if (typeof(instruction) === 'string') { iParts = instruction.split('~') };
           if (iParts[2]) {
             let now = new Date();
             let tTime = Number(iParts[1]);  // get time
