@@ -702,7 +702,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           }}
                           startIcon={<GroupAddIcon size="small" />}
                         >
-                          {'Add Members'}
+                          {(isMobile ? 'Add' : 'Add Members')}
                         </Button>
                       }
                       <Button
