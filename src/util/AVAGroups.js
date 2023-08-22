@@ -98,8 +98,10 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       accessList[client_id] = {
         name: clientName.customization_value,
         logo: clientLogo.icon,
+        count: {},
         list: []
       };
+      accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; }); 
       let allPeople = await getMemberList('*all', client_id);
       // get all the people in the client
       let pxL = allPeople.peopleList.length;
@@ -183,6 +185,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         else { return 0; }
       });
       accessList[client_id].shortList = accessList[client_id].list.map(p => { 
+        accessList[client_id].count[p.access]++;
         let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
         if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
         // list is of the form <name>:<id>:<search_string>

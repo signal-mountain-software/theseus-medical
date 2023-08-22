@@ -1063,8 +1063,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 </MenuItem>
               )
               }
-              {(session?.responsible_for
-                || (state.patient.account_class && ((state.patient.account_class === 'master') || (state.patient.account_class === 'support')))
+              {(
+                (state.accessList
+                  && (
+                    (Object.keys(state.accessList).length > 1)
+                    || ((state.accessList[Object.keys(state.accessList)[0]].count.proxy
+                      + state.accessList[Object.keys(state.accessList)[0]].count.full) > 1)
+                  )
+                )
+                ||
+                (state.user.account_class
+                  && (
+                    (state.user.account_class === 'master')
+                    || (state.user.account_class === 'support')
+                  )
+                )
               )
                 &&
                 <MenuItem onClick={() => {
@@ -1080,8 +1093,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   </Box>
                 </MenuItem>
               }
-              {(session?.responsible_for
-                || (state.patient.account_class && ((state.patient.account_class === 'master') || (state.patient.account_class === 'support')))
+              {(state.user.account_class
+                && ((state.user.account_class === 'master') || (state.user.account_class === 'support'))
               )
                 &&
                 <MenuItem onClick={async () => {
