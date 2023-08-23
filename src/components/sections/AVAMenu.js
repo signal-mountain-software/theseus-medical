@@ -859,7 +859,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//'); }
             else { factClient = defaultClient; }
           }
-          dPart = await getMemberList(makeArray(dPart, ','), factClient, { sort: true });
+          dPart = await getMemberList(makeArray(dPart, ','), factClient, { sort: true, shortList: true });
           break;
         }
         case 'select': {

@@ -262,6 +262,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   let checkbox = true;
   let ignore = false;
   let required = false;
+  let multiColumn = false;
   let displayBold = false;
   let displayItalic = false;
   let doneWithTopBox = false;
@@ -290,6 +291,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           else if (typeof i === 'object' && i.selectionList) {
             selectionList = i.selectionList;
           }
+          else if (typeof i === 'object' && i.selectList) {
+            selectionList = i.selectList.shortList;
+          }
         }
       });
     }
@@ -311,6 +315,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
           case 'display': {
             ignore = (oValue.toLowerCase() === 'off');
+            break;
+          }
+          case 'multiColumn': {
+            multiColumn = (oValue.toLowerCase() === 'off');
             break;
           }
           case 'required': {
@@ -349,16 +357,18 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           displayRowList[0].text += `\n${instruction[0]}`;
         }
         else {
-          displayRowList.push({
+          let rObj = {
             checkbox,
             required,
+            multiColumn,
             text: instruction[0],
             oKey: getKey(instruction[0]),
             desc: getDescription(instruction[0]),
             input: false,
             bold: displayBold,
             italic: displayItalic
-          });
+          };
+          displayRowList.push(rObj);
           // default the checkbox to checked if either:
           //   a previous instruction set the default for all checkboxes to ON (~[default=checked]), OR
           //   a passed in default for this item instructs AVA to set the checkbox ON
@@ -380,6 +390,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         displayRowList.push({
           checkbox: false,
           required: false,
+          multiColumn: false,
           text: instruction[2].trim(),
           oKey: instruction[3] || getKey(instruction[2].trim()),
           desc: getDescription(instruction[2]),
@@ -396,6 +407,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       displayRowList.push({
         checkbox: false,
         required: false,
+        multiColumn: false,
         text: instruction[1],
         oKey: getKey(instruction[1]),
         desc: getDescription(instruction[1]),
@@ -1416,10 +1428,27 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           </Paper>
 
           { /* Prompt for People */}
-          {((dataRows.columnList.length < 1) || morePeople) &&
+          {(dataRows.columnList.length < 1) &&
             <PersonFilter
               prompt={'Select diners'}
               peopleList={dataRows.selectionList}
+              onCancel={() => {
+                onClose();
+              }}
+              onSelect={async (selectedPeople) => {
+                await handleAddPersonToList(selectedPeople);
+              }}
+              allowRandom={true}
+              multiSelect={true}
+              returnValue={'object'}
+            />
+          }
+          
+          { /* Prompt for People */}
+          {morePeople &&
+            <PersonFilter
+              prompt={'Select diners'}
+              peopleList={state.accessList[state.session.client_id].shortList}
               onCancel={() => {
                 onClose();
               }}

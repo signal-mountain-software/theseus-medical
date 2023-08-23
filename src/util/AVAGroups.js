@@ -449,12 +449,16 @@ export async function getMemberList(pGroups, pClient_id, options) {
   // otherwise, people records are return without regard to the directory_option
   let checkExclude = false;
   let sortResults = false;
+  let shortList = false;
   if (options) {
     if (options.sort || options.sortResults) {
       sortResults = options.sort || options.sortResults;
     }
     if (options.exclude || options.checkExclude) {
       checkExclude = options.exclude || options.checkExclude;
+    }
+    if (options.shortList || options.includeShortList) {
+      shortList = options.shortList || options.includeShortList;
     }
   }
   let defaultClient = pClient_id || session.client_id;
@@ -512,11 +516,20 @@ export async function getMemberList(pGroups, pClient_id, options) {
       else { return 0; }
     });
   }
-  return {
+  let rObj = {
     foundIDs,
     'peopleList': returnArray,
     'groupList': gList
-  };
+  }
+  if (shortList) {
+    rObj.shortList = returnArray.map(p => {
+      let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+      // list is of the form <name>:<id>:<search_string>
+      return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+    });
+  }
+  return rObj;
 }
 
 export async function addMember(pPerson, pClient, pGroup) {
