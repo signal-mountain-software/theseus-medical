@@ -1,9 +1,9 @@
-import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid, dbClient } from './AVAUtilities';
-import { makeName } from './AVAPeople';
+import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid, dbClient, titleCase } from './AVAUtilities';
+import { makeName, getPerson, formatPhone } from './AVAPeople';
 import { addDays, makeDate, makeTime } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
 
-// const PDFDocument = require('pdfkit');
+import { jsPDF } from "jspdf";
 
 let eventCache = {};
 
@@ -64,7 +64,7 @@ export async function addEvent(body) {
       },
       occPattern,
       start_Date: occPattern.first_date || (occPattern.specified ? occPattern.specified[0] : makeDate('today').numeric),
-      end_date: occPattern.last_date || (occPattern.specified ? occPattern.specified[occPattern.specified.length -1] : makeDate('today').numeric),
+      end_date: occPattern.last_date || (occPattern.specified ? occPattern.specified[occPattern.specified.length - 1] : makeDate('today').numeric),
       last_written_occurrence: 0,
       reminders: {
         reminder_minutes_Enrolled: body.calendar_info.reminder_minutes_Enrolled,
@@ -332,7 +332,7 @@ export async function getCalendarEntries(body, statusUpdate) {
         }
       }
     }
-    
+
     // At this point, we've contructed the query
     if (statusUpdate) { statusUpdate('Retrieving events', 100, 10); }
     let qR;
@@ -397,7 +397,7 @@ export async function getCalendarEntries(body, statusUpdate) {
         && nextOcc.occArray
         && (nextOcc.occArray.length > 0)
         && nextOcc.occArray[0]
-        && (nextOcc.occArray[0] <= end_Date) 
+        && (nextOcc.occArray[0] <= end_Date)
       ) {
         let newKey = `${returnArr[a].event_id}#${nextOcc.occArray[0]}`;
         if (returnArr.some(a => { return (a.event_key === newKey); })) { continue; }    // found occurrence was already in retrunArr
@@ -412,7 +412,7 @@ export async function getCalendarEntries(body, statusUpdate) {
       }
     }
   }
-  
+
   // return the list of calendar entries sorted by date/slot in event key (oldest first)
   return returnArr.sort((a, b) => {
     if ((a.event_key.split(/#(.*)/)[1] || null) > (b.event_key.split(/#(.*)/)[1] || null)) { return 1; }
@@ -1089,6 +1089,7 @@ export async function occurrenceData(body) {
           owner (or false),
           notes,
           display_name
+          marked
         }
       }
     }
@@ -1134,10 +1135,22 @@ export async function occurrenceData(body) {
       if (returnObj.slots.length === 0) {
         rec.slotPattern.forEach(sID => {
           if (!(sID in returnObj.slots)) {
-            returnObj.slots[sID] = { owner: null, notes: null, display_name: null };
+            returnObj.slots[sID] = { owner: null, notes: null, display_name: null, marked: false };
           }
         });
       };
+    }
+    else if (rec.record_type === 'occurrence') {
+      Object.assign(returnObj, rec);
+      if (rec.time) {
+        returnObj.time = rec.time.from;
+        if (rec.time.to) {
+          returnObj.time += ' to ' + rec.time.to;
+        }
+      }
+      if (rec.occurrence_date) {
+        returnObj.date = makeDate(rec.occurrence_date);
+      }
     }
     else if (rec.occData) {
       if ('event_data' in rec.occData) {
@@ -1162,7 +1175,7 @@ export async function occurrenceData(body) {
             if (!returnObj.slots[sID].owner) { delete returnObj.slots[sID]; }  // unoccupied slots are removed
           }
           rec.slotPattern.forEach(sID => {     // fill the array with slots from the pattern
-            returnObj.slots[sID] = { owner: null, notes: null, display_name: null };
+            returnObj.slots[sID] = { owner: null, notes: null, display_name: null, marked: false };
           });
         }
       }
@@ -1182,7 +1195,8 @@ export async function occurrenceData(body) {
         returnObj.slots[sID] = {
           owner: '',
           notes: '',
-          display_name: ''
+          display_name: '',
+          marked: false
         };
       }
       else {
@@ -1195,7 +1209,8 @@ export async function occurrenceData(body) {
         returnObj.slots[sID] = {
           owner: rec.slotData.owner,
           notes: rec.slotData.notes,
-          display_name: slotName
+          display_name: slotName,
+          marked: !!rec.marked
         };
       }
     }
@@ -1266,184 +1281,193 @@ export async function createNewOccurrences(request) {
   } while (evRec.LastEvaluatedKey);
 }
 
-/*
 export async function printOccurrenceSheet(body) {
-  let fSize = [14, 12, 10];
-  let default_font = 'Helvetica';
 
-  const doc = new PDFDocument({ size: 'LETTER', layout: 'portrait', autoFirstPage: false })
-    .font(default_font)
-    .fontSize(fSize[2]);
-
-  // at 72px per inch, 8.5 x 11 (letter size) is 612px wide x 792px long
-  let pageHeight = 792;
-
-  newPage();
+  /* 
+  body expected as
+  {
+      client (or client_id)
+      event (or event_id)
+      occurrence (or occurrence_id - if null, then get occurrence from event_id)
+      margin: {top: nn, bottom: mm, left: yy, right: zz}
+      client_name (optional; will print on header if present)
+      request_type ('full' - show all details, otherwise just slot infor and name)
+      pageWidth
+      size: ('legal', 'letter', or [width_in_px, length_in_px])
+      border
+      font
+      orientation (anything other than 'landscape' is treated as 'portrait')
+      title
+  }
+  */
+  let xPos = 0;
+  let previousXPos = 0;
 
   // Get the event master record
-
   let oData = await occurrenceData(body);
-  // Let's do this thang...
-  doc.info = { author: 'AVA', title: oData.description };
+
+  // Prep the PDF output
+  let default_font = 'Helvetica';
+  if (!body.margin) { body.margin = {}; }
+  let page = {
+    border: body.border || true,
+    font: {
+      family: body.font || body.font_family || default_font,
+      size: { large: 14, medium: 12, small: 10, tiny: 8 }
+    },
+    size: (body.size || 'letter'),
+    layout: (body.orientation === 'landscape' ? 'landscape' : 'portrait'),
+    info: { author: 'AVA Senior Living', title: (body.title || oData.description || 'Event Report') },
+    number: 1,
+    margin: {
+      top: body.margin.top || 42,
+      bottom: body.margin.bottom || 14,
+    }
+  };
+
+  if (Array.isArray(page.size)) {
+    page.width = page.size[0];
+    page.height = page.size[1];
+  }
+  else if (page.size === 'legal') {
+    page.width = 275;
+    page.height = 750;
+  }
+  else {
+    page.width = 275;
+    page.height = 590;
+  }
+  if (page.orientation === 'landscape') {
+    let temp = page.height;
+    page.width = page.height;
+    page.height = temp;
+  }
+  page.margin.left = body.margin.left || (page.width / 10);
+  page.margin.right = body.margin.right || (page.width / 10);
+
+  let yPos = page.margin.top;
+  const doc = new jsPDF({
+    orientation: page.layout,
+    unit: "px",
+    format: page.size
+  });
+  page.centerPoint = doc.internal.pageSize.width / 2;
+  page.printableArea = doc.internal.pageSize.width - page.margin.left - page.margin.right;
+
+
+  // ********** TITLE ********** //
+  let titleWords = await resolveMessageVariables(page.info.title, body);
+  page.info.title = titleCase(titleWords);
+  doc.info = { author: 'AVA', title: titleCase(titleWords) };
+  pdfLine(page.info.title, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
+  if (body.client_name) {
+    let outClientName = titleCase(body.client_name);
+    pdfLine(outClientName, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
+  }
+  pdfLine(oData.date.absolute, page.font.size.small, 'normal', 0, 0, 0, { align: 'center' });
+  if (oData.time) {
+    pdfLine(oData.time, page.font.size.small, 'normal', 0, 0, 0, { align: 'center' });
+  }
+  if (oData.location && oData.location.description) {
+    pdfLine(oData.location.description, page.font.size.small, 'normal', 0, 0, 0, { align: 'center' });
+  }
+
+  /* Grid
+  let options = {};
+  for (let p = page.margin.left; p <= page.width; p += 10) {
+    pdfLine(p, page.font.size.tiny, 'normal', 0, 0, -1, options);
+    options = { noNewLine: true };
+  }
+  */
 
   // Body
 
   let totalLines = 0;
-  let pageNumber = 0;
-
-  let detail_indent = 70;
-  // let detail_indent = ((time_type || seats_type) ? 70 : 10);
+  let detail_indent = (page.width / 10) + page.margin.left;
   let nameRow_indent = detail_indent - 10;
 
-  for (const sID in oData.slots) {
-    if (doc.y > (pageHeight - doc.page.margins.bottom - 54) || pageNumber === 0) {
-      // Title lines
-      if (pageNumber > 0) { newPage(); }
-      pageNumber++;
-      doc
-        .fontSize(fSize[0] * 1.5)
-        .font(`${default_font}-Bold`)
-        .text(oData.description, { align: 'center' });
-      doc
-        .fontSize(fSize[1] * 1.5)
-        .font(`${default_font}-Bold`)
-        .text(oData.location, { align: 'center' });
-      doc
-        .fontSize(fSize[1] * 1.5)
-        .font(default_font)
-        .text(`${oData.date}${oData.time ? (' at ' + oData.time) : ''}`, { align: 'center' });
-      if (pageNumber > 1) {
-        doc
-          .fontSize(fSize[2])
-          .text(`page ${pageNumber}`, { align: 'center' });
-        totalLines++;
-      }
-      doc.moveDown(3);
-      totalLines += 6;
-    }
+  let slotList = Object.keys(oData.slots).sort();
 
-    // if request_type is sign-up turn on underline on display_name
-    // if time type show nn:mm display_name
-    // is seats type show index display_name
+  for (let s = 0; s < slotList.length; s++) {
+    let sID = slotList[s];
 
-    let rowTag = '';
-    if (oData.type === 'time') { rowTag = formatTime(sID); }
-    else if (sID !== oData.slots[sID].owner) { rowTag = sID; }
-
-    let rowName = ' ';
-    let slot_person = '';
     if (oData.slots[sID].owner && (oData.slots[sID].owner !== 'available') && (oData.slots[sID].owner !== '')) {
-      rowName = oData.slots[sID].display_name;
-      slot_person = oData.slots[sID].owner;
-    }
-
-    doc.moveDown(1);
-    doc
-      .fontSize(fSize[1])
-      .font(`${default_font}-Bold`);
-    if (rowTag) {
-      doc
-        .text(rowTag.padEnd(10), { align: 'left', continued: true });
-    }
-    let xAt = ((parseInt(doc.x / 10) + 1) * 10);
-    let yAt = doc.y;
-    doc
-      .fontSize(fSize[1] * 2)
-      .moveUp(0.3)
-      .text(rowName, { indent: nameRow_indent });
-    if (!rowName) {
-      doc
-        .moveTo(xAt + 35, yAt + 12)
-        .lineTo(xAt + 400, yAt + 12)
-        .stroke();
-    }
-    doc
-      .moveUp(2);
-    doc.font(default_font);
-    totalLines += 2;
-    if (slot_person && body.request_type === 'full') {
-      let pRec = getPerson(slot_person);
-      if (pRec) {
-        doc.fontSize(fSize[2]);
-        if (pRec.person_id !== 'void') {
-          doc.text(pRec.Location, { indent: detail_indent });
-          totalLines++;
-          if (pRec.messaging.voice) {
-            doc
-              .text('Phone: ' + pRec.messaging.voice, { indent: detail_indent });
+      pdfLine('image', page.font.size.large, 'normal', 0, 1.5, 0, { image: `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${oData.slots[sID].owner}.jpg` });
+      let outName;
+      let oParts = oData.slots[sID].display_name.split(',');
+      if (oParts.length === 1) { outName = oParts[0].trim(); }
+      else { outName = `${oParts[1].trim()} ${oParts[0].trim()}`; }
+      pdfLine(outName, page.font.size.large, 'bold', 0, 0.5, 0, { noNewLine: true });
+      let nameY = yPos;
+      if (oData.type === 'time') {
+        pdfLine(`Time: ${formatTime(sID)}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+      }
+      else if (oData.type === 'seats') {
+        pdfLine(`Seat: ${sID}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+      }
+      if (oData.slots[sID].owner && body.request_type === 'full') {
+        let pRec = await getPerson(oData.slots[sID].owner);
+        if (pRec) {
+          if (pRec.person_id !== 'void') {
+            if (pRec.location) {
+              pdfLine(pRec.location, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+            }
             totalLines++;
-          }
-          if (pRec.messaging.sms) {
-            doc
-              .text('Cell: ' + pRec.messaging.sms, { indent: detail_indent });
-            totalLines++;
-          }
-          if (pRec.messaging.eMail) {
-            doc
-              .text('e-Mail: ' + pRec.messaging.eMail, { indent: detail_indent });
-            totalLines++;
+            // eslint-disable-next-line
+            Object.values(pRec.messaging).forEach(mVal => {
+              if (mVal && (typeof (mVal) === 'string') && (mVal !== '')) {
+                let outVal = mVal;
+                if (!isNaN(Number(mVal))) { outVal = formatPhone(mVal); }
+                pdfLine(outVal, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+                totalLines++;
+              }
+            });
           }
         }
+      };
+      if (oData.slots[sID].marked) {
+        pdfLine('image', page.font.size.small, 'normal', 0, 0, 0, { yPos: nameY, noNewLine: true, align: 'right', image: `https://ava-icons.s3.amazonaws.com/icons8-check-192.png` });
       }
-      doc.moveDown(2);
-    };
+    }
+    else { doc.line(nameRow_indent, yPos, nameRow_indent + 400, yPos, 'F'); }
+    totalLines += 2;
   }
 
-  cl({ 'total Line Count': totalLines });
   if (totalLines === 0) {
-    doc
-      .fontSize(fSize[2])
-      .moveDown(3)
-      .text(`No data found for ${oData.description}`);
+    pdfLine(`No data found for ${page.info.title}`, page.font.size.medium, 'normal', detail_indent, 3);
   }
 
   // Wrap up
+  let event_info = `${body.client || body.client_id}//${body.event || body.event_id}`;
+  if (body.occurrence || body.occurrence_id) {
+    event_info += `//${body.occurrence || body.occurrence_id}`;
+  }
+  pdfLine('AVA Senior Living', page.font.size.tiny, 'normal', 0, 0, 0, { align: 'footer' });
+  pdfLine(`Event info ${event_info}`, page.font.size.tiny, 'normal', 0, 0, 0, { align: 'center', noBreak: true });
+  pdfLine('****** END ******', page.font.size.tiny, 'normal', 0, 0, 0, { align: 'center', noBreak: true });
   var now = new Date();
   var postTime = now.getTime();
-  var timeString = now.toLocaleString([], {
-    timeZone: 'America/New_York',
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  });
-
-  let yAt = doc.y;
-  let xAt = doc.x;
-  if (doc.y > (pageHeight - 36)) {
-    newPage();
-    yAt = doc.y;
-  }
-  else { yAt = pageHeight - 36; };
-
-  doc.page.margins.bottom = 0;
-  doc.page.margins.left = 0;
-  doc
-    .fontSize(fSize[2] - 2)
-    .text('***** END *****', 36, pageHeight - 36);
-  let rC = body.client_id || body.client;
-  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
-  doc.text('AVA reference: ' + rC + '/' + rV + '/' + body.request_type + '/' + postTime);
-  doc.text('Printed: ' + timeString + ' ET');
-
-  // Finalize PDF file
-  doc.end();
-
-  return {
-    status: 200,
-  };
-
-  function newPage() {
-    doc.addPage({
-      margins: {
-        top: pageHeight * .1,
-        bottom: pageHeight * .05,
-        left: pageHeight * .1,
-        right: pageHeight * .1
-      }
+  let fileName = `${body.client || body.client_id}_${postTime}_EventReport.pdf`;
+  /*
+  let pBlob = doc.output('blob');
+  let data64 = (doc.output('datauri')).split(';base64,')[1];
+  let s3Resp = await s3
+    .upload({
+      Bucket: 'theseus-medical-storage',
+      Key: fileName,
+      Body: pBlob,
+      ACL: 'public-read-write',
+      ContentType: 'application/pdf'
+    })
+    .promise()
+    .catch(err => {
+      cl(`PDF not saved by AVA.  The reason is ${err.message}`);
     });
-  }
+  */
+  await doc.save(fileName, { returnPromise: true });
+  // s3Resp.data = data64;
+
+  return fileName;
 
   function formatTime(pHHMM) {
     let mm = pHHMM % 100;
@@ -1454,5 +1478,144 @@ export async function printOccurrenceSheet(body) {
     return (`${hh}:${mm < 10 ? '0' + mm : mm}`);
   };
 
+  function pdfLine(textIn, size, style, indent = 0, before, after, options = {}) {
+    // doc.setFontSize(page.font.size.tiny);
+    // doc.text(String(yPos), 10, yPos, options);
+    let textArray = makeArray(textIn);
+    for (let a = 0; a < textArray.length; a++) {
+      let text = String(textArray[a]);
+      if (typeof (textIn) === 'string') { text = textIn.toString(); }
+      else if (typeof (textIn) === 'number') { text = textIn.toString(); }
+      let lastSize = page.font.size.medium;
+      if (size) {
+        doc.setFontSize(size);
+        lastSize = size;
+      }
+      let rememberedYPos;
+      if (options.yPos) {
+        rememberedYPos = yPos;
+        yPos = options.yPos;
+      }
+      if (before) { yPos += before * lastSize; }
+      let needPageBreak = false;
+      if (options.noBreak) {
+        if (yPos > (page.height - 10)) { needPageBreak = true; }
+      }
+      else {
+        if (yPos > (page.height - page.margin.bottom - 54)) { needPageBreak = true; }
+      }
+      if (needPageBreak) {
+        // Title lines   
+        doc.addPage({
+          orientation: page.layout,
+          format: page.size
+        });
+        doc.setFont(page.font.family, 'normal');
+        doc.setFontSize(page.font.size.large);
+        let xOffset = page.centerPoint - (doc.getTextWidth(page.info.title) / 2);
+        let yOffset = page.margin.top;
+        doc.text(page.info.title, xOffset, yOffset);
+        if (body.client_name) {
+          let outClientName = titleCase(body.client_name);
+          xOffset = page.centerPoint - (doc.getTextWidth(outClientName) / 2);
+          yOffset += page.font.size.large;
+          doc.text(outClientName, xOffset, yOffset);
+        }
+        doc.setFontSize(page.font.size.small);
+        xOffset = page.centerPoint - (doc.getTextWidth(oData.date.absolute) / 2);
+        yOffset += page.font.size.small;
+        doc.text(oData.date.absolute, xOffset, yOffset);
+        if (oData.time) {
+          xOffset = page.centerPoint - (doc.getTextWidth(oData.time) / 2);
+          yOffset += page.font.size.small;
+          doc.text(oData.time, xOffset, yOffset);
+        }
+        if (oData.location && oData.location.description) {
+          xOffset = page.centerPoint - (doc.getTextWidth(oData.location.description) / 2);
+          yOffset += page.font.size.small;
+          doc.text(oData.location.description, xOffset, yOffset);
+        }
+        page.number++;
+        let pageNumberLine = `page ${page.number}`;
+        xOffset = page.centerPoint - (doc.getTextWidth(pageNumberLine) / 2);
+        yOffset += page.font.size.small;
+        doc.text(pageNumberLine, xOffset, yOffset);
+        doc.setFontSize(lastSize);
+        yPos = page.margin.top + page.font.size.large + page.font.size.small + (lastSize * 3);
+      }
+      if (style) { doc.setFont(page.font.family, style); }
+      if (!options.noNewLine) {
+        yPos += lastSize;
+        if (options.align !== 'vertical') { xPos = page.margin.left; }
+        else { xPos = previousXPos; }
+      }
+      let nextLine;
+      if (doc.getTextWidth(text) > page.printableArea) {
+        let tWords = text.split(/\s+/);
+        nextLine = tWords.pop();
+        text = tWords.join(' ');
+        if (doc.getTextWidth(text) > page.printableArea) {
+          let t2Words = text.split(/\s+/);
+          nextLine += ' ' + t2Words.pop();
+          text = t2Words.join(' ');
+        }
+        textArray.splice(a, 0, nextLine);
+      }
+      if (options.image) {
+        let imageSize = size * 3;
+        let xOffset;
+        switch (options.align) {
+          case 'center': {
+            xOffset = page.centerPoint - (imageSize / 2);
+            break;
+          }
+          case 'right': {
+            xOffset = page.width - page.margin.right - imageSize;
+            break;
+          }
+          default: {
+            xOffset = xPos + indent;
+          }
+        }
+        doc.addImage(options.image, 'JPEG', xOffset, yPos, imageSize, imageSize);
+        previousXPos = xOffset;
+        xPos = xOffset + imageSize + lastSize;
+      }
+      else {
+        if (options.align === 'center') {
+          let xOffset = page.centerPoint - (doc.getTextWidth(text) / 2);
+          doc.text(text, xOffset, yPos);
+          previousXPos = xOffset;
+          xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + lastSize;
+        }
+        else if (options.align === 'right') {
+          doc.text(text, page.width - page.margin.right, yPos, { align: 'right' });
+          previousXPos = page.width - page.margin.right - doc.getTextWidth(text);
+          xPos = page.margin.right;
+        }
+        else if (options.noNewLine) {
+          doc.text(text, xPos + indent, yPos);
+          previousXPos = xPos + indent;
+          xPos += doc.getTextWidth(text) + lastSize;
+        }
+        else if (options.align === 'footer') {
+          let xOffset = page.centerPoint - (doc.getTextWidth(text) / 2);
+          let yOffset = page.height - page.margin.bottom - 54;
+          doc.text(text, xOffset, yOffset);
+          previousXPos = xOffset;
+          yPos = yOffset;
+          xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + lastSize;
+        }
+        else {
+          doc.text(text, xPos + indent, yPos);
+          previousXPos = xPos + indent;
+          xPos = (xPos + indent) + doc.getTextWidth(text) + lastSize;
+        }
+      }
+      if (rememberedYPos) { yPos = rememberedYPos; }
+      if (after) { yPos += (after * lastSize); }
+    }
+    return;
+  }
+
 }
-*/

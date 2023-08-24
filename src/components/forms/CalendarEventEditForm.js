@@ -1,9 +1,9 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 import { makeDate } from '../../util/AVADateTime';
-import { getSlotList, writeSlot, makeSlotName } from '../../util/AVACalendars';
+import { getSlotList, writeSlot, makeSlotName, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
-import { cl, makeArray, lambda, dbClient } from '../../util/AVAUtilities';
+import { cl, makeArray, dbClient } from '../../util/AVAUtilities';
 import { makeName, getImage } from '../../util/AVAPeople';
 import { sendMessages } from '../../util/AVAMessages';
 
@@ -178,13 +178,6 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
 
   var rowsWritten = 0;
 
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
   function isOwned(slotData) {
     return (slotData.owner && (slotData.owner !== 'available'));
   }
@@ -222,39 +215,12 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   };
 
   const handlePrint = async (pEvent, pType) => {
-    let invokeFailed = false;
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:printCalendar';
-    params.Payload = JSON.stringify(
-      {
-        body:
-        {
-          client_id: pClient,
-          event_id: pEvent,
-          requestor: pPatient,
-          request_type: pType
-        }
-      });
-    let fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        console.log("Problem printing the sign-up sheet.  Error is", JSON.stringify(err));
-        enqueueSnackbar(`AVA couldn't print that sign-up sheet.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-
-    if (!invokeFailed) {
-      let fResponse = JSON.parse(fResp.Payload);
-      if (fResponse.status === 200) {
-        window.open(
-          fResponse.body.Location,
-          `Your requested ${pType}`,
-          'noopener, noreferrer'
-        );
-      }
-    };
+    await printOccurrenceSheet({
+      client_id: pClient,
+      event_id: pEvent,
+      requestor: pPatient,
+      request_type: pType
+    });
     return;
   };
 
@@ -783,7 +749,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                       style={{ backgroundColor: 'blue', color: 'white' }}
                       size='small'
                       onClick={async () => {
-                        await handlePrint(pEventCode, 'report');
+                        await handlePrint(pEventCode, 'full');
                       }}
                       startIcon={<PrintIcon size='small' />}
                     >
