@@ -10,19 +10,9 @@ import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
 
-// import InputBase from '@material-ui/core/InputBase';
-// import FormControl from '@material-ui/core/FormControl';
-
 import DynamicForm from '../forms/DynamicForm';
 
-// const AWS = require('aws-sdk');
-// const s3 = new AWS.S3();
-
-// const FS = require('fs');
-// const path = require('path');
-// const region = 'us-east-1';
-
-// var fileStream;
+import { AVAclasses } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   appBar: {
@@ -117,6 +107,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
   const [message, setMessage] = React.useState('enter an initial value');
   const [statusMessage, setStatusMessage] = React.useState('');
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -494,11 +485,21 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         ) : null}
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Button className={classes.reject} variant='outlined' size='small' onClick={handleClose}>
+        <Button
+          className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'red', color: 'white' }}
+          size='small'
+          onClick={handleClose}
+        >
           {!factIOClass ? 'Done' : 'Cancel'}
         </Button>
         {factIOClass
-          ? (<Button className={classes.confirm} variant='outlined' size='small' onClick={handleSave}>
+          ? (<Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
+            onClick={handleSave}
+          >
             {factMessageClass ? 'Send' : 'Save'}
           </Button>
           )
@@ -506,13 +507,25 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         }
         {factPromoClass
           ? (<React.Fragment>
-            <Button variant='contained' color='green' size='small' onClick={handlePromoSignup}>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'green', color: 'white' }}
+              size='small'
+              onClick={handlePromoSignup}>
               Sign-up
             </Button>
-            <Button variant='contained' color='blue' size='small' onClick={handlePromoMore}>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'blue', color: 'white' }}
+              size='small'
+              onClick={handlePromoMore}>
               More info
             </Button>
-            <Button variant='contained' color='blue' size='small' onClick={handlePromoNext}>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'blue', color: 'white' }}
+              size='small'
+              onClick={handlePromoNext}>
               Next
             </Button>
           </React.Fragment>)
@@ -521,10 +534,18 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         {factEventClass
           ? (
             <React.Fragment>
-              <Button className={classes.confirm} size='small' variant='contained' onClick={handleNext}>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
+                size='small'
+                onClick={handleNext}>
                 {'Next'}
               </Button>
-              <Button className={classes.confirm} size='small' variant='contained' onClick={handleSkip}>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
+                size='small'
+                onClick={handleSkip}>
                 Skip
               </Button>
             </React.Fragment>
