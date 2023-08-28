@@ -2,7 +2,7 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 
 import { makeDate, addDays } from '../../util/AVADateTime';
-import { getCalendarEntries } from '../../util/AVACalendars';
+import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { cl } from '../../util/AVAUtilities';
 
 import Grid from '@material-ui/core/Grid';
@@ -22,8 +22,6 @@ import TextField from '@material-ui/core/TextField';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
-import Forward10Icon from '@material-ui/icons/Update';
-import Backward10Icon from '@material-ui/icons/History';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -145,11 +143,15 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
 
   let working_date = '';
 
+  const scrollValue = 15;
+  var rowsWritten;
+
   const { enqueueSnackbar } = useSnackbar();
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
+  const [rowLimit, setRowLimit] = React.useState(scrollValue);
   const [detailEdit, setDetailEdit] = React.useState(false);
   const [request_filter_lower, setRequestFilterLower] = React.useState('');
   const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
@@ -163,34 +165,52 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
     setAnchorEl(event.currentTarget);
   };
 
-  function makeSlotName(pSlot) {
-    let nSlot = Number(pSlot);
-    if (isNaN(nSlot)) { return ""; }
-    if ((nSlot < 100) || (nSlot > 2359) || ((nSlot % 100) > 59)) { return ""; }
-    else { return ` for ${makeReadableTime(pSlot, false)}`; }
-  }
-
-  function makeReadableTime(pTimeHM, withAMPM = false) {
-    let pTime = Number(pTimeHM);
-    let hh = Math.floor(pTime / 100);
-    let mm = pTime % 100;
-    let ampm = 'am';
-    if (hh > 12) {
-      hh -= 12;
-      ampm = 'pm';
-    }
-    else if (hh === 12) {
-      ampm = 'pm';
-    }
-    return `${hh}:${mm < 10 ? ('0' + mm) : mm}${withAMPM ? (' ' + ampm) : ''}`;
-  }
-
   function okToShow(this_event) {
     if (singleFilterDigit) { return true; }
+    else if (this_event.date === '29991231') { return false; }
     else {
-      return (`${this_event.occData.description} ${this_event.occData.location}`).toLowerCase().includes(request_filter_lower);
+      return (`${this_event.description} ${this_event.location}`).toLowerCase().includes(request_filter_lower);
     }
   }
+
+  const extendDates = async (factor) => {
+    let previousStart = myCalendar[0].date;
+    let previousEnd = myCalendar[myCalendar.length - 1].date;
+    let start_date, end_date;
+    if (factor > 0) {
+      start_date = addDays(previousEnd, 1);
+      end_date = addDays(previousEnd, factor);
+    }
+    else {
+      start_date = addDays(previousStart, factor);
+      end_date = addDays(previousStart, -1);
+    }
+    let newEntries = await getAllOccurrences(
+      {
+        client_id: myCalendar[0].client,
+        start_date,
+        end_date
+      }
+    );
+    if (factor > 0) {
+      myCalendar.push(...newEntries);
+    }
+    else {
+      myCalendar.unshift(...newEntries);
+    }
+  };
+
+  let scrollTimeOut;
+  async function handleScroll() {
+    clearTimeout(scrollTimeOut);
+    scrollTimeOut = setTimeout(async () => {
+      setRowLimit(rowLimit + scrollValue);
+      if ((rowLimit + scrollValue) > myCalendar.length) {
+        await extendDates(7);
+      }
+      setForceRedisplay(!forceRedisplay);
+    }, 500);
+  };
 
   let filterTimeOut;
   const handleChangeRequestFilter = vCheck => {
@@ -215,9 +235,13 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
       open={true || forceRedisplay}
       p={2}
       fullScreen
+      onScroll={async () => (await handleScroll())}
     >
-      {myCalendar && (myCalendar.length > 0) &&
+      {myCalendar && 
         <React.Fragment>
+          <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+            {rowsWritten = 0}
+          </Typography>
           <Box
             display='flex' flexDirection='row'
             className={classes.messageArea}
@@ -235,17 +259,16 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
               <DialogContentText className={classes.title} id='scroll-dialog-title'>
                 {!session.patient_display_name ? `Calendar of Events` : `${session.patient_display_name.split(',').pop()}'s Calendar`}
               </DialogContentText>
-              {(myCalendar.length > 0) &&
+              {(myCalendar.length > 0) ?
                 <Box
                   display='flex' flexDirection='row' alignItems={'center'}
                   key={'vRowRefresh'}
                 >
                   <DialogContentText className={classes.subDescriptionText2} >
-                    From {makeDate(myCalendar[0].occData.date).relative} to {makeDate(myCalendar[myCalendar.length - 1].occData.date).relative}
+                    From {makeDate(myCalendar[0].date).relative} to {makeDate(myCalendar[myCalendar.length - 1].date).relative}
                   </DialogContentText>
                 </Box>
-              }
-              {(myCalendar.length === 0) &&
+                :
                 <DialogContentText className={classes.subDescriptionText}>
                   This Calendar is empty!
                 </DialogContentText>
@@ -325,23 +348,26 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
           <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
             <Box >
               <Grid item>
-                <GridList cellHeight='auto' cols={1} key='gridList'>
+                <GridList cellHeight='auto' cols={1} key='gridList' >
                   {myCalendar.map((this_event, index) => (
-                    okToShow(this_event) &&
+                    okToShow(this_event) && (rowsWritten < rowLimit) &&
                     <React-fragment key={this_event.id + 'frag' + index} >
-                      {this_event.occData.date !== working_date &&
+                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                        {rowsWritten++}
+                      </Typography>
+                      {this_event.date !== working_date &&
                         <GridListTile
                           key={this_event.id + 'rhead' + index}
                           style={{ marginBottom: '0px', marginTop: (index === 0 ? '0px' : '50px') }}
                           cols={1}
                         >
-                          <Box mb={0} py={1} px={0} borderBottom={2}>
+                          <Box mb={0.5} py={1} px={0} borderBottom={2}>
                             <Box flexGrow={1}>
                               <Typography
-                                key={this_event.occData.date + 'dhead' + index}
+                                key={this_event.date + 'dhead' + index}
                                 className={classes.noDisplay}
                               >
-                                {working_date = (this_event.occurrence_date || this_event.occData.date)}
+                                {working_date = this_event.date}
                               </Typography>
                               <Typography
                                 key={working_date + 'head' + index}
@@ -349,81 +375,75 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                               >
                                 {makeDate(working_date).absolute}
                               </Typography>
-                              {
-                                // an event can display a message under its name
-                                // To do this, put the message text in the description field
-                                //    force a line break on the screen with %%
-                              }
-                              {this_event.occData.status === 'message' ?
-                                this_event.occData.description.split('%%').map((messageLine) => (
-                                  <Typography
-                                    key={this_event.occData.date + 'message' + index}
-                                    variant='subtitle1'
-                                  >
-                                    {messageLine}
-                                  </Typography>
-                                ))
-                                : null
-                              }
                             </Box>
                           </Box>
                         </GridListTile>
                       }
-                      {this_event.occData.status !== 'message' &&
-                        <GridListTile
-                          key={this_event.id + 'r' + index}
-                          style={{ marginBottom: '0px', marginTop: '0px' }}
-                          cols={1}
+                      <GridListTile
+                        key={this_event.id + 'r' + index}
+                        style={{ marginBottom: '0px', marginTop: '0px' }}
+                        cols={1}
+                      >
+                        <Paper
+                          component={Box}
+                          p={2}
+                          mt={0} mb={1}
+                          variant='outlined'
+                          style={{ background: this_event, marginBottom: '0px', marginTop: '0px' }}
+                          textAlign='left'
+                          onClick={async () => {
+                            let cEntries = await getCalendarEntries({
+                              person_id,
+                              client: this_event.client,
+                              event_id: this_event.event_key
+                            });
+                            this_event.occData = Object.assign({},
+                              cEntries[0].eventData.event_data,
+                              cEntries[0].eventData,
+                              { location: cEntries[0].eventData.event_data.location.description },
+                              { signup_type: cEntries[0].eventData.sign_up.type },
+                              cEntries[1],
+                              { date: cEntries[1].occurrence_date },
+                              { time$: `${cEntries[0].eventData.event_data.time.from}${(cEntries[0].eventData.event_data.time.to ? ' to ' + cEntries[0].eventData.event_data.time.to : '')}` },
+                              { time24: this_event.time24 }
+                            );
+                            this_event.index = index;
+                            setDetailEdit(this_event);
+                          }}
+                          square
                         >
-                          <Paper
-                            component={Box}
-                            p={2}
-                            mt={0} mb={1}
-                            variant='outlined'
-                            style={{ background: this_event, marginBottom: '0px', marginTop: '0px' }}
-                            textAlign='left'
-                            onClick={async () => {
-                              setDetailEdit(this_event);
+                          <Box display='flex' flexDirection='row'
+                            justifyContent='flex-start' alignItems='center'
+                            onContextMenu={async (e) => {
+                              e.preventDefault();
+                              enqueueSnackbar(`Event data=${JSON.stringify(this_event)}`, { variant: 'info', persist: true });
                             }}
-                            square>
-                            <Box display='flex' flexDirection='row'
-                              justifyContent='flex-start' alignItems='center'
-                              onContextMenu={async (e) => {
-                                e.preventDefault();
-                                enqueueSnackbar(`Event ID=${this_event.id}`, { variant: 'info', persist: true });
-                              }}
-                            >
-                              <Box display='flex' flexDirection='column' className={classes.activityText} width='95%' textOverflow='ellipsis'>
-                                <React.Fragment key={`act_box_${this_event.id}`}>
-                                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                    <Box display='flex' flexGrow={1} flexDirection='column'>
-                                      <Typography variant='h5'>{this_event.occData.description}</Typography>
-                                      {this_event.occData.time$ &&
-                                        <Typography variant='body2'>{this_event.occData.time$}</Typography>
-                                      }
-                                      {this_event.occData.location &&
-                                        <Typography variant='body2'>{this_event.occData.location}</Typography>
-                                      }
-                                    </Box>
-                                  </Box>
-                                  {((this_event.occData.signup_type === 'time') || (this_event.occData.signup_type === 'seats')) &&
-                                    <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                      <Typography variant='subtitle2'>
-                                        {(this_event.slots && (this_event.slots[0].owner === person_id))
-                                          ? <strong>You are signed-up {makeSlotName(this_event.slots[0].id)}</strong>
-                                          : `Tap here to sign-up!`
-                                        }
-                                      </Typography>
-                                    </Box>
-                                  }
-                                </React.Fragment>
-                              </Box>
-                            </Box>
-                          </Paper>
-                        </GridListTile>
-                      }
+                          >
+                            <Typography variant='h5'>{`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}</Typography>
+                          </Box>
+                        </Paper>
+                      </GridListTile>
                     </React-fragment>
                   ))}
+                  {(rowsWritten === 0) &&
+                    <GridListTile
+                      key={'rhead'}
+                      style={{ marginBottom: '0px', marginTop: '0px' }}
+                      cols={1}
+                    >
+                      <Box mb={0.5} py={1} px={0} >
+                        <Box flexGrow={1}>
+                          <Typography
+                            key={'head'}
+                            variant='h6'
+                          >
+                            No Calendar Entries to Show!
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </GridListTile>
+
+                  }
                 </GridList>
                 {detailEdit &&
                   <CalendarEventEditForm
@@ -432,23 +452,22 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                     pPatient={person_id}
                     pClient={detailEdit.client}
                     pOccData={detailEdit.occData}
-                    onReset={async () => {
-                      let [slotRec] = await getCalendarEntries({
-                        client_id: detailEdit.client,
-                        event_id: detailEdit.event_key,
-                        person_id: person_id,
-                        type: ['slot']
-                      });
-                      if (slotRec) {
-                        detailEdit.slots = [{
-                          owner: person_id,
-                          id: slotRec.slotData.id,
-                          reminder_minutes: slotRec.slotData.reminder_minutes,
-                          name: slotRec.slotData.reminder_minutes
-                        }];
+                    onReset={(updatedData) => {
+                      myCalendar[detailEdit.index].description = updatedData.description;
+                      if ((myCalendar[detailEdit.index].date !== updatedData.date)
+                        || (myCalendar[detailEdit.index].time24 !== updatedData.time24)) {
+                        myCalendar[detailEdit.index].date = updatedData.date;
+                        myCalendar[detailEdit.index].time = updatedData.time$;
+                        myCalendar[detailEdit.index].time24 = updatedData.time24;
+                        myCalendar.sort((a, b) => {
+                          if (a.date < b.date) { return -1; }
+                          else if (a.date > b.date) { return 1; }
+                          else if (a.time24 < b.time24) { return -1; }
+                          else { return 1; }
+                        });
                       }
-                      else if (detailEdit.slots) { delete detailEdit.slots; }
                       setDetailEdit(false);
+                      setForceRedisplay(!forceRedisplay);
                     }}
                   />
                 }
@@ -457,41 +476,16 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
           </DialogContent>
         </React.Fragment>
       }
-      <Box display='flex' flexDirection='column' style={{ marginTop: '1em' }}>
-        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-          <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'purple', color: 'white' }}
-            size='small'
-            startIcon={<Backward10Icon fontSize="small" />}
-            onClick={async () => {
-              await handleMore(-10);
-            }}
-          >
-            Back to {makeDate(addDays(makeDate(myCalendar[0].occData.date).date, -10)).relative}
-          </Button>
-          <Button 
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'blue', color: 'white' }}
-            size='small'
-            startIcon={<Forward10Icon fontSize="small" />}
-            onClick={async () => {
-              await handleMore(10);
-            }}
-          >
-            Forward to {makeDate(addDays(makeDate(myCalendar[myCalendar.length - 1].occData.date).date, 10)).relative}
-          </Button>
-        </Box>
-        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-          <Button 
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'red', color: 'white' }}
-            size='small'
-            startIcon={<CloseIcon fontSize="small" />}
-            onClick={onClose}>
-            {'Done'}
-          </Button>
-        </Box>
+      <Box display='flex' flexDirection='row'
+        justifyContent='center' alignItems='center' style={{ marginTop: '1em' }}>
+        <Button
+          className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'red', color: 'white' }}
+          size='small'
+          startIcon={<CloseIcon fontSize="small" />}
+          onClick={onClose}>
+          {'Done'}
+        </Button>
       </Box>
     </Dialog>
   );

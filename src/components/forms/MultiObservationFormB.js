@@ -1299,6 +1299,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   flexDirection='column'
                   borderRadius={'16px'}
                   marginLeft={2}
+                  marginBottom={0.5}
                   paddingBottom={1}
                   paddingTop={1}
                   border={(isRadioSelected(dataRows.columnList[selectedColumn].person_id, this_item.text) || textPresent(this_item.text, dataRows.columnList[selectedColumn].person_id)) ? 1 : 0}

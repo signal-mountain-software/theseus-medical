@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, makeArray, makeString, makeNumber, resolveVariables, uuid, dbClient, titleCase } from './AVAUtilities';
+import { clt, cl, recordExists, makeArray, makeString, makeNumber, uuid, dbClient, titleCase } from './AVAUtilities';
 import { makeName, getPerson, formatPhone } from './AVAPeople';
 import { addDays, makeDate, makeTime } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
@@ -372,7 +372,32 @@ export async function getCalendarEntries(body, statusUpdate) {
   }
   // end of loop for requested types
   // at this point, returnArr has all of the records requested
+  
+  /*  THIS CODE REPLACES THE "CANDIDATE FOR DEPRECIATION" CODE BELOW BUT IS ALSO NOT NECESSARY
+  // get a list of (up to 10) occurrences for this event over the next 90 days
+  let today = makeDate(new Date());
+  for (let a = 0; a < returnArr.length; a++) {
+    if (returnArr[a].record_type === 'event') {
+      let start_date = makeDate(returnArr[a].eventData.last_written_occurrence || today.date).date;
+      if (start_date < today.date) { start_date = today.date; }
+      let end_date = addDays(start_date, 90);
+      let oDates = occurrenceDateBuilder(returnArr[a], start_date, end_date);
+      oDates.forEach(o => { 
+        if (returnArr.every(r => { return (r.occurrence_date !== o); })) {
+          returnArr.push({
+            client: returnArr[a].client,
+            event_id: returnArr[a].event_id,
+            event_key: `${returnArr[a].event_id}#${o}`,
+            occurrence_date: o,
+            record_type: 'occurrence'
+          });
+        }
+      })
+    }
+  }
+  */
 
+  /*  CANDIDATE FOR DEPRECIATION
   // AVA will automatically create new occurrences where needed
   // for every occurrence record found, look for the next occurrence of that same event (if any)
   // add that entry to the array
@@ -412,7 +437,8 @@ export async function getCalendarEntries(body, statusUpdate) {
       }
     }
   }
-
+  */
+  
   // return the list of calendar entries sorted by date/slot in event key (oldest first)
   return returnArr.sort((a, b) => {
     if ((a.event_key.split(/#(.*)/)[1] || null) > (b.event_key.split(/#(.*)/)[1] || null)) { return 1; }
@@ -776,51 +802,6 @@ export async function validateOccurrence(client, inEvent, inDate, occExists) {
   return [eventRec, occRec];
 }
 
-export async function addOccurrence(body) {
-  if (!body.event) { return false; }
-  let event_id, occurrence, oDesc;
-  if (typeof body.event === 'object') {
-    event_id = body.event.event_key;
-    occurrence = body.occurrence_date;
-    if (body.event.eventData) {
-      let sessionData = {
-        client_id: body.client,
-      };
-      let rDesc = await resolveVariables(body.event.eventData.event_data.description, sessionData);
-      if (rDesc !== body.event.eventData.event_data.description) { oDesc = rDesc; }
-    }
-  }
-  else {
-    let occ_id;
-    [event_id, occ_id] = body.event.split('#');
-    occurrence = body.occurrence_date || occ_id;
-  }
-  let putCalendar = {
-    client: body.client,
-    event_id,
-    event_key: `${event_id}#${occurrence}`,
-    occurrence_date: `${occurrence}`,
-    record_type: 'occurrence'
-  };
-  if (oDesc) {
-    putCalendar.occData = {
-      "event_data": { 'description': oDesc }
-    };
-  }
-  if (body.occData) { putCalendar.occData = body.occData; }
-  await dbClient
-    .put({
-      Item: putCalendar,
-      TableName: "Calendar",
-    })
-    .promise()
-    .catch(error => {
-      cl(`caught error updating Calendar; error is:`, error);
-      return false;
-    });
-  return putCalendar;
-}
-
 export function makeSlotName(pSlot) {
   let nSlot = Number(pSlot);
   if (isNaN(nSlot)) { return pSlot; }
@@ -1071,153 +1052,6 @@ export async function updateSlotStatus(request) {
   return responseMessage;
 }
 
-export async function occurrenceData(body) {
-  /*  
-    request {
-      client (or client_id)
-      event (or event_id)
-      occurrence (or occurrence_id - if null, then get occurrence from event_id)
-    }
-    returnObj {
-      description,
-      location,
-      type,
-      time,
-      date (as returned from makeDate)
-      slots: {
-        slotName: {
-          owner (or false),
-          notes,
-          display_name
-          marked
-        }
-      }
-    }
-  */
-  let returnObj = {
-    description: '',
-    location: '',
-    time: '',
-    slots: {}
-  };
-
-  let rC = body.client_id || body.client;
-  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
-  let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
-  if (rO && rV) { rV = rV.split('#')[0] + '#' + rO; }   // both sent in change rV to include passed rO
-  else if (rO) { return {}; }    // rO sent without an rV - that's bad; ignore rO
-  else if (rV) { rO = rV.split('#')[1]; }     // rV sent without an rO; try to set rO from the rV value
-  else { return {}; }   // netiher sent;  return void
-  // if no rO was set, use the event only (all slots will be empty)
-  let [eventInfo] = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'event' });
-  let occInfoArray = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'structure' });
-  occInfoArray.unshift(eventInfo);
-  occInfoArray.forEach((rec, x) => {
-    if (!returnObj.date && (rec.occurrence_date || (makeNumber(rec.schedule_key) > 0))) {
-      returnObj.date = makeDate(rec.occurrence_date || makeNumber(rec.schedule_key));
-    }
-    if (rec.eventData) {
-      cl({ 'handling eventData': rec.eventData.event_data });
-      if (!returnObj.description) { returnObj.description = rec.eventData.event_data.description; }
-      if (!returnObj.location) { returnObj.location = rec.eventData.event_data.location; }
-      if (!returnObj.type && rec.eventData.sign_up) {
-        if (rec.eventData.sign_up.type === 'time') { returnObj.type = 'time'; }
-        else { returnObj.type = 'seats'; }
-      }
-      if (!returnObj.time) {
-        if (rec.eventData.event_data.time) {
-          returnObj.time = rec.eventData.event_data.time.from;
-          if (rec.eventData.event_data.time.to) {
-            returnObj.time += ' to ' + rec.eventData.event_data.time.to;
-          }
-        }
-      }
-      if (returnObj.slots.length === 0) {
-        rec.slotPattern.forEach(sID => {
-          if (!(sID in returnObj.slots)) {
-            returnObj.slots[sID] = { owner: null, notes: null, display_name: null, marked: false };
-          }
-        });
-      };
-    }
-    else if (rec.record_type === 'occurrence') {
-      Object.assign(returnObj, rec);
-      if (rec.time) {
-        returnObj.time = rec.time.from;
-        if (rec.time.to) {
-          returnObj.time += ' to ' + rec.time.to;
-        }
-      }
-      if (rec.occurrence_date) {
-        returnObj.date = makeDate(rec.occurrence_date);
-      }
-    }
-    else if (rec.occData) {
-      if ('event_data' in rec.occData) {
-        if ('description' in rec.occData.event_data) {
-          returnObj.description = rec.occData.event_data.description;
-        }
-        if ('location' in rec.occData.event_data) {
-          returnObj.location = rec.occData.event_data.location;
-        }
-        if ('time' in rec.occData.event_data) {
-          returnObj.time = rec.occData.event_data.time.from;
-          if (rec.occData.event_data.time.to) {
-            returnObj.time += ' to ' + rec.occData.event_data.time.to;
-          }
-        }
-        if (rec.occData.sign_up) {
-          if (rec.occData.sign_up.type === 'time') { returnObj.type = 'time'; }
-          else { returnObj.type = 'seats'; }
-        }
-        if ('slotPattern' in rec.occData.event_data) {
-          for (const sID in returnObj.slots) {
-            if (!returnObj.slots[sID].owner) { delete returnObj.slots[sID]; }  // unoccupied slots are removed
-          }
-          rec.slotPattern.forEach(sID => {     // fill the array with slots from the pattern
-            returnObj.slots[sID] = { owner: null, notes: null, display_name: null, marked: false };
-          });
-        }
-      }
-      else {
-        if ('description' in rec.occData) {
-          returnObj.description = rec.occData.description;
-        };
-        if ('time_from' in rec.occData) {
-          returnObj.time = rec.occData.time_from;
-        };
-
-      }
-    }
-    else if (rec.slotData) {
-      let sID = rec.slotData.slot || rec.slotData.id;
-      if (rec.slotData.status && rec.slotData.status.current === 'released') {
-        returnObj.slots[sID] = {
-          owner: '',
-          notes: '',
-          display_name: '',
-          marked: false
-        };
-      }
-      else {
-        let slotName = '';
-        if (rec.slotData.display_name) { slotName = rec.slotData.display_name; }
-        else if (rec.slotData.name) {
-          if (typeof rec.slotData.name === 'string') { slotName = rec.slotData.name; }
-          else { slotName = `${rec.slotData.name.first} ${rec.slotData.name.last}`.trim(); }
-        }
-        returnObj.slots[sID] = {
-          owner: rec.slotData.owner,
-          notes: rec.slotData.notes,
-          display_name: slotName,
-          marked: !!rec.marked
-        };
-      }
-    }
-    else if (rec.calData) { }
-  });
-  return returnObj;
-};
 
 export async function createNewOccurrences(request) {
   // expect request to contain
@@ -1280,6 +1114,8 @@ export async function createNewOccurrences(request) {
     qQ.ExclusiveStartKey = evRec.LastEvaluatedKey;
   } while (evRec.LastEvaluatedKey);
 }
+
+// ****************  THIRD GENERATION CODE *****************
 
 export async function printOccurrenceSheet(body) {
 
@@ -1618,4 +1454,520 @@ export async function printOccurrenceSheet(body) {
     return;
   }
 
+}
+
+export async function eventData(body) {
+  /*  
+  pass in an event_code, get event information back
+  body = {
+      client (or client_id)
+      event (or event_id)
+      info - 'basic'=just event data itself; 'full'=event and occurrence list; 
+  }
+  returnObj = {
+      description,
+      location,
+      type,
+      time,
+      occurrences: {
+        past: [<event_id>, <event_id>, ...],
+        current: [<event_id>, <event_id>, ...]
+      }
+  }
+  */
+  let event_id = (body.event_id || body.event || body.filter?.event_id || body.filter?.event).split('#').shift();
+
+  let qQ = { TableName: 'Calendar' };
+
+  qQ.KeyConditionExpression = 'client = :c';
+  qQ.ExpressionAttributeValues = { ':c': body.client || body.client_id };
+
+  if (body.info === 'full') {
+    qQ.KeyConditionExpression += ' and begins_with(event_key, :rEvent)';
+    qQ.ExpressionAttributeValues[':rEvent'] = event_id;
+    qQ.FilterExpression = 'record_type = :e OR record_type = :o';
+    qQ.ExpressionAttributeValues[':e'] = 'event';
+    qQ.ExpressionAttributeValues[':o'] = 'occurrence';
+  }
+  else {
+    qQ.KeyConditionExpression += ' and event_key = :rEvent';
+    qQ.ExpressionAttributeValues[':rEvent'] = event_id;
+  }
+
+  let calendarRecs = await dbClient
+    .query(qQ)
+    .promise()
+    .catch(error => {
+      if (error.code === 'NetworkingError') {
+        cl(`Security Violation or no Internet Connection`);
+      }
+      cl(`Error reading ${qQ.TableName} in eventData - error is: ${error}`);
+      cl(qQ);
+    });
+  let returnObj = {
+    description: '',
+    location: '',
+    type: '',
+    time: '',
+    occurrences: {
+      past: [],
+      current: [],
+      future: []
+    }
+  };
+  let eventRec, start_date, end_date;
+  if (recordExists(calendarRecs)) {
+    let today = makeDate(new Date());
+    for (let c = 0; c < calendarRecs.Items.length; c++) {
+      let this_rec = calendarRecs.Items[c];
+      switch (this_rec.record_type) {
+        case 'event': {
+          returnObj.description = this_rec.eventData.event_data.description;
+          returnObj.location = this_rec.eventData.event_data.location.description;
+          returnObj.type = this_rec.eventData.event_data.type;
+          returnObj.time = this_rec.eventData.event_data.time.from;
+          if (this_rec.eventData.event_data.time.to) {
+            returnObj.time += ` to ${this_rec.eventData.event_data.time.to}`;
+          };
+          eventRec = this_rec;
+          start_date = makeDate(this_rec.eventData.last_written_occurrence || this_rec.start_date || today.date).date;
+          if (start_date < today.date) { start_date = today.date; }
+          end_date = makeDate(this_rec.end_date || addDays(start_date, 90)).date;
+          returnObj.occurrences.future = occurrenceDateBuilder(eventRec, start_date, end_date);
+          break;
+        }
+        case 'occurrence': {
+          let key = ((this_rec.occurrence_date < today.numeric$) ? 'past' : 'current');
+          returnObj.occurrences[key].push(this_rec.event_key);
+          break;
+        }
+        default: { }
+      }
+    }
+  }
+  return returnObj;
+};
+
+export async function occurrenceData(body) {
+  /*  
+    request {
+      client (or client_id)
+      event (or event_id)
+      occurrence (or occurrence_id - if null, then get occurrence from event_id)
+    }
+    returnObj {
+      description,
+      location,
+      type,
+      owner,
+      time,
+      date (as returned from makeDate)
+      slots: {
+        slotName: {
+          owner (or false),
+          notes,
+          display_name
+          marked
+        }
+      }
+    }
+  */
+  let returnObj = {
+    description: '',
+    location: '',
+    time: '',
+    slots: {}
+  };
+
+  let rC = body.client_id || body.client;
+  let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
+  let rO = body.occurrence_id || body.occurrence || body.filter?.occurrence_id || body.filter?.occurrence;
+  if (rO && rV) { rV = rV.split('#')[0] + '#' + rO; }   // both sent in change rV to include passed rO
+  else if (rO) { return {}; }    // rO sent without an rV - that's bad; ignore rO
+  else if (rV) { rO = rV.split('#')[1]; }     // rV sent without an rO; try to set rO from the rV value
+  else { return {}; }   // netiher sent;  return void
+  // if no rO was set, use the event only (all slots will be empty)
+  let [eventInfo] = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'event' });
+  let occInfoArray = await getCalendarEntries({ client: rC, event: rV, occurrence: rO, type: 'structure' });
+  occInfoArray.unshift(eventInfo);
+  occInfoArray.forEach((rec, x) => {
+    if (!returnObj.date && (rec.occurrence_date || (makeNumber(rec.schedule_key) > 0))) {
+      returnObj.date = makeDate(rec.occurrence_date || makeNumber(rec.schedule_key));
+    }
+    if (rec.eventData) {
+      cl({ 'handling eventData': rec.eventData.event_data });
+      if (!returnObj.description) { returnObj.description = rec.eventData.event_data.description; }
+      if (!returnObj.location) { returnObj.location = rec.eventData.event_data.location; }
+      if (!returnObj.type && rec.eventData.sign_up) {
+        if (rec.eventData.sign_up.type === 'time') { returnObj.type = 'time'; }
+        else { returnObj.type = 'seats'; }
+      }
+      if (!returnObj.time) {
+        if (rec.eventData.event_data.time) {
+          returnObj.time = rec.eventData.event_data.time.from;
+          if (rec.eventData.event_data.time.to) {
+            returnObj.time += ' to ' + rec.eventData.event_data.time.to;
+          }
+        }
+      }
+      if (returnObj.slots.length === 0) {
+        rec.slotPattern.forEach(sID => {
+          if (!(sID in returnObj.slots)) {
+            returnObj.slots[sID] = { owner: null, notes: null, display_name: null, marked: false };
+          }
+        });
+      };
+    }
+    else if (rec.record_type === 'occurrence') {
+      Object.assign(returnObj, rec);
+      if (rec.time) {
+        returnObj.time = rec.time.from;
+        if (rec.time.to) {
+          returnObj.time += ' to ' + rec.time.to;
+        }
+      }
+      if (rec.occurrence_date) {
+        returnObj.date = makeDate(rec.occurrence_date);
+      }
+    }
+    else if (rec.occData) {
+      if ('event_data' in rec.occData) {
+        if ('description' in rec.occData.event_data) {
+          returnObj.description = rec.occData.event_data.description;
+        }
+        if ('location' in rec.occData.event_data) {
+          returnObj.location = rec.occData.event_data.location;
+        }
+        if ('time' in rec.occData.event_data) {
+          returnObj.time = rec.occData.event_data.time.from;
+          if (rec.occData.event_data.time.to) {
+            returnObj.time += ' to ' + rec.occData.event_data.time.to;
+          }
+        }
+        if (rec.occData.sign_up) {
+          if (rec.occData.sign_up.type === 'time') { returnObj.type = 'time'; }
+          else { returnObj.type = 'seats'; }
+        }
+        if ('slotPattern' in rec.occData.event_data) {
+          for (const sID in returnObj.slots) {
+            if (!returnObj.slots[sID].owner) { delete returnObj.slots[sID]; }  // unoccupied slots are removed
+          }
+          rec.slotPattern.forEach(sID => {     // fill the array with slots from the pattern
+            returnObj.slots[sID] = { owner: null, notes: null, display_name: null, marked: false };
+          });
+        }
+      }
+      else {
+        if ('description' in rec.occData) {
+          returnObj.description = rec.occData.description;
+        };
+        if ('time_from' in rec.occData) {
+          returnObj.time = rec.occData.time_from;
+        };
+
+      }
+    }
+    else if (rec.slotData) {
+      let sID = rec.slotData.slot || rec.slotData.id;
+      if (rec.slotData.status && rec.slotData.status.current === 'released') {
+        returnObj.slots[sID] = {
+          owner: '',
+          notes: '',
+          display_name: '',
+          marked: false
+        };
+      }
+      else {
+        let slotName = '';
+        if (rec.slotData.display_name) { slotName = rec.slotData.display_name; }
+        else if (rec.slotData.name) {
+          if (typeof rec.slotData.name === 'string') { slotName = rec.slotData.name; }
+          else { slotName = `${rec.slotData.name.first} ${rec.slotData.name.last}`.trim(); }
+        }
+        returnObj.slots[sID] = {
+          owner: rec.slotData.owner,
+          notes: rec.slotData.notes,
+          display_name: slotName,
+          marked: !!rec.marked
+        };
+      }
+    }
+    else if (rec.calData) { }
+  });
+  return returnObj;
+};
+
+export async function getAllOccurrences(body, screenStatus = () => { }) {
+  // body should contain
+  // client or client_id
+  // start_date - use today if missing
+  // end_date - use 14 days from start date if missing
+  /*  
+  pass in a client, with option start and end dates; get a list of events between those dates
+  body = {
+      client (or client_id)
+      start_date - today if missing
+      end_date - start + 14 days if missing
+  }
+  returnList = [{
+    date (as yyyymmdd string)
+    client
+    event_key (event_id#occurrence_date)  
+    description,
+    location,
+    time
+  }]
+  */
+
+  let qQ = { TableName: 'Calendar' };
+  qQ.IndexName = 'record_type-index';
+
+  qQ.KeyConditionExpression = 'client = :c';
+  qQ.ExpressionAttributeValues = { ':c': body.client || body.client_id };
+
+  qQ.KeyConditionExpression += ' and record_type = :t';
+  qQ.ExpressionAttributeValues[':t'] = 'occurrence';
+
+  qQ.FilterExpression = 'occurrence_date BETWEEN :s and :e';
+  qQ.ExpressionAttributeValues[':s'] = makeDate((body.start_date || new Date())).numeric$;
+  qQ.ExpressionAttributeValues[':e'] = makeDate((body.end_date || addDays(qQ.ExpressionAttributeValues[':s'], 14))).numeric$;
+
+  let returnList = [];
+  let calendarRecs = await dbClient
+    .query(qQ)
+    .promise()
+    .catch(error => {
+      if (error.code === 'NetworkingError') {
+        cl(`Security Violation or no Internet Connection`);
+      }
+      cl(`Error reading ${qQ.TableName} in getAllOccurrences - error is: ${error}`);
+      cl(qQ);
+    });
+  if (!recordExists(calendarRecs)) { return returnList; }
+
+  let ccL = calendarRecs.Items.length;
+  calendarRecs.Items.sort((a, b) => {
+    return (a.occurrence_date < b.occurrence_date ? -1 : 1);
+  });
+  let screenDate = 0;
+  for (let c = 0; c < ccL; c++) {
+    let occurrenceRec = calendarRecs.Items[c];
+    if (occurrenceRec.occurrence_date !== screenDate) {  // send a message back... now processing date xxxx
+      screenDate = occurrenceRec.occurrence_date;
+      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ((c / ccL) * 100), ((ccL / 40) + .75));
+    }
+    let eventRec = {};
+    if (occurrenceRec.description
+      && occurrenceRec.location
+      && occurrenceRec.time) { }
+    else {
+      eventRec = await eventData({
+        client_id: qQ.ExpressionAttributeValues[':c'],
+        event_id: occurrenceRec.event_id,
+        info: 'basic'
+      });
+    }
+    let oTime;
+    if (occurrenceRec.time) {
+      oTime = occurrenceRec.time.from;
+      if (occurrenceRec.time.to) { oTime = occurrenceRec.time.to; }
+    }
+    else { oTime = eventRec.time; }
+    let occurrenceObj = {
+      date: occurrenceRec.occurrence_date,
+      client: qQ.ExpressionAttributeValues[':c'],
+      event_key: occurrenceRec.event_key,
+      description: occurrenceRec.description || eventRec.description,
+      location: occurrenceRec.location || eventRec.location,
+      time: oTime,
+      time24: makeTime(oTime).numeric24
+    };
+    returnList.push(occurrenceObj);
+  }
+  returnList.sort((a, b) => {
+    if (a.date < b.date) { return -1; }
+    else if (a.date > b.date) { return 1; }
+    else if (a.time24 < b.time24) { return -1; }
+    else { return 1; }
+  });
+  return returnList;
+}
+
+export function occurrenceDateBuilder(eventRec, start_date, end_date) {
+  let responseArray = [];
+  if (!eventRec || !eventRec.eventData || !eventRec.eventData.occPattern) { return []; }
+  let occPattern = eventRec.eventData.occPattern;
+  switch (occPattern.recurrence) {
+    case "daily": {
+      let from_date = makeDate(start_date).date;
+      let to_date = makeDate(end_date).date;
+      for (let candidate = from_date; ((candidate < to_date) && (responseArray.length < 10)); candidate = addDays(candidate, 1)) {
+        if (occPattern.day_of_week.includes(candidate.getDay())) {
+          let nominee = makeDate(candidate);
+          if (occPattern['first_date'] && (nominee.numeric < occPattern.first_date)) { continue; }
+          if (candidate < from_date) { continue; }
+          if (occPattern['last_date'] && (nominee.numeric > occPattern.last_date)) { continue; }
+          if (candidate > to_date) { continue; }
+          // All good if we get this far
+          responseArray.push(nominee.numeric$);
+        }
+      }
+      break;
+    }
+    case "monthly": {
+      let targetArray = makeArray(occPattern.day_of_month);
+      let from_date = makeDate(start_date).date;
+      from_date.setDate(1);
+      let to_date = makeDate(end_date).date;
+      let monthToCheck;
+      for (let candidate = from_date; ((candidate < to_date) && (responseArray.length < 10)); candidate.setMonth(monthToCheck + 1)) {
+        let yearToCheck = candidate.getFullYear();
+        monthToCheck = candidate.getMonth();
+        for (let r = 0; ((r < targetArray.length) && (responseArray.length < 10)); r++) {
+          if (typeof targetArray[r] === 'number') {  // day of the month
+            responseArray.push(`${yearToCheck}${(monthToCheck + 101).toString().slice(-2)}${(targetArray[r] + 100).toString().slice(-2)}`);
+          }
+          else {
+            let nominee = makeDate(candidate);
+            for (let x = 0; x < 7; x++) {
+              if (occPattern.day_of_week.includes(nominee.date.getDay())) {
+                switch (targetArray[r]) {
+                  case "first": {
+                    responseArray.push(nominee.numeric$);
+                    break;
+                  }
+                  case "second": {
+                    responseArray.push(makeDate(addDays(nominee.date, 7)).numeric$);
+                    break;
+                  }
+                  case "third": {
+                    responseArray.push(makeDate(addDays(nominee.date, 14)).numeric$);
+                    break;
+                  }
+                  case "last": {
+                    let possDate = addDays(nominee.date, 28);
+                    if (possDate.getMonth() === monthToCheck) {
+                      responseArray.push(makeDate(possDate).numeric$);
+                      break;
+                    }
+                  }
+                  // eslint-disable-next-line
+                  case "fourth": {
+                    responseArray.push(makeDate(addDays(nominee.date, 21)).numeric$);
+                    break;
+                  }
+                  default: { }
+                }  // end switch on occPattern.day_of_month (as targetArray[r]) ("first Thursday", "second Thursday", etc)
+              } // end "if this date matches a target day of the week (Thursday)"
+              if (responseArray.length >= 10) { break; }
+              addDays(nominee.date, 1);
+            } // end trying every possible day of the week (Sunday - Saturday)
+          } // end else block - occPattern.day_of_month (targetArray[r]) is not a number
+        } // end loop through all occPattern.day_of_month entries
+      } // end loop from first date to last date
+      break;
+    } // end monthly case
+    case "yearly": {
+      //*****************  RAY GO HERE  ***************
+      let targetArray = [];
+      if (typeof occPattern.day_of_year === 'string') { targetArray[0] = Number(occPattern.day_of_year); }
+      else if (typeof occPattern.day_of_year === 'number') { targetArray[0] = occPattern.day_of_year; }
+      else {
+        occPattern.day_of_year.forEach(d => {
+          targetArray.push(Number(d));
+        });
+        targetArray.sort();
+      }
+      let from_date = makeDate(start_date).date.setMonth(1);
+      let to_date = makeDate(end_date).date;
+      let yearToCheck;
+      for (let candidate = from_date; ((candidate < to_date) && (responseArray.length < 10)); candidate.setFullYear(yearToCheck + 1)) {
+        yearToCheck = candidate.getFullYear();
+        for (let t = 0; t < targetArray.length; t++) {
+          responseArray.push(`${(yearToCheck * 10000) + targetArray[t]}`);
+        }
+      }
+      break;
+    }
+    default: {
+      for (let s = 0; ((s < occPattern.specified.length) && (responseArray.length < 10)); s++) {
+        responseArray.push(`${occPattern.specified[s]}`);
+      }
+    }
+  }
+  return responseArray;
+}
+
+export async function addOccurrence(body) {
+  // body MUST contain 
+  //  client or client_id 
+  //  event - either an event record(object) OR an event_key(string)
+  //
+  // addOccurrence assumes a valid occurrence date
+  // 
+
+  let client = (body.client || body.client_id);
+
+  if (!body.event || client) { return false; }
+  let eventIn;
+  if (typeof body.event === 'object') { eventIn = body.event.event_key; }
+  else { eventIn = (body.event_id || body.event); }
+  let [event_id, dateFromEvent] = eventIn.split('#');
+  let eventRecs = await dbClient
+    .get({
+      Key: { client: client, event_key: event_id },
+      TableName: "Calendar"
+    })
+    .promise()
+    .catch(error => {
+      cl({ 'Error reading Calendar': error });
+    });
+  if (!recordExists(eventRecs)) { return false; }
+  let eventRec = eventRecs.Item;
+
+  let oDate = makeDate(body.occurrence_date || dateFromEvent);
+  let occurrence_date = oDate.numeric$;
+  if (!occurrence_date) { return false; }
+  let putCalendar = {
+    client,
+    event_id,
+    description: eventRec.description,
+    location: eventRec.location,
+    time: eventRec.time,
+    event_key: `${event_id}#${occurrence_date}`,
+    occurrence_date,
+    record_type: 'occurrence'
+  };
+  let goodWrite = true;
+  await dbClient
+    .put({
+      Item: putCalendar,
+      TableName: "Calendar",
+    })
+    .promise()
+    .catch(error => {
+      cl(`caught error updating Calendar; error is:`, error);
+      goodWrite = false;
+    });
+  if (!goodWrite) { return false; }
+
+  if (!eventRec.occExists) { eventRec.occExists = [occurrence_date]; }
+  else { eventRec.occExists.push(occurrence_date); }
+
+  if ((!eventRec.last_written_occurrence)
+    || (oDate.numeric > Number(eventRec.last_written_occurrence))) {
+    eventRec.last_written_occurrence = occurrence_date;
+  }
+
+  await dbClient
+    .update({
+      Key: { client: client, event_key: event_id },
+      UpdateExpression: 'set occExists = :a, last_written_occurrence = :b',
+      ExpressionAttributeValues: { ':a': eventRec.occExists, ':b': eventRec.last_written_occurrence },
+      TableName: "Calendar"
+    })
+    .promise()
+    .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+
+  return putCalendar;
 }

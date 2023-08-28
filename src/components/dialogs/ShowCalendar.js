@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { getCalendarEntries } from '../../util/AVACalendars';
+import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays } from '../../util/AVADateTime';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -113,19 +113,15 @@ const useStyles = makeStyles(theme => ({
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, calendarMode, onClose }) => {
- // const [myCalendar, setMyCalendar] = React.useState([]);
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showAll, setShowAll] = React.useState(true);
-  // const [loading, setLoading] = React.useState(false);
 
   const [reactData, setReactData] = React.useState({
     start_date: 0,
     end_date: 'today',
-    myCalendar: [],
+    myCalendar: ((currentEvent && currentEvent[0]) ? currentEvent[0].eventList : []),
     loading: false
   })
-
- // const [lastEndDate, setLastEndDate] = React.useState();
 
   const [statusMessage, setStatusMessage] = React.useState('Initializing');
   const [progress, setProgress] = React.useState(100);
@@ -280,7 +276,13 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     }
     reactData.loading = true;
     setReactData({ ...reactData });
-    let newEntries = await setCalendar();
+    let newEntries = await getAllOccurrences(
+      {
+        client_id: eventClient || (patient.adopted_client || patient.client_id),
+        start_date: reactData.start_date,
+        end_date: reactData.end_date
+      }
+    );
     reactData.loading = false;
     if (factor > 0) {
       reactData.start_date = previousReactData.start_date;
@@ -308,30 +310,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   };
 
   // **************************
-  React.useEffect(() => {
-    async function buildIt() {
-      let rightNow = new Date();
-      let this_date = rightNow.getDate();
-      if (calendarMode === 'history') {
-        reactData.end_date = new Date();
-        reactData.start_date = new Date(rightNow.setDate(this_date - 7));
-      }
-      else {
-        reactData.start_date = new Date();
-        reactData.end_date = new Date(rightNow.setDate(this_date + 7));
-      }
-      reactData.loading = true;
-      setReactData({ ...reactData });
-      reactData.myCalendar = await setCalendar();
-      reactData.loading = false;
-      setReactData({ ...reactData });
-    }
-    if (!reactData.loading) {
-      buildIt();
-    }
-  }, [currentEvent]); // eslint-disable-line react-hooks/exhaustive-deps
-
-
   return (
     <React.Fragment>
       {showAll && reactData && (forceRedisplay || true) &&
@@ -460,7 +438,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           peopleList={peopleList}
           pPatient={patient.patient_id}
           pClient={eventClient || (patient.adopted_client || patient.client_id)}
-        pOccData={reactData.myCalendar[0].occData}
+          pOccData={reactData.myCalendar[0].occData}
           pPatientRec={patient}
           onReset={() => { handleAbort(); }}
           pMode={calendarMode}

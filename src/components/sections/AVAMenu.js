@@ -2,8 +2,9 @@ import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
 import { recordExists, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
-import { makeTime } from '../../util/AVADateTime';
+import { makeTime, addDays, daysDiff } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
+import { getAllOccurrences } from '../../util/AVACalendars';
 import { getMemberList, prepareTargets, getAllGroups } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 
@@ -876,12 +877,43 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           }
           break;
         }
+        case 'events': {
+          setLoading('Loading');
+          setForceRedisplay(!forceRedisplay);          
+          let date_offset = 7;
+          switch (dPart) {
+            case 'future': { date_offset = 7; break; }
+            case 'past':
+            case 'history': { date_offset = -7; break; }
+            default: {
+              let s = Number(dPart);
+              if (s) { date_offset = s; break; }
+            }
+          }
+          let rightNow = new Date();
+          let offset_date = addDays(rightNow, date_offset);
+          screenStatus('Retreiving the Calendar', 0, daysDiff(rightNow, offset_date));
+          dField = 'eventList';
+          dPart = await getAllOccurrences(
+            {
+              client_id: session.client_id,
+              start_date: ((date_offset < 0) ? offset_date : rightNow),
+              end_date: ((date_offset >= 0) ? offset_date : rightNow)
+            },
+            screenStatus
+          );
+          setLoading(false);
+          break;
+        }
         default: { }
       }
       let returnValue;
       if (dField) {
         if (dField.includes('.')) { dField = dField.split('.')[1]; }
-        if (typeof dPart !== 'string') { returnValue = {}; returnValue[dField] = dPart; }
+        if (typeof dPart !== 'string') {
+          returnValue = {};
+          returnValue[dField] = dPart;
+        }
         else { returnValue = `${dField}=${dPart}`; }
       }
       else {

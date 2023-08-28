@@ -1053,12 +1053,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             {(dataRows.columnList.length > 0) &&
               dataRows.displayRows.map((this_item, this_index) => (
                 <Box display='flex'
-                  flexDirection='column'
-                  margin={((isChecked(this_item.text) !== 'none') || textPresent(this_item.text)) ? 2 : 0}
-                  border={((isChecked(this_item.text) !== 'none') || textPresent(this_item.text)) ? 2 : 0}
-                  key={'fullRow' + this_index}
-                  className={(this_index === 0 ? classes.listItemSticky : classes.listTopRow)}
-                >
+                    flexDirection='column'
+                    borderRadius={'16px'}
+                    marginLeft={2}
+                    marginBottom={0.5}
+                    paddingBottom={1}
+                    paddingTop={1}
+                    border={((isChecked(this_item.text) !== 'none') || textPresent(this_item.text)) ? 1 : 0}
+                    key={'fullRow' + this_index}
+                    className={(this_index === 0 ? classes.listItemSticky : classes.listTopRow)}
+                  >
                   <Box
                     display='flex'
                     flexDirection='row'
