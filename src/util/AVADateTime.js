@@ -214,12 +214,12 @@ export function makeDate(pInput) {
         }
         else {
             // the date passed in was a good date
-            // if the year is more than 20 years from now, assume that no year was passed in
+            // if the year is more than 100 years from now, assume that no year was passed in
             // Adjust the year to be the year that makes the month and day closest to now
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 20) { return goodDate; }
+            if (Math.abs(resolvedYear - thisYear) < 100) { return goodDate; }
             goodDate.setFullYear(thisYear);
             if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) { return goodDate; }
             let resolvedMonth = goodDate.getMonth();
