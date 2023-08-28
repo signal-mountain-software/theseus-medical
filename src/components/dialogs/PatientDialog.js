@@ -2,7 +2,8 @@ import React from 'react';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
-import { getPerson, makeName, makeSearchData } from '../../util/AVAPeople';
+import { getPerson, makeName, makeSearchData, formatPhone } from '../../util/AVAPeople';
+import { makeDate } from '../../util/AVADateTime';
 import { getObject, cl, dbClient, s3, lambda, cloudfront } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
 import { getSession } from '../../graphql/queries';
@@ -59,6 +60,9 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     paddingTop: 0,
     height: theme.spacing(2.5),
+  },
+  idText: {
+    marginRight: theme.spacing(1),
   },
   picture: {
     width: theme.spacing(16),
@@ -178,15 +182,6 @@ export default ({ patient, picture, groupData, open, onClose }) => {
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
-  function formatPhone(pNumber) {
-    var match = '' + pNumber.replace(/\D/g, '').substr(-10);
-    let formatted = '';
-    if (match.length > 0) { formatted += '(' + match.substring(0, 3); }
-    if (match.length > 3) { formatted += ') ' + match.substring(3, 6); }
-    if (match.length > 6) { formatted += '-' + match.substring(6, 10); }
-    return formatted;
-  }
-
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
     InvocationType: 'RequestResponse',
@@ -237,6 +232,8 @@ export default ({ patient, picture, groupData, open, onClose }) => {
           voice_private: localPersonRec.messaging?.voice_private,
           office_private: localPersonRec.messaging?.office_private,
           searchTerm: (localPersonRec.search_data || ''),
+          local_data: (localPersonRec.local_data || {}),
+          local_data_display: prepareLocal(localPersonRec.local_data),
           location: (localPersonRec.location || ''),
           sessionClient: (targetSession.client_id || '#need'),
           sessionPatient: (targetSession.patient_id || '#need'),
@@ -265,8 +262,47 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     initialize();
   }, [patient]);  // eslint-disable-line react-hooks/exhaustive-deps
 
+  function prepareLocal(localObj) {
+    // takes in {key: value, key2: value2, ...}
+    // returns {key: value for display, key2: value for display, ...}
+    if (!localObj) { return {}; }
+    let oKeys = Object.keys(localObj);
+    if (oKeys.length === 0) { return {}; }
+    let returnObj = {};
+    oKeys.forEach(k => {
+      returnObj[k] = localObj[k];
+    });
+    if (!state.session.local_data) { return returnObj; }
+    if (Object.keys(state.session.local_data).length === 0) { return returnObj; }
+    for (let ldKey in state.session.local_data) {
+      if (localObj.hasOwnProperty(ldKey)) {
+        switch (state.session.local_data[ldKey]) {
+          case 'phone': {
+            returnObj[ldKey] = formatPhone(localObj[ldKey]);
+            break;
+          }
+          case 'boolean': {
+            let bVal = ['yes', 'ok', 'true'].includes(localObj[ldKey]);
+            returnObj[ldKey] = ( bVal ? 'yes' : 'no' ); 
+            break;
+          }
+          case 'date': {
+            returnObj[ldKey] = makeDate(localObj[ldKey]).dateOnly;
+            break;
+          }
+          case 'fulldate': {
+            returnObj[ldKey] = makeDate(localObj[ldKey]).absolute;
+            break;
+          }
+          default: {  }
+        }
+      }
+    }
+    return returnObj;
+  }
+
   const getPersonRec = async (pPerson) => {
-    let pRec = await getPerson(pPerson);
+    let pRec = await getPerson(pPerson, '*all', true);
     if (pRec) { return pRec; }
     else {
       return {
@@ -399,6 +435,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       voice_private: (localData.voice_private && 'true'),
       office_private: (localData.office_private && 'true'),
       surrogate: localData.surrogate,
+      local_data: localData.local_data,
       search_data: makeSearchData([localData]),
       preferred_method: localData.preferred_method || 'AVA',
       requirePassword: localData.requirePassword,
@@ -435,6 +472,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
         surrogate: localData.surrogate,
       },
       search_data: updatePerson.search_data,
+      local_data: updatePerson.local_data,
       preferred_method: localData.preferred_method || 'AVA',
       priority_activities: localData.priority_activities,
       favorite_activities: localData.favorite_activities,
@@ -581,22 +619,20 @@ export default ({ patient, picture, groupData, open, onClose }) => {
   };
 
   const handleChangeCell = event => {
-    localData.cell = formatPhone('' + event.target.value.replace(/\D/g, ''));
+    localData.cell = formatPhone(event.target.value);
     setRefreshTrigger(!refreshTrigger);
-    // setCell(formatPhone('' + event.target.value.replace(/\D/g, '')));
     setChanges(true);
   };
 
   const handleChangeVoice = event => {
-    localData.voice = formatPhone('' + event.target.value.replace(/\D/g, ''));
+    localData.voice = formatPhone(event.target.value);
     setRefreshTrigger(!refreshTrigger);
-    // setVoice(formatPhone('' + event.target.value.replace(/\D/g, '')));
     setChanges(true);
   };
 
 
   const handleChangeOffice = event => {
-    localData.office = formatPhone('' + event.target.value.replace(/\D/g, ''));
+    localData.office = formatPhone(event.target.value);
     setRefreshTrigger(!refreshTrigger);
     setChanges(true);
   };
@@ -604,7 +640,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
   const handleChangeSurrogate = event => {
     let checkNum = event.target.value.replace(/[\d\s\-()]/g, '');
     if (checkNum) { localData.surrogate = event.target.value; }
-    else { localData.surrogate = (formatPhone('' + event.target.value.replace(/\D/g, ''))); }
+    else { localData.surrogate = formatPhone(event.target.value); }
     setRefreshTrigger(!refreshTrigger);
     setChanges(true);
   };
@@ -821,125 +857,164 @@ export default ({ patient, picture, groupData, open, onClose }) => {
             justifyContent='center'
             alignItems='center'>
             <Box flexGrow={2} display='flex' flexDirection='column'>
-              <form className={classes.root} noValidate autoComplete='off'>
-                <div>
-                  <TextField id='FirstName' value={localData.firstName} onChange={handleChangeFirstName} helperText='First' />
-                  {'    '}
-                  <TextField id='LastName' onChange={handleChangeLastName} value={localData.lastName} helperText='Last' />
-                </div>
-                <div>
-                  <TextField id='address' value={localData.location} fullWidth onChange={handleChangeLocation} helperText='Location' />
-                </div>
-                <div>
-                  <TextField id='eMail' value={localData.email} fullWidth onChange={handleChangeEmail} helperText='e-Mail' />
-                </div>
-                <div>
-                  <TextField id='cell' value={localData.cell} onChange={handleChangeCell} helperText='cell phone' />
-                  {'    '}
-                  <TextField id='home' value={localData.voice} onChange={handleChangeVoice} helperText='home phone' />{'    '}
-                  {'    '}
-                  <TextField id='work' value={localData.office} onChange={handleChangeOffice} helperText='work phone' />
-                </div>
-                <div>
-                  <TextField id='surrogate' value={localData.surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
-                </div>
-                <div>
-                  <Box
-                    display="flex"
-                    pt={2}
-                    flexDirection='column'
-                    justifyContent="center"
-                  >
-                    <Typography className={classes.radioText}>Simple option - I prefer to always receive communications via...</Typography>
-                    {localData.preferred_method &&
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup row defaultValue={localData.preferred_method} aria-label="PreferredMethod" name="method" value={localData.preferred_method} onChange={handleChangeMethod}>
-                          <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!localData.cell} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!localData.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!localData.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>home phone</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="office" control={<Radio disabled={!localData.office} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>work phone</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!localData.surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>use rules to manage messages</Typography>} />
-                        </RadioGroup>
-                      </FormControl>
-                    }
-                    {localData.preferred_method !== 'time_based' &&
-                      <Typography className={classes.radioText}>Urgent messages will re-try this method every 30 minutes for 2 hours</Typography>
-                    }
-
-                    <Typography className={classes.idText1}>
-                      {`My userID is ${patient?.person_id}`}
-                    </Typography>
-
-                    <Typography className={classes.radioTextWithTopMargin}>With regard to the Directory...</Typography>
-                    {localData.directoryOption &&
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup row={false} defaultValue={localData.directoryOption} aria-label="DirOptions" name="dirOption" value={localData.directoryOption} onChange={handleChangeDirectoryOption}>
-                          <FormControlLabel className={classes.formControlLbl} value="normal" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Include my info</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="exclude" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Exclude me</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="alone" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Do not print my info with anyone else's</Typography>} />
-                          <FormControlLabel className={classes.formControlLbl} value="merge" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Merge with another account for printing</Typography>} />
-                        </RadioGroup>
-                      </FormControl>
-                    }
-                    {(localData.directoryOption === 'merge') &&
-                      <React.Fragment>
-                        <Typography className={classes.radioTextWithTopMargin}>{(localData.respArray && (localData.respArray.length === 0)) ? 'To merge for printing, first link one or more Accounts in the "Linked Accounts" section below' : 'Merge with which linked Account?'}</Typography>
-                        <FormControl className={classes.formControl} component="fieldset">
-                          <RadioGroup row
-                            defaultValue={localData.directoryPartner || ((localData.respArray.length === 1) ? localData.respArray[0] : localData.patient_id)}
-                            aria-label="Mergeaccount"
-                            name="directory_partner"
-                            value={localData.directoryPartner}
-                            onChange={handleChangePartner}
-                          >
-                            {localData.respArray &&
-                              localData.respArray.map((presp) => (
-                                <FormControlLabel
-                                  key={`nameNlinkdaccts+${presp}`}
-                                  className={classes.formControlLbl}
-                                  value={presp}
-                                  control={
-                                    <Radio disableRipple
-                                      className={classes.radioButton}
-                                      size='small' />
-                                  }
-                                  label={
-                                    <Typography
-                                      className={classes.radioText}>
-                                      {localData.nameObj[presp]}
-                                    </Typography>}
-                                />
-                              ))}
-                          </RadioGroup>
-                        </FormControl>
-                      </React.Fragment>
-                    }
-                    <Typography className={classes.radioTextWithTopMargin}>Please don't share my...</Typography>
-                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeEmailPrivacy} control={<Checkbox disableRipple checked={localData.email_private} disabled={!localData.email} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail address</Typography>} />
-                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeSmsPrivacy} control={<Checkbox disableRipple checked={localData.sms_private} disabled={!localData.cell} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Cell number</Typography>} />
-                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeVoicePrivacy} control={<Checkbox disableRipple checked={localData.voice_private} disabled={!localData.voice} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Home number</Typography>} />
-                    <FormControlLabel className={classes.formControlLbl} onChange={handleChangeOfficePrivacy} control={<Checkbox disableRipple checked={localData.office_private} disabled={!localData.office} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Work number</Typography>} />
-
-                    <Box mt={3}>
-                      <TextField id='searchTerm' value={localData.searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
-                    </Box>
-
-                  </Box>
-                </div>
-                <Box flexGrow={1} mr={3}
-                  display="flex"
-                  flexDirection='row'
-                  alignItems="center"
-                  justifyContent="flex-end"
-                >
+              <Box display='flex' alignItems='center'
+                justifyContent='flex-start' flexDirection='row'>
+                <TextField classes={{ root: classes.idText }}
+                  id='FirstName' value={localData.firstName} onChange={handleChangeFirstName} helperText='First' />
+                <TextField classes={{ root: classes.idText }}
+                  id='LastName' onChange={handleChangeLastName} value={localData.lastName} helperText='Last' />
+              </Box>
+              <Box display='flex' alignItems='center'
+                justifyContent='flex-start' flexDirection='row'>
+                <TextField classes={{ root: classes.idText }}
+                  id='address' value={localData.location} fullWidth onChange={handleChangeLocation} helperText='Location' />
+              </Box>
+              <Box display='flex' alignItems='center'
+                justifyContent='flex-start' flexDirection='row'>
+                <TextField classes={{ root: classes.idText }}
+                  id='eMail' value={localData.email} fullWidth onChange={handleChangeEmail} helperText='e-Mail' />
+              </Box>
+              <Box display='flex' alignItems='center'
+                justifyContent='flex-start' flexDirection='row'>
+                <TextField classes={{ root: classes.idText }}
+                  id='cell' value={localData.cell} onChange={handleChangeCell} helperText='cell phone' />
+                <TextField classes={{ root: classes.idText }}
+                  id='home' value={localData.voice} onChange={handleChangeVoice} helperText='home phone' />{'    '}
+                <TextField classes={{ root: classes.idText }}
+                  id='work' value={localData.office} onChange={handleChangeOffice} helperText='work phone' />
+              </Box>
+              <Box display='flex' alignItems='center'
+                justifyContent='flex-start' flexDirection='row'>
+                <TextField classes={{ root: classes.idText }}
+                  id='surrogate' value={localData.surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
+              </Box>
+              {state.session.local_data &&
+                (Object.keys(state.session.local_data).length > 0) &&
+                <Box flexGrow={2} display='flex' flexDirection='column'>
+                  {Object.keys(state.session.local_data).map(local => (
+                    <TextField classes={{ root: classes.idText }}
+                      id={`loc-${local}`}
+                      value={localData.local_data_display[local] || ' '}
+                      onChange={(event) => {
+                        switch (state.session.local_data[local]) {
+                          case 'phone': {
+                            localData.local_data[local] = '+1' + Number(event.target.value.replace(/\D/g, '')).toString();
+                            localData.local_data_display[local] = formatPhone(event.target.value);
+                            break;
+                          }
+                          case 'boolean': {                             
+                            localData.local_data[local] = ['yes', 'ok', 'true'].includes(event.target.value.toLowerCase());
+                            localData.local_data_display[local] = event.target.value;
+                            break;
+                          }
+                          case 'fulldate':
+                          case 'date': {
+                            let lDate = makeDate(event.target.value);
+                            if (!lDate.error) { localData.local_data[local] = lDate.numeric$; }
+                            localData.local_data_display[local] = event.target.value;
+                            break;
+                          }
+                          default: {
+                            localData.local_data[local] = event.target.value.trim();
+                            localData.local_data_display[local] = event.target.value;
+                          }
+                        }
+                        setRefreshTrigger(!refreshTrigger);
+                        setChanges(true);
+                      }}
+                      helperText={local}
+                    />
+                  ))}
                 </Box>
-              </form>
+              }
+              <Box
+                display="flex"
+                pt={2}
+                flexDirection='column'
+                justifyContent="center"
+              >
+                <Typography className={classes.radioText}>Simple option - I prefer to always receive communications via...</Typography>
+                {localData.preferred_method &&
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup row defaultValue={localData.preferred_method} aria-label="PreferredMethod" name="method" value={localData.preferred_method} onChange={handleChangeMethod}>
+                      <FormControlLabel className={classes.formControlLbl} value="AVA" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>AVA</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="sms" control={<Radio disabled={!localData.cell} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>text</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="email" control={<Radio disabled={!localData.email} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="voice" control={<Radio disabled={!localData.voice} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>home phone</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="office" control={<Radio disabled={!localData.office} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>work phone</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="surrogate" control={<Radio disabled={!localData.surrogate} disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>surrogate</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="time_based" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>use rules to manage messages</Typography>} />
+                    </RadioGroup>
+                  </FormControl>
+                }
+                {localData.preferred_method !== 'time_based' &&
+                  <Typography className={classes.radioText}>Urgent messages will re-try this method every 30 minutes for 2 hours</Typography>
+                }
+
+                <Typography className={classes.idText1}>
+                  {`My userID is ${patient?.person_id}`}
+                </Typography>
+
+                <Typography className={classes.radioTextWithTopMargin}>With regard to the Directory...</Typography>
+                {localData.directoryOption &&
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup row={false} defaultValue={localData.directoryOption} aria-label="DirOptions" name="dirOption" value={localData.directoryOption} onChange={handleChangeDirectoryOption}>
+                      <FormControlLabel className={classes.formControlLbl} value="normal" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Include my info</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="exclude" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Exclude me</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="alone" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Do not print my info with anyone else's</Typography>} />
+                      <FormControlLabel className={classes.formControlLbl} value="merge" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Merge with another account for printing</Typography>} />
+                    </RadioGroup>
+                  </FormControl>
+                }
+                {(localData.directoryOption === 'merge') &&
+                  <React.Fragment>
+                    <Typography className={classes.radioTextWithTopMargin}>{(localData.respArray && (localData.respArray.length === 0)) ? 'To merge for printing, first link one or more Accounts in the "Linked Accounts" section below' : 'Merge with which linked Account?'}</Typography>
+                    <FormControl className={classes.formControl} component="fieldset">
+                      <RadioGroup row
+                        defaultValue={localData.directoryPartner || ((localData.respArray.length === 1) ? localData.respArray[0] : localData.patient_id)}
+                        aria-label="Mergeaccount"
+                        name="directory_partner"
+                        value={localData.directoryPartner}
+                        onChange={handleChangePartner}
+                      >
+                        {localData.respArray &&
+                          localData.respArray.map((presp) => (
+                            <FormControlLabel
+                              key={`nameNlinkdaccts+${presp}`}
+                              className={classes.formControlLbl}
+                              value={presp}
+                              control={
+                                <Radio disableRipple
+                                  className={classes.radioButton}
+                                  size='small' />
+                              }
+                              label={
+                                <Typography
+                                  className={classes.radioText}>
+                                  {localData.nameObj[presp]}
+                                </Typography>}
+                            />
+                          ))}
+                      </RadioGroup>
+                    </FormControl>
+                  </React.Fragment>
+                }
+                <Typography className={classes.radioTextWithTopMargin}>Please don't share my...</Typography>
+                <FormControlLabel className={classes.formControlLbl} onChange={handleChangeEmailPrivacy} control={<Checkbox disableRipple checked={localData.email_private} disabled={!localData.email} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>e-Mail address</Typography>} />
+                <FormControlLabel className={classes.formControlLbl} onChange={handleChangeSmsPrivacy} control={<Checkbox disableRipple checked={localData.sms_private} disabled={!localData.cell} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Cell number</Typography>} />
+                <FormControlLabel className={classes.formControlLbl} onChange={handleChangeVoicePrivacy} control={<Checkbox disableRipple checked={localData.voice_private} disabled={!localData.voice} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Home number</Typography>} />
+                <FormControlLabel className={classes.formControlLbl} onChange={handleChangeOfficePrivacy} control={<Checkbox disableRipple checked={localData.office_private} disabled={!localData.office} className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Work number</Typography>} />
+
+                <Box mt={3}>
+                  <TextField id='searchTerm' value={localData.searchTerm} fullWidth onChange={handleChangeSearch} helperText='Additional search terms' />
+                </Box>
+
+              </Box>
             </Box>
           </Paper>
-        </Box>
-        {localData.preferred_method === 'time_based' &&
+        </Box >
+        {
+          localData.preferred_method === 'time_based' &&
           <MessageRouting
             person={patient}
             updateSetChange={() => { setChanges(true); }}
@@ -952,7 +1027,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
             session={patientSession}
           />
         }
-        <Box m={2}>
+        < Box m={2} >
           <Paper component={Box} variant={'outlined'}>
             <Box mt={1} py={1} px={3} borderBottom={2}>
               <Box flexGrow={1}>
@@ -1211,7 +1286,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
             </Box>
           </Paper>
         </Box>
-      </Dialog>
+      </Dialog >
       :
       <Dialog open={open} TransitionComponent={Transition} fullScreen>
         <AppBar>
