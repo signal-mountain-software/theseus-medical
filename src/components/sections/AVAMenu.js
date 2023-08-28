@@ -1130,7 +1130,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               )
                 &&
                 <MenuItem onClick={async () => {
-                  setGroupData(await getAllGroups('*NEW~0'));
+                  setGroupData(await getAllGroups('*NEW~0', state.session.client_id));
                   setPopupMenuOpen(false);
                   setShowAddAccount(true);
                 }}>
@@ -1489,7 +1489,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           <PatientDialog
             patient={{
               "person_id": `*NEW~${new Date().getTime()}`,
-              "client_id": defaultClient,
+              "client_id": state.session.client_id,
               "groups": [],
               "name": {
                 "first": 'New',
@@ -1498,7 +1498,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               "clients": [
                 {
                   "groups": [],
-                  "id": defaultClient
+                  "id": state.session.client_id
                 }
               ],
             }}
