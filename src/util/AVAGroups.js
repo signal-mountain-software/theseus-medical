@@ -225,7 +225,7 @@ export async function isMemberOf(person_id, pGroup_id) {
   return (Object.keys(loadedGroupObj).includes(pGroup_id));
 };
 
-export async function getGroupsResponsibleFor(person_id) {
+export async function getGroupsResponsibleFor(person_id, options) {
   if (!session || (session.session_id !== person_id)) {
     session = await getSession(person_id);
   }
@@ -287,7 +287,8 @@ export async function getGroupsResponsibleFor(person_id) {
     for (let g = 0; g < everyGroup.Items.length; g++) {
       let this_group = everyGroup.Items[g];
       if (!(this_group.group_id in returnObject)) {
-        if (this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id)) {
+        if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
+        || (options && options.account_class && (['master', 'support'].includes(options.account_class)))) {
           returnObject[this_group.group_id] = {
             group_name: this_group.name,
             group_id: this_group.group_id,
@@ -330,7 +331,7 @@ export async function getPeopleResponsibleFor(person_id) {
 
 export async function getGroupsBelongTo(person_id, options) {
   // You belong to all groups that you are responsible for
-  var returnObject = await getGroupsResponsibleFor(person_id);
+  var returnObject = await getGroupsResponsibleFor(person_id, options);
   // Next, get any other Groups that this person belongs to (but aren't responsible for)
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);

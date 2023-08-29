@@ -1,5 +1,5 @@
 import React from 'react';
-import { lambda, cl, sentenceCase, listFromArray, switchActiveAccount } from '../../util/AVAUtilities';
+import { lambda, cl, sentenceCase, switchActiveAccount } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
@@ -232,14 +232,13 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   var rowsWritten;
   let filterTimeOut;
 
-  let newVersion = !Array.isArray(groupMemberList);
-  let allGroups = (
-    (pGroup && (pGroup.toLowerCase === '*all'))
-    || (newVersion && (peopleList.includes('*all') || (peopleList.length === 0)))
-    || (!pGroup && !peopleList)
+  const multiGroups = (
+    (Array.isArray(pGroup))
+      ? ((pGroup.length > 1) || (pGroup[0] === '*all'))
+      : (pGroup.includes('~') || (pGroup === '*all'))
   );
 
-
+  const masterAccount = ['master', 'support'].includes(state.profile.account_class);
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -422,9 +421,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   function okToShow(pPerson) {
     try {
-      if (newVersion && !allGroups && !(peopleList.includes(pPerson.member_of))) {
-        return false;
-      }
       if (singleFilterDigit) {
         return (pPerson.name.last.toLowerCase().startsWith(person_filter_lower.trim()) || pPerson.location.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
       }
@@ -444,7 +440,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     for (const messageType in pMessaging) {
       switch (messageType) {
         case 'sms': {
-          if (pMessaging.sms && (!pMessaging.sms_private || allGroups)) {
+          if (pMessaging.sms && (!pMessaging.sms_private || masterAccount)) {
             returnArray.push({
               action: [`sms:${pMessaging.sms}`, `tel:${pMessaging.sms}`],
               button: ['Send Text', 'Call Cell'],
@@ -456,7 +452,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
           break;
         }
         case 'voice': {
-          if (pMessaging.voice && (!pMessaging.voice_private || allGroups)) {
+          if (pMessaging.voice && (!pMessaging.voice_private || masterAccount)) {
             returnArray.push({
               action: [`tel:${pMessaging.voice}`],
               button: ['Call Home'],
@@ -468,7 +464,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
           break;
         }
         case 'office': {
-          if (pMessaging.office && (!pMessaging.office_private || allGroups)) {
+          if (pMessaging.office && (!pMessaging.office_private || masterAccount)) {
             returnArray.push({
               action: [`tel:${pMessaging.office}`],
               button: ['Call Work'],
@@ -480,7 +476,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
           break;
         }
         case 'email': {
-          if (pMessaging.email && (!pMessaging.email_private || allGroups)) {
+          if (pMessaging.email && (!pMessaging.email_private || masterAccount)) {
             returnArray.push({
               action: [`mailto:${pMessaging.email}`],
               button: ['e-Mail'],
@@ -515,11 +511,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   className={classes.title}
                   id='scroll-dialog-title'
                 >
-                  {allGroups ?
-                    'Administrative View - All Accounts' :
-                    (newVersion ? `All ${listFromArray(peopleList, { sentenceCase: true })} accounts` :
-                      `Members of the ${pGroupName} Group`)
-                  }
+                  {multiGroups ? 'Directory Listing' : `Members of the ${pGroupName} Group`}
                 </DialogContentText>
                 <TextField
                   id='List Filter'
@@ -567,7 +559,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 </Box>
                                 {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
                               </Box>
-                              {(newVersion && ((peopleList.length > 1) || allGroups) && this_item.hasOwnProperty('member_of')) &&
+                              {multiGroups && this_item.hasOwnProperty('member_of') &&
                                 <Typography key={`member_of-${index}`} className={classes.lastName}>{sentenceCase(this_item.member_of)}</Typography>
                               }
                               {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
@@ -597,7 +589,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                         </Typography>
                                         {(prefLine.private) &&
                                           <Typography
-                                            key={`prefLine-${index}.${prefIndex}`}
+                                            key={`prefLine-${index}.${prefIndex}_UNPUB`}
                                             className={classes.preferenceLine}
                                           >
                                             *UNPUBLISHED*
@@ -711,7 +703,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   </Box>
                   {(pRole === 'admin' || pRole === 'responsible') &&
                     <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                      {!allGroups &&
+                      {!multiGroups &&
                         <Button
                           className={AVAClass.AVAButton}
                           style={{ backgroundColor: 'green', color: 'white' }}
@@ -764,7 +756,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     }
                     {(overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
                       <React.Fragment>
-                        {!allGroups &&
+                        {!multiGroups &&
                           <Button
                             className={AVAClass.AVAButton}
                             style={{ backgroundColor: 'green', color: 'white' }}
@@ -917,16 +909,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                             }
                           </React.Fragment>
                         ))}
-                      </Box>
-                    }
-                    {superSizeData.date_of_birth &&
-                      <Box className={classes.giveSpaceBoth} display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
-                        <Typography key={`dobtext-superSize`} className={classes.adName}>
-                          {`Birth date`}
-                        </Typography>
-                        <Typography key={`dob-superSize`} className={classes.superSizePreferenceLine3}>
-                          {makeDate(superSizeData.date_of_birth).dateOnly}
-                        </Typography>
                       </Box>
                     }
                     {superSizeData.local_data && (Object.keys(superSizeData.local_data).length > 0) &&
