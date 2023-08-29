@@ -252,6 +252,25 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     Payload: ''
   };
 
+  function formatLocalData(ldKey, inData) {
+    switch (state.session.local_data[ldKey]) {
+      case 'phone': {
+        return formatPhone(inData);
+      }
+      case 'boolean': {
+        let bVal = ['yes', 'ok', 'true'].includes(inData);
+        return (bVal ? 'yes' : 'no');
+      }
+      case 'date': {
+        return makeDate(inData).dateOnly;
+      }
+      case 'fulldate': {
+        return makeDate(inData).absolute;
+      }
+      default: { return inData; }
+    }
+  }
+
   const handleChangePersonFilter = vCheck => {
     clearTimeout(filterTimeOut);
     cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
@@ -880,54 +899,54 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       </Box>
                     </React.Fragment>
                   </Box>
-                </React.Fragment>
-              }
-              <Box display='flex' className={classes.giveSpace} flexDirection='column' justifyContent='center' alignItems='center' >
-                <Typography key={`dobtext-superSize`} className={classes.adName}>
-                  {`Member of`}
-                </Typography>
-                <Typography key={`HeadLine-superSize`} className={classes.superSizePreferenceLine3}>
-                  {`${sentenceCase(superSizeData.account_class)}${(['master', 'support'].includes(superSizeData.account_class.toLowerCase())) ? ' account' : ''}`}
-                </Typography>
-                {superSizeData.public_groups && (Object.keys(superSizeData.public_groups).length > 0) &&
-                  <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
-                    {Object.keys(superSizeData.public_groups).map((pG, g) => (
-                      <React.Fragment key={`pubGFrag_${g}-superSize`}>
-                        {(superSizeData.public_groups[pG].role !== 'non-member') &&
-                          <Typography key={`pubG_${g}-superSize`} className={classes.superSizePreferenceLine3}>
-                            {sentenceCase(superSizeData.public_groups[pG].group_name)}
-                          </Typography>
+                  <Box display='flex' className={classes.giveSpace} flexDirection='column' justifyContent='center' alignItems='center' >
+                    <Typography key={`dobtext-superSize`} className={classes.adName}>
+                      {`Member of`}
+                    </Typography>
+                    <Typography key={`HeadLine-superSize`} className={classes.superSizePreferenceLine3}>
+                      {`${sentenceCase(superSizeData.account_class)}${(['master', 'support'].includes(superSizeData.account_class.toLowerCase())) ? ' account' : ''}`}
+                    </Typography>
+                    {superSizeData.public_groups && (Object.keys(superSizeData.public_groups).length > 0) &&
+                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
+                        {Object.keys(superSizeData.public_groups).map((pG, g) => (
+                          <React.Fragment key={`pubGFrag_${g}-superSize`}>
+                            {(superSizeData.public_groups[pG].role !== 'non-member') &&
+                              <Typography key={`pubG_${g}-superSize`} className={classes.superSizePreferenceLine3}>
+                                {sentenceCase(superSizeData.public_groups[pG].group_name)}
+                              </Typography>
+                            }
+                          </React.Fragment>
+                        ))}
+                      </Box>
+                    }
+                    {superSizeData.date_of_birth &&
+                      <Box className={classes.giveSpaceBoth} display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
+                        <Typography key={`dobtext-superSize`} className={classes.adName}>
+                          {`Birth date`}
+                        </Typography>
+                        <Typography key={`dob-superSize`} className={classes.superSizePreferenceLine3}>
+                          {makeDate(superSizeData.date_of_birth).dateOnly}
+                        </Typography>
+                      </Box>
+                    }
+                    {superSizeData.local_data && (Object.keys(superSizeData.local_data).length > 0) &&
+                      <React.Fragment>
+                        {Object.keys(superSizeData.local_data).map((local, l) => (
+                          <Box display='flex' className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
+                            <Typography key={`localtext_${l}-superSize`} className={classes.adName}>
+                              {`${sentenceCase(local)}`}
+                            </Typography>
+                            <Typography key={`local_${l}-superSize`} className={classes.superSizePreferenceLine3}>
+                              {formatLocalData(local, superSizeData.local_data[local])}
+                            </Typography>
+                          </Box>
+                        ))
                         }
                       </React.Fragment>
-                    ))}
-                  </Box>
-                }
-                {superSizeData.date_of_birth &&
-                  <Box className={classes.giveSpaceBoth} display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
-                    <Typography key={`dobtext-superSize`} className={classes.adName}>
-                      {`Birth date`}
-                    </Typography>
-                    <Typography key={`dob-superSize`} className={classes.superSizePreferenceLine3}>
-                      {makeDate(superSizeData.date_of_birth).dateOnly}
-                    </Typography>
-                  </Box>
-                }
-                {superSizeData.local_data && (Object.keys(superSizeData.local_data).length > 0) &&
-                  <Box display='flex' className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
-                    {Object.keys(superSizeData.local_data).map((local, l) => (
-                      <React.Fragment>
-                        <Typography key={`localtext_${l}-superSize`} className={classes.adName}>
-                          {`${sentenceCase(local)}`}
-                        </Typography>
-                        <Typography key={`local_${l}-superSize`} className={classes.superSizePreferenceLine3}>
-                          {listFromArray(superSizeData.local_data[local], { sentenceCase: true })}
-                        </Typography>
-                      </React.Fragment>
-                    ))
                     }
                   </Box>
-                }
-              </Box>
+                </React.Fragment>
+              }
               <Box display='flex' className={classes.giveMoreSpace} flexDirection='row' justifyContent='center' alignItems='center' >
                 <Button
                   className={AVAClass.AVAButton}
