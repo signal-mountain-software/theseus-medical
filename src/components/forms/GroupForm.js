@@ -875,8 +875,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 )))}
               {(pRole === 'admin'
                 || pRole === 'responsible'
-                || (state.profile.account_class === 'master')
-                || (state.profile.account_class === 'support')
+                || masterAccount
               ) &&
                 <React.Fragment>
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
@@ -896,7 +895,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       {`Member of`}
                     </Typography>
                     <Typography key={`HeadLine-superSize`} className={classes.superSizePreferenceLine3}>
-                      {`${sentenceCase(superSizeData.account_class)}${(['master', 'support'].includes(superSizeData.account_class.toLowerCase())) ? ' account' : ''}`}
+                      {`${sentenceCase(superSizeData.account_class)}${masterAccount ? ' account' : ''}`}
                     </Typography>
                     {superSizeData.public_groups && (Object.keys(superSizeData.public_groups).length > 0) &&
                       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
@@ -990,8 +989,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               </Box>
               {(pRole === 'admin'
                 || pRole === 'responsible'
-                || (state.profile.account_class === 'master')
-                || (state.profile.account_class === 'support')
+                || masterAccount
               ) &&
                 <React.Fragment>
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
@@ -1031,12 +1029,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               }
               {(pRole === 'admin'
                 || pRole === 'responsible'
-                || (state.profile.account_class === 'master')
-                || (state.profile.account_class === 'support')
+                || masterAccount
               )
-                && pGroup
-                && (!pGroup.toLowerCase().includes('*all'))
-                && (!pGroup.includes('~')) &&
+                && !multiGroups
+                &&
                 <React.Fragment>
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
                     <Button
