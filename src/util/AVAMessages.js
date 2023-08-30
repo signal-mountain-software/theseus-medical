@@ -383,7 +383,7 @@ export async function formatRequestDetails(body, summaryType) {
         case 'email': { cLab = 'e-Mail'; break; }
         default: { cLab = cTyp; }
       }
-      htmlMessage += `<br />${cLab}: <strong>${pRec[cTyp]}</strong>  ${(cTyp === pRec.preferred_method) ? '(pref)' : ''}`;
+      htmlMessage += `<br />${cLab}: <strong>${pRec[cTyp]}</strong>`;
     }
   }
 
@@ -434,7 +434,7 @@ export async function formatRequestDetails(body, summaryType) {
   if (!textInput) { textInput = {}; }
   body.selections.forEach((aVal) => {
     let sVal = sentenceCase(aVal.trim());
-    htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${textInput[aVal] || ''}</dt>`;
+    htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[aVal] || ''}</dt>`;
     rawMessage += `\n${sVal}\n`;
     if (textInput[aVal]) {
       rawMessage += `${textInput[aVal]}\n`;
@@ -444,7 +444,7 @@ export async function formatRequestDetails(body, summaryType) {
     if ((body.qualifiers) && (body.qualifiers.hasOwnProperty(aVal))) {
       for (let qual in body.qualifiers[aVal]) {
         let tOut = listFromArray(body.qualifiers[aVal][qual]) || 'No selection';
-        htmlMessage += `<dd>${sentenceCase(qual)}:&nbsp${tOut}</dd>`;
+        htmlMessage += `<dd>${sentenceCase(qual)}: ${tOut}</dd>`;
         rawMessage += `${sentenceCase(qual)}: ${tOut}\n`;
       }
     }
@@ -454,7 +454,7 @@ export async function formatRequestDetails(body, summaryType) {
   if (textInput && (Object.keys(textInput).length > 0)) {
     for (let topic in textInput) {
       let sVal = sentenceCase(topic.trim());
-      htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>${sVal}&nbsp&nbsp&nbsp</strong>${textInput[topic]}</dt>`;
+      htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[topic]}</dt>`;
       rawMessage += `\n${sVal}\n${textInput[topic]}\n`;
       lineSpacing = `${spaceBetweenLines}px`;
     }
