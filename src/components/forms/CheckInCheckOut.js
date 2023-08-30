@@ -117,7 +117,10 @@ export default ({ onSave, onClose }) => {
       matchedPeople.forEach((p, x) => {
         let keepMe = false;
         if (nonRes) {
-          if (p.person_id.includes(`_${nonRes}_`)) { keepMe = true; }
+          if (p.person_id.includes(`_${nonRes}_`)) {
+            // looking for nonres and this is one
+            keepMe = true;
+          }
           else if (residentGroups.some(gG => { return p.groups.some(mG => { return (mG === gG); }); })) {
             // we're looking for non residents. But this matched person is a resident.
             keepMe = false;
@@ -139,12 +142,17 @@ export default ({ onSave, onClose }) => {
             }
           }
         }
+        else {   // matching a resident?
+          if (residentGroups.some(gG => { return p.groups.some(mG => { return (mG === gG); }); })) {
+            keepMe = true;
+          }
+        }
         if (!keepMe) { matchedPeople.splice(x, 1); }
       });
     }
     switch (matchedPeople.length) {
       case 0: {
-        return { result: 'invalid', error_field: 1, reason: `"${IDString}" doesn't match any ${nonRes ? titleCase(nonRes) : 'Resident'} accounts that we can find` };
+        return { result: 'invalid', error_field: 1, reason: `That information doesn't match any ${nonRes ? titleCase(nonRes) : 'Resident'} accounts that we can find` };
       }
       case 1: {
         if (specialError) {
