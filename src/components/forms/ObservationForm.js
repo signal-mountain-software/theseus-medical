@@ -705,6 +705,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   flexDirection='column'
                   marginLeft={(this_item.checkbox || this_item.input) ? 2 : 0}
                   marginRight={2}
+                  marginBottom={0.5}
                   border={(isChecked(this_item) || textIsPresent(this_item.text)) ? 1 : 0}
                   borderRadius={'16px'}
                   key={'fullRow' + this_index}

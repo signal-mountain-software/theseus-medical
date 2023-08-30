@@ -1,9 +1,9 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { makeDate } from '../../util/AVADateTime';
-import { getSlotList, writeSlot, makeSlotName } from '../../util/AVACalendars';
+import { makeDate, makeTime } from '../../util/AVADateTime';
+import { getSlotList, writeSlot, makeSlotName, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
-import { cl, makeArray, lambda, dbClient } from '../../util/AVAUtilities';
+import { cl, makeArray, dbClient } from '../../util/AVAUtilities';
 import { makeName, getImage } from '../../util/AVAPeople';
 import { sendMessages } from '../../util/AVAMessages';
 
@@ -27,6 +27,7 @@ import SendIcon from '@material-ui/icons/Send';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import PersonAddDisabledIcon from '@material-ui/icons/PersonAddDisabled';
 import CloseIcon from '@material-ui/icons/HighlightOff';
+import DeleteIcon from '@material-ui/icons/Delete';
 import EditIcon from '@material-ui/icons/Edit';
 import SaveIcon from '@material-ui/icons/Save';
 import IconButton from '@material-ui/core/IconButton';
@@ -35,6 +36,8 @@ import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 
 import PersonFilter from '../forms/PersonFilter';
 import AVATextInput from '../forms/AVATextInput';
+import AVAConfirm from '../forms/AVAConfirm';
+import useSession from '../../hooks/useSession';
 
 import Input from '@material-ui/core/Input';
 
@@ -146,6 +149,8 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientRec, onReset, pMode }) => {
 
+  const { state } = useSession();
+
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -167,23 +172,22 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const isEventOwner = pOccData?.owner?.includes(pPatient);
-  const [browseMode, setBrowseMode] = React.useState((pMode === 'view') || isEventOwner);
-  const [signupMode, setsignupMode] = React.useState((pMode !== 'view') && !isEventOwner);
+  const isEventOwner = pOccData?.owner?.includes(pPatient)
+    || ['master', 'support'].includes(state.profile.account_class);
   const [loading, setLoading] = React.useState(true);
 
   const [ownerOfSlots, setOwnerOfSlots] = React.useState(false);
-  const [allSlotsEmpty, setAllSlotsEmpty] = React.useState(true);
   const [firstAvailableSlot, setFirstAvailableSlot] = React.useState();
 
-  var rowsWritten = 0;
+  const [reactData, setReactData] = React.useState({
+    editEventInfo: false,
+    editInfoErrorList: [],
+    editOwnerInfo: false,
+    cancelPending: false,
+    numberOfOwnedSlots: 0
+  });
 
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:CalendarMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
+  var rowsWritten = 0;
 
   function isOwned(slotData) {
     return (slotData.owner && (slotData.owner !== 'available'));
@@ -222,45 +226,18 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   };
 
   const handlePrint = async (pEvent, pType) => {
-    let invokeFailed = false;
-    params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:printCalendar';
-    params.Payload = JSON.stringify(
-      {
-        body:
-        {
-          client_id: pClient,
-          event_id: pEvent,
-          requestor: pPatient,
-          request_type: pType
-        }
-      });
-    let fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        console.log("Problem printing the sign-up sheet.  Error is", JSON.stringify(err));
-        enqueueSnackbar(`AVA couldn't print that sign-up sheet.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-
-    if (!invokeFailed) {
-      let fResponse = JSON.parse(fResp.Payload);
-      if (fResponse.status === 200) {
-        window.open(
-          fResponse.body.Location,
-          `Your requested ${pType}`,
-          'noopener, noreferrer'
-        );
-      }
-    };
+    await printOccurrenceSheet({
+      client_id: pClient,
+      event_id: pEvent,
+      requestor: pPatient,
+      request_type: pType
+    });
     return;
   };
 
   const getEventSlots = async (pEvent) => {
     let checkOwnership = false;
-    let allSlotsEmpty_work = true;
+    reactData.numberOfOwnedSlots = 0;
     let firstAvailableChoice;
     if (!['time', 'seats'].includes(pOccData.signup_type)) { firstAvailableChoice = pPatient; }
     let slotInfo = await getSlotList({ "client": pClient, "event": pEvent });
@@ -280,7 +257,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         id: o
       });
       if (!checkOwnership) { checkOwnership = isSlotOwner(slotData); }
-      if (isOwned(slotData)) { allSlotsEmpty_work = false; }
+      if (isOwned(slotData)) { reactData.numberOfOwnedSlots++; }
       return {
         event_key: slotInfo.occRec.event_key,
         first,
@@ -295,9 +272,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
       else { return -1; }
     });
     setOwnerOfSlots(checkOwnership);
-    setAllSlotsEmpty(allSlotsEmpty_work);
     setFirstAvailableSlot(firstAvailableChoice);
     setEventSlotList(slotList);
+    setReactData(reactData);
     return slotList;
   };
 
@@ -418,6 +395,120 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     return workingList;
   };
 
+  const handleUpdateEvent = async ([newDescription, newLocation, newDate, newTime]) => {
+    let updateExpression = 'set';
+    let expressionAttributeValues = {};
+    let expressionAttributeNames = {};
+    updateExpression += ' description = :d';
+    expressionAttributeValues[':d'] = newDescription;
+    updateExpression += ', #l = :l';
+    expressionAttributeNames['#l'] = 'location';
+    expressionAttributeValues[':l'] = newLocation;
+    updateExpression += ', occurrence_date = :date';
+    expressionAttributeValues[':date'] = makeDate(newDate).numeric$;
+    updateExpression += ', #t = :t';
+    expressionAttributeNames['#t'] = 'time';
+    expressionAttributeValues[':t'] = { 'from': makeTime(newTime).time };
+    let goodUpdate = true;
+    await dbClient
+      .update({
+        Key: {
+          "client": pClient,
+          "event_key": `${pEventCode}`
+        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ExpressionAttributeNames: expressionAttributeNames,
+        TableName: "Calendar"
+      })
+      .promise()
+      .catch(error => {
+        cl(`caught error updating Calendar; error is: `, error);
+        goodUpdate = false;
+      });
+    if (goodUpdate) {
+      pOccData.description = newDescription;
+      pOccData.location = newLocation;
+      pOccData.date = makeDate(newDate).numeric$;
+      let timeOut = makeTime(newTime);
+      pOccData.time$ = timeOut.time;
+      pOccData.time24 = timeOut.numeric24;
+      enqueueSnackbar('Event info updated!', { variant: 'success' });
+    }
+    else {
+      enqueueSnackbar('AVA could not update the Event info', { variant: 'error', persist: true });
+    }
+    return goodUpdate;
+  };
+
+  const handleCancelEvent = async () => {
+    let updateExpression = 'set';
+    let expressionAttributeValues = {};
+    updateExpression += ' occurrence_date = :date';
+    expressionAttributeValues[':date'] = '29991231';
+    let goodUpdate = true;
+    await dbClient
+      .update({
+        Key: {
+          "client": pClient,
+          "event_key": `${pEventCode}`
+        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: expressionAttributeValues,
+        TableName: "Calendar"
+      })
+      .promise()
+      .catch(error => {
+        cl(`caught error updating Calendar; error is: `, error);
+        goodUpdate = false;
+      });
+    if (goodUpdate) {
+      pOccData.date = '29991231';
+      enqueueSnackbar('Event cancelled!', { variant: 'success' });
+    }
+    else {
+      enqueueSnackbar('AVA could not cancel the Event', { variant: 'error', persist: true });
+    }
+    return goodUpdate;
+  };
+
+  const handleUpdateOwner = async (newOwners) => {
+    let eventKey = pEventCode.split('#')[0];
+    let updateExpression = 'set';
+    let expressionAttributeValues = {};
+    let expressionAttributeNames = {};
+    updateExpression += ' #eData.#e.#o = :o';
+    expressionAttributeValues[':o'] = Object.keys(newOwners);
+    expressionAttributeNames['#eData'] = 'eventData';
+    expressionAttributeNames['#e'] = 'event_data';
+    expressionAttributeNames['#o'] = 'owner';
+    let goodUpdate = true;
+    await dbClient
+      .update({
+        Key: {
+          "client": pClient,
+          "event_key": eventKey
+        },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ExpressionAttributeNames: expressionAttributeNames,
+        TableName: "Calendar"
+      })
+      .promise()
+      .catch(error => {
+        cl(`caught error updating Calendar; error is: `, error);
+        goodUpdate = false;
+      });
+    if (!goodUpdate) {
+      enqueueSnackbar('AVA could not update the Event owners', { variant: 'error', persist: true });
+    }
+    else {
+      pOccData.owner = Object.keys(newOwners);
+      enqueueSnackbar('Event owners updated', { variant: 'success' });
+    }
+    return goodUpdate;
+  };
+
   const handleChangeNotes = async (updatedIndex, pNote) => {
     eventSlotList[updatedIndex].slotData.notes = pNote;
     let slotUpdate = Object.assign(
@@ -461,8 +552,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
       variant={'elevation'} elevation={2}
       TransitionComponent={Transition}
     >
-
       <React.Fragment>
+        {/* Screen header - Description, Date, Location... */}
         {!loading &&
           <Box
             display='flex'
@@ -489,6 +580,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             </Typography>
           </Box>
         }
+        {/* Slots */}
         {eventSlotList && eventSlotList.length > 0 &&
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
@@ -506,7 +598,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         {rowsWritten++}
                       </Typography>
                       {/* Mark an item - Radio button */}
-                      {isEventOwner && !allSlotsEmpty &&
+                      {isEventOwner &&
                         <Box width={40} display='flex' mr={0} flexDirection='row' justifyContent='center' alignItems='center'>
                           {isOwned(this_item.slotData) &&
                             <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
@@ -536,11 +628,16 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         </Box>
                       }
                       {/* Slot Name */}
-                      {(this_item.slotData.id !== this_item.slotData.owner) &&
+                      {(this_item.slotData.id !== this_item.slotData.owner) ?
                         <Box display='flex' mr={1} ml={1} flexDirection='row' justifyContent='center' alignItems='center'>
                           <Typography variant='body1' className={classes.standard} >{makeSlotName(this_item.slotData.id)}</Typography>
                         </Box>
+                        :
+                        <Box display='flex' mr={0} ml={0} flexDirection='row' justifyContent='center' alignItems='center'>
+                          <Typography variant='body1' className={classes.standard} ></Typography>
+                        </Box>
                       }
+                      {/* Image and Name */}
                       {isOwned(this_item.slotData) &&
                         <React.Fragment>
                           <Box
@@ -647,7 +744,13 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                   </ListItem>
                 </Paper>
               ))}
-
+              {(rowsWritten === 0) &&
+                <React.Fragment>
+                  <Box display='flex' flexWrap='wrap' flexDirection='column' flexGrow={1}>
+                    <Typography variant='h5' >'The List is Empty'</Typography>
+                  </Box>
+                </React.Fragment>
+              }
             </List>
           </Paper>
         }
@@ -671,61 +774,6 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
           >
           </PersonFilter>
         }
-        {!loading && (rowsWritten === 0) && browseMode &&
-          <AVATextInput
-            titleText={`The list is empty`}
-            promptText={[]}
-            buttonText='Add Myself'
-            onCancel={() => {
-              onReset();
-            }}
-            onSave={() => {
-              setBrowseMode(false);
-              setsignupMode(true);
-              setForceRedisplay(!forceRedisplay);
-            }}
-          />
-        }
-        {!loading && signupMode && !ownerOfSlots &&
-          (['time', 'seats', 'direct'].includes(pOccData.signup_type)
-            ?
-            <AVATextInput
-              titleText={`You are not on the list yet.  Tap "Add me" below.`}
-              promptText={'(Optional) Notes or Additional Information'}
-              buttonText={['Add me!', 'Not now']}
-              onCancel={() => {
-                setBrowseMode(true);
-                setsignupMode(false);
-                setForceRedisplay(!forceRedisplay);
-              }}
-              onSave={async (myNotes) => {
-                let pName = await makeName(pPatient);
-                let slotObj = { person: `${pName}:${pPatient}` };
-                slotObj.slot = firstAvailableSlot || pPatient;
-                if (myNotes) { slotObj.notes = myNotes; }
-                await handleAllocateSlot(slotObj);
-                setBrowseMode(true);
-                setsignupMode(false);
-                setForceRedisplay(!forceRedisplay);
-              }}
-            />
-            :
-            <AVATextInput
-              titleText={`Want to learn more?  Send a message to the event sponsor...`}
-              promptText={'Message Text'}
-              buttonText={['Send', 'Not now']}
-              onCancel={() => {
-                setBrowseMode(true);
-                setsignupMode(false);
-                setForceRedisplay(!forceRedisplay);
-              }}
-              onSave={async (myMessage) => {
-                await handleSendMessage(myMessage, pOccData.owner);
-                onReset();
-              }}
-            />
-          )
-        }
         {promptForMessage &&
           <AVATextInput
             promptText={`Message to everyone signed up for ${pOccData.description}`}
@@ -737,6 +785,78 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             }}
           />
         }
+        {reactData.editEventInfo &&
+          <AVATextInput
+            titleText='Edit info for this Event'
+            promptText={['Description', 'Location', 'Date', 'Time']}
+            errorText={reactData.editInfoErrorList}
+            valueText={[
+              pOccData.description,
+              pOccData.location || '',
+              (pOccData.date ? makeDate(pOccData.date).absolute : null),
+              (pOccData.date ? pOccData.time$ : null)
+            ]}
+            onCancel={() => {
+              reactData.editInfoErrorList = [];
+              reactData.editEventInfo = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }}
+            onSave={async (messageText) => {
+              reactData.editInfoErrorList = [];
+              if (makeDate(messageText[2]).error) {
+                reactData.editInfoErrorList = ['', '', 'Please enter a valid date'];
+              }
+              else {
+                await handleUpdateEvent(messageText);
+                reactData.editEventInfo = false;
+              }
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }}
+          />
+        }
+        {reactData.editOwnerInfo &&
+          <PersonFilter
+            prompt={'Select owners'}
+            peopleList={state.accessList[state.session.client_id].shortList}
+            alreadyChecked={pOccData.owner}
+            onCancel={() => {
+              reactData.editOwnerInfo = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }}
+            onSelect={async (selectedPeople) => {
+              await handleUpdateOwner(selectedPeople);
+              reactData.editOwnerInfo = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }}
+            allowRandom={true}
+            multiSelect={true}
+            returnValue={'object'}
+          />
+        }
+        {reactData.cancelPending &&
+          <AVAConfirm
+            promptText={[`Are you sure you want to cancel this event?`]}
+            cancelText={`Do not cancel`}
+            confirmText={`Yes, cancel the event`}
+            onCancel={() => {
+              reactData.cancelPending = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }
+            }
+            onConfirm={async () => {
+              await handleCancelEvent();
+              reactData.cancelPending = false;
+              setReactData(reactData);
+              setForceRedisplay(!forceRedisplay);
+            }}
+            allowCancel={true}
+          />
+        }
         {!loading &&
           <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
             <Box display='flex' flexDirection='column'>
@@ -744,85 +864,150 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 <Tooltip title={`Exit`} placement='top'>
                   <Button
                     className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'red', color: 'white' }}
+                    style={{ backgroundColor: 'red', color: 'white', marginBottom: '-12px' }}
                     size='small'
-                    onClick={onReset}
+                    onClick={() => { onReset(pOccData); }}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Done'}
                   </Button>
                 </Tooltip>
-                {(pOccData.signup_type === 'none') && browseMode &&
-                  <Tooltip title={(isEventOwner ? 'Add a person' : 'Add myself to the list')} placement='top'>
+              </Box>
+              <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                {!ownerOfSlots &&
+                  <Tooltip title={'Add myself to the list'} placement='top'>
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px' }}
                       size='small'
                       onClick={async () => {
-                        if (isEventOwner) {
-                          await setChoices(peopleList);
-                          setEditIndex(false);
-                          setEditSlot(false);
-                          setSelectNewSlotOwner(true);
-                        }
-                        else {
-                          let pName = await makeName(pPatient);
-                          await handleAllocateSlot({ person: `${pName}:${pPatient}` });
-                        }
+                        let pName = await makeName(pPatient);
+                        let request = { person: `${pName}:${pPatient}` };
+                        if (pOccData.signup_type !== 'none') { request.slot = firstAvailableSlot; }
+                        await handleAllocateSlot(request);
+                        setOwnerOfSlots(true);
                       }}
                       startIcon={<PersonAddIcon size="small" />}
                     >
-                      {isEventOwner ? 'Add a person' : 'Add myself to the list'}
+                      {'Add myself'}
                     </Button>
                   </Tooltip>
                 }
-                {isEventOwner && browseMode &&
-                  <Tooltip title={'Prepare Detail Report'} placement='top'>
+                {(pOccData.signup_type === 'none') && isEventOwner &&
+                  <Tooltip title={'Add a person'} placement='top'>
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px' }}
                       size='small'
                       onClick={async () => {
-                        await handlePrint(pEventCode, 'report');
+                        await setChoices(peopleList);
+                        setEditIndex(false);
+                        setEditSlot(false);
+                        setSelectNewSlotOwner(true);
                       }}
-                      startIcon={<PrintIcon size='small' />}
+                      startIcon={<PersonAddIcon size="small" />}
                     >
-                      {'Detail report'}
+                      {'Add a person'}
                     </Button>
                   </Tooltip>
                 }
               </Box>
-              {isEventOwner && browseMode &&
-                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                  <Tooltip title={'Prepare Sign-up sheet'} placement='top'>
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'brown', color: 'white' }}
-                      size='small'
-                      onClick={async () => {
-                        await handlePrint(pEventCode, 'sign-up');
-                      }}
-                      startIcon={<StorageOutlined size='small' />}
-                    >
-                      {'Sign-up sheet'}
-                    </Button>
-                  </Tooltip>
-                  <Tooltip title={'Send a message to everyone that is signed-up'} >
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'orange', color: 'white' }}
-                      size='small'
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('Group');
-                        setRecipient(eventSlotList.map(e => { return e.slotData.id; }));
-                      }}
-                      startIcon={<SendIcon size='small' />}
-                    >
-                      {'Message to everyone on the list'}
-                    </Button>
-                  </Tooltip>
-                </Box>
+              {isEventOwner &&
+                <React.Fragment>
+                  <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                    <Tooltip title={'Prepare Detail Report'} placement='top'>
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px' }}
+                        size='small'
+                        onClick={async () => {
+                          await handlePrint(pEventCode, 'full');
+                        }}
+                        startIcon={<PrintIcon size='small' />}
+                      >
+                        {'Detail report'}
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title={'Prepare Sign-up sheet'} placement='top'>
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'brown', color: 'white', marginBottom: '-12px' }}
+                        size='small'
+                        onClick={async () => {
+                          await handlePrint(pEventCode, 'sign-up');
+                        }}
+                        startIcon={<StorageOutlined size='small' />}
+                      >
+                        {'Sign-up sheet'}
+                      </Button>
+                    </Tooltip>
+                    {(reactData.numberOfOwnedSlots > 0) &&
+                      <Tooltip title={'Send a message to everyone that is signed-up'} >
+                        <Button
+                          className={AVAClass.AVAButton}
+                          style={{ backgroundColor: 'orange', color: 'white', marginBottom: '-12px' }}
+                          size='small'
+                          onClick={() => {
+                            setPromptForMessage(true);
+                            setMessageType('Group');
+                            setRecipient(eventSlotList.map(e => { return e.slotData.id; }));
+                          }}
+                          startIcon={<SendIcon size='small' />}
+                        >
+                          {'Message all'}
+                        </Button>
+                      </Tooltip>
+                    }
+                  </Box>
+                  <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                    <Tooltip title={'Change Description, Date, Location, or Time'} >
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
+                        size='small'
+                        onClick={() => {
+                          reactData.editEventInfo = true;
+                          reactData.editInfoErrorList = [];
+                          setReactData(reactData);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                        startIcon={<EditIcon size='small' />}
+                      >
+                        {'Update Event Info'}
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title={'Add event owners'} >
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
+                        size='small'
+                        onClick={() => {
+                          reactData.editOwnerInfo = true;
+                          setReactData(reactData);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                        startIcon={<PersonAddIcon size='small' />}
+                      >
+                        {'Add Event Owners'}
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title={'Add event owners'} >
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
+                        size='small'
+                        onClick={() => {
+                          reactData.cancelPending = true;
+                          setReactData(reactData);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                        startIcon={<DeleteIcon size='small' />}
+                      >
+                        {'Cancel Event'}
+                      </Button>
+                    </Tooltip>
+                  </Box>
+                </React.Fragment>
               }
             </Box>
           </DialogActions>

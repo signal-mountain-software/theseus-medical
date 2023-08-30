@@ -180,6 +180,7 @@ export function makeArray(input, delimiter = null) {
   if (!input) { return []; };
   if (Array.isArray(input)) { response.push(...input); }
   else if (typeof input === 'object') { response = Object.keys(input); }
+  else if (typeof input === 'number') { response.push(input); }
   else if ((input.charAt(0) === '{') && (input.charAt(input.length - 1) === '}')) {
     let rObj = JSON.parse(input);
     Object.keys(rObj).forEach(o => {

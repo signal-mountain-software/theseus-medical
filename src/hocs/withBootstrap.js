@@ -792,7 +792,8 @@ export default Component => props => {
       setDoneTrying(true);
       return false;
     }
-    accountAccess(pLaunchUser, currentSession.client_id, dispatch);
+    // create an accessList of accounts you are allowed to see/view/proxy
+    accountAccess(pLaunchUser, currentSession.client_id, dispatch);   
     // Get the Patient's profile (info about the active person - usually the same as the logged in user)
     let currentPatient;
     if (currentSession.patient_id === pLaunchUser) {
@@ -861,7 +862,17 @@ export default Component => props => {
       }
     }
 
-    currentSession.adminAccount = await adminAccount(currentSession);
+    currentSession.adminAccount = false;
+    if (currentProfile.account_class) {
+      if ((currentProfile.account_class === 'master')
+        || ((currentProfile.account_class === 'support')
+          && (makeArray(currentProfile.clients).some(a => { return (a.id === currentSession.client_id); })))) {
+        currentSession.adminAccount = true;
+      };
+    }
+    if (!currentSession.adminAccount) {
+      currentSession.adminAccount = await adminAccount(currentSession, currentPatient);
+    }
 
     enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
 

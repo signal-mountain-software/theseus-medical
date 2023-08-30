@@ -98,8 +98,10 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       accessList[client_id] = {
         name: clientName.customization_value,
         logo: clientLogo.icon,
+        count: {},
         list: []
       };
+      accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; }); 
       let allPeople = await getMemberList('*all', client_id);
       // get all the people in the client
       let pxL = allPeople.peopleList.length;
@@ -183,6 +185,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         else { return 0; }
       });
       accessList[client_id].shortList = accessList[client_id].list.map(p => { 
+        accessList[client_id].count[p.access]++;
         let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
         if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
         // list is of the form <name>:<id>:<search_string>
@@ -222,7 +225,7 @@ export async function isMemberOf(person_id, pGroup_id) {
   return (Object.keys(loadedGroupObj).includes(pGroup_id));
 };
 
-export async function getGroupsResponsibleFor(person_id) {
+export async function getGroupsResponsibleFor(person_id, options) {
   if (!session || (session.session_id !== person_id)) {
     session = await getSession(person_id);
   }
@@ -284,7 +287,8 @@ export async function getGroupsResponsibleFor(person_id) {
     for (let g = 0; g < everyGroup.Items.length; g++) {
       let this_group = everyGroup.Items[g];
       if (!(this_group.group_id in returnObject)) {
-        if (this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id)) {
+        if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
+        || (options && options.account_class && (['master', 'support'].includes(options.account_class)))) {
           returnObject[this_group.group_id] = {
             group_name: this_group.name,
             group_id: this_group.group_id,
@@ -327,7 +331,7 @@ export async function getPeopleResponsibleFor(person_id) {
 
 export async function getGroupsBelongTo(person_id, options) {
   // You belong to all groups that you are responsible for
-  var returnObject = await getGroupsResponsibleFor(person_id);
+  var returnObject = await getGroupsResponsibleFor(person_id, options);
   // Next, get any other Groups that this person belongs to (but aren't responsible for)
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);
@@ -446,12 +450,16 @@ export async function getMemberList(pGroups, pClient_id, options) {
   // otherwise, people records are return without regard to the directory_option
   let checkExclude = false;
   let sortResults = false;
+  let shortList = false;
   if (options) {
     if (options.sort || options.sortResults) {
       sortResults = options.sort || options.sortResults;
     }
     if (options.exclude || options.checkExclude) {
       checkExclude = options.exclude || options.checkExclude;
+    }
+    if (options.shortList || options.includeShortList) {
+      shortList = options.shortList || options.includeShortList;
     }
   }
   let defaultClient = pClient_id || session.client_id;
@@ -509,11 +517,20 @@ export async function getMemberList(pGroups, pClient_id, options) {
       else { return 0; }
     });
   }
-  return {
+  let rObj = {
     foundIDs,
     'peopleList': returnArray,
     'groupList': gList
-  };
+  }
+  if (shortList) {
+    rObj.shortList = returnArray.map(p => {
+      let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+      // list is of the form <name>:<id>:<search_string>
+      return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+    });
+  }
+  return rObj;
 }
 
 export async function addMember(pPerson, pClient, pGroup) {

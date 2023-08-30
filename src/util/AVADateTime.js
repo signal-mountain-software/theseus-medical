@@ -1,8 +1,8 @@
 import { titleCase } from '../util/AVAUtilities';
 
 export function addDays(pDate, pDays) {
-    const copy = pDate;
-    copy.setDate(pDate.getDate() + pDays);
+    let copy = makeDate(pDate).date;
+    copy.setDate(copy.getDate() + pDays);
     return copy;
 }
 
@@ -24,13 +24,14 @@ export function makeDate(pInput) {
             'ymd': '2099.01.01',
             'obs': '2099.1.1',
             'numeric': 20990101,
+            'numeric$': '20990101',
             'dayPart': 'day'   // afternoon
         };
     }
     let targetDateStamp, targetDate;
     if (pInput instanceof Date) {
         targetDateStamp = pInput.getTime();
-        targetDate = pInput;
+        targetDate = new Date(pInput);
     }
     else {
         if (Number(pInput).toString() === pInput) { pInput = Number(pInput); }  // convert a string that is all digits to its numeric equivalent
@@ -75,6 +76,7 @@ export function makeDate(pInput) {
                 'ymd': '2099.01.01',
                 'obs': '2099.1.1',
                 'numeric': 20990101,
+                'numeric$': '20990101',
                 'dayPart': 'day'
             };
         }
@@ -151,6 +153,7 @@ export function makeDate(pInput) {
         'ymd': targetDateYMD,
         'obs': targetDateYMD.replace(regEx, '.'),
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
+        'numeric$': targetDateYMD.replace(/\./g, ''),
         'dayPart': dayPart
     };
 
@@ -211,17 +214,16 @@ export function makeDate(pInput) {
         }
         else {
             // the date passed in was a good date
-            // if the year is more than 20 years from now, assume that no year was passed in
+            // if the year is more than 100 years from now, assume that no year was passed in
             // Adjust the year to be the year that makes the month and day closest to now
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 20) { return goodDate; }
+            if (Math.abs(resolvedYear - thisYear) < 100) { return goodDate; }
             goodDate.setFullYear(thisYear);
-            if (daysDiff(today, goodDate) <= 120) { return goodDate; }
+            if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) { return goodDate; }
             let resolvedMonth = goodDate.getMonth();
             if (resolvedMonth > 9) { goodDate.setFullYear(thisYear - 1); }
-            else if (resolvedMonth < 3) { goodDate.setFullYear(thisYear + 1); }
             return goodDate;
         }
     }
@@ -274,7 +276,7 @@ export function makeTime(pTime) {
     if (!ampm) { ampm = ((hh >= 0) && (hh < 12)) ? 'am' : 'pm'; }
     let numeric24;
     if ((ampm === 'pm') && (hh < 12)) { numeric24 = ((hh + 12) * 100) + mm; }
-    else { numeric24 = ( hh * 100) + mm; }
+    else { numeric24 = (hh * 100) + mm; }
     let dayPart;
     if (hh < 12) { dayPart = "morning"; }
     else if (hh < 17) { dayPart = "afternoon"; }
