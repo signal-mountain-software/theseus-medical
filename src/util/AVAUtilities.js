@@ -224,7 +224,7 @@ export function titleCase(pString) {
   let words = pString.split(/\s+/);
   let returnString = '';
   words.forEach(w => {
-    if (w.length < 4) { returnString += w; }
+    if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
     else { returnString += sentenceCase(w); }
     returnString += ' ';
   });
