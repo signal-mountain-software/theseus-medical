@@ -743,7 +743,7 @@ export default ({ session, filter = {}, onClose }) => {
                               />
                               <Box display='flex' flexDirection='column'>
                                 <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
-                                <Typography variant='h5' className={classes.firstName}>{`requested by: ${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}</Typography>
+                                <Typography variant='h5' className={classes.firstName}>{`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}</Typography>
                                 <Typography variant='h5' className={classes.timeLine}>{this_item.workData.display_date}</Typography>
                               </Box>
                             </Box>
