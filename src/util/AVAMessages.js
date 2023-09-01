@@ -687,7 +687,7 @@ export async function mealTicketFormat(body) {
     .catch(err => {
       cl(`PDF not saved by AVA.  The reason is ${err.message}`);
     });
-  await doc.save(fileName, { returnPromise: true });
+  // await doc.save(fileName, { returnPromise: true });
   s3Resp.data = data64;
 
   return [htmlText.join(''), plainText.join('\n'), s3Resp];
