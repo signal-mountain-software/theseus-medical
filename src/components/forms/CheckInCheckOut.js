@@ -718,10 +718,12 @@ export default ({ onSave, onClose }) => {
             (!reactData.adminOverride ?
               <Dialog open={forceRedisplay || true} fullWidth >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                  <Typography variant='h5' key={`title`} style={{ fontWeight: 'bold' }}
-                  >
-                    {`Check-in/out status as of ${makeDate(new Date()).absolute}`}
-                  </Typography>
+                  <Typography variant='h5' key={`title`} style={{ fontWeight: 'bold' }}>
+                    {`Check-in/out status`}
+                    </Typography>
+                    <Typography variant='h5' key={`title`} style={{ fontWeight: 'bold' }}>
+                      {`as of ${makeDate(new Date()).absolute}`}
+                    </Typography>
                 </Box>
                 <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
                   <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
@@ -731,39 +733,40 @@ export default ({ onSave, onClose }) => {
                         <Typography><i>No residents currently checked out</i></Typography>
                       </Box>
                     }
-                    {(reactData.outList.length > 0) && reactData.outList.map((outRow, outNdx) => (
-                      <Box
-                        style={{ paddingBottom: '2em' }}
-                        display='flex'
-                        flexDirection='row'
-                        justifyContent='flex-start'
-                        key={`outList_${outNdx}`}
-                        alignItems='center'
-                        onClick={async () => {
-                          reactData.adminOverride = true;
-                          reactData.resident_mode = true;
-                          reactData.adminIndex = outNdx;
-                          setReactData(reactData);
-                          setForceRedisplay(!forceRedisplay);
-                        }}
-                      >
+                    {(reactData.outList.length > 0)
+                      && reactData.outList.map((outRow, outNdx) => (
                         <Box
-                          component="img"
-                          mr={1}
-                          minWidth={50}
-                          minHeight={50}
-                          maxWidth={50}
-                          border={1}
-                          alt=' '
-                          src={getImage(outRow.person_id)}
-                        />
-                        <Box display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                          <Typography><b>{outRow.name}</b></Typography>
-                          <Typography variant='subtitle2' style={{ marginLeft: '20px' }}>{outRow.message}</Typography>
+                          style={{ paddingBottom: '2em' }}
+                          display='flex'
+                          flexDirection='row'
+                          justifyContent='flex-start'
+                          key={`outList_${outNdx}`}
+                          alignItems='center'
+                          onClick={async () => {
+                            reactData.adminOverride = true;
+                            reactData.resident_mode = true;
+                            reactData.adminIndex = outNdx;
+                            setReactData(reactData);
+                            setForceRedisplay(!forceRedisplay);
+                          }}
+                        >
+                          <Box
+                            component="img"
+                            mr={1}
+                            minWidth={50}
+                            minHeight={50}
+                            maxWidth={50}
+                            border={1}
+                            alt=' '
+                            src={getImage(outRow.person_id)}
+                          />
+                          <Box display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
+                            <Typography><b>{outRow.name}</b></Typography>
+                            <Typography variant='subtitle2' style={{ marginLeft: '20px' }}>{outRow.message}</Typography>
+                          </Box>
                         </Box>
-                      </Box>
-                    )
-                    )}
+                      )
+                      )}
                   </Box>
                   <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                     <Typography variant='h6' id='dialog-title'>{'Guests still checked-in'}</Typography>
@@ -844,92 +847,94 @@ export default ({ onSave, onClose }) => {
               </Dialog>
               :
               <React.Fragment>
-                (reactData.resident_mode ?
-                <AVAConfirm
-                  promptText={`Confirm override check-in for ${reactData.outList[reactData.adminIndex].name}`}
-                  cancelText={`Cancel`}
-                  confirmText={`Check-in`}
-                  onCancel={() => {
-                    reactData.adminOverride = false;
-                    reactData.resident_mode = false;
-                    setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                  onConfirm={async () => {
-                    let reqRec = reactData.outList[reactData.adminIndex].reqRec;
-                    let now = makeDate(new Date());
-                    reqRec.last_status = 'in';
-                    reqRec.last_update = now.timestamp;
-                    let hNote = `Checked in by ${state.session.user_display_name} on ${now.absolute}`;
-                    reqRec.history.unshift(hNote);
-                    await updateServiceRequest(reqRec);
-                    enqueueSnackbar(`Check-in completed!`, { variant: 'success', persist: false });
-                    reactData.adminOverride = false;
-                    reactData.resident_mode = false;
-                    reactData.outList.splice(reactData.adminIndex, 1);
-                    setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                  allowCancel={true}
-                />
-                :
-                (reactData.vendor_mode ?
-                <AVAConfirm
-                  promptText={`Confirm override check-out for ${reactData.vendorList[reactData.adminIndex].name}`}
-                  cancelText={`Cancel`}
-                  confirmText={`Check-out`}
-                  onCancel={() => {
-                    reactData.adminOverride = false;
-                    reactData.vendor_mode = false;
-                    setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                  onConfirm={async () => {
-                    let reqRec = reactData.vendorList[reactData.adminIndex].reqRec;
-                    let now = makeDate(new Date());
-                    reqRec.last_status = 'out';
-                    reqRec.last_update = now.timestamp;
-                    let hNote = `Checked out by ${state.session.user_display_name} on ${now.absolute}`;
-                    reqRec.history.unshift(hNote);
-                    await updateServiceRequest(reqRec);
-                    enqueueSnackbar(`Check-out is complete!`, { variant: 'success', persist: false });
-                    reactData.adminOverride = false;
-                    reactData.vendor_mode = false;
-                    reactData.vendorList.splice(reactData.adminIndex, 1);
-                    setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                  allowCancel={true}
-                />
-                :
-                <AVAConfirm
-                  promptText={`Confirm override check-out for ${reactData.guestList[reactData.adminIndex].name}`}
-                  cancelText={`Cancel`}
-                  confirmText={`Check-out`}
-                  onCancel={() => {
-                    reactData.adminOverride = false;
-                    reactData.guest_mode = false;
-                    setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                  onConfirm={async () => {
-                    let reqRec = reactData.guestList[reactData.adminIndex].reqRec;
-                    let now = makeDate(new Date());
-                    reqRec.last_status = 'out';
-                    reqRec.last_update = now.timestamp;
-                    let hNote = `Checked out by ${state.session.user_display_name} on ${now.absolute}`;
-                    reqRec.history.unshift(hNote);
-                    await updateServiceRequest(reqRec);
-                    enqueueSnackbar(`Check-out is complete!`, { variant: 'success', persist: false });
-                    reactData.adminOverride = false;
-                    reactData.guest_mode = false;
-                    reactData.guestList.splice(reactData.adminIndex, 1);
-                    setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                  allowCancel={true}
-                />
-                ))
+                {reactData.resident_mode &&
+                  <AVAConfirm
+                    promptText={`Confirm override check-in for ${reactData.outList[reactData.adminIndex].name}`}
+                    cancelText={`Cancel`}
+                    confirmText={`Check-in`}
+                    onCancel={() => {
+                      reactData.adminOverride = false;
+                      reactData.resident_mode = false;
+                      setReactData(reactData);
+                      setForceRedisplay(!forceRedisplay);
+                    }}
+                    onConfirm={async () => {
+                      let reqRec = reactData.outList[reactData.adminIndex].reqRec;
+                      let now = makeDate(new Date());
+                      reqRec.last_status = 'in';
+                      reqRec.last_update = now.timestamp;
+                      let hNote = `Checked in by ${state.session.user_display_name} on ${now.absolute}`;
+                      reqRec.history.unshift(hNote);
+                      await updateServiceRequest(reqRec);
+                      enqueueSnackbar(`Check-in completed!`, { variant: 'success', persist: false });
+                      reactData.adminOverride = false;
+                      reactData.resident_mode = false;
+                      reactData.outList.splice(reactData.adminIndex, 1);
+                      setReactData(reactData);
+                      setForceRedisplay(!forceRedisplay);
+                    }}
+                    allowCancel={true}
+                  />
+                }
+                {reactData.vendor_mode &&
+                  <AVAConfirm
+                    promptText={`Confirm override check-out for ${reactData.vendorList[reactData.adminIndex].name}`}
+                    cancelText={`Cancel`}
+                    confirmText={`Check-out`}
+                    onCancel={() => {
+                      reactData.adminOverride = false;
+                      reactData.vendor_mode = false;
+                      setReactData(reactData);
+                      setForceRedisplay(!forceRedisplay);
+                    }}
+                    onConfirm={async () => {
+                      let reqRec = reactData.vendorList[reactData.adminIndex].reqRec;
+                      let now = makeDate(new Date());
+                      reqRec.last_status = 'out';
+                      reqRec.last_update = now.timestamp;
+                      let hNote = `Checked out by ${state.session.user_display_name} on ${now.absolute}`;
+                      reqRec.history.unshift(hNote);
+                      await updateServiceRequest(reqRec);
+                      enqueueSnackbar(`Check-out is complete!`, { variant: 'success', persist: false });
+                      reactData.adminOverride = false;
+                      reactData.vendor_mode = false;
+                      reactData.vendorList.splice(reactData.adminIndex, 1);
+                      setReactData(reactData);
+                      setForceRedisplay(!forceRedisplay);
+                    }}
+                    allowCancel={true}
+                  />
+                }
+                {reactData.guest_mode &&
+                  <AVAConfirm
+                    promptText={`Confirm override check-out for ${reactData.guestList[reactData.adminIndex].name}`}
+                    cancelText={`Cancel`}
+                    confirmText={`Check-out`}
+                    onCancel={() => {
+                      reactData.adminOverride = false;
+                      reactData.guest_mode = false;
+                      setReactData(reactData);
+                      setForceRedisplay(!forceRedisplay);
+                    }}
+                    onConfirm={async () => {
+                      let reqRec = reactData.guestList[reactData.adminIndex].reqRec;
+                      let now = makeDate(new Date());
+                      reqRec.last_status = 'out';
+                      reqRec.last_update = now.timestamp;
+                      let hNote = `Checked out by ${state.session.user_display_name} on ${now.absolute}`;
+                      reqRec.history.unshift(hNote);
+                      await updateServiceRequest(reqRec);
+                      enqueueSnackbar(`Check-out is complete!`, { variant: 'success', persist: false });
+                      reactData.adminOverride = false;
+                      reactData.guest_mode = false;
+                      reactData.guestList.splice(reactData.adminIndex, 1);
+                      setReactData(reactData);
+                      setForceRedisplay(!forceRedisplay);
+                    }}
+                    allowCancel={true}
+                  />
+                }
+                )
               </React.Fragment>
             )
           }
