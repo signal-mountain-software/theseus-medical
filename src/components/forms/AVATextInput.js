@@ -223,7 +223,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
         </DialogContent>
       </Box>
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Box display='flex' style={{ marginTop: '2em' }} flexDirection='row' justifyContent='center' alignItems='center'>
+        <Box display='flex' style={{ marginTop: '2em' }} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
           {allowCancel &&
             <Button
               className={AVAClass.AVAButton}

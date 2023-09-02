@@ -80,8 +80,8 @@ export default ({ onSave, onClose }) => {
     }
     for (let p = 0; p < personRecs.length; p++) {
       personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);
-      if (personRecs[p].messaging.voice) { personRecs[p].phone_key = `...${personRecs[p].messaging.voice.slice(-4)}`; }
-      else if (personRecs[p].messaging.sms) { personRecs[p].phone_key = `...${personRecs[p].messaging.sms.slice(-4)}`; }
+      if (personRecs[p].messaging.voice) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`; }
+      else if (personRecs[p].messaging.sms) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`; }
     }
     switch (personRecs.length) {
       case 0: {
@@ -248,8 +248,8 @@ export default ({ onSave, onClose }) => {
   }
 
   function makeGreeting(pName) {
-    if (state.session?.custom_greeting) { return `${state.session.custom_greeting}, ${pName}!`; }
-    else { return `Good ${makeDate(new Date()).dayPart}, ${pName}!`; }
+    if (state.session?.custom_greeting) { return `${state.session.custom_greeting}${pName ? ', ' + pName : ''}!`; }
+    else { return `Good ${makeDate(new Date()).dayPart}${pName ? ', ' + pName : ''}!`; }
   }
 
   return (
@@ -337,11 +337,10 @@ export default ({ onSave, onClose }) => {
               :
               <Dialog open={forceRedisplay || true} fullWidth >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                  <Box display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start' style={{ borderBottom: 1, marginBottom: '2.5em' }}>
-                    <Typography variant='h5' id='dialog-title'>{makeGreeting(titleCase(reactData.enteredID.split(/\s/)[0]))}</Typography>
-                    <Typography variant='subtitle2' id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
-
-                  </Box>
+                  <Typography variant='h5' id='dialog-title'>{makeGreeting()}</Typography>
+                  <Typography variant='subtitle2' id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
+                </Box>
+                <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
                   {reactData.candidates.map((candidate, cIndex) => (
                     <Box display='flex'
                       style={{ marginBottom: '2em', marginLeft: '1em', }}
@@ -362,14 +361,15 @@ export default ({ onSave, onClose }) => {
                         setForceRedisplay(!forceRedisplay);
                       }}
                     >
-                      <Typography variant='h5'>{`${titleCase(candidate.name.first)} ${titleCase(candidate.name.last)}`}</Typography>
-                      <Typography style={{ marginLeft: '5px' }} variant='h6'>{`- ${titleCase(candidate.account_class)}`}</Typography>
-                      <Typography style={{ marginLeft: '3px' }} variant='h6'>{candidate.phone_key || candidate.location}</Typography>
+                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                        <Typography variant='h5'>{`${titleCase(candidate.name.first)} ${titleCase(candidate.name.last)}`}</Typography>
+                        <Typography style={{ fontSize: '0.8em' }} variant='h6'>{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
+                      </Box>
                     </Box>
                   )
                   )}
-                </Box>
-                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                </Paper>
+                <Box display='flex' flexDirection='row' paddingY={2} justifyContent='center' alignItems='center'>
                   <Button
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'red', color: 'white' }}
@@ -720,10 +720,10 @@ export default ({ onSave, onClose }) => {
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                   <Typography variant='h5' key={`title`} style={{ fontWeight: 'bold' }}>
                     {`Check-in/out status`}
-                    </Typography>
-                    <Typography variant='h5' key={`title`} style={{ fontWeight: 'bold' }}>
-                      {`as of ${makeDate(new Date()).absolute}`}
-                    </Typography>
+                  </Typography>
+                  <Typography variant='h5' key={`title`} style={{ fontWeight: 'bold' }}>
+                    {`as of ${makeDate(new Date()).absolute}`}
+                  </Typography>
                 </Box>
                 <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
                   <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
