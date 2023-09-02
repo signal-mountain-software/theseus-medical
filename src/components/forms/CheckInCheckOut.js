@@ -216,6 +216,7 @@ export default ({ onSave, onClose }) => {
     reactData.resident_mode = false;
     reactData.guest_mode = false;
     reactData.staff_mode = false;
+    reactData.other_mode = false;
     let mode;
     switch (personRec.account_class) {
       case 'staff':
