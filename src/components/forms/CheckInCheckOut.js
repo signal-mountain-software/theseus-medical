@@ -305,7 +305,7 @@ export default ({ onSave, onClose }) => {
                         validation.personRec.account_class = determineClass(reactData.personRec.groups, state.session.group_assignments);
                       }
                       else {
-                        validation = await validateUser(enteredID, state.session.client_id);
+                        validation = await validateUser(enteredID.toLowerCase(), state.session.client_id);
                       }
                       reactData.errorText = [];
                       reactData.enteredID = enteredID;
