@@ -112,7 +112,7 @@ export async function getServiceRequests(body) {
         return sortedList;
       }
     }
-    else { return []; }
+    else { return sortedList; }
     qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
     loopCount++;
   } while (qQ.ExclusiveStartKey && (loopCount < 10))

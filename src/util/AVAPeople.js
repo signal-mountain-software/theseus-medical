@@ -315,14 +315,21 @@ export async function addGuest(body) {
 }
 
 export async function addVendor(body) {
-    if (!body
-        || !body.name
-        || !body.name.first
-        || !body.name.last
-        || !body.location
-        || !body.client_id
-        || (!body.phone && !body.sms && (!body.messaging || !body.messaging.sms))
-    ) { return { result: 'failed', message: 'Missing data in request' }; }
+    if (!body) {
+        return { result: 'failed', message: 'Missing data in request' };
+    }
+    else if (!body.name || !body.name.first || !body.name.last) {
+        return { result: 'failed', message: 'Missing name in request' };
+    }
+    else if (!body.location) {
+        return { result: 'failed', message: 'Missing location in request' };
+    }
+    else if (!body.client_id) {
+        return { result: 'failed', message: 'Missing client in request' };
+    }
+    else if (!body.phone && !body.sms && (!body.messaging || !body.messaging.sms)) {
+        return { result: 'failed', message: 'Missing phone number in request' };
+    }
     let tryAgain;
     let availableID = '';
     let namePart = `${body.client_id}_vendor_`;

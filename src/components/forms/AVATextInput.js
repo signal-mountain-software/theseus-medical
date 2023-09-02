@@ -79,10 +79,12 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ titleText, promptText, valueText, errorText, buttonText, onCancel, onSave, allowCancel = true }) => {
+export default ({ titleText, promptText, valueText, errorText, buttonText, onCancel, onSave, allowCancel = true, options = {} }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
+
+  let keyPressed = 0;
 
   const [textInput, setTextInput] = React.useState(valueText ? (Array.isArray(valueText) ? valueText : [valueText]) : []);
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
@@ -101,12 +103,12 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
   };
 
   const handleSave = () => {
-    if (Array.isArray(promptText)) { onSave(textInput); }
-    else { onSave(textInput[0]); }
+    if (Array.isArray(promptText)) { onSave(textInput, keyPressed); }
+    else { onSave(textInput[0], keyPressed); }
   };
 
   const onCheckEnter = (event) => {
-    if ((event.key === 'Enter') && !Array.isArray(promptText)) { handleSave(); }
+    if ((event.key === 'Enter') && options.save_on_enter) { handleSave(); }
   };
 
   let promptArray = [];
@@ -221,7 +223,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
         </DialogContent>
       </Box>
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Box display='flex' style={{ marginTop: '2em' }} flexDirection='row' justifyContent='center' alignItems='center'>
+        <Box display='flex' style={{ marginTop: '2em' }} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
           {allowCancel &&
             <Button
               className={AVAClass.AVAButton}
@@ -239,11 +241,32 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'green', color: 'white' }}
             size='small'
-            onClick={handleSave}
+            onClick={() => {
+              keyPressed = 0;
+              handleSave();
+            }}
             startIcon={<LoadIcon size="small" />}
           >
             {buttonArray[0]}
           </Button>
+          {(buttonArray.length > 2) &&
+            buttonArray.map((b, i) => (
+              (i > 1) &&
+              b &&
+                <Button
+                  className={AVAClass.AVAButton}
+                  key={`extra-button_${i}`}
+                  style={{ backgroundColor: 'blue', color: 'white' }}
+                  size='small'
+                  onClick={() => {
+                    keyPressed = i;
+                    handleSave();
+                  }}
+                >
+                  {b}
+              </Button>
+            ))
+          }
         </Box>
       </DialogActions>
     </Dialog>
