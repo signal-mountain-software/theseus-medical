@@ -172,6 +172,13 @@ export function clt() {
 export function sentenceCase(pString) {
   if (!pString) { return ''; }
   if (typeof (pString) === 'object') { return JSON.stringify(pString); }
+  if (pString.slice(0, 2).toLowerCase() === 'mc') {
+    return (
+      pString.slice(0, 1).toUpperCase() +
+      pString.slice(1, 2).toLowerCase() +
+      pString.slice(2, 3).toUpperCase() +
+      pString.slice(3).toLowerCase()
+  ); }
   return (pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase());
 }
 
