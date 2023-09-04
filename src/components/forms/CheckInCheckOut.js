@@ -412,7 +412,7 @@ export default ({ onSave, onClose }) => {
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
               <AVATextInput
                 titleText={[makeGreeting(reactData.personRec.name.first), `Check out - ${makeDate(new Date()).absolute}`]}
-                promptText={reactData.residentPrompts}
+                promptText={reactData.residentPrompts || []}
                 buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
                 onCancel={() => {
                   reactData.validated_user = false;
@@ -426,7 +426,9 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.last_update = now.timestamp;
                   let hNote = `Checked out on ${now.absolute}`;
                   responses.forEach((r, x) => {
-                    if (r) { hNote += ` ${reactData.residentPrompts[x]}: ${r}.`; }
+                    if (r && reactData.residentPrompts) {
+                      hNote += ` ${reactData.residentPrompts[x]}: ${r}.`;
+                    }
                   });
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await updateServiceRequest(reactData.currentStatus.reqRec);
@@ -719,10 +721,10 @@ export default ({ onSave, onClose }) => {
             (!reactData.adminOverride ?
               <Dialog open={forceRedisplay || true} fullWidth >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                  <Typography variant='h5' key={`title`} style={{ fontWeight: 'bold' }}>
+                  <Typography variant='h5' key={`title1`} style={{ fontWeight: 'bold' }}>
                     {`Check-in/out status`}
                   </Typography>
-                  <Typography variant='h5' key={`title`} style={{ fontWeight: 'bold' }}>
+                  <Typography variant='h5' key={`title2`} style={{ fontWeight: 'bold' }}>
                     {`as of ${makeDate(new Date()).absolute}`}
                   </Typography>
                 </Box>
