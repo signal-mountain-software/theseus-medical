@@ -17,6 +17,7 @@ import ShowCalendar from '../dialogs/ShowCalendar';
 import ShowMenu from '../dialogs/ShowMenu';
 import ShowEventActivity from '../dialogs/ShowEventActivity';
 import LoadWorkOrderSpreadsheet from '../forms/LoadWorkOrderSpreadsheet';
+import LoadNamesFromFile from '../forms/LoadNamesFromFile';
 import ShowGroup from '../dialogs/ShowGroup';
 import GroupForm from '../forms/GroupForm';
 import NumberForm from './NumberForm';
@@ -450,6 +451,12 @@ export default ({
         <ShowMenu
           pClient={session.client_id}
           showMenu={true}
+          onClose={onSave}
+        />
+      );
+    case 'load_names':
+      return (
+        <LoadNamesFromFile
           onClose={onSave}
         />
       );

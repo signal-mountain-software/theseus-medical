@@ -433,6 +433,8 @@ export default ({
                     paddingLeft={2}
                     paddingRight={2}
                     minWidth={'100%'}
+                    mt={0.5}
+                    mb={0.5}
                     border={reactData.textInput[x] ? 1 : 0}
                     borderRadius={'16px'}
                     key={'fullRow' + x}

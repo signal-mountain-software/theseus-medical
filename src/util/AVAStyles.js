@@ -17,5 +17,33 @@ export const AVAclasses = makeStyles(theme => ({
         textWrap: 'nowrap',
         fontWeight: 'bold',
         size: 'small',
-    }
+    },
+    AVATitle: {
+        marginTop: theme.spacing(3),
+        marginLeft: theme.spacing(2),
+        marginRight: theme.spacing(2),
+        marginBottom: 0,
+        fontSize: '1.3rem',
+        fontWeight: 'bold'
+    },
+    AVABox: {
+        paddingTop: theme.spacing(1),
+        paddingBottom: theme.spacing(1),
+        minWidth: '100%',
+    },
+    AVABoxCentered: {
+        display: 'flex',
+        flexDirection: 'row',
+        paddingTop: theme.spacing(1),
+        paddingBottom: theme.spacing(1),
+        minWidth: '100%',
+        justifyContent: 'center'
+    },
+    AVASmallText: {
+        fontSize: theme.typography.fontSize * 0.8,
+        minWidth: '100%',
+        marginY: 10,
+        marginX: 0,
+        paddingX: 0,
+    },
 }));

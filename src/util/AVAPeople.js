@@ -105,7 +105,18 @@ export async function getPersonFromLocation(pClient, pLoc) {
 }
 
 export async function getPersonByName(pClient, pFirstName, pLastName) {
-    if (!pLastName) { [pFirstName, pLastName] = pFirstName.split(' '); }
+    if (!pLastName) {
+        if (pFirstName.includes(',')) { 
+            let pWords = pFirstName.split(/,(.*)/);
+            pLastName = pWords[0].trim();
+            pFirstName = pWords[1].trim();
+        }
+        else {
+            let pWords = pFirstName.split(' ');
+            pLastName = pWords.pop();
+            pFirstName = pWords.join(' ');
+        }
+    }
     let qQ = { TableName: 'People' };
     qQ.IndexName = 'client_id-index';
     qQ.KeyConditionExpression = 'client_id = :c';
@@ -135,13 +146,18 @@ export async function getPersonByWords(pClient, pWords) {
     let qQ = { TableName: 'People' };
     qQ.IndexName = 'client_id-index';
     qQ.KeyConditionExpression = 'client_id = :c';
-    qQ.FilterExpression = 'contains(#d, :f)';
     qQ.ExpressionAttributeNames = { '#d': 'search_data' };
-    qQ.ExpressionAttributeValues = { ':c': pClient, ':f': pWords[0] };
-    for (let x = 1; x < pWords.length; x++) {
-        qQ.FilterExpression += ` and contains(#d, :f${x})`;
-        qQ.ExpressionAttributeValues[`:f${x}`] = pWords[x];
+    qQ.ExpressionAttributeValues = { ':c': pClient };
+    qQ.FilterExpression = '';
+    let conjunction = '';
+    for (let x = 0; x < pWords.length; x++) {
+        if (pWords[x] && (pWords[x].length > 2)) {
+            qQ.FilterExpression += ` ${conjunction} contains(#d, :f${x})`;
+            qQ.ExpressionAttributeValues[`:f${x}`] = pWords[x];
+            conjunction = 'and';
+        }
     }
+    if (!qQ.FilterExpression) { return []; }
     let qR = await dbClient
         .query(qQ)
         .promise()
