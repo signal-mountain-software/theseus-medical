@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { makeArray, uuid } from '../../util/AVAUtilities';
+import { makeArray, uuid, s3 } from '../../util/AVAUtilities';
 import { getPersonByWords } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import { getServiceRequests } from '../../util/AVAServiceRequest';
@@ -135,7 +135,9 @@ export default ({ onClose }) => {
     let recipientNameList = [];
     let nowTimestamp = new Date().getTime();
     let thread_id = `welfare_check.${state.session.client_id}.${nowTimestamp}.${uuid(6)}`;
-    let callList = summaryList.map(async (p) => {
+    let callList = [];
+    for (let l = 0; l < summaryList.length; l++) {
+      let p = summaryList[l];
       if (p.pStatus === 'no match') { p.result = 'No call - no AVA account found'; }
       else if (p.pStatus === 'multiple') { p.result = 'No call - multiple AVA accounts found'; }
       else {
@@ -148,7 +150,7 @@ export default ({ onClose }) => {
           if (recipientList.includes(p.pID)) { p.result = 'Duplicate'; }
           else {
             recipientList.push(p.pID);
-            recipientNameList.push(p.name);
+            recipientNameList.push(p.pName);
             p.result = 'Placed on call list';
             p.thread = thread_id;
           }
@@ -163,8 +165,13 @@ export default ({ onClose }) => {
           p.result += ` (Checked out since ${makeDate(reqArray[0].last_update).relative})`;
         }
       }
-      return p;
-    });
+      callList.push({
+        AVA_ID: p.pID,
+        Resident: p.pName,
+        Action: p.result,
+        Status: (p.thread ? 'Submitted' : 'Complete - no call')
+      });
+    };
     if (recipientList.length === 0) {
       //      enqueueSnackbar(`Nobody found to call!`, { variant: 'error', persist: true });
       reactData.stage = 'get_file';
@@ -175,7 +182,7 @@ export default ({ onClose }) => {
     reactData.request = {
       client: state.session.client_id,
       author: state.session.person_id,
-      messageText: `We didn't receive an acknowledgemen from the check-in system for you today.  This call is to confirm all is well.`,
+      messageText: `We didn't receive an acknowledgement from the check-in system for you today.  This call is to confirm all is well.`,
       recipientList,
       recipientNameList,
       subject: 'Your daily check-in',
@@ -184,6 +191,24 @@ export default ({ onClose }) => {
     };
     reactData.callList = callList;
     // **** RAY SAVE THE CALL LIST SOMEWHERE??? ****
+    let newWorksheet = XLSX.utils.json_to_sheet(callList, {});
+    let newWorkbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Call List");
+    let bufferInfo = XLSX.write(newWorkbook, { type: 'buffer', bookType: 'csv' });
+    const pFile = {
+      Bucket: 'theseus-medical-storage',
+      Key: `public_uploads/${thread_id}.csv`,
+      Body: bufferInfo,
+      ACL: 'public-read-write',
+    };
+    enqueueSnackbar(`Uploading ${thread_id}.csv`, { variant: 'success', persist: true });
+    let s3Resp = await s3
+      .upload(pFile)
+      .promise()
+      .catch(err => {
+        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+      });
+    console.log(s3Resp.Location)
     reactData.loading = false;
     setReactData(reactData);
     setForceRedisplay(forceRedisplay => !forceRedisplay);
