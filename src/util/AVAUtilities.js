@@ -454,8 +454,9 @@ export function parseSpreadsheet(pWorkbook) {
   pWorkbook.SheetNames.forEach((sheetName) => {
     let currentSheet = pWorkbook.Sheets[sheetName];
     for (const currentCell in currentSheet) {
-      if (!currentSheet[currentCell].w) { continue; }
-      cellValue = currentSheet[currentCell].w.trim();
+      if (currentSheet[currentCell].w) { cellValue = currentSheet[currentCell].w.trim(); }
+      else if (currentSheet[currentCell].v) { cellValue = currentSheet[currentCell].v.trim(); }
+      else { continue; }
       cellColumn = currentCell.replace(/[^A-Z]+/, '');
       cellRow = Number(currentCell.replace(cellColumn, ''));
       if (!returnObj[cellRow]) { returnObj[cellRow] = {}; }

@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { useSnackbar } from 'notistack';
+
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays } from '../../util/AVADateTime';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -116,10 +118,12 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showAll, setShowAll] = React.useState(true);
 
+  const { enqueueSnackbar } = useSnackbar();
+
   const [reactData, setReactData] = React.useState({
     start_date: 0,
     end_date: 'today',
-    myCalendar: ((currentEvent && currentEvent[0]) ? currentEvent[0].eventList : []),
+    myCalendar: ((currentEvent && Array.isArray(currentEvent) && currentEvent[0].eventList) ? currentEvent[0].eventList : []),
     loading: false
   })
 
@@ -308,6 +312,24 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     setChanges(false);
     onClose();
   };
+
+  React.useEffect(() => {
+    async function initialize() {
+      if ((reactData.myCalendar.length === 0) && currentEvent && Array.isArray(currentEvent)) {
+        let calendarEntry = await setCalendar();
+        if (!calendarEntry || (calendarEntry.length === 0)) {
+          enqueueSnackbar(`AVA couldn't load that event`, { variant: 'error' });
+        }
+        else {
+          reactData.myCalendar = calendarEntry;
+          setReactData(reactData);
+          setForceRedisplay(forceRedisplay => !forceRedisplay);
+        }
+      }
+    }
+    initialize();
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+
 
   // **************************
   return (

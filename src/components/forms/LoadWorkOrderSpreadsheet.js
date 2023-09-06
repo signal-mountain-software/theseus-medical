@@ -3,24 +3,15 @@ import { useSnackbar } from 'notistack';
 import { getServiceRequests, updateServiceRequest, putServiceRequest } from '../../util/AVAServiceRequest';
 import { makeDate } from '../../util/AVADateTime';
 import { makeName, getPersonFromPartialID, getPersonFromLocation, getPersonByName } from '../../util/AVAPeople';
-import { s3 } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
-import DialogActions from '@material-ui/core/DialogActions';
-import DialogContent from '@material-ui/core/DialogContent';
 import DialogContentText from '@material-ui/core/DialogContentText';
 
 import LinearProgress from '@material-ui/core/LinearProgress';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
 
-import CloseIcon from '@material-ui/icons/HighlightOff';
-import SaveIcon from '@material-ui/icons/Save';
-
-import CloudUploadIcon from '@material-ui/icons/CloudUpload';
-
 import Paper from '@material-ui/core/Paper';
-import Button from '@material-ui/core/Button';
 import Box from '@material-ui/core/Box';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -29,7 +20,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import Slide from '@material-ui/core/Slide';
 import { parseSpreadsheet } from '../../util/AVAUtilities';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import AVAUploadFile from '../../util/AVAUploadFile';
 
 var XLSX = require("xlsx");
 
@@ -105,17 +96,12 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ pClient, showSheet, session, defaults, onClose }) => {
 
   const classes = useStyles();
-  const AVAClass = AVAclasses();
-
-  const [changeDetected, setChangeDetected] = React.useState(false);
-  const [s3Filename, setS3Filename] = React.useState();
-  const [selectedFile, setSelectedFile] = React.useState();
 
   const [loading, setLoading] = React.useState(false);
   const [progress, setProgress] = React.useState(0);
   const [pWidth, setPWidth] = React.useState(60);
 
-  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
+  const { enqueueSnackbar } = useSnackbar();
 
   let defaultUser = 'AVA';
   if (Array.isArray(defaults) & (defaults.length > 0)) { defaultUser = defaults[0]; }
@@ -125,15 +111,9 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
 
   const jobTime = new Date().getTime();
 
-  const hiddenFileInput = React.useRef(null);
-
-  const handleFileUpload = event => {
-    hiddenFileInput.current.click();
-  };
-
   async function handleSpreadsheet(pFile) {
     var req = new XMLHttpRequest();
-    req.open("GET", pFile, true);
+    req.open("GET", pFile.fLoc, true);
     req.responseType = "arraybuffer";
     req.onload = async function (e) {
       var data = new Uint8Array(req.response);
@@ -141,9 +121,8 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
       sheetData = parseSpreadsheet(workbook);
       setLoading(true);
       await processXLSData();
-      setChangeDetected(false);
       setLoading(false);
-      enqueueSnackbar(`Finished with ${selectedFile}!  You may select another file or tap Done!`, { variant: 'error', persist: true });
+      enqueueSnackbar(`Finished with ${pFile.fName}!`, { variant: 'success', persist: true });
     };
     req.send();
   };
@@ -423,75 +402,13 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
             {'Upload Work Order updates to AVA'}
           </DialogContentText>
           <Paper component={Box} className={classes.page} overflow='auto' square>
-            <DialogContent className={classes.dialogBox}>
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'blue', color: 'white' }}
-                size='small'
-                startIcon={<CloudUploadIcon />}
-                onClick={handleFileUpload}
-              >
-                {'Choose File'}
-              </Button>
-              <input
-                type="file"
-                style={{ display: 'none' }}
-                ref={hiddenFileInput}
-                onChange={async (target) => {
-                  let fObj = target.target.files[0];
-                  setSelectedFile(fObj.name);
-                  const pFile = {
-                    Bucket: 'theseus-medical-storage',
-                    Key: 'public_uploads/' + fObj.name,
-                    Body: fObj,
-                    ACL: 'public-read-write',
-                    ContentType: fObj.ContentType
-                  };
-                  enqueueSnackbar(`Uploading your file`, { variant: 'success', persist: true });
-                  let s3Resp = await s3
-                    .upload(pFile)
-                    .promise()
-                    .catch(err => {
-                      enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                    });
-                  closeSnackbar();
-                  enqueueSnackbar(`Loading complete.  Tap Process button to continue.`, { variant: 'success', persist: true });
-                  setS3Filename(s3Resp.Location);
-                  setChangeDetected(true);
-                }}
-              />
-            </DialogContent >
-            <DialogActions className={classes.buttonArea} >
-              <Box display='flex' flexDirection='column'>
-                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'red', color: 'white' }}
-                    size='small'
-                    variant='outlined'
-                    onClick={onClose}
-                    startIcon={<CloseIcon size="small" />}
-                  >
-                    Done
-                  </Button>
-                  {changeDetected &&
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
-                      size='small'
-                      variant='outlined'
-                      onClick={async () => {
-                        closeSnackbar();
-                        await handleSpreadsheet(s3Filename);
-                      }}
-                      startIcon={<SaveIcon size="small" />}
-                    >
-                      Process
-                    </Button>
-                  }
-                </Box>
-              </Box>
-            </DialogActions>
+            <AVAUploadFile
+              onClose={async (fileList) => {
+                if (fileList.length === 0) { onClose(); }
+                else { await handleSpreadsheet(fileList[0]); }
+              }}
+              options={{ title: 'Choose file(s) to process' }}
+            />
           </Paper >
         </React.Fragment >
       }

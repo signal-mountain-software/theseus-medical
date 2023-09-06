@@ -365,7 +365,7 @@ export async function getCalendarEntries(body, statusUpdate) {
       if ((rT[t] === 'occurrence') && (create_occ)) {
         // called for a specific occurrence record
         // AND asked to create the entry if not found (create_occ = true), so...
-        let newOcc = await validateOccurrence(rC, rV, rO);  // will not create if it is an invalid occurrence
+        let newOcc = await putEventOccurrence(rC, rV, rO);  // will not create if it is an invalid occurrence
         if (newOcc && Array.isArray(newOcc)) { returnArr.push(...newOcc); }
       }
     }
@@ -607,7 +607,7 @@ export async function getOccurenceList(request) {
     case "daily": {
       for (let candidate = from_date; candidate < to_date; addDays(candidate, 1)) {
         if (occPattern.day_of_week.includes(candidate.getDay())) {
-          await goodCandidate(makeDate(candidate).numeric);
+          await validateOccurrenceDate(makeDate(candidate).numeric);
           if (foundEnough()) { break; }
         }
       }
@@ -625,7 +625,7 @@ export async function getOccurenceList(request) {
         monthToCheck = candidate.getMonth();
         for (let r = 0; ((r < targetArray.length) && !foundEnough()); r++) {
           if (typeof targetArray[r] === 'number') {
-            await goodCandidate(`${yearToCheck}${(monthToCheck + 101).toString().slice(-2)}${(targetArray[r] + 100).toString().slice(-2)}`);
+            await validateOccurrenceDate(`${yearToCheck}${(monthToCheck + 101).toString().slice(-2)}${(targetArray[r] + 100).toString().slice(-2)}`);
             if (foundEnough()) { break; }
           }
           else {
@@ -633,29 +633,34 @@ export async function getOccurenceList(request) {
             for (let x = 0; x < 7; x++) {
               if (occPattern.day_of_week.includes(checkDate.getDay())) {
                 switch (targetArray[r]) {
+                  // the validateOccurrenceDate routine evaluates the passed-in date
+                  // based on the occPattern that's already loaded here
+                  // if that date is a "real" occurrence, it will push the date it onto response.occArray
+                  //
+
                   case "first": {
-                    await goodCandidate(makeDate(checkDate).numeric);
+                    await validateOccurrenceDate(makeDate(checkDate).numeric);
                     break;
                   }
                   case "second": {
-                    await goodCandidate(makeDate(addDays(checkDate, 7)).numeric);
+                    await validateOccurrenceDate(makeDate(addDays(checkDate, 7)).numeric);
                     break;
                   }
                   case "third": {
-                    await goodCandidate(makeDate(addDays(checkDate, 14)).numeric);
+                    await validateOccurrenceDate(makeDate(addDays(checkDate, 14)).numeric);
                     break;
                   }
                   case "fourth": {
-                    await goodCandidate(makeDate(addDays(checkDate, 21)).numeric);
+                    await validateOccurrenceDate(makeDate(addDays(checkDate, 21)).numeric);
                     break;
                   }
                   case "last": {
                     let possDate = addDays(checkDate, 28);
                     if (possDate.getMonth() === monthToCheck) {
-                      await goodCandidate(makeDate(possDate).numeric);
+                      await validateOccurrenceDate(makeDate(possDate).numeric);
                     }
                     else {
-                      await goodCandidate(makeDate(addDays(checkDate, 21)).numeric);
+                      await validateOccurrenceDate(makeDate(addDays(checkDate, 21)).numeric);
                     }
                     break;
                   }
@@ -663,7 +668,7 @@ export async function getOccurenceList(request) {
                 }  // end switch on occPattern.day_of_month (as targetArray[r]) ("first Thursday", "second Thursday", etc)
               } // end "if this date matches a target day of the week (Thursday)"
               if (foundEnough()) { break; }
-              addDays(checkDate, 1);
+              checkDate = addDays(checkDate, 1);
             } // end trying every possible day of the week (Sunday - Saturday)
           } // end else block - occPattern.day_of_month (targetArray[r]) is not a number
         } // end loop through all occPattern.day_of_month entries
@@ -685,7 +690,7 @@ export async function getOccurenceList(request) {
       for (let candidate = from_date; candidate < to_date; candidate.setFullYear(yearToCheck + 1)) {
         yearToCheck = candidate.getFullYear();
         for (let t = 0; t < targetArray.length; t++) {
-          await goodCandidate((yearToCheck * 10000) + targetArray[t]);
+          await validateOccurrenceDate((yearToCheck * 10000) + targetArray[t]);
           if (foundEnough()) { break; }
         }
       }
@@ -693,7 +698,7 @@ export async function getOccurenceList(request) {
     }
     default: {
       for (let s = 0; s < occPattern.specified.length; s++) {
-        await goodCandidate(occPattern.specified[s]);
+        await validateOccurrenceDate(occPattern.specified[s]);
         if (foundEnough()) { break; }
       }
     }
@@ -706,8 +711,9 @@ export async function getOccurenceList(request) {
     return (request.number_of_occurrences && (response.occArray.length >= request.number_of_occurrences));
   }
 
-  async function goodCandidate(inDate) {
-    // called from inside getOccurenceList and therefore pertains to a sepcific event
+  async function validateOccurrenceDate(inDate) {
+    // called from inside getOccurenceList and therefore pertains to a sepcific event currently loaded
+    //  (occPattern and eventRec should be loaded)
     // determines if a specific date is between that occurrence's first and last dates, and not excluded
     // will return false or...
     //    will add the occurrence
@@ -727,18 +733,21 @@ export async function getOccurenceList(request) {
     if (occPattern['last_date'] && (numericDate > occPattern.last_date)) { return false; }
     if (numericDate > to_numeric) { return false; }
     // All good if we get this far
+    // Add this date to the response.occArray
     response.occArray.push(numericDate);
+    // Add this date to the response.occArray
     if (!eventRec.occExists) { eventRec.occExists = []; }
-    else if (eventRec.occExists.includes(stringDate)) {
-      return numericDate;
-    }
-    let oResp = await validateOccurrence(request.client, event_id, stringDate, eventRec.occExists);
+  //  else if (eventRec.occExists.includes(stringDate)) {
+  //    return numericDate;
+  //  }
+    let oResp = await putEventOccurrence(request.client, event_id, stringDate, eventRec.occExists);
     if (Array.isArray(oResp)) { response.occRec[stringDate] = oResp[1]; }
     return numericDate;
   }
 }
 
-export async function validateOccurrence(client, inEvent, inDate, occExists) {
+export async function putEventOccurrence(client, inEvent, inDate, occExists) {
+  // this routine assumes you've got a good occurrence (inDate) for an event (inEvent)
   // return occurrence and event records for a specific event/date occurrence;  
   // create the occurrence if it doesn't exist
   let eventRec, occRec;
@@ -1033,7 +1042,7 @@ export async function updateSlotStatus(request) {
     }
     let peopleArray = makeArray(this_request.person);
     for (let o = 0; o < occArray.length; o++) {
-      await validateOccurrence(request.client, this_request.event, occArray[o]);
+      await putEventOccurrence(request.client, this_request.event, occArray[o]);
       for (let p = 0; p < peopleArray.length; p++) {
         let [pID, pName] = peopleArray[p].split(':');
         await writeSlot({

@@ -165,7 +165,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                 alignItems='center'
                 key={`frag-${ndx}`}
               >
-                {prompt.toLowerCase().startsWith('[checkbox]') ?
+                {prompt && (prompt.toLowerCase().startsWith('[checkbox]')) ?
                   <Box display='flex'
                     mt={0.5}
                     mb={0.5}
@@ -212,7 +212,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                       onKeyPress={(event) => {
                         onCheckEnter(event);
                       }}
-                      helperText={(errorText && errorText[ndx]) ? errorText[ndx] : ((prompt === titleText) ? '' : prompt)}
+                      helperText={(errorText && errorText[ndx]) ? errorText[ndx] : ((prompt === titleText) ? '' : (prompt || ''))}
                       autoComplete='off'
                     />
                   </Box>
