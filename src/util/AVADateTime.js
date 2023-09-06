@@ -18,6 +18,7 @@ export function makeDate(pInput) {
             'relative': '',  // next Tuesday
             'absolute': '',  // Tue, Aug 22, 2023
             'dateOnly': '',  // August 22
+            'timeOnly': '', // 2:45pm
             'oaDate': '',   // on Tue, Aug 22, 2023 at 2:45pm
             'date': null,
             'timestamp': 0,
@@ -70,6 +71,7 @@ export function makeDate(pInput) {
                 'relative': `${pInput} is not a valid date`,
                 'absolute': `${pInput} is not a valid date`,
                 'dateOnly': `${pInput} is not a valid date`,
+                'timeOnly': `${pInput} is not a valid date`,
                 'oaDate': `${pInput} is not a valid date`,
                 'date': null,
                 'timestamp': 0,
@@ -146,6 +148,7 @@ export function makeDate(pInput) {
         'error': false,
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
+        'timeOnly': targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' }),
         'dateOnly': dateOnly,
         'oaDate': titleCase(oaDate),
         'date': targetDate,

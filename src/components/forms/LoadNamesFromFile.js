@@ -28,6 +28,7 @@ import AVAUploadFile from '../../util/AVAUploadFile';
 import useSession from '../../hooks/useSession';
 
 var XLSX = require("xlsx");
+const StepFunctions = require('aws-sdk/clients/stepfunctions');
 
 const useStyles = makeStyles(theme => ({
   listItem: {
@@ -102,39 +103,50 @@ export default ({ onClose }) => {
 
   const classes = useStyles();
   const { state } = useSession();
+  const stepFunctions = new StepFunctions();
 
   const [reactData, setReactData] = React.useState({
     loading: false,
+    initialized: false,
     pWidth: 100,
     progress: 0,
     stage: 'get_file',
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
+  const [filesProcessed, setFilesProcessed] = React.useState([{}]);
 
   const { enqueueSnackbar } = useSnackbar();
 
   async function handleFiles(fileList) {
     let summaryList = [];
     for (let f = 0; f < fileList.length; f++) {
+      if (!fileList[f].fName) { fileList[f].fName = `File uploaded ${makeDate(new Date()).absolute}`; }
       switch (fileList[f].fType.toLowerCase()) {
         case 'csv':
         case 'xls':
         case 'xlsx': {
-          //          enqueueSnackbar(`Working on ${fileList[f].fName}!`, { variant: 'warning' });
           let sheetData = await handleSpreadsheet(fileList[f]);
           let sheetObj = await processXLSData(sheetData);
-          summaryList.push(...sheetObj.peopleList);
+          if (!sheetObj) {
+            enqueueSnackbar(`${fileList[f].fName} has type ${fileList[f].fType}, but is not a valid spreadsheet`, { variant: 'error', persist: true });
+          }
+          else if (sheetObj.count === 0) { 
+            enqueueSnackbar(sheetObj.message, { variant: 'error', persist: true });
+          }
+          else {
+            summaryList.push(...sheetObj.peopleList);
+          }
           break;
         }
         default: {
-          //          enqueueSnackbar(`AVA is unable to translate the file type ${fileList[f].fType} for ${fileList[f].fName}!`, { variant: 'error', persist: true });
+          enqueueSnackbar(`AVA is unable to translate the file type ${fileList[f].fType} for ${fileList[f].fName}!`, { variant: 'error', persist: true });
         }
       }
     }
     let recipientList = [];
     let recipientNameList = [];
-    let nowTimestamp = new Date().getTime();
-    let thread_id = `welfare_check.${state.session.client_id}.${nowTimestamp}.${uuid(6)}`;
+    let nowTime = makeDate(new Date()).numeric$;
+    let thread_id = `welfare_check.${state.session.client_id}.${nowTime}.${uuid(6)}`;
     let callList = [];
     for (let l = 0; l < summaryList.length; l++) {
       let p = summaryList[l];
@@ -173,7 +185,7 @@ export default ({ onClose }) => {
       });
     };
     if (recipientList.length === 0) {
-      //      enqueueSnackbar(`Nobody found to call!`, { variant: 'error', persist: true });
+      enqueueSnackbar(`Nobody found to contact!`, { variant: 'error', persist: false });
       reactData.stage = 'get_file';
     }
     else {
@@ -201,14 +213,26 @@ export default ({ onClose }) => {
       Body: bufferInfo,
       ACL: 'public-read-write',
     };
-    enqueueSnackbar(`Uploading ${thread_id}.csv`, { variant: 'success', persist: true });
+    enqueueSnackbar(`Uploading your results report`, { variant: 'success' });
     let s3Resp = await s3
       .upload(pFile)
       .promise()
       .catch(err => {
         enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
       });
-    console.log(s3Resp.Location)
+    // Schedule follow-up
+    const stateMachineArn = 'arn:aws:states:us-east-1:125549937716:stateMachine:MessageFollowUp';
+    await stepFunctions.startExecution({
+      stateMachineArn,
+      input: JSON.stringify({
+        requestor: state.session.user_id,
+        client_id: state.session.client_id,
+        thread_id,
+        s3File: s3Resp.Location,
+        localName: fileList[0].fName || ''
+      }),
+    }).promise();
+    // Done
     reactData.loading = false;
     setReactData(reactData);
     setForceRedisplay(forceRedisplay => !forceRedisplay);
@@ -394,6 +418,8 @@ export default ({ onClose }) => {
               onCancel={() => {
                 reactData.stage = 'get_file';
                 setReactData(reactData);
+                filesProcessed.unshift()
+                setFilesProcessed(filesProcessed);
                 setForceRedisplay(forceRedisplay => !forceRedisplay);
               }}
               onComplete={() => {

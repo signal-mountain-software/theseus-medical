@@ -116,7 +116,6 @@ export default ({ onCancel, onLoad, options = {} }) => {
                   enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
                 });
               closeSnackbar();
-              enqueueSnackbar(`Loading complete!`, { variant: 'success', persist: true });
               reactData.uploadList.push({ fName: keyName, fType: extension, fLoc: s3Resp.Location });
               reactData.fNameIn = '';
               if (options.buttonText && Array.isArray(options.buttonText)) {
@@ -144,7 +143,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
                 borderRadius={'16px'}
               >
                 <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                  <Typography variant='h5'>{fObj.fName}</Typography>
+                  <Typography variant='h5' style={{ overflowWrap: 'anywhere' }} >{fObj.fName}</Typography>
                   <Typography style={{ fontSize: '0.8em' }} variant='h6'>{fObj.fType}</Typography>
                 </Box>
               </Box>
