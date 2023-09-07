@@ -926,7 +926,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   }
 
   function makeGreetingName(pString) {
-    setGreetingName(pString);
+    setGreetingName(pString || 'AVA User');
     return pString;
   }
 
