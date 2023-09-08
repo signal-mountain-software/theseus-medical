@@ -130,7 +130,7 @@ export default ({ onClose }) => {
           if (!sheetObj) {
             enqueueSnackbar(`${fileList[f].fName} has type ${fileList[f].fType}, but is not a valid spreadsheet`, { variant: 'error', persist: true });
           }
-          else if (sheetObj.count === 0) { 
+          else if (sheetObj.count === 0) {
             enqueueSnackbar(sheetObj.message, { variant: 'error', persist: true });
           }
           else {
@@ -143,6 +143,12 @@ export default ({ onClose }) => {
         }
       }
     }
+    let testList = [];
+    let substituteNames = false;
+    if (state.session.welfare_check) {
+      testList = makeArray(state.session.welfare_check.testList);
+      substituteNames = true;
+    }
     let recipientList = [];
     let recipientNameList = [];
     let nowTime = makeDate(new Date()).numeric$;
@@ -153,15 +159,16 @@ export default ({ onClose }) => {
       if (p.pStatus === 'no match') { p.result = 'No call - no AVA account found'; }
       else if (p.pStatus === 'multiple') { p.result = 'No call - multiple AVA accounts found'; }
       else {
-        if (!p.pRec.local_data
-          || !p.pRec.local_data.hasOwnProperty('welfare check phone number')
-          || p.pRec.local_data['welfare check phone number'] === '') {
-          p.result = 'No call - person is on the exclusion list;';
-        }
+        if (excludeThisPerson(p.pRec)) { p.result = 'No call - person is on the exclusion list'; }
         else {
           if (recipientList.includes(p.pID)) { p.result = 'Duplicate'; }
           else {
-            recipientList.push(p.pID);
+            if (substituteNames) {
+              recipientList.push(testList.shift() || `fakeID_${l}`);
+            }
+            else {
+              recipientList.push(p.pID);
+            }
             recipientNameList.push(p.pName);
             p.result = 'Placed on call list';
             p.thread = thread_id;
@@ -179,7 +186,7 @@ export default ({ onClose }) => {
       }
       callList.push({
         AVA_ID: p.pID,
-        Resident: p.pName,
+        Name: p.pName,
         Action: p.result,
         Status: (p.thread ? 'Submitted' : 'Complete - no call')
       });
@@ -201,8 +208,18 @@ export default ({ onClose }) => {
       thread_id,
       preffered_method: 'urgent'
     };
+    if (state.session.welfare_check && state.session.welfare_check.message) {
+      if (state.session.welfare_check.message.text) {
+        reactData.request.messageText = state.session.welfare_check.message.text;
+      }
+      if (state.session.welfare_check.message.subject) {
+        reactData.request.subject = state.session.welfare_check.message.subject;
+      }
+      if (state.session.welfare_check.message.author) {
+        reactData.request.author = state.session.welfare_check.message.author;
+      }
+    }
     reactData.callList = callList;
-    // **** RAY SAVE THE CALL LIST SOMEWHERE??? ****
     let newWorksheet = XLSX.utils.json_to_sheet(callList, {});
     let newWorkbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Call List");
@@ -220,7 +237,9 @@ export default ({ onClose }) => {
       .catch(err => {
         enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
       });
+    console.log(s3Resp.Location);
     // Schedule follow-up
+    /*
     const stateMachineArn = 'arn:aws:states:us-east-1:125549937716:stateMachine:MessageFollowUp';
     await stepFunctions.startExecution({
       stateMachineArn,
@@ -228,10 +247,11 @@ export default ({ onClose }) => {
         requestor: state.session.user_id,
         client_id: state.session.client_id,
         thread_id,
-        s3File: s3Resp.Location,
+        fileLocation: s3Resp.Location,
         localName: fileList[0].fName || ''
       }),
     }).promise();
+    */
     // Done
     reactData.loading = false;
     setReactData(reactData);
@@ -257,43 +277,87 @@ export default ({ onClose }) => {
     });
   };
 
+  function excludeThisPerson(pRec) {
+    let notExcluded = false;
+    let excluded = true;
+    if (!state.session.welfare_check || !state.session.welfare_check.filter) {
+      return notExcluded;
+    }
+    let filters = makeArray(state.session.welfare_check.filter);
+    for (let f = 0; f < filters.length; f++) {
+      let this_filter = filters[f];
+      let a = this_filter.property.split('.');
+      let result = a.reduce((val, c, x) => {
+        if (!val) { return false; }
+        return val[a[x]];
+      }, pRec);
+      if (this_filter.if_exists === 'exclude') { return (result ? excluded : notExcluded); }
+      else { return (result ? notExcluded : excluded); }
+    };
+  }
+
   async function processXLSData(sheetData) {
     // We're going to look for a column that contains names
     // First, look for something that looks like a column header.  A cell with the word "name" in it.
     // sheetData is an array of arrays 
     //    it contains info as sheetData[row] = columnObj 
     //    where each columnObj[columnNumber] = cellValue
-    let nameColumn, headerRow;
-    let sdL = sheetData.length;
-    for (let activeRow = 0; activeRow < sdL; activeRow++) {
-      reactData.progress = ((activeRow / sdL) * 100);
-      setReactData(reactData);
-      setForceRedisplay(forceRedisplay => !forceRedisplay);
-      if (!sheetData[activeRow]) { continue; }
-      let rowData = Object.entries(sheetData[activeRow]);
-      // eslint-disable-next-line
-      if (rowData.some(([column, cellValue]) => {
-        if (cellValue.toLowerCase() === 'name') {
-          nameColumn = column;
-          headerRow = activeRow;
-          return true;
-        }
-        return false;
-      })) { break; }
+
+    let key_column;
+    let headerRow = -1;
+    let keyWord = 'name';
+    let hasHeaderRow = true;
+    if (state.session.welfare_check && state.session.welfare_check.spreadsheet) {
+      if (state.session.welfare_check.spreadsheet.key_column) {
+        key_column = state.session.welfare_check.spreadsheet.key_column;
+      }
+      if (state.session.welfare_check.spreadsheet.key) {
+        keyWord = state.session.welfare_check.spreadsheet.key;
+      }
+      if (state.session.welfare_check.spreadsheet.hasOwnProperty('headers')) {
+        hasHeaderRow = state.session.welfare_check.spreadsheet.headers;
+      }
     }
-    if (!headerRow) {
-      return {
-        count: 0,
-        message: 'No name column was found'
-      };
+    let sdL = sheetData.length;
+    if (hasHeaderRow || !key_column) {
+      for (let activeRow = 0; activeRow < sdL; activeRow++) {
+        reactData.progress = ((activeRow / sdL) * 100);
+        setReactData(reactData);
+        setForceRedisplay(forceRedisplay => !forceRedisplay);
+        if (!sheetData[activeRow]) { continue; }
+        let rowData = Object.entries(sheetData[activeRow]);
+        // eslint-disable-next-line
+        if (rowData.some(([column, cellValue]) => {
+          if (cellValue.toLowerCase() === keyWord) {
+            if (key_column) {
+              if (column === key_column) {
+                headerRow = activeRow;
+                return true;
+              }
+            }
+            else {
+              key_column = column;
+              headerRow = activeRow;
+              return true;
+            }
+          }
+          return false;
+        })) { break; }
+      }
+      if (!key_column) {
+        return {
+          count: 0,
+          message: 'No key column was found'
+        };
+      }
     }
     let nameList = [];
     for (let activeRow = headerRow + 1; activeRow < sdL; activeRow++) {
       reactData.progress = ((activeRow / sdL) * 100);
       setReactData(reactData);
       setForceRedisplay(forceRedisplay => !forceRedisplay);
-      if (!sheetData[activeRow].hasOwnProperty(nameColumn)) { continue; }
-      nameList.push(sheetData[activeRow][nameColumn]);
+      if (!sheetData[activeRow] || !sheetData[activeRow].hasOwnProperty(key_column)) { continue; }
+      nameList.push(sheetData[activeRow][key_column]);
     }
     if (nameList.length === 0) {
       return {
@@ -307,6 +371,9 @@ export default ({ onClose }) => {
     };
     let returnList = [];
     for (let x = 0; x < nameList.length; x++) {
+      reactData.progress = ((x / nameList.length) * 100);
+      setReactData(reactData);
+      setForceRedisplay(forceRedisplay => !forceRedisplay);
       let this_name = nameList[x];
       let pList = await getPersonByWords(state.session.client_id, makeArray(this_name.replace(',', ' ').toLowerCase(), ' '));
       returnObj.found += pList.length;
@@ -418,7 +485,7 @@ export default ({ onClose }) => {
               onCancel={() => {
                 reactData.stage = 'get_file';
                 setReactData(reactData);
-                filesProcessed.unshift()
+                filesProcessed.unshift();
                 setFilesProcessed(filesProcessed);
                 setForceRedisplay(forceRedisplay => !forceRedisplay);
               }}
