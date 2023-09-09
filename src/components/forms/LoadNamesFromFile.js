@@ -1,10 +1,12 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { makeArray, uuid, s3 } from '../../util/AVAUtilities';
+import { parseSpreadsheet, makeArray, uuid, s3, stepFunctions } from '../../util/AVAUtilities';
 import { getPersonByWords } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import { getServiceRequests } from '../../util/AVAServiceRequest';
+import { AVAclasses } from '../../util/AVAStyles';
 
+import AVAUploadFile from '../../util/AVAUploadFile';
 import MakeMessage from './MakeMessage';
 import AVAConfirm from '../forms/AVAConfirm';
 
@@ -16,94 +18,22 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
 
 import Box from '@material-ui/core/Box';
-
-import makeStyles from '@material-ui/core/styles/makeStyles';
-// import useMediaQuery from '@material-ui/core/useMediaQuery';
-
 import Slide from '@material-ui/core/Slide';
-import { parseSpreadsheet } from '../../util/AVAUtilities';
-
-import AVAUploadFile from '../../util/AVAUploadFile';
 
 import useSession from '../../hooks/useSession';
 
 var XLSX = require("xlsx");
-const StepFunctions = require('aws-sdk/clients/stepfunctions');
-
-const useStyles = makeStyles(theme => ({
-  listItem: {
-    justifyContent: 'space-between',
-    marginTop: theme.spacing(2),
-    marginBottom: theme.spacing(2)
-  },
-  title: {
-    marginTop: theme.spacing(3),
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    marginBottom: 0,
-    fontSize: '1.3rem',
-    fontWeight: 'bold'
-  },
-  progressBar: {
-    marginBottom: theme.spacing(3),
-    backgroundColor: '#a3a0a0',
-    color: '#000000',
-    transition: 'none',
-    height: '5px'
-  },
-  subTitle: {
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    marginBottom: 0,
-    fontSize: '0.8rem'
-  },
-  typeOfLine: {
-    fontSize: theme.typography.fontSize * 0.8,
-    marginBottom: 0,
-  },
-  observationLine: {
-    marginTop: 0,
-    fontSize: theme.typography.fontSize * 1.8,
-  },
-  buttonArea: {
-    justifyContent: 'center',
-    marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(1)
-  },
-  dialogBox: {
-    paddingTop: theme.spacing(1),
-    paddingBottom: theme.spacing(1),
-    paddingRight: 0,
-    minWidth: '100%',
-  },
-  page: {
-    maxWidth: 1000
-  },
-  rowButtonRed: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    color: theme.palette.reject[theme.palette.type],
-  },
-  rowButtonGreen: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    color: theme.palette.confirm[theme.palette.type],
-  },
-}));
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ onClose }) => {
+export default ({ options = { runType: 'welfare_check'}, onClose }) => {
 
-  const classes = useStyles();
   const { state } = useSession();
-  const stepFunctions = new StepFunctions();
+  const AVAClass = AVAclasses();
+
+  if (!options.runType) {
+    options.runType = 'welfare_check';
+  }
 
   const [reactData, setReactData] = React.useState({
     loading: false,
@@ -119,6 +49,9 @@ export default ({ onClose }) => {
 
   async function handleFiles(fileList) {
     let summaryList = [];
+    let localFileName;
+    if (fileList.length === 1) { localFileName = fileList[0].fName; }
+    else { localFileName = `Multiple (${fileList.length - 1}) files uploaded ${makeDate(new Date()).absolute}`; }
     for (let f = 0; f < fileList.length; f++) {
       if (!fileList[f].fName) { fileList[f].fName = `File uploaded ${makeDate(new Date()).absolute}`; }
       switch (fileList[f].fType.toLowerCase()) {
@@ -145,32 +78,43 @@ export default ({ onClose }) => {
     }
     let testList = [];
     let substituteNames = false;
-    if (state.session.welfare_check) {
-      testList = makeArray(state.session.welfare_check.testList);
+    if (state.session[options.runType]) {
+      testList = makeArray(state.session[options.runType].testList);
       substituteNames = true;
     }
     let recipientList = [];
     let recipientNameList = [];
     let nowTime = makeDate(new Date()).numeric$;
-    let thread_id = `welfare_check.${state.session.client_id}.${nowTime}.${uuid(6)}`;
+    let thread_id = `${options.runType}.${state.session.client_id}.${nowTime}.${uuid(6)}`;
     let callList = [];
+    let fakeNumber = 0;
     for (let l = 0; l < summaryList.length; l++) {
       let p = summaryList[l];
-      if (p.pStatus === 'no match') { p.result = 'No call - no AVA account found'; }
-      else if (p.pStatus === 'multiple') { p.result = 'No call - multiple AVA accounts found'; }
+      let avaID = p.pID;
+      if (p.pStatus === 'no match') { p.result = 'No AVA account found'; }
+      else if (p.pStatus === 'multiple') { p.result = 'Multiple AVA accounts found'; }
       else {
-        if (excludeThisPerson(p.pRec)) { p.result = 'No call - person is on the exclusion list'; }
+        if (excludeThisPerson(p.pRec)) { p.result = 'Person is on the exclusion list'; }
         else {
           if (recipientList.includes(p.pID)) { p.result = 'Duplicate'; }
           else {
             if (substituteNames) {
-              recipientList.push(testList.shift() || `fakeID_${l}`);
+              let tID = testList.shift();
+              if (tID) {
+                p.result = 'Message Scheduled'; 
+                recipientList.push(tID);
+                avaID = tID;
+              }
+              else {
+                p.result = 'Message would have been sent, but no substitute for testing identified'; 
+                recipientList.push(`fakeID_${fakeNumber++}`);
+              }
             }
             else {
               recipientList.push(p.pID);
+              p.result = 'Message Scheduled';
             }
             recipientNameList.push(p.pName);
-            p.result = 'Placed on call list';
             p.thread = thread_id;
           }
         }
@@ -185,10 +129,10 @@ export default ({ onClose }) => {
         }
       }
       callList.push({
-        AVA_ID: p.pID,
+        AVA_ID: avaID,
         Name: p.pName,
         Action: p.result,
-        Status: (p.thread ? 'Submitted' : 'Complete - no call')
+        Status: ((p.result === 'Message Scheduled') ? 'Submitted' : 'No message')
       });
     };
     if (recipientList.length === 0) {
@@ -201,22 +145,23 @@ export default ({ onClose }) => {
     reactData.request = {
       client: state.session.client_id,
       author: state.session.person_id,
-      messageText: `We didn't receive an acknowledgement from the check-in system for you today.  This call is to confirm all is well.`,
+      messageText: ``,
       recipientList,
       recipientNameList,
-      subject: 'Your daily check-in',
+      subject: `sentenceCase(${options.runType})`,
       thread_id,
-      preffered_method: 'urgent'
+      preffered_method: 'urgent',
+      localFileName
     };
-    if (state.session.welfare_check && state.session.welfare_check.message) {
-      if (state.session.welfare_check.message.text) {
-        reactData.request.messageText = state.session.welfare_check.message.text;
+    if (state.session[options.runType] && state.session[options.runType].message) {
+      if (state.session[options.runType].message.text) {
+        reactData.request.messageText = state.session[options.runType].message.text;
       }
-      if (state.session.welfare_check.message.subject) {
-        reactData.request.subject = state.session.welfare_check.message.subject;
+      if (state.session[options.runType].message.subject) {
+        reactData.request.subject = state.session[options.runType].message.subject;
       }
-      if (state.session.welfare_check.message.author) {
-        reactData.request.author = state.session.welfare_check.message.author;
+      if (state.session[options.runType].message.author) {
+        reactData.request.author = state.session[options.runType].message.author;
       }
     }
     reactData.callList = callList;
@@ -237,22 +182,7 @@ export default ({ onClose }) => {
       .catch(err => {
         enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
       });
-    console.log(s3Resp.Location);
-    // Schedule follow-up
-    /*
-    const stateMachineArn = 'arn:aws:states:us-east-1:125549937716:stateMachine:MessageFollowUp';
-    await stepFunctions.startExecution({
-      stateMachineArn,
-      input: JSON.stringify({
-        requestor: state.session.user_id,
-        client_id: state.session.client_id,
-        thread_id,
-        fileLocation: s3Resp.Location,
-        localName: fileList[0].fName || ''
-      }),
-    }).promise();
-    */
-    // Done
+    reactData.request.s3Upload = s3Resp.Location;
     reactData.loading = false;
     setReactData(reactData);
     setForceRedisplay(forceRedisplay => !forceRedisplay);
@@ -280,10 +210,10 @@ export default ({ onClose }) => {
   function excludeThisPerson(pRec) {
     let notExcluded = false;
     let excluded = true;
-    if (!state.session.welfare_check || !state.session.welfare_check.filter) {
+    if (!state.session[options.runType] || !state.session[options.runType].filter) {
       return notExcluded;
     }
-    let filters = makeArray(state.session.welfare_check.filter);
+    let filters = makeArray(state.session[options.runType].filter);
     for (let f = 0; f < filters.length; f++) {
       let this_filter = filters[f];
       let a = this_filter.property.split('.');
@@ -307,15 +237,15 @@ export default ({ onClose }) => {
     let headerRow = -1;
     let keyWord = 'name';
     let hasHeaderRow = true;
-    if (state.session.welfare_check && state.session.welfare_check.spreadsheet) {
-      if (state.session.welfare_check.spreadsheet.key_column) {
-        key_column = state.session.welfare_check.spreadsheet.key_column;
+    if (state.session[options.runType] && state.session[options.runType].spreadsheet) {
+      if (state.session[options.runType].spreadsheet.key_column) {
+        key_column = state.session[options.runType].spreadsheet.key_column;
       }
-      if (state.session.welfare_check.spreadsheet.key) {
-        keyWord = state.session.welfare_check.spreadsheet.key;
+      if (state.session[options.runType].spreadsheet.key) {
+        keyWord = state.session[options.runType].spreadsheet.key;
       }
-      if (state.session.welfare_check.spreadsheet.hasOwnProperty('headers')) {
-        hasHeaderRow = state.session.welfare_check.spreadsheet.headers;
+      if (state.session[options.runType].spreadsheet.hasOwnProperty('headers')) {
+        hasHeaderRow = state.session[options.runType].spreadsheet.headers;
       }
     }
     let sdL = sheetData.length;
@@ -429,10 +359,10 @@ export default ({ onClose }) => {
               key={'loadingBox'}
               mb={2}
             >
-              <Typography variant='h5' className={classes.lastName} >{`Loading Call List data`}</Typography>
+              <Typography variant='h5' className={AVAClass.AVABigBoldText} >{`Loading Call List data`}</Typography>
               <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
             </Box>
-            <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: reactData.pWidth }} value={reactData.progress} />
+            <LinearProgress variant="determinate" className={AVAClass.AVAProgressBar} style={{ width: reactData.pWidth }} value={reactData.progress} />
             <CircularProgress />
           </React.Fragment>
         </Box>
@@ -445,7 +375,7 @@ export default ({ onClose }) => {
               variant={'elevation'} elevation={2}
               TransitionComponent={Transition}
             >
-              <DialogContentText className={classes.title} id='scroll-dialog-title'>
+              <DialogContentText className={AVAClass.AVATitle} id='scroll-dialog-title'>
                 {'Daily Welfare Call Sheet'}
               </DialogContentText>
               <AVAUploadFile
@@ -489,7 +419,18 @@ export default ({ onClose }) => {
                 setFilesProcessed(filesProcessed);
                 setForceRedisplay(forceRedisplay => !forceRedisplay);
               }}
-              onComplete={() => {
+            onComplete={async () => {
+              const stateMachineArn = 'arn:aws:states:us-east-1:125549937716:stateMachine:MessageFollowUp';
+              await stepFunctions.startExecution({
+                stateMachineArn,
+                input: JSON.stringify({
+                  requestor: state.session.user_id,
+                  client_id: state.session.client_id,
+                  thread_id: reactData.request.thread_id,
+                  fileLocation: reactData.request.s3Upload,
+                  localName: reactData.request.localFileName
+                }),
+              }).promise();
                 onClose();
               }}
               allowCancel={true}

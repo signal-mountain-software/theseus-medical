@@ -1,6 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 import { s3, makeArray } from '../util/AVAUtilities';
+import { makeDate } from '../util/AVADateTime';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -19,9 +20,12 @@ import Box from '@material-ui/core/Box';
 
 import { AVAclasses } from '../util/AVAStyles';
 
+import useSession from '../hooks/useSession';
+
 export default ({ onCancel, onLoad, options = {} }) => {
 
   const AVAClass = AVAclasses();
+  const { state } = useSession();
 
   const [reactData, setReactData] = React.useState({
     uploadList: [],
@@ -117,7 +121,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
                 });
               closeSnackbar();
               reactData.uploadList.push({ fName: keyName, fType: extension, fLoc: s3Resp.Location });
-              reactData.fNameIn = '';
+              reactData.fNameIn = `File uploaded by ${state.profile.name.first} ${makeDate(new Date()).oaDate}`;
               if (options.buttonText && Array.isArray(options.buttonText)) {
                 if (options.buttonText[2] && reactData.uploadList.length > 1) {
                   reactData.buttonText = options.buttonText[2];

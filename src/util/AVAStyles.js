@@ -23,7 +23,7 @@ export const AVAclasses = makeStyles(theme => ({
         marginLeft: theme.spacing(2),
         marginRight: theme.spacing(2),
         marginBottom: 0,
-        fontSize: '1.3rem',
+        fontSize: theme.typography.fontSize * 1.25,
         fontWeight: 'bold'
     },
     AVABox: {
@@ -45,5 +45,26 @@ export const AVAclasses = makeStyles(theme => ({
         marginY: 10,
         marginX: 0,
         paddingX: 0,
+    },
+    AVABigBoldText: {
+        fontSize: theme.typography.fontSize * 1.8,
+        minWidth: '100%',
+        marginY: 10,
+        marginX: 0,
+        paddingX: 0,
+    },
+    AVALargeText: {
+        fontSize: theme.typography.fontSize * 1.25,
+        minWidth: '100%',
+        marginY: 10,
+        marginX: 0,
+        paddingX: 0,
+    },
+    AVAProgressBar: {
+        marginBottom: theme.spacing(3),
+        backgroundColor: '#a3a0a0',
+        color: '#000000',
+        transition: 'none',
+        height: '5px'
     },
 }));
