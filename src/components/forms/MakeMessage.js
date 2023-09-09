@@ -198,6 +198,7 @@ export default ({
       reactData.newAccount = false;
       setReactData(reactData);
     }
+    console.log(sendToName);
     let senderName = await makeName(state.session.user_id);
     let request = {
       client: sender.client_id,
