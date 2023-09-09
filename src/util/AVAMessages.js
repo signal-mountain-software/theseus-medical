@@ -836,11 +836,13 @@ export async function sendMessages(body) {
           goodPost = false;
         });
       if (goodPost) {
-        let nList = [];
-        for (let p = 0; p < ind.length; p++) {
-          nList.push(await makeName(ind[p]));
+        if (ind.length === 1) {
+          let sName = await makeName(ind[0]);
+          results.push({ sent: true, message: `Sent message to ${sName}` });
         }
-        results.push({ sent: true, message: `Sent message to ${listFromArray(nList)} ${currentTime.oaDate}` });
+        else {
+          results.push({ sent: true, message: `Sent message to ${ind.length} people` });
+        }
       }
     }
   }
