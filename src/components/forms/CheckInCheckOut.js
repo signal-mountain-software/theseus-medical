@@ -596,7 +596,7 @@ export default ({ onSave, onClose }) => {
               errorText={reactData.errorText}
               onSave={async ([guestName, vendorCompany, contactNumber, destination]) => {
                 reactData.errorText = [];
-                if (reactData.enteredID !== guestName) {
+                if (reactData.enteredID.toLowerCase() !== guestName.toLowerCase()) {
                   let validation = await validateUser(guestName, state.session.client_id);
                   reactData.enteredID = guestName;
                   if ((validation.result === 'match') || (validation.result === 'ambiguous')) {
@@ -619,13 +619,13 @@ export default ({ onSave, onClose }) => {
                 }
                 let dNames = (destination ? titleCase(destination.trim()).split(/\s+/) : []);
                 let dLast, dFirst;
-                if (dNames.length < 2) {
-                  reactData.errorText[3] = `Please enter the full name of the person you are visiting`;
-                }
-                else {
+           //     if (dNames.length < 2) {
+           //       reactData.errorText[3] = `Please enter the full name of the person you are visiting`;
+           //     }
+           //     else {
                   dLast = dNames.pop();
                   dFirst = dNames.join(' ');
-                }
+          //      }
                 let gPhone = Number(contactNumber.replace(/\D/g, ''));
                 if (gPhone < 1000000000) {
                   reactData.errorText[1] = `Please enter your area code and phone number`;
