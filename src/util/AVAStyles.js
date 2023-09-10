@@ -26,6 +26,13 @@ export const AVAclasses = makeStyles(theme => ({
         fontSize: theme.typography.fontSize * 1.25,
         fontWeight: 'bold'
     },
+    AVABigBoldTitle: {
+        fontSize: theme.typography.fontSize * 1.8,
+        marginY: 10,
+        marginX: 0,
+        paddingX: 0,
+        fontWeight: 'bold'
+    },
     AVABox: {
         paddingTop: theme.spacing(1),
         paddingBottom: theme.spacing(1),

@@ -359,7 +359,7 @@ export default ({ options = { runType: 'welfare_check'}, onClose }) => {
               key={'loadingBox'}
               mb={2}
             >
-              <Typography variant='h5' className={AVAClass.AVABigBoldText} >{`Loading Call List data`}</Typography>
+              <Typography variant='h5' className={AVAClass.AVABigBoldTitle} >{`Loading Call List data`}</Typography>
               <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
             </Box>
             <LinearProgress variant="determinate" className={AVAClass.AVAProgressBar} style={{ width: reactData.pWidth }} value={reactData.progress} />
