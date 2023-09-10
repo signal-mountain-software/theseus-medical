@@ -41,21 +41,18 @@ export const AVAclasses = makeStyles(theme => ({
     },
     AVASmallText: {
         fontSize: theme.typography.fontSize * 0.8,
-        minWidth: '100%',
         marginY: 10,
         marginX: 0,
         paddingX: 0,
     },
     AVABigBoldText: {
         fontSize: theme.typography.fontSize * 1.8,
-        minWidth: '100%',
         marginY: 10,
         marginX: 0,
         paddingX: 0,
     },
     AVALargeText: {
         fontSize: theme.typography.fontSize * 1.25,
-        minWidth: '100%',
         marginY: 10,
         marginX: 0,
         paddingX: 0,
