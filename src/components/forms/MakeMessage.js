@@ -203,6 +203,7 @@ export default ({
     let request = {
       client: sender.client_id,
       author: state.session.user_id,
+      person_id: state.session.patient_id,
       messageText: reactData.textInput[makeArray(promptText).length - 1],
       recipientList: Array.isArray(sendToID) ? sendToID : [sendToID],
       subject: (makeArray(promptText).length > 1 ? reactData.textInput[0] : `Message from ${senderName}`)

@@ -776,7 +776,7 @@ export async function sendMessages(body) {
         'thread_id': env.thread_id,
         'message_id': `${postTime}~AVAMessages`,
         'deliver_time': postTime,
-        'patient_id': env.author,
+        'patient_id': env.person_id || env.author,
         'from': env.author,
         'message_text': env.messageText,
         'html_message_text': env.htmlText,
