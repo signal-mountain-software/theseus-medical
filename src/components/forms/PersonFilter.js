@@ -92,7 +92,6 @@ export default ({
   const [random_address, setRandomAddress] = React.useState('');
   const [rowLimit, setRowLimit] = React.useState(20);
   const [maxY, setMaxY] = React.useState(0);
-  const [previousY, setCurrentY] = React.useState(0);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [checkList, setCheckList] = React.useState({});
   const [selections, setSelections] = React.useState('');
@@ -107,16 +106,10 @@ export default ({
   let toggling = false;
 
   const onScroll = event => {
-    if (rowLimit < peopleList.length) {
-      let currentY = window.scrollY;
-      if (currentY - (previousY + 50)) {
-        setCurrentY(currentY);
-        let newLimit = rowLimit + scrollValue;
-        setRowLimit(newLimit);
-        setMaxY(Math.max(maxY, newLimit));
-        setForceRedisplay(!forceRedisplay);
-      }
-    }
+    let newLimit = rowLimit + scrollValue;
+    setRowLimit(newLimit);
+    setMaxY(Math.max(maxY, newLimit));
+    setForceRedisplay(!forceRedisplay);
   };
 
   async function toggleCheck(pIn) {
@@ -199,7 +192,7 @@ export default ({
         else { return ans[1].trim(); }
       }
       default: {
-        let a = ans[0].trim().split(/[\s]+/); 
+        let a = ans[0].trim().split(/[\s]+/);
         if (a.length === 1) { return ''; }
         a.pop();
         return a.join(' ');
@@ -232,7 +225,7 @@ export default ({
     if (alreadyChecked) {
       let newCheckList = {};
       let theList = makeArray(alreadyChecked);
-      theList.forEach(p => { newCheckList[p] = 'true'; })
+      theList.forEach(p => { newCheckList[p] = 'true'; });
       setCheckList(newCheckList);
     }
   }, [peopleList]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -317,7 +310,7 @@ export default ({
                     src={getImage(listEntry.split(':')[1])}
                   />
                   {!listEntry.split(':')[1].startsWith('GRP//') ?
-                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>           
+                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                       <Typography variant='h5' className={classes.lastName}>{`${makeLastName(listEntry)}`}</Typography>
                       <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
                       {(x > 0) && (x < (peopleList.length - 1)) &&
@@ -327,7 +320,7 @@ export default ({
                       }
                     </Box>
                     :
-                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>           
+                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                       <Typography variant='h5' className={classes.groupName}>{listEntry.split(':')[0]}</Typography>
                       <Typography variant='h5' className={classes.idText}>(GROUP)</Typography>
                     </Box>

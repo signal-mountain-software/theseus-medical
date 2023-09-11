@@ -227,7 +227,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [overrideRole, setOverrideRole] = React.useState();
 
   const [rowLimit, setRowLimit] = React.useState(5);
-  const [previousY, setCurrentY] = React.useState(0);
   const scrollValue = 5;
   var rowsWritten;
   let filterTimeOut;
@@ -409,14 +408,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   };
 
   const onScroll = event => {
-    if (rowLimit < workingMemberList.length) {
-      let currentY = window.scrollY;
-      if (currentY - (previousY + 50)) {
-        setCurrentY(currentY);
-        setRowLimit(rowLimit + scrollValue);
-        setForceRedisplay(!forceRedisplay);
-      }
-    }
+    setRowLimit(rowLimit + scrollValue);
+    setForceRedisplay(!forceRedisplay);
   };
 
   function okToShow(pPerson) {
