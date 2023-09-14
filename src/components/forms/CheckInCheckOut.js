@@ -113,7 +113,7 @@ export default ({ onSave, onClose }) => {
           client_id,
           "request_id": `${person_id}_checkout`,
           "requestor": person_id,
-          "on_behalf_of": `${state.patient.name.first} ${state.patient.name.last}`,
+          "on_behalf_of": `${reactData.personRec.name.first} ${reactData.personRec.name.last}`,
           "request_type": 'checkout',
           "request_date": now,
           "original_request": {},
@@ -155,16 +155,16 @@ export default ({ onSave, onClose }) => {
         }
       });
       outSorter.sort();
-      outSorter.forEach(s => {
-        let c = reqArray[Number(s.split('~')[1])];
+      for (let x = 0; x < outSorter.length; x++) {
+        let c = reqArray[Number(outSorter[x].split('~')[1])];
         checkedOutList.push({
           person_id: c.requestor,
           reqRec: c,
           last_update: c.last_update,
-          name: c.on_behalf_of,
+          name: await makeName(c.requestor),
           message: c.history[0].replace('Checked out', '').trim()
         });
-      });
+      };
       guestSorter.sort();
       for (let x = 0; x < guestSorter.length; x++) {
         let c = reqArray[Number(guestSorter[x].split('~')[1])];
