@@ -457,6 +457,7 @@ export default ({
     case 'load_names':
       return (
         <LoadNamesFromFile
+          options={defaultValue}
           onClose={onSave}
         />
       );

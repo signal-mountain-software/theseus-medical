@@ -177,7 +177,6 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
   const [inOut_mode, setinOut] = React.useState(setDefault);
 
   const [rowLimit, setRowLimit] = React.useState(20);
-  const [previousY, setCurrentY] = React.useState(0);
   const scrollValue = 20;
   var rowsWritten;
 
@@ -421,12 +420,8 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
 
   const onScroll = event => {
     if (rowLimit < messageList.length) {
-      let currentY = window.scrollY;
-      if (currentY - (previousY + 50)) {
-        setCurrentY(currentY);
-        setRowLimit(rowLimit + scrollValue);
-        setForceRedisplay(!forceRedisplay);
-      }
+      setRowLimit(rowLimit + scrollValue);
+      setForceRedisplay(!forceRedisplay);
     }
   };
 

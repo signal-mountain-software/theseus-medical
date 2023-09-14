@@ -47,6 +47,13 @@ export const s3 = new AWS.S3({
   secretAccessKey: sak()[1]
 });
 
+const StepFunctions = require('aws-sdk/clients/stepfunctions');
+export const stepFunctions = new StepFunctions({
+  accessKeyId: sak()[0],
+  secretAccessKey: sak()[1],
+  region: "us-east-1"
+});
+
 export const lambda = new Lambda({
   region: 'us-east-1',
   accessKeyId: sak()[0],
@@ -79,7 +86,6 @@ export function listFromArray(inArray, options) {
     makeList$ += link + s;
     if (threeOrMore) { link = ', '; }
     if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + 'and ');
-
   });
   return makeList$;
 }
@@ -189,10 +195,21 @@ export function makeArray(input, delimiter = null) {
   else if (typeof input === 'object') { response = Object.keys(input); }
   else if (typeof input === 'number') { response.push(input); }
   else if ((input.charAt(0) === '{') && (input.charAt(input.length - 1) === '}')) {
-    let rObj = JSON.parse(input);
-    Object.keys(rObj).forEach(o => {
-      response.push(`${o}=${rObj[o]}`);
-    });
+    try {
+      let rObj = JSON.parse(input);
+      Object.keys(rObj).forEach(o => {
+        response.push(`${o}=${rObj[o]}`);
+      });
+    }
+    catch {
+      let outObj = {};
+      let keyValuePairs = input.replace(/[{}]/g, '').split(',');
+      keyValuePairs.forEach(pair => {
+        let [key, value] = pair.split(':');
+        outObj[key.trim()] = value.trim();
+      });
+      response.push(outObj);
+    }
   }
   else if (input.charAt(0) === '[') {
     response = input.replace(/[[\]]/, '').split(',');
@@ -355,6 +372,10 @@ export function isEmpty(o) {
   else if (typeof (o) === 'number') { return (o === 0); }
   else {return false;}
 }
+
+export function isObject(a) {
+  return (!!a) && (a.constructor === Object);
+};
 
 export function uuid(pLen) {
   let key = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];

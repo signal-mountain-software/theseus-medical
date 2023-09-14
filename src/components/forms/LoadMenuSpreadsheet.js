@@ -21,6 +21,7 @@ import Box from '@material-ui/core/Box';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Button from '@material-ui/core/Button';
+import { AVAclasses } from '../../util/AVAStyles';
 
 var XLSX = require("xlsx");
 
@@ -46,8 +47,6 @@ const useStyles = makeStyles(theme => ({
   dialogBox: {
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(1),
-    paddingRight: 0,
-    minWidth: '100%',
   },
   page: {
     //   height: 950,
@@ -103,6 +102,7 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ pClient, showUpload, handleClose }) => {
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const [changeDetected, setChangeDetected] = React.useState(false);
   const [bulkItemList, setBulkItemList] = React.useState([]);
@@ -289,7 +289,7 @@ export default ({ pClient, showUpload, handleClose }) => {
 
   function parseTemplateMenu(pWorkbook) {
     let headers = [];
-    let results = [];
+    let resultObj = {};
     pWorkbook.SheetNames.forEach((sheetName) => {
       let currentSheet = pWorkbook.Sheets[sheetName];
       for (const currentCell in currentSheet) {
@@ -301,23 +301,36 @@ export default ({ pClient, showUpload, handleClose }) => {
         let this_date = makeDate(values[0]);
         let hKey = `~~${this_date.absolute}${split_value[1] ? (' ' + sentenceCase(split_value[0])) : ''}`;
         if (!headers.includes(hKey)) {
-          results.push({
+          resultObj[`${this_date.ymd}.ava`] = {
             date: this_date.date,
-            sort_order: `${this_date.ymd}.${split_value[1] ? split_value[0] : 'ava'}`,
-            item: hKey,
+            item: `~~${this_date.absolute}`,
             type: 'header'
-          });
-          headers.push(hKey);
+          };
+          if (split_value.length > 1) {
+            resultObj[`${this_date.ymd}.${split_value[0]}`] = {
+              date: this_date.date,
+              item: hKey,
+              type: `${split_value[0]}_header`
+            };
+            headers.push(hKey);
+          }
         }
         let sort_key = entryTypes.indexOf(split_value[split_value.length - 1]);
         if (sort_key === -1) { sort_key = 99; }
-        results.push({
+        resultObj[`${this_date.ymd}.${split_value[1] ? split_value[0] : 'ava'}.${100 + sort_key}`] = {
           date: this_date.date,
-          sort_order: `${this_date.ymd}.${split_value[1] ? split_value[0] : 'ava'}.${100 + sort_key}`,
           item: values[1],
           type: values[2]
-        });
+        };
       }
+    });
+    let results = Object.keys(resultObj).map(o => {
+      return {
+        date: resultObj[o].date,
+        item: resultObj[o].item,
+        type: resultObj[o].type,
+        sort_order: o
+      };
     });
     results.sort((a, b) => { return (a.sort_order > b.sort_order ? 1 : -1); });
     setBulkItemList(results);
@@ -337,15 +350,16 @@ export default ({ pClient, showUpload, handleClose }) => {
           {
             bulkItemList.length === 0 ?
               <DialogContent dividers={true} className={classes.dialogBox}>
-                <Button
-                  className={classes.uploadButton}
-                  variant='contained'
-                  size='small'
-                  startIcon={<CloudUploadIcon />}
-                  onClick={handleFileUpload}
-                >
-                  {'Choose File'}
-                </Button>
+                <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white' }}
+                    startIcon={<CloudUploadIcon />}
+                    onClick={handleFileUpload}
+                  >
+                    {'Choose File'}
+                  </Button>
+                </Box>
                 <input
                   type="file"
                   style={{ display: 'none' }}
@@ -383,8 +397,8 @@ export default ({ pClient, showUpload, handleClose }) => {
           <Box display='flex' flexDirection='column'>
             <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
               <Button
-                className={classes.rowButtonRed}
-                size='small'
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
                 onClick={handleClose}
                 startIcon={<CloseIcon size="small" />}
               >
@@ -392,8 +406,8 @@ export default ({ pClient, showUpload, handleClose }) => {
               </Button>
               {changeDetected &&
                 <Button
-                  className={classes.rowButtonGreen}
-                  size='small'
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'green', color: 'white' }}
                   onClick={handleSave}
                   startIcon={<SaveIcon size="small" />}
                 >

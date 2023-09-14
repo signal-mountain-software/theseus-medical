@@ -1,7 +1,7 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
+import { recordExists, isObject, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
 import { makeTime, addDays, daysDiff } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getAllOccurrences } from '../../util/AVACalendars';
@@ -847,7 +847,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     let defaultValues = makeArray(fact.default_value, /\s~|~\s/g);
     for (let d = 0; d < defaultValues.length; d++) {
       let dField, dValue;
-      if (defaultValues[d].includes('=')) { [dField, dValue] = defaultValues[d].split('='); }
+      if (isObject(defaultValues[d])) {
+        dField = Object.keys(defaultValues[d])[0];
+        dValue = defaultValues[d][dField];
+      }
+      else if (defaultValues[d].includes('=')) { [dField, dValue] = defaultValues[d].split('='); }
       else { dValue = defaultValues[d]; }
       let dInstr, dPart;
       if (dValue.includes('.')) { [dInstr, dPart] = dValue.split('.'); }
@@ -910,14 +914,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       let returnValue;
       if (dField) {
         if (dField.includes('.')) { dField = dField.split('.')[1]; }
-        if (typeof dPart !== 'string') {
+        if ((typeof dPart !== 'string') || isObject(defaultValues[d])) {
           returnValue = {};
           returnValue[dField] = dPart;
         }
         else { returnValue = `${dField}=${dPart}`; }
       }
       else {
-        if (typeof dPart !== 'string') { returnValue = {}; returnValue[`d${d}`] = dPart; }
+        if ((typeof dPart !== 'string')) { returnValue = {}; returnValue[`d${d}`] = dPart; }
         else { returnValue = dPart; }
       }
       returnArray.push(returnValue);
@@ -926,7 +930,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   }
 
   function makeGreetingName(pString) {
-    setGreetingName(pString);
+    setGreetingName(pString || 'AVA User');
     return pString;
   }
 

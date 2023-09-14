@@ -776,7 +776,7 @@ export async function sendMessages(body) {
         'thread_id': env.thread_id,
         'message_id': `${postTime}~AVAMessages`,
         'deliver_time': postTime,
-        'patient_id': env.author,
+        'patient_id': env.person_id || env.author,
         'from': env.author,
         'message_text': env.messageText,
         'html_message_text': env.htmlText,
@@ -836,11 +836,13 @@ export async function sendMessages(body) {
           goodPost = false;
         });
       if (goodPost) {
-        let nList = [];
-        for (let p = 0; p < ind.length; p++) {
-          nList.push(await makeName(ind[p]));
+        if (ind.length === 1) {
+          let sName = await makeName(ind[0]);
+          results.push({ sent: true, message: `Sent message to ${sName}` });
         }
-        results.push({ sent: true, message: `Sent message to ${listFromArray(nList)} ${currentTime.oaDate}` });
+        else {
+          results.push({ sent: true, message: `Sent message to ${ind.length} people` });
+        }
       }
     }
   }

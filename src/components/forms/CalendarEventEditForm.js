@@ -960,52 +960,58 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     }
                   </Box>
                   <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                    <Tooltip title={'Change Description, Date, Location, or Time'} >
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
-                        size='small'
-                        onClick={() => {
-                          reactData.editEventInfo = true;
-                          reactData.editInfoErrorList = [];
-                          setReactData(reactData);
-                          setForceRedisplay(!forceRedisplay);
-                        }}
-                        startIcon={<EditIcon size='small' />}
-                      >
-                        {'Update Event Info'}
-                      </Button>
-                    </Tooltip>
-                    <Tooltip title={'Add event owners'} >
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
-                        size='small'
-                        onClick={() => {
-                          reactData.editOwnerInfo = true;
-                          setReactData(reactData);
-                          setForceRedisplay(!forceRedisplay);
-                        }}
-                        startIcon={<PersonAddIcon size='small' />}
-                      >
-                        {'Add Event Owners'}
-                      </Button>
-                    </Tooltip>
-                    <Tooltip title={'Add event owners'} >
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
-                        size='small'
-                        onClick={() => {
-                          reactData.cancelPending = true;
-                          setReactData(reactData);
-                          setForceRedisplay(!forceRedisplay);
-                        }}
-                        startIcon={<DeleteIcon size='small' />}
-                      >
-                        {'Cancel Event'}
-                      </Button>
-                    </Tooltip>
+                    <Box display='flex' flexDirection='column' paddingBottom={1} justifyContent='center' alignItems='center'>
+                      <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                        <Tooltip title={'Change Description, Date, Location, or Time'} >
+                          <Button
+                            className={AVAClass.AVAButton}
+                            style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
+                            size='small'
+                            onClick={() => {
+                              reactData.editEventInfo = true;
+                              reactData.editInfoErrorList = [];
+                              setReactData(reactData);
+                              setForceRedisplay(!forceRedisplay);
+                            }}
+                            startIcon={<EditIcon size='small' />}
+                          >
+                            {'Update Event Info'}
+                          </Button>
+                        </Tooltip>
+                        <Tooltip title={'Add event owners'} >
+                          <Button
+                            className={AVAClass.AVAButton}
+                            style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
+                            size='small'
+                            onClick={() => {
+                              reactData.editOwnerInfo = true;
+                              setReactData(reactData);
+                              setForceRedisplay(!forceRedisplay);
+                            }}
+                            startIcon={<PersonAddIcon size='small' />}
+                          >
+                            {'Add Event Owners'}
+                          </Button>
+                        </Tooltip>
+                      </Box>
+                      <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
+                        <Tooltip title={'Add event owners'} >
+                          <Button
+                            className={AVAClass.AVAButton}
+                            style={{ backgroundColor: 'red', color: 'white', marginBottom: '-12px' }}
+                            size='small'
+                            onClick={() => {
+                              reactData.cancelPending = true;
+                              setReactData(reactData);
+                              setForceRedisplay(!forceRedisplay);
+                            }}
+                            startIcon={<DeleteIcon size='small' />}
+                          >
+                            {'Cancel Event'}
+                          </Button>
+                        </Tooltip>
+                      </Box>
+                    </Box>
                   </Box>
                 </React.Fragment>
               }

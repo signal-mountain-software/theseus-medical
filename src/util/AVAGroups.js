@@ -431,11 +431,13 @@ export function determineClass(gList, group_assignments) {
     });
   }
   let member_of = groupHierarchy.length - 1;
-  let gL = gList.length;
-  for (let x = 0; x < gL; x++) {
-    let g = gList[x];
-    if (groupFlavor.hasOwnProperty(g)) {
-      member_of = Math.min(member_of, groupFlavor[g]);
+  if (gList) {
+    let gL = gList.length;
+    for (let x = 0; x < gL; x++) {
+      let g = gList[x];
+      if (groupFlavor.hasOwnProperty(g)) {
+        member_of = Math.min(member_of, groupFlavor[g]);
+      }
     }
   }
   return groupHierarchy[member_of];

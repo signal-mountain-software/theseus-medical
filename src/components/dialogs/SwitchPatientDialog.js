@@ -120,16 +120,6 @@ export default ({ open, roles, onClose }) => {
   const onScroll = event => {
     let newLimit = rowLimit + scrollValue;
     setRowLimit(newLimit);
-    /*
-      let currentY = window.scrollY;
-      if (currentY - (previousY + 50)) {
-        setCurrentY(currentY);
-        let newLimit = rowLimit + scrollValue;
-        setRowLimit(newLimit);
-        setMaxY(Math.max(maxY, newLimit));
-        setForceRedisplay(!forceRedisplay);
-      }
-      */
   };
 
   const handleChangePersonFilter = vCheck => {

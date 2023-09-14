@@ -32,6 +32,12 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '20%',
     minWidth: '20%',
     paddingRight: 3
+  },
+  detailRowSpaceAbove: {
+    maxWidth: '20%',
+    minWidth: '20%',
+    paddingRight: 3,
+    marginTop: 2
   }
 }));
 
@@ -54,7 +60,7 @@ export default ({ pClient, workingList, showList }) => {
       composite_key: pClient + '~' + pItem.type + '_' + pItem.date.getFullYear() + '.' + (pItem.date.getMonth() + 1) + '.' + pItem.date.getDate(),
       observation_code: pItem.item,
       observation_key: pItem.oKey
-    }
+    };
     setSelectedObservation(pObs);
     setUpdateIndex(pIndex);
   };
@@ -67,7 +73,7 @@ export default ({ pClient, workingList, showList }) => {
     console.log(updatedRow);
     setBulkItemList(workingArray);
     setForceRedisplay(forceRedisplay + 1);
-  }
+  };
 
   const handleDeleteItem = async (pItem, pIndex) => {
     let workingArray = bulkItemList;
@@ -113,7 +119,7 @@ export default ({ pClient, workingList, showList }) => {
               :
               <ListItem
                 key={this_item.item + 'r' + index}
-                style={{ marginBottom: '0px', marginTop: '0px' }}
+                style={{ marginBottom: '0px', marginTop: (this_item.item.startsWith('~~') ? '20px' : '0px') }}
                 cols={1}
                 sx={{ maxWidth: '99%' }}
               >
@@ -129,12 +135,16 @@ export default ({ pClient, workingList, showList }) => {
                     <Typography noWrap={true} variant='subtitle1'>{sentenceCase(this_item.type.split('_').pop())}</Typography>
                   </Box>
                   <Box flexGrow={1}>
-                    <Typography noWrap={false} variant='h6'>{this_item.item}</Typography>
+                    {this_item.item.startsWith('~~') ?
+                      <Typography noWrap={false} variant='h6'><i>{this_item.item.slice(2)}</i></Typography>
+                      :
+                      <Typography noWrap={false} variant='h6'>{this_item.item}</Typography>
+                    }
                   </Box>
                   <IconButton
                     aria-label="edit_icon"
                     onClick={() => {
-                        handleEditObservation(this_item, index);
+                      handleEditObservation(this_item, index);
                     }}
                     edge="end"
                   >
@@ -152,8 +162,8 @@ export default ({ pClient, workingList, showList }) => {
             }
           </React-fragment>
         ))}
-          {editMode &&
-            <EditObservation
+        {editMode &&
+          <EditObservation
             observation={selectedObservation}
             showDialog={editMode}
             handleClose={(updatedRow) => {
@@ -163,8 +173,8 @@ export default ({ pClient, workingList, showList }) => {
             handleCancel={() => {
               setEditMode(false);
             }}
-            />
-          }
+          />
+        }
       </List>
     </Box >
   );

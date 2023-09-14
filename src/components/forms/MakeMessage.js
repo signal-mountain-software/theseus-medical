@@ -198,10 +198,12 @@ export default ({
       reactData.newAccount = false;
       setReactData(reactData);
     }
+    console.log(sendToName);
     let senderName = await makeName(state.session.user_id);
     let request = {
       client: sender.client_id,
       author: state.session.user_id,
+      person_id: state.session.patient_id,
       messageText: reactData.textInput[makeArray(promptText).length - 1],
       recipientList: Array.isArray(sendToID) ? sendToID : [sendToID],
       subject: (makeArray(promptText).length > 1 ? reactData.textInput[0] : `Message from ${senderName}`)
@@ -216,8 +218,8 @@ export default ({
     if (reactData.allowReplyAll) { request.allowReplyAll = true; }
     else if (reactData.forceMethod) { request.preffered_method = reactData.forceMethod; }
     if (thread_id) { request.thread_id = thread_id; }
-    await sendMessages(request);
-    enqueueSnackbar(`Your ${reactData.isUrgent ? 'urgent ' : ''}message is on the way to ${sendToName}`, { variant: 'success' });
+    let response = await sendMessages(request);
+    enqueueSnackbar(response.message, { variant: (response.sent ? 'success' : 'error') });
     onComplete();
   };
 
