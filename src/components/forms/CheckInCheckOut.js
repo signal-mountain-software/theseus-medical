@@ -113,7 +113,7 @@ export default ({ onSave, onClose }) => {
           client_id,
           "request_id": `${person_id}_checkout`,
           "requestor": person_id,
-          "on_behalf_of": `${state.patient.name.first} ${state.patient.name.last}`,
+          "on_behalf_of": `${reactData.personRec.name.first} ${reactData.personRec.name.last}`,
           "request_type": 'checkout',
           "request_date": now,
           "original_request": {},
@@ -155,16 +155,16 @@ export default ({ onSave, onClose }) => {
         }
       });
       outSorter.sort();
-      outSorter.forEach(s => {
-        let c = reqArray[Number(s.split('~')[1])];
+      for (let x = 0; x < outSorter.length; x++) {
+        let c = reqArray[Number(outSorter[x].split('~')[1])];
         checkedOutList.push({
           person_id: c.requestor,
           reqRec: c,
           last_update: c.last_update,
-          name: c.on_behalf_of,
+          name: await makeName(c.requestor),
           message: c.history[0].replace('Checked out', '').trim()
         });
-      });
+      };
       guestSorter.sort();
       for (let x = 0; x < guestSorter.length; x++) {
         let c = reqArray[Number(guestSorter[x].split('~')[1])];
@@ -521,7 +521,11 @@ export default ({ onSave, onClose }) => {
                         break;
                       }
                       case 1: {
-                        hWho = ` Visiting ${residentRec[0].name.first} ${residentRec[0].name.last} at ${residentRec[0].location}`;
+                        hWho = ` Visiting ${residentRec[0].name.first} ${residentRec[0].name.last}`;
+                        if (residentRec[0].location) {
+                          hWho += ` at ${residentRec[0].location}`;
+                        }
+                        reactData.currentStatus.reqRec.on_behalf_of = `${residentRec[0].name.first} ${residentRec[0].name.last}`;
                         break;
                       }
                       default: {
@@ -619,13 +623,13 @@ export default ({ onSave, onClose }) => {
                 }
                 let dNames = (destination ? titleCase(destination.trim()).split(/\s+/) : []);
                 let dLast, dFirst;
-           //     if (dNames.length < 2) {
-           //       reactData.errorText[3] = `Please enter the full name of the person you are visiting`;
-           //     }
-           //     else {
-                  dLast = dNames.pop();
-                  dFirst = dNames.join(' ');
-          //      }
+                //     if (dNames.length < 2) {
+                //       reactData.errorText[3] = `Please enter the full name of the person you are visiting`;
+                //     }
+                //     else {
+                dLast = dNames.pop();
+                dFirst = dNames.join(' ');
+                //      }
                 let gPhone = Number(contactNumber.replace(/\D/g, ''));
                 if (gPhone < 1000000000) {
                   reactData.errorText[1] = `Please enter your area code and phone number`;
@@ -772,7 +776,9 @@ export default ({ onSave, onClose }) => {
                       )}
                   </Box>
                   <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                    <Typography variant='h6' id='dialog-title'>{'Guests still checked-in'}</Typography>
+                    <Box display='flex' style={{ marginTop: '1.5em', marginBottom: '1.5em' }} flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
+                      <Typography variant='h6' id='dialog-title'>{'Guests still checked-in'}</Typography>
+                    </Box>
                     {(reactData.guestList.length === 0) &&
                       <Box style={{ paddingTop: '-8px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'>
                         <Typography><i>No guests currently checked in</i></Typography>

@@ -1,5 +1,5 @@
 import { clt, cl, recordExists, dbClient, makeArray } from '../util/AVAUtilities';
-import { getPerson } from '../util/AVAPeople';
+import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
 import { prepareMessage, sendMessages } from '../util/AVAMessages';
 
@@ -42,7 +42,7 @@ export async function getServiceRequests(body) {
           qQ.ExpressionAttributeValues[`:t${x}`] = rTa;
         });
       }
-      qQ.FilterExpression += ')'
+      qQ.FilterExpression += ')';
       if (rP) {
         qQ.FilterExpression += ' and requestor = :p';
         qQ.ExpressionAttributeValues[':p'] = rP;
@@ -57,7 +57,7 @@ export async function getServiceRequests(body) {
     qQ.IndexName = 'requestor-type-index';
     qQ.KeyConditionExpression = 'requestor = :rP';
     qQ.ExpressionAttributeValues = { ':rP': rP };
-    if (rT) {     
+    if (rT) {
       let rTarray = makeArray(rT);
       if (rTarray.length === 1) {
         qQ.KeyConditionExpression += ' and request_type = :rT';
@@ -79,7 +79,7 @@ export async function getServiceRequests(body) {
       qQ.FilterExpression = '(request_type = :t';
       qQ.ExpressionAttributeValues = { ':c': body.client_id, ':t': rTarray[0] };
       if (rTarray.length > 1) {
-        for (let x = 1; x < rTarray.length;  x++) {
+        for (let x = 1; x < rTarray.length; x++) {
           qQ.FilterExpression += ` or request_type = :t${x}`;
           qQ.ExpressionAttributeValues[`:t${x}`] = rTarray[x];
         };
@@ -115,7 +115,7 @@ export async function getServiceRequests(body) {
     else { return sortedList; }
     qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
     loopCount++;
-  } while (qQ.ExclusiveStartKey && (loopCount < 10))
+  } while (qQ.ExclusiveStartKey && (loopCount < 10));
   return sortedList;
 }
 
@@ -212,6 +212,25 @@ export async function putServiceRequest(body) {
       clt({ 'Bad put to ServiceRequests - caught error is': error });
       goodWrite = false;
     });
+  let requestLogRec = {
+    "client_id": serviceRequestRec.client_id,
+    "log_time": serviceRequestRec.last_update,
+    "activity": serviceRequestRec.history[0].replace(makeDate(serviceRequestRec.last_update).oaDate, '##'),
+    "request_id": serviceRequestRec.request_id,
+    "person": await makeName(serviceRequestRec.requestor),
+    "requestor": serviceRequestRec.requestor,
+    "request_type": serviceRequestRec.request_type
+  };
+  await dbClient
+    .put({
+      Item: requestLogRec,
+      TableName: "ServiceRequestLog"
+    })
+    .promise()
+    .catch(error => {
+      clt({ 'Bad put to ServiceRequestLog - caught error is': error });
+      goodWrite = false;
+    });
   return {
     'request_id': serviceRequestRec.request_id,
     'requestRec': serviceRequestRec,
@@ -223,14 +242,29 @@ export async function putServiceRequest(body) {
 export async function updateServiceRequest(body) {
   // body is a single, or an array of, service request records
   let unProcessed = [];
+  let logRec = [];
   if (Array.isArray(body)) {
-    body.forEach(r => {
+    for (let x = 0; x < body.length; x++) {
+      let r = body[x];
       unProcessed.push({
         "PutRequest": {
           "Item": r
         }
       });
-    });
+      logRec.push({
+        "PutRequest": {
+          "Item": {
+            "client_id": r.client_id,
+            "log_time": r.last_update,
+            "activity": r.history[0].replace(makeDate(r.last_update).oaDate, '##'),
+            "request_id": r.request_id,
+            "person": await makeName(r.requestor),
+            "requestor": r.requestor,
+            "request_type": r.request_type
+          }
+        }
+      });
+    };
   }
   else {
     unProcessed[0] = {
@@ -238,6 +272,20 @@ export async function updateServiceRequest(body) {
         "Item": body
       }
     };
+    logRec[0] = {
+      "PutRequest": {
+        "Item": {
+          "client_id": body.client_id,
+          "log_time": body.last_update,
+          "activity": body.history[0].replace(makeDate(body.last_update).oaDate, '##'),
+          "request_id": body.request_id,
+          "person": await makeName(body.requestor),
+          "requestor": body.requestor,
+          "request_type": body.request_type
+        }
+      }
+    };
+
   }
   let initialCount = unProcessed.length;
   let finalCount = 0;
@@ -248,7 +296,8 @@ export async function updateServiceRequest(body) {
     let writeResponse = await dbClient
       .batchWrite({
         RequestItems: {
-          'ServiceRequests': unProcessed
+          'ServiceRequests': unProcessed,
+          'ServiceRequestLog': logRec
         }
       })
       .promise()
