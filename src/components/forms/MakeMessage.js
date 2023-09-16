@@ -368,14 +368,19 @@ export default ({
           multiSelect={true}
           pReturnValue={'object'}
           onSelect={async (selectedPerson) => {
-            reactData.imageURL = null;
-            reactData.newAccount = false;     // future enhancement
-            reactData.recipientID = Object.keys(selectedPerson);
-            reactData.recipientName = Object.values(selectedPerson);
-            makeTitle(reactData);
-            reactData.forceRedisplay = !reactData.forceRedisplay;
-            setReactData(reactData);
-            setForceRedisplay(!forceRedisplay);
+            if (Object.keys(selectedPerson).length < 1) {
+              enqueueSnackbar(`Please select at least one name`, { variant: 'error' });
+            }
+            else {
+              reactData.imageURL = null;
+              reactData.newAccount = false;     // future enhancement
+              reactData.recipientID = Object.keys(selectedPerson);
+              reactData.recipientName = Object.values(selectedPerson);
+              makeTitle(reactData);
+              reactData.forceRedisplay = !reactData.forceRedisplay;
+              setReactData(reactData);
+            }
+            setForceRedisplay(forceRedisplay => !forceRedisplay);
           }}
         >
         </SendMessageDialog>
