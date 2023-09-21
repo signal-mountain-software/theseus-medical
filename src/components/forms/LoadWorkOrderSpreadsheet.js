@@ -403,10 +403,11 @@ export default ({ pClient, showSheet, session, defaults, onClose }) => {
           </DialogContentText>
           <Paper component={Box} className={classes.page} overflow='auto' square>
             <AVAUploadFile
-              onClose={async (fileList) => {
+              onLoad={async (fileList) => {
                 if (fileList.length === 0) { onClose(); }
                 else { await handleSpreadsheet(fileList[0]); }
               }}
+              onCancel={onClose}
               options={{ title: 'Choose file(s) to process' }}
             />
           </Paper >
