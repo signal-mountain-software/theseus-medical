@@ -78,7 +78,7 @@ export default ({ options = { runType: 'welfare_check'}, onClose }) => {
     }
     let testList = [];
     let substituteNames = false;
-    if (state.session[options.runType]) {
+    if (state.session[options.runType] && state.session[options.runType].testList) {
       testList = makeArray(state.session[options.runType].testList);
       substituteNames = true;
     }

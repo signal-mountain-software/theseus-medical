@@ -16,7 +16,7 @@ export function makeDate(pInput) {
         return {
             'error': true,
             'relative': '',  // next Tuesday
-            'absolute': '',  // Tue, Aug 22, 2023
+            'absolute': '',  // Tue, Aug 22
             'dateOnly': '',  // August 22
             'timeOnly': '', // 2:45pm
             'oaDate': '',   // on Tue, Aug 22, 2023 at 2:45pm
@@ -179,6 +179,9 @@ export function makeDate(pInput) {
             }
             else if (tDate === 'tod') {
                 return addDays(currentDate, daysToAdd);
+            }
+            else if (tDate === 'yes') {
+                return addDays(currentDate, (daysToAdd - 1));
             }
             else {
                 // the pString doesn't translate to a date on its own
