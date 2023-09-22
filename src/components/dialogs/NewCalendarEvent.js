@@ -3,6 +3,7 @@ import React from 'react';
 import { prepareTargets } from '../../util/AVAGroups';
 import { makeArray, cl } from '../../util/AVAUtilities';
 import { addEvent } from '../../util/AVACalendars';
+import { AVAclasses } from '../../util/AVAStyles';
 
 import { useSnackbar } from 'notistack';
 
@@ -179,6 +180,7 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 
 export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const { state } = useSession();
   const { session } = state;
@@ -1062,9 +1064,9 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       )
                     }
                     <Button
-                      className={classes.defaultButton}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
                       size='small'
-                      variant='outlined'
                       onClick={async () => {
                         let targetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: true, includePeople: false });
                         setMessageTargets(targetObj.responsibleList.sort());
@@ -1143,9 +1145,9 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       )
                     }
                     <Button
-                      className={classes.defaultButton}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
                       size='small'
-                      variant='outlined'
                       onClick={async () => {
                         let ownerTargetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: false, includePeople: true });
                         setOwnerTargets(ownerTargetObj.responsibleList.sort());
@@ -1164,7 +1166,9 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
             <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
               <DialogActions className={classes.buttonArea} >
                 <Button
-                  className={classes.rowButton}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'red', color: 'white' }}
+                  size='small'
                   onClick={() => { onClose(); }}
                   startIcon={<CloseIcon fontSize="small" />}
                 >
@@ -1175,7 +1179,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                     onClick={() => {                      
                       handleUpdate();
                     }}
-                    className={classes.rowButton}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
+
                   >
                     {'Save'}
                   </Button>

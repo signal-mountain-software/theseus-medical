@@ -225,7 +225,7 @@ export function makeDate(pInput) {
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 100) { return goodDate; }
+            if (Math.abs(resolvedYear - thisYear) < 2) { return goodDate; }
             goodDate.setFullYear(thisYear);
             if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) { return goodDate; }
             let resolvedMonth = goodDate.getMonth();
