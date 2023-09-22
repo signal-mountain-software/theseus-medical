@@ -1,5 +1,5 @@
 import React from 'react';
-import { lambda } from '../../util/AVAUtilities';
+import { lambda, titleCase } from '../../util/AVAUtilities';
 import { useSnackbar } from 'notistack';
 
 import AVAConfirm from './AVAConfirm';
@@ -49,10 +49,6 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
   const [confirmMessage, setConfirmMessage] = React.useState('');
 
   const { enqueueSnackbar } = useSnackbar();
-
-  function sentenceCase(pString) {
-    return pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase();
-  }
 
   const handleEditObservation = async (pObs) => {
     setEditMode(true);
@@ -108,7 +104,7 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
                       <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                         <React.Fragment key={`normal_row_${this_item.id}`}>
                           <Box className={classes.listItem} display='flex' flexGrow={1} flexDirection='column'>
-                            <Typography className={classes.typeOfLine}>{sentenceCase(this_item.composite_key.split(/[~_]/g).slice(1, -1).join('_'))}</Typography>
+                            <Typography className={classes.typeOfLine}>{titleCase(this_item.composite_key.replace(this_item.client_id, '').split(/[~_]/g).slice(1, -1).join(' '))}</Typography>
                             <Typography className={classes.observationLine}>{this_item.observation_code.replace(/~/g, '')}</Typography>
                           </Box>
                           <IconButton
