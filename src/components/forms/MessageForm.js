@@ -780,6 +780,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             <MakeMessage
               titleText={''}
               promptText={[`Subject`, `Message`]}
+              promptUse={['subject', 'message']}
               buttonText={'Send'}
               sender={pSession}
               pRecipientID={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[1]; }) : [recipient.split(':')[1]]}

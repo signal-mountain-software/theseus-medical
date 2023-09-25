@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { parseSpreadsheet, makeArray, uuid, s3, stepFunctions } from '../../util/AVAUtilities';
+import { parseSpreadsheet, makeArray, uuid, s3, stepFunctions, resolveVariables } from '../../util/AVAUtilities';
 import { getPersonByWords } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import { getServiceRequests } from '../../util/AVAServiceRequest';
@@ -26,7 +26,7 @@ var XLSX = require("xlsx");
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ options = { runType: 'welfare_check'}, onClose }) => {
+export default ({ options = { runType: 'welfare_check' }, onClose }) => {
 
   const { state } = useSession();
   const AVAClass = AVAclasses();
@@ -101,12 +101,12 @@ export default ({ options = { runType: 'welfare_check'}, onClose }) => {
             if (substituteNames) {
               let tID = testList.shift();
               if (tID) {
-                p.result = 'Message Scheduled'; 
+                p.result = 'Message Scheduled';
                 recipientList.push(tID);
                 avaID = tID;
               }
               else {
-                p.result = 'Message would have been sent, but no substitute for testing identified'; 
+                p.result = 'Message would have been sent, but no substitute for testing identified';
                 recipientList.push(`fakeID_${fakeNumber++}`);
               }
             }
@@ -155,10 +155,13 @@ export default ({ options = { runType: 'welfare_check'}, onClose }) => {
     };
     if (state.session[options.runType] && state.session[options.runType].message) {
       if (state.session[options.runType].message.text) {
-        reactData.request.messageText = state.session[options.runType].message.text;
+        reactData.request.messageText = await resolveVariables(state.session[options.runType].message.text, state.session);
+      }
+      if (state.session[options.runType].message.voiceMail) {
+        reactData.request.voiceMailMessage = await resolveVariables(state.session[options.runType].message.voiceMail, state.session);
       }
       if (state.session[options.runType].message.subject) {
-        reactData.request.subject = state.session[options.runType].message.subject;
+        reactData.request.subject = await resolveVariables(state.session[options.runType].message.subject, state.session);
       }
       if (state.session[options.runType].message.author) {
         reactData.request.author = state.session[options.runType].message.author;
@@ -407,7 +410,8 @@ export default ({ options = { runType: 'welfare_check'}, onClose }) => {
           {(reactData.stage === 'send_message') &&
             <MakeMessage
               titleText={'Welfare Check Call'}
-              promptText={[`Subject`, `Message`]}
+              promptText={[`Subject`, `Message to send`, `Alternate message for Voice Mail`]}
+              promptUse={['subject', 'message', 'voicemail']}
               buttonText={'Send'}
               sender={state.session}
               pRecipientID={reactData.request.recipientList}
@@ -419,23 +423,23 @@ export default ({ options = { runType: 'welfare_check'}, onClose }) => {
                 setFilesProcessed(filesProcessed);
                 setForceRedisplay(forceRedisplay => !forceRedisplay);
               }}
-            onComplete={async () => {
-              const stateMachineArn = 'arn:aws:states:us-east-1:125549937716:stateMachine:MessageFollowUp';
-              await stepFunctions.startExecution({
-                stateMachineArn,
-                input: JSON.stringify({
-                  requestor: state.session.user_id,
-                  client_id: state.session.client_id,
-                  thread_id: reactData.request.thread_id,
-                  fileLocation: reactData.request.s3Upload,
-                  localName: reactData.request.localFileName
-                }),
-              }).promise();
+              onComplete={async () => {
+                const stateMachineArn = 'arn:aws:states:us-east-1:125549937716:stateMachine:MessageFollowUp';
+                await stepFunctions.startExecution({
+                  stateMachineArn,
+                  input: JSON.stringify({
+                    requestor: state.session.user_id,
+                    client_id: state.session.client_id,
+                    thread_id: reactData.request.thread_id,
+                    fileLocation: reactData.request.s3Upload,
+                    localName: reactData.request.localFileName
+                  }),
+                }).promise();
                 onClose();
               }}
               allowCancel={true}
               thread_id={reactData.request.thread_id}
-              seedText={[reactData.request.subject, reactData.request.messageText]}
+              seedText={[reactData.request.subject, reactData.request.messageText, (reactData.request.voiceMailMessage || reactData.request.messageText)]}
             />
           }
         </React.Fragment >

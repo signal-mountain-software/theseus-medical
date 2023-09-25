@@ -792,6 +792,7 @@ export async function sendMessages(body) {
         PostOfficeRec.Item.attachment_data = Object.assign({}, env.attachment_data);
       }
     }
+    if (env.voiceMail) { PostOfficeRec.Item.voice_mail = env.voiceMail; }
     if (env.allowReplyAll) { PostOfficeRec.Item.allowReplyAll = env.allowReplyAll; }
     if (!('subject' in PostOfficeRec.Item)) {
       PostOfficeRec.Item["subject"] = `Message from ${await makeName(env.author)}`;
