@@ -1,6 +1,4 @@
 import React from 'react';
-import { useSnackbar } from 'notistack';
-import { lambda } from '../../util/AVAUtilities';
 import { getObservations } from '../../util/AVAObservations';
 
 import TextField from '@material-ui/core/TextField';
@@ -100,22 +98,11 @@ export default ({ pClient, showMenu, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  const entryTypes = ['header', 'message', 'entree', 'soft_entree', 'AL_lunch_entree', 'AL_dinner_entree', 'soup', 'salad', 'side', 'bread', 'dessert'];
-
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
-
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
-  const { enqueueSnackbar } = useSnackbar();
 
   const buildObservationList = async (pDate) => {
     let [obsList,] = await getObservations(pClient, '', { date: pDate, sort: true, return: 'records' });
@@ -134,11 +121,6 @@ export default ({ pClient, showMenu, onClose }) => {
     };
     setSelectedObservation(newEntry);
   };
-
-  function getSort(pKey) {
-    let oType = pKey.composite_key.split(/[~_]/g).slice(1, -1).join('_').trim();
-    return (entryTypes.indexOf(oType) + 100).toString() + pKey.observation_code;
-  }
 
   const handleLoad = async () => {
     setLoadMode(true);
