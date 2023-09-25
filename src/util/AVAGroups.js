@@ -540,10 +540,10 @@ export async function addMember(pPerson, pClient, pGroup) {
   if (peopleRec?.person_id) {
     let newGroupList = peopleRec.groups;
     newGroupList.push(pGroup);
-    let clientGroups = peopleRec.clients;
+    let clientGroups = (Array.isArray(peopleRec.clients) ? peopleRec.clients : [peopleRec.clients]);
     clientGroups.some((cG, ndx) => {
       if (cG.id === pClient) {
-        peopleRec.clients[ndx].groups = newGroupList;
+        clientGroups[ndx].groups = newGroupList;
         return true;
       }
       else { return false; }
@@ -554,7 +554,7 @@ export async function addMember(pPerson, pClient, pGroup) {
         UpdateExpression: "set groups = :g, clients = :cg",
         ExpressionAttributeValues: {
           ":g": newGroupList,
-          ":cg": peopleRec.clients
+          ":cg": clientGroups
         },
         TableName: "People",
       })
