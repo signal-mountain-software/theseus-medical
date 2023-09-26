@@ -317,7 +317,17 @@ export default ({ pClient, showUpload, handleClose }) => {
         }
         let sort_key = entryTypes.indexOf(split_value[split_value.length - 1]);
         if (sort_key === -1) { sort_key = 99; }
-        resultObj[`${this_date.ymd}.${split_value[1] ? split_value[0] : 'ava'}.${100 + sort_key}`] = {
+        let sKey = `${this_date.ymd}.${split_value[1] ? split_value[0] : 'ava'}.${100 + sort_key}`;
+        let useKey;
+        let suffix = '';
+        for (let d = 0; d < 10; d++) {
+          if (!resultObj.hasOwnProperty(`${sKey}${suffix}`)) {
+            useKey = `${sKey}${suffix}`
+            break;
+          }
+          suffix = `.${d}`;
+        }
+        resultObj[useKey] = {
           date: this_date.date,
           item: values[1],
           type: values[2]

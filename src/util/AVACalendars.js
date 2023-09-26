@@ -92,7 +92,7 @@ export async function addEvent(body) {
     client: body.clientId,
     event: eventID,
     from_date: eventRec.eventData.occPattern.first_date,
-    number_of_occurrences: 1
+    number_of_occurrences: 30
   });
   return eventRec;
 
@@ -605,7 +605,7 @@ export async function getOccurenceList(request) {
   let occPattern = eventRec.eventData.occPattern;
   switch (occPattern.recurrence) {
     case "daily": {
-      for (let candidate = from_date; candidate < to_date; addDays(candidate, 1)) {
+      for (let candidate = from_date; candidate < to_date; candidate = addDays(candidate, 1)) {
         if (occPattern.day_of_week.includes(candidate.getDay())) {
           await validateOccurrenceDate(makeDate(candidate).numeric);
           if (foundEnough()) { break; }
@@ -1917,7 +1917,7 @@ export async function addOccurrence(body) {
 
   let client = (body.client || body.client_id);
 
-  if (!body.event || client) { return false; }
+  if (!body.event || !client) { return false; }
   let eventIn;
   if (typeof body.event === 'object') { eventIn = body.event.event_key; }
   else { eventIn = (body.event_id || body.event); }

@@ -4,6 +4,9 @@ import { useSnackbar } from 'notistack';
 
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays } from '../../util/AVADateTime';
+import { isEmpty } from '../../util/AVAUtilities';
+import { AVAclasses } from '../../util/AVAStyles';
+
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import Box from '@material-ui/core/Box';
@@ -39,18 +42,6 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     paddingTop: 0,
     height: theme.spacing(2.5),
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
   },
   freeInput: {
     marginLeft: '25px',
@@ -123,7 +114,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [reactData, setReactData] = React.useState({
     start_date: 0,
     end_date: 'today',
-    myCalendar: ((currentEvent && Array.isArray(currentEvent) && currentEvent[0].eventList) ? currentEvent[0].eventList : []),
+    myCalendar: (isEmpty(currentEvent) ? [] : currentEvent[0].eventList),
     loading: false
   })
 
@@ -133,6 +124,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const classes = useStyles();
+  const AVAClass = AVAclasses();
 
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
@@ -350,7 +342,11 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           >
             {patient.kiosk_mode &&
               <Box mr={3} justifySelf={'flex-end'} alignSelf={'center'}>
-                <Button className={classes.AVAButton} size='small' variant='contained' onClick={choosePerson}>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'blue', color: 'white' }}
+                  size='small'
+                  onClick={choosePerson}>
                   {'Resident?'}
                 </Button>
               </Box>
@@ -413,24 +409,27 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
             {reactData.myCalendar && reactData.myCalendar.length > 0 &&
               <Button
                 onClick={() => { }}
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'blue', color: 'white' }}
                 size='small'
-                className={classes.AVAButton}
               >
                 {'More Dates'}
               </Button>
             }
             {patient.kiosk_mode &&
               <Button
-                className={classes.AVAButton}
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
                 size='small'
-                variant='contained'
                 onClick={choosePerson}>
                 {'Sign-up?'}
               </Button>
             }
-            <Button className={classes.AVAButton}
-              style={{color: 'red'}}
-              size='small' onClick={handleAbort}>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
+              size='small'
+              onClick={handleAbort}>
               {'Exit'}
             </Button>
           </DialogActions>

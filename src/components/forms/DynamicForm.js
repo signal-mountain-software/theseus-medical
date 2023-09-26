@@ -19,6 +19,7 @@ import ShowEventActivity from '../dialogs/ShowEventActivity';
 import LoadWorkOrderSpreadsheet from '../forms/LoadWorkOrderSpreadsheet';
 import LoadNamesFromFile from '../forms/LoadNamesFromFile';
 import ShowGroup from '../dialogs/ShowGroup';
+import AVACarousel from '../dialogs/AVACarousel';
 import GroupForm from '../forms/GroupForm';
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
@@ -489,6 +490,12 @@ export default ({
           pGroup_name={message}
           peopleList={values}
           showList={true}
+          onClose={onSave}
+        />
+      );
+    case 'carousel':
+      return (
+        <AVACarousel
           onClose={onSave}
         />
       );

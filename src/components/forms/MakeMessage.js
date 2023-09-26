@@ -102,6 +102,7 @@ const useStyles = makeStyles(theme => ({
 export default ({
   titleText,
   promptText,
+  promptUse,
   buttonText,
   sender,
   pRecipientID,
@@ -200,14 +201,37 @@ export default ({
     }
     console.log(sendToName);
     let senderName = await makeName(state.session.user_id);
+    let promptArray = makeArray(promptText);
+    let principalMessageText = '';
+    let voiceMailText = '';
+    let subjectText = '';
+    if (promptUse && reactData.textInput.length > 1) {
+      makeArray(promptUse).forEach((u, n) => { 
+        switch (u) {
+          case 'subject': { subjectText += ' ' + reactData.textInput[n]; break; }
+          case 'voicemail': { voiceMailText += ' ' + reactData.textInput[n]; break; }
+          default: { principalMessageText += ' ' + reactData.textInput[n]; }
+        }
+      })
+      if (!voiceMailText) { voiceMailText = principalMessageText; }
+      if (!subjectText) { subjectText = `Message from ${senderName}`; }
+    }
+    else {
+      principalMessageText = reactData.textInput[promptArray.length - 1];
+      voiceMailText = principalMessageText;
+      subjectText = (promptArray.length > 1 ? reactData.textInput[0] : `Message from ${senderName}`);
+    }
     let request = {
       client: sender.client_id,
       author: state.session.user_id,
       person_id: state.session.patient_id,
-      messageText: reactData.textInput[makeArray(promptText).length - 1],
+      messageText: principalMessageText.trim(),
       recipientList: Array.isArray(sendToID) ? sendToID : [sendToID],
-      subject: (makeArray(promptText).length > 1 ? reactData.textInput[0] : `Message from ${senderName}`)
+      subject: subjectText.trim()
     };
+    if (voiceMailText) {
+      request.voiceMail = voiceMailText.trim();
+    }
     if (state.session.user_id !== state.session.patient_id) {
       let pName = await makeName(state.session.patient_id);
       let hMessage = request.messageText;

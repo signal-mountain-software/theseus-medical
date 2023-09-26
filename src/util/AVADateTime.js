@@ -17,6 +17,7 @@ export function makeDate(pInput) {
             'error': true,
             'relative': '',  // next Tuesday
             'absolute': '',  // Tue, Aug 22
+            'absolute_full': '',  // Tuesday, August 22, 2023
             'dateOnly': '',  // August 22
             'timeOnly': '', // 2:45pm
             'oaDate': '',   // on Tue, Aug 22, 2023 at 2:45pm
@@ -70,6 +71,7 @@ export function makeDate(pInput) {
                 'error': true,
                 'relative': `${pInput} is not a valid date`,
                 'absolute': `${pInput} is not a valid date`,
+                'absolute_full': `${pInput} is not a valid date`,
                 'dateOnly': `${pInput} is not a valid date`,
                 'timeOnly': `${pInput} is not a valid date`,
                 'oaDate': `${pInput} is not a valid date`,
@@ -84,7 +86,7 @@ export function makeDate(pInput) {
         }
     }
     let currentDate = new Date();
-    let relDate, absDate, oaDate, dateOnly;
+    let relDate, absDate, oaDate, dateOnly, absFull;
     // Make relative date
     let hours = 60 * 60 * 1000;
     let beginningOfCurrentDay = currentDate.setHours(0, 0, 0, 0);
@@ -122,6 +124,7 @@ export function makeDate(pInput) {
     }
     // Make absolute date
     absDate = `${targetDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
+    absFull = `${targetDate.toLocaleString([], { weekday: 'long', month: 'long', year: 'numeric', day: 'numeric' })}`;
     dateOnly = `${targetDate.toLocaleString([], { month: 'long', day: 'numeric' })}`;
     if (!relDate) { relDate = absDate; }
     if (targetDate.getFullYear() !== currentDate.getFullYear()) {
@@ -148,6 +151,7 @@ export function makeDate(pInput) {
         'error': false,
         'relative': titleCase(relDate),
         'absolute': titleCase(absDate),
+        'absolute_full': titleCase(absFull),
         'timeOnly': targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' }),
         'dateOnly': dateOnly,
         'oaDate': titleCase(oaDate),
@@ -225,7 +229,7 @@ export function makeDate(pInput) {
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 100) { return goodDate; }
+            if (Math.abs(resolvedYear - thisYear) < 2) { return goodDate; }
             goodDate.setFullYear(thisYear);
             if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) { return goodDate; }
             let resolvedMonth = goodDate.getMonth();

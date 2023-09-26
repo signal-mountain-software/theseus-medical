@@ -375,7 +375,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       state.accessList[state.session.client_id].list.forEach(a => {
         if ((a.access === 'proxy') || (a.access === 'full')) {
           // list is of the form <name>:<id>:<search_string>
-          response.push(`${a.display_name}:${a.id}:${a.display_name}_${a.location}`);
+          response.push(`${a.name.last}${a.name.first ? ', ' + a.name.first : ''}:${a.id}:${a.display_name}_${a.location}`);
         }
       });
     }
@@ -648,7 +648,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             {promptForMessage &&
               <MakeMessage
                 titleText={(messageType.includes('URGENT')) ? 'AVA will attempt to voice call all phones' : null}
-                promptText={`What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`}
+                promptText={[`What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`, `(Optional) Alternate message if leaving Voice Mail`]}
+                promptUse={['message', 'voicemail']}
                 buttonText={'Send'}
                 sender={{
                   "client_id": pClient,

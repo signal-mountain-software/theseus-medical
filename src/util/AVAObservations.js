@@ -1,4 +1,5 @@
 import { isMemberOf } from './AVAGroups';
+import { makeDate } from './AVADateTime';
 import { cl, recordExists, resolveVariables, lambda, dbClient } from './AVAUtilities';
 
 // Functions
@@ -35,6 +36,80 @@ export async function getObservationItems(pObsKey) {
   return returnObj;
 }
 
+export async function getObservations(pClient, pKey, options = {}) {
+  var observations;
+  var valueList = [];
+  var oList = [];
+  var returnQual = {};
+  if (options && options.date) {
+    let pDate = makeDate(options.date);
+    if (pDate.error) {
+      return [valueList, returnQual];
+    }
+    observations = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c and date_key = :d',
+        ExpressionAttributeValues: { ':c': pClient, ':d': pDate.ymd },
+        TableName: "Observations",
+        IndexName: "date_key-index"
+      })
+      .promise()
+      .catch(error => { cl(`ERROR reading Observations by date *** caught error is: ${error}`); });
+  }
+  else {
+    pKey = await resolveVariables(pKey, options.session);
+    observations = await dbClient
+      .query({
+        KeyConditionExpression: 'composite_key = :p',
+        ExpressionAttributeValues: { ':p': `${pClient}~${pKey}` },
+        TableName: "Observations",
+        IndexName: "sort_order-index"
+      })
+      .promise()
+      .catch(error => { cl(`***getAct 956- ERR reading Observations*** caught error is: ${error}`); });
+  }
+  if (recordExists(observations)) {
+    let oL = observations.Items.length;
+    for (let o = 0; o < oL; o++) {
+      let oRec = observations.Items[o];
+      if (options && options.sort) {
+        oRec.sort_key = oRec.sort_order.replace(/[\W\d]/g, '').replace('header', '.');
+      }
+      oList.push(oRec);
+      valueList.push(oRec.observation_code);
+      let qualObj = {};
+      if (oRec.description) { qualObj.description = oRec.description; }
+      if (oRec.image_url) { qualObj.image_url = oRec.image_url; }
+      if ('qualifiers' in oRec) {
+        if (oRec.qualifiers.minimum_required) { qualObj.minimum_required = oRec.qualifiers.minimum_required; }
+        if (oRec.qualifiers.maximum_allowed) { qualObj.maximum_allowed = oRec.qualifiers.maximum_allowed; }
+        if (oRec.qualifiers.options) { qualObj.qualifiers = oRec.qualifiers.options; }
+      }
+      if (oRec.observation_key && !('qualifiers' in qualObj)) {
+        qualObj.qualifiers = [`~~key=${oRec.observation_key}`];
+      }
+      if (Object.keys(qualObj).length > 0) {
+        if (!('qualifiers' in qualObj)) { qualObj.qualifiers = []; }
+        qualObj.value = oRec.observation_code;
+        returnQual[oRec.observation_code] = qualObj;
+      }
+    }
+    if (options && options.sort) {
+      oList.sort((a, b) => {
+        if (a.sort_key > b.sort_key) { return 1; }
+        else { return -1; }
+      });
+      if (!options || !options.return || !(['object', 'record', 'objects', 'records'].includes(options.return))) {
+        valueList = oList.map(o => { return o.observation_code; });
+      }
+    }
+  }
+  if (options && options.return && (['object', 'record', 'objects', 'records'].includes(options.return))) {
+    return [oList, returnQual];
+  }
+  return [valueList, returnQual];
+};
+
 export async function makeObservationList(pObs, pSession) {
   let returnList = [];
   let returnQObj = {};
@@ -60,7 +135,7 @@ export async function makeObservationList(pObs, pSession) {
           case (oType === 'includeObservations'): {
             let oClient = assignedClient;
             if (oKey.includes('//')) { [oClient, oKey] = oKey.split('//'); }
-            let [cList, cQual] = await getObservations(oClient, oKey);
+            let [cList, cQual] = await getObservations(oClient, oKey, {session: pSession});
             returnList.push(...cList);
             if (Object.keys(cQual).length > 0) { returnQObj = Object.assign(returnQObj, cQual); }
             break;
@@ -96,46 +171,6 @@ export async function makeObservationList(pObs, pSession) {
     'activityRec': activityRec,
     'rows': returnList,
     'qualifiers': returnQObj
-  };
-
-  async function getObservations(pClient, pKey) {
-    pKey = await resolveVariables(pKey, pSession);
-    var observations;
-    var valueList = [];
-    var returnQual = {};
-    observations = await dbClient
-      .query({
-        KeyConditionExpression: 'composite_key = :p',
-        ExpressionAttributeValues: { ':p': `${pClient}~${pKey}` },
-        TableName: "Observations",
-        IndexName: "sort_order-index"
-      })
-      .promise()
-      .catch(error => { cl(`***getAct 956- ERR reading Observations*** caught error is: ${error}`); });
-    if (recordExists(observations)) {
-      let oL = observations.Items.length;
-      for (let o = 0; o < oL; o++) {
-        let oRec = observations.Items[o];
-        valueList.push(oRec.observation_code);
-        let qualObj = {};
-        if (oRec.description) { qualObj.description = oRec.description; }
-        if (oRec.image_url) { qualObj.image_url = oRec.image_url; }
-        if ('qualifiers' in oRec) {
-          if (oRec.qualifiers.minimum_required) { qualObj.minimum_required = oRec.qualifiers.minimum_required; }
-          if (oRec.qualifiers.maximum_allowed) { qualObj.maximum_allowed = oRec.qualifiers.maximum_allowed; }
-          if (oRec.qualifiers.options) { qualObj.qualifiers = oRec.qualifiers.options; }
-        }
-        if (oRec.observation_key && !('qualifiers' in qualObj)) {
-          qualObj.qualifiers = [`~~key=${oRec.observation_key}`];
-        }
-        if (Object.keys(qualObj).length > 0) {
-          if (!('qualifiers' in qualObj)) { qualObj.qualifiers = []; }
-          qualObj.value = oRec.observation_code;
-          returnQual[oRec.observation_code] = qualObj;
-        }
-      }
-    }
-    return [valueList, returnQual];
   };
 
   async function getLambda(lambdaString) {

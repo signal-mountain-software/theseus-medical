@@ -1,6 +1,5 @@
 import React from 'react';
-import { useSnackbar } from 'notistack';
-import { lambda } from '../../util/AVAUtilities';
+import { getObservations } from '../../util/AVAObservations';
 
 import TextField from '@material-ui/core/TextField';
 
@@ -99,55 +98,16 @@ export default ({ pClient, showMenu, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  const entryTypes = ['header', 'message', 'entree', 'soft_entree', 'AL_lunch_entree', 'AL_dinner_entree', 'soup', 'salad', 'side', 'bread', 'dessert'];
-
   const [changes, setChanges] = React.useState(false);
   if (changes) { }
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
-  let params = {
-    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:ObservationMaintenance',
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: ''
-  };
-
-  const { enqueueSnackbar } = useSnackbar();
-
-  const getObservations = async (pDate) => {
-    let invokeFailed = false;
-    if (!(pDate instanceof Date) || isNaN(pDate)) {
-      pDate = new Date(pDate);
-    }
-    let pYMD = pDate.getFullYear() + '.' + ((pDate.getMonth() + 101).toString()).substring(1) + '.' + ((pDate.getDate() + 100).toString()).substring(1);
-
-    params.Payload = JSON.stringify({
-      action: "get_by_sort_date",
-      clientId: pClient,
-      request: {
-        "sort_date": pYMD.toString(),
-      }
-    });
-    const fResp = await lambda
-      .invoke(params)
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`AVA encountered an error while retrieving that menu.  Error is ${err.message}`, {
-          variant: 'error'
-        });
-        invokeFailed = true;
-      });
-    if (!invokeFailed) {
-      let getObservations = JSON.parse(fResp.Payload);
-      if (getObservations.status === 200) {
-        getObservations.body.forEach(o => { o.sort_order = getSort(o); });
-        getObservations.body.sort((a, b) => { return (a.sort_order > b.sort_order ? 1 : -1); });
-        setObservationList(getObservations.body);
-      }
-    };
-    return getObservations.body;
+  const buildObservationList = async (pDate) => {
+    let [obsList,] = await getObservations(pClient, '', { date: pDate, sort: true, return: 'records' });
+    setObservationList(obsList);
+    return obsList;
   };
 
   const handleAddObservation = async () => {
@@ -161,11 +121,6 @@ export default ({ pClient, showMenu, onClose }) => {
     };
     setSelectedObservation(newEntry);
   };
-
-  function getSort(pKey) {
-    let oType = pKey.composite_key.split(/[~_]/g).slice(1, -1).join('_').trim();
-    return (entryTypes.indexOf(oType) + 100).toString() + pKey.observation_code;
-  }
 
   const handleLoad = async () => {
     setLoadMode(true);
@@ -208,7 +163,7 @@ export default ({ pClient, showMenu, onClose }) => {
         if (goodDate < current) { goodDate.setFullYear(yyyy + 1); }
       };
       setSelectedDate(goodDate.toDateString());
-      getObservations(goodDate);
+      buildObservationList(goodDate);
     }
   };
 
@@ -225,7 +180,7 @@ export default ({ pClient, showMenu, onClose }) => {
 
   if (!selectedDate) {
     setSelectedDate(new Date().toDateString());
-    getObservations(new Date().toDateString());
+    buildObservationList(new Date().toDateString());
   }
 
   return (
@@ -288,7 +243,7 @@ export default ({ pClient, showMenu, onClose }) => {
             keyDate={selectedDate}
             filter={''}
             onReset={() => {
-              getObservations(selectedDate);
+              buildObservationList(selectedDate);
             }}
             handleAbort={handleAbort}
             handleLoad={handleLoad}
@@ -338,7 +293,7 @@ export default ({ pClient, showMenu, onClose }) => {
             showDialog={addMode}
             handleClose={() => {
               setAddMode(false);
-              getObservations(selectedDate);
+              buildObservationList(selectedDate);
             }}
             handleCancel={() => {
               setAddMode(false);
@@ -351,7 +306,7 @@ export default ({ pClient, showMenu, onClose }) => {
             showUpload={loadMode}
             handleClose={() => {
               setLoadMode(false);
-              getObservations(selectedDate);
+              buildObservationList(selectedDate);
             }}
           />
         }
