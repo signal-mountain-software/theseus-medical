@@ -228,7 +228,7 @@ export default ({ session, filter = {}, onClose }) => {
     let mCount = 0;
     let pM = '';
     dataRows.forEach(r => {
-      if (r.workData.checked) {
+      if (r.workData && r.workData.checked) {
         if (!(r.request_type in mData)) { mData[r.request_type] = []; }
         mData[r.request_type].push(r.workData.display_date);
         mCount++;
@@ -255,6 +255,7 @@ export default ({ session, filter = {}, onClose }) => {
 
   async function handleUpdates([newStatus, checked, newMessage]) {
     let historyLine = '';
+    if (!newStatus && !checked && !newMessage) { return; }
     if (newStatus) { historyLine += `Status changed to "${newStatus}"`; }
     else if (checked === 'checked') { historyLine += 'Status changed to "Complete"'; }
     if (newMessage) {
@@ -288,7 +289,7 @@ export default ({ session, filter = {}, onClose }) => {
           htmlText: sendLine,
           recipientList: r.requestor,
           subject: `Response to your ${r.workData.formatted_type} from ${session.patient_display_name}`,
-          thread_id: '1234'
+          thread_id: (r.messages ? r.messages[0].thread_id : null)
         });
         updateRows.push(r);
         dataRows[x] = await buildRequestDetails(r);
