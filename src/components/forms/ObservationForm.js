@@ -36,7 +36,7 @@ import { AVAclasses } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   textLine: {
-    fontSize: theme.typography.fontSize * 1.3,
+    fontSize: '1rem',
     flexGrow: 0,
     marginRight: '7px'
   },
