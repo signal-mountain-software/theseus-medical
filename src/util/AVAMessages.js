@@ -881,7 +881,9 @@ export async function messageHistory(body) {
         default: { mLine += ` via ${mR.deliver_method}`; }
       }
       if (mR.results) {
-        let mRLast = mR.results[0];
+        let mRLast;
+        if ((mR.results[0].result === 'callComplete') && (mR.results.length > 0)) { mRLast = mR.results[1]; }
+        else { mRLast = mR.results[0]; }
         mTime = mRLast.posted_time;
         switch (mRLast.result) {
           case 'reply': {
@@ -906,7 +908,7 @@ export async function messageHistory(body) {
             break;
           }
           default: {
-            mLine += `. ${mRLast.result}`;
+            mLine += `. ${sentenceCase(mRLast.result)}`;
           }
         }
       }
