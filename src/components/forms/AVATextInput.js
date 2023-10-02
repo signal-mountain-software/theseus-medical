@@ -157,25 +157,19 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
             alignItems='flex-start'
           >
             {promptArray.map((prompt, ndx) => (
-              <Box
-                display='flex'
-                flexDirection='row'
-                width='100%'
-                justifyContent='center'
-                alignItems='center'
-                key={`frag-${ndx}`}
-              >
+              <React.Fragment key={`frag-${ndx}`}>
                 {prompt && (prompt.toLowerCase().startsWith('[checkbox]')) ?
                   <Box display='flex'
+                    flexDirection='row'
                     mt={0.5}
                     mb={0.5}
-                    flexDirection='row'
-                    justifyContent='flex-start'
-                    alignItems='center'
-                    border={(textInput[ndx] === 'checked') ? 1 : 0}
+                    paddingLeft={2}
+                    paddingRight={2}
+                    alignItems={'center'}
+                    minWidth={'100%'}
+                    border={textInput[ndx] ? 1 : 0}
                     borderRadius={'16px'}
-                    flexWrap='wrap'
-                    key={`qropt-${ndx}`}
+                    key={'fullRow' + ndx}
                   >
                     <Checkbox
                       className={classes.radioButton}
@@ -217,7 +211,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                     />
                   </Box>
                 }
-              </Box>
+              </React.Fragment>
             ))}
           </Box>
         </DialogContent>

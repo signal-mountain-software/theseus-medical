@@ -114,7 +114,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [reactData, setReactData] = React.useState({
     start_date: 0,
     end_date: 'today',
-    myCalendar: (isEmpty(currentEvent) ? [] : currentEvent[0].eventList),
+    myCalendar: ((isEmpty(currentEvent) || !currentEvent.hasOwnProperty('eventList')) ? [] : currentEvent[0].eventList),
     loading: false
   })
 

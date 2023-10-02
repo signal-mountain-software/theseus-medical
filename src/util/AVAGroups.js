@@ -211,9 +211,11 @@ export async function getAllClients() {
     });
   let returnArray = [];
   if (recordExists(everyClient)) {
-    for (let g = 0; g < everyClient.Items.length; g++) {
-      returnArray.push(everyClient.Items[g].client_id);
-    }
+    everyClient.Items.sort((a, b) => {      // sort by client name
+      if (a.customization_value > b.customization_value) { return 1; }
+      else { return -1; }
+    })
+    returnArray = everyClient.Items.map(c => { return c.client_id; })
   }
   return returnArray;
 }
@@ -375,7 +377,7 @@ export async function getGroupsBelongTo(person_id, options) {
 
 export async function getGroup(pGroup_id, pClient_id) {
   if (!pClient_id) {
-    if (pGroup_id.includes('//')) { [pClient_id, pGroup_id] = pGroup_id.split('//'); }
+    if (pGroup_id && pGroup_id.includes('//')) { [pClient_id, pGroup_id] = pGroup_id.split('//'); }
     else if (session) { pClient_id = session.client_id; }
     else return {};
   }

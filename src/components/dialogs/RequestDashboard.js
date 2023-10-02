@@ -1,5 +1,5 @@
 import React from 'react';
-import { sentenceCase, makeArray, cl, titleCase } from '../../util/AVAUtilities';
+import { sentenceCase, makeArray, isObject, cl, titleCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
@@ -228,7 +228,7 @@ export default ({ session, filter = {}, onClose }) => {
     let mCount = 0;
     let pM = '';
     dataRows.forEach(r => {
-      if (r.workData.checked) {
+      if (r.workData && r.workData.checked) {
         if (!(r.request_type in mData)) { mData[r.request_type] = []; }
         mData[r.request_type].push(r.workData.display_date);
         mCount++;
@@ -255,6 +255,7 @@ export default ({ session, filter = {}, onClose }) => {
 
   async function handleUpdates([newStatus, checked, newMessage]) {
     let historyLine = '';
+    if (!newStatus && !checked && !newMessage) { return; }
     if (newStatus) { historyLine += `Status changed to "${newStatus}"`; }
     else if (checked === 'checked') { historyLine += 'Status changed to "Complete"'; }
     if (newMessage) {
@@ -280,6 +281,11 @@ export default ({ session, filter = {}, onClose }) => {
           r.history.unshift(historyLine);
         }
         else { r.history = [historyLine]; }
+        let outName;
+        if (isObject(session.patient_display_name)) {
+          outName = (`${session.patient_display_name.first} ${session.patient_display_name.last}`).trim();
+        }
+        else { outName = session.patient_display_name; }
         await sendMessages({
           client: session.client_id,
           author: session.patient_id,
@@ -287,8 +293,8 @@ export default ({ session, filter = {}, onClose }) => {
           messageText: sendLine,
           htmlText: sendLine,
           recipientList: r.requestor,
-          subject: `Response to your ${r.workData.formatted_type} from ${session.patient_display_name}`,
-          thread_id: '1234'
+          subject: `Response to your ${r.workData.formatted_type} from ${outName}`,
+          thread_id: (r.messages ? r.messages[0].thread_id : null)
         });
         updateRows.push(r);
         dataRows[x] = await buildRequestDetails(r);
