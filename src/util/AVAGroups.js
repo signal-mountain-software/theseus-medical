@@ -377,7 +377,7 @@ export async function getGroupsBelongTo(person_id, options) {
 
 export async function getGroup(pGroup_id, pClient_id) {
   if (!pClient_id) {
-    if (pGroup_id.includes('//')) { [pClient_id, pGroup_id] = pGroup_id.split('//'); }
+    if (pGroup_id && pGroup_id.includes('//')) { [pClient_id, pGroup_id] = pGroup_id.split('//'); }
     else if (session) { pClient_id = session.client_id; }
     else return {};
   }
