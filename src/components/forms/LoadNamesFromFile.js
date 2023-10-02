@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 import { parseSpreadsheet, makeArray, uuid, s3, stepFunctions, resolveVariables } from '../../util/AVAUtilities';
-import { getPersonByWords } from '../../util/AVAPeople';
+import { getPersonByWords, getPerson } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import { getServiceRequests } from '../../util/AVAServiceRequest';
 import { AVAclasses } from '../../util/AVAStyles';
@@ -313,7 +313,14 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
       returnObj.count++;
       switch (pList.length) {
         case 0: {
-          returnList.push({ pID: '', pName: this_name, pRec: {}, pStatus: 'no match' });
+          let pRec = await getPerson(this_name.toLowerCase());
+          if (pRec.person_id) {
+            returnList.push({ pID: pRec.person_id, pName: (`${pRec.first} ${pRec.last}`).trim(), pRec: pRec, pStatus: 'match' });
+            returnObj.found += 1;
+          }
+          else {
+            returnList.push({ pID: '', pName: this_name, pRec: {}, pStatus: 'no match' });
+          }
           break;
         }
         case 1: {
