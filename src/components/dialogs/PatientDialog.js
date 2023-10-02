@@ -891,8 +891,10 @@ export default ({ patient, picture, groupData, open, onClose }) => {
               {state.session.local_data &&
                 (Object.keys(state.session.local_data).length > 0) &&
                 <Box flexGrow={2} display='flex' flexDirection='column'>
-                  {Object.keys(state.session.local_data).map(local => (
-                    <TextField classes={{ root: classes.idText }}
+                  {Object.keys(state.session.local_data).map((local,lX) => (
+                    <TextField 
+                       key={`local_${lX}`} 
+                      classes={{ root: classes.idText }}
                       id={`loc-${local}`}
                       value={localData.local_data_display[local] || ' '}
                       onChange={(event) => {
@@ -1053,7 +1055,10 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                 component="img"
                 minWidth={150}
                 maxWidth={150}
-                alt='No photo'
+                minHeight={150}
+                maxHeight={150}
+                border={1}
+                alt=''
                 src={localData.photoURL}
               />
               <br />

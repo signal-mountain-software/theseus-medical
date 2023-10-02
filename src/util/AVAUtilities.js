@@ -294,7 +294,7 @@ export async function getIcon(pIcon) {
   }
 };
 
-export async function getObject(pObjIn, pTyp) {
+export function getObject(pObjIn, pTyp) {
   let imageBucket, imageURI;
   let [pObj, fExt] = pObjIn.split(/\.(.*)/);
   switch (pTyp) {

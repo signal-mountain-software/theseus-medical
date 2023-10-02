@@ -605,9 +605,12 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 component="img"
                                 ml={isMobile ? 2 : 5}
                                 mr={1}
+                                border={1}
+                                minHeight={100}
+                                maxHeight={200}
                                 minWidth={isMobile ? 100 : 150}
                                 maxWidth={isMobile ? 100 : 150}
-                                alt=''
+                                alt={''}
                                 src={getImage(this_item.person_id)}
                               />
                             </Box>
