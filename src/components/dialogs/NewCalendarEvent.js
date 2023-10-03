@@ -191,7 +191,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const [description, setDescription] = React.useState(' ');
   const [event_date, setEventDate] = React.useState(' ');
 
-  const [last_date, setLastDate] = React.useState();
+  const [last_date, setLastDate] = React.useState(' ');
   const [eventAsADate, setEventAsADate] = React.useState();
   const [lastAsADate, setLastAsADate] = React.useState();
   const [prefMethod, setMethod] = React.useState();
@@ -708,6 +708,15 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                         />
                         <FormControlLabel
                           className={classes.formControlLbl}
+                          value="bi-weekly_on"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              {`Every other week`}
+                            </Typography>}
+                        />
+                        <FormControlLabel
+                          className={classes.formControlLbl}
                           value="monthly_by_dayOfWeek"
                           control={<Radio disableRipple className={classes.radioButton} size='small' />}
                           label={
@@ -730,7 +739,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                     </FormControl>
                   </Box>
                 }
-                {(prefMethod && prefMethod === 'weekly_on') &&
+                {(prefMethod && ((prefMethod === 'weekly_on') || (prefMethod === 'bi-weekly_on'))) &&
                   <Box display={'flex'} flexDirection={'row'} className={classes.formControlDayRow} flexWrap={'wrap'} >
                     <Typography className={classes.radioText}>
                       {`Which days?`}
