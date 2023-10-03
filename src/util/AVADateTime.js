@@ -7,8 +7,11 @@ export function addDays(pDate, pDays) {
 }
 
 export function daysDiff(d1, d2) {
+    let oneMinute = 1000 * 60;
     let one_day = 1000 * 60 * 60 * 24;
-    return Math.abs(Math.floor((d2.getTime() - d1.getTime()) / one_day));
+    let d1DST = d1.getTimezoneOffset();
+    let d2DST = d2.getTimezoneOffset();
+    return Math.abs(Math.floor((d2.getTime() - d1.getTime() - ((d2DST - d1DST) * oneMinute)) / one_day));
 }
 
 export function makeDate(pInput) {
