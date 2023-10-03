@@ -129,16 +129,22 @@ export async function getCustomizations(pKey, pClient) {
   }
 }
 
-export function makeString(inP, pNum = 0, pLink) {
-  if (!inP) { return null; }
-  if (!Array.isArray(inP)) { return inP.trim(); }
-  if (pNum === 0) { return inP.join(pLink || ' ~ '); }
-  let lim = Math.min(pNum, inP.length);
-  let return$ = inP[0];
-  for (let a = 1; a < lim; a++) {
-    return$ += pLink + inP[a];
+export function makeString(inP, pNum = 0, pLink = ',') {   // will force whatever you send it to return a string value
+  let returnValue;
+  if (typeof inP === 'boolean') { returnValue = (inP ? 'true' : 'false'); }
+  else if (!inP) { returnValue = ' '; }
+  else if (isObject(inP)) { returnValue = JSON.stringify(inP); }
+  else if (!Array.isArray(inP)) { returnValue = inP.trim(); }
+  else {  // array - return up to pNum entries (or all entries if pNum = 0)
+    let lim = ((pNum > 0) ? Math.min(pNum, inP.length) : inP.length);
+    let return$ = '';
+    for (let a = 0; a < lim; a++) {
+      return$ += ((a > 0) ? pLink : '') + makeString(inP[a]);
+    }
+    returnValue = return$;
   }
-  return return$;
+  if (returnValue) { return returnValue; }
+  else { return ' '; }
 }
 
 export function stringToColor(string) {
@@ -495,7 +501,7 @@ export async function switchActiveAccount(session, newClient, newPatient) {
         ExpressionAttributeValues: {
           ':c': newClient,
           ':p': newPatient.id,
-          ':d': newPatient.name || (`${newPatient.first} ${newPatient.first}`),
+          ':d': (newPatient.name ? (`${newPatient.name.first} ${newPatient.name.last}`).trim() : (`${newPatient.first} ${newPatient.last}`).trim()),
           ':h': (session.user_homeClient || session.client_id)
         },
         TableName: "SessionsV2",
