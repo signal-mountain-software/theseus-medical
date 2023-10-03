@@ -1,6 +1,6 @@
 import { clt, cl, recordExists, makeArray, makeString, makeNumber, uuid, dbClient, titleCase } from './AVAUtilities';
 import { makeName, getPerson, formatPhone } from './AVAPeople';
-import { addDays, makeDate, makeTime } from './AVADateTime';
+import { addDays, daysDiff, makeDate, makeTime } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
 
 import { jsPDF } from "jspdf";
@@ -146,6 +146,14 @@ export async function addEvent(body) {
       case 'weekly_on': {
         return {
           recurrence: 'daily',
+          first_date: first_date.numeric,
+          last_date,
+          day_of_week: body.calendar_info.occDays
+        };
+      }
+      case 'bi-weekly_on': {
+        return {
+          recurrence: 'bi-weekly',
           first_date: first_date.numeric,
           last_date,
           day_of_week: body.calendar_info.occDays
@@ -616,6 +624,21 @@ export async function getOccurenceList(request) {
       }
       break;
     }
+    case "bi-weekly": {
+      let firstWeek = [];
+      let count = 0;
+      let firstDate = makeDate(occPattern.first_date).date; 
+      for (let d = addDays(firstDate, count); count < 7; count++) {
+        firstWeek[d.getDay()] = d;
+      }
+      for (let candidate = from_date; candidate < to_date; candidate = addDays(candidate, 1)) {
+        if (occPattern.day_of_week.includes(candidate.getDay()) && (daysDiff(candidate, firstWeek[candidate.getDay()]) % 14) === 0) {
+          await validateOccurrenceDate(makeDate(candidate).numeric);
+          if (foundEnough()) { break; }
+        }
+      }
+      break;
+    }
     case "monthly": {
       let targetArray = [];
       if (typeof occPattern.day_of_month === 'string') { targetArray[0] = occPattern.day_of_month; }
@@ -715,7 +738,7 @@ export async function getOccurenceList(request) {
   }
 
   async function validateOccurrenceDate(inDate) {
-    // called from inside getOccurenceList and therefore pertains to a sepcific event currently loaded
+    // called from inside getOccurenceList and therefore pertains to a specific event currently loaded
     //  (occPattern and eventRec should be loaded)
     // determines if a specific date is between that occurrence's first and last dates, and not excluded
     // will return false or...
@@ -1824,6 +1847,31 @@ export function occurrenceDateBuilder(eventRec, start_date, end_date) {
           if (candidate > to_date) { continue; }
           // All good if we get this far
           responseArray.push(nominee.numeric$);
+        }
+      }
+      break;
+    }
+    case "bi-weekly": {
+      let from_date = makeDate(start_date).date;
+      let to_date = makeDate(end_date).date;
+      for (let candidate = from_date; ((candidate < to_date) && (responseArray.length < 10)); candidate = addDays(candidate, 1)) {
+        if (occPattern.day_of_week.includes(candidate.getDay())) {
+          let nominee = makeDate(candidate);
+          if (occPattern['first_date'] && (nominee.numeric < occPattern.first_date)) { continue; }
+          if (candidate < from_date) { continue; }
+          if (occPattern['last_date'] && (nominee.numeric > occPattern.last_date)) { continue; }
+          if (candidate > to_date) { continue; }
+          // All good if we get this far
+          // Now figure out if this was in the start week or any date an exact multiple of 14 days after the start week
+          // candidate.getDay() is a matching day of the week; what is the day of the week for the first date?
+          let firstDate = makeDate(occPattern.first_date).date;
+          let firstDayOfWeek = firstDate.getDay();
+          let candidateDayOfWeek = candidate.getDay();
+          let diff = candidateDayOfWeek - firstDayOfWeek;
+          let baseDate;
+          if (candidateDayOfWeek > firstDayOfWeek) { baseDate = addDays(firstDate, 7 - diff); }
+          else { baseDate = addDays(firstDate, diff); }
+          if ((daysDiff(candidate, baseDate) % 14) === 0) { responseArray.push(nominee.numeric$); };
         }
       }
       break;
