@@ -229,6 +229,9 @@ export async function getCalendarEntries(body, statusUpdate) {
   let returnArr = [];
   let rC = body.client_id || body.client;
   let rP = body.person_id || body.person || body.filter?.person_id || body.filter?.person;
+  // rV is the event_key which may include the occurrence date as <event_id>#<occurrence_date>
+  // rO is the occurrence date
+  // rT is the record type
   let rV = makeString((body.event_id || body.event || body.filter?.event_id || body.filter?.event), 1);
   let rTin = body.type || body.filter?.type;
   let rT = [];
@@ -801,13 +804,15 @@ export async function putEventOccurrence(client, inEvent, inDate, occExists) {
     cl(`${eventRec.eventData.event_data.description} (${eventRec.event_key}) - ${cDate.absolute} exists already`);
     return [eventRec, ocRec.Items[0]];
   }
-  occRec = await addOccurrence({
-    client,
-    event: eventRec,
-    occurrence_date: cDate.numeric,
-    occExists: occExists || []
-  });
-  cl(`${eventRec.eventData.event_data.description} (${eventRec.event_key}) - ${cDate.absolute} added`);
+  if (eventRec) {
+    occRec = await addOccurrence({
+      client,
+      event: eventRec,
+      occurrence_date: cDate.numeric,
+      occExists: occExists || []
+    });
+    cl(`${eventRec.eventData.event_data.description} (${eventRec.event_key}) - ${cDate.absolute} added`);
+  }
   return [eventRec, occRec];
 }
 
