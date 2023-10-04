@@ -14,6 +14,9 @@ import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
+import CircularProgress from '@material-ui/core/CircularProgress';
+import LinearProgress from '@material-ui/core/LinearProgress';
+
 import CloseIcon from '@material-ui/icons/ExitToApp';
 
 import CalendarEventEditForm from './CalendarEventEditForm';
@@ -100,19 +103,15 @@ const useStyles = makeStyles(theme => ({
     size: 'small',
   },
   freeInput: {
-    marginRight: 2,
-    marginBottom: theme.spacing(2),
+    marginTop: theme.spacing(1),
     marginLeft: theme.spacing(2),
-    paddingLeft: 0,
-    paddingRight: 0,
-    paddingBottom: theme.spacing(1),
-    width: '90%',
-    verticalAlign: 'middle',
-    fontSize: theme.typography.fontSize * 0.4,
+    marginRight: theme.spacing(2),
+    marginBottom: theme.spacing(0.75),
+    width: '90%'
   },
   subDescriptionText2: {
     marginTop: 0,
-    marginBottom: 0,
+    marginBottom: theme.spacing(2),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     fontSize: '0.8rem',
@@ -123,6 +122,13 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
     fontSize: '0.8rem',
+  },
+  progressBar: {
+    marginBottom: theme.spacing(3),
+    backgroundColor: '#a3a0a0',
+    color: '#000000',
+    transition: 'none',
+    height: '5px'
   },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -151,11 +157,33 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  const [rowLimit, setRowLimit] = React.useState(scrollValue);
-  const [detailEdit, setDetailEdit] = React.useState(false);
-  const [request_filter_lower, setRequestFilterLower] = React.useState('');
-  const [singleFilterDigit, setSingleFilterDigit] = React.useState(false);
+  const [reactData, setReactData] = React.useState(
+    {
+      rowLimit: 50,
+      filterTextDisplayed: null,
+      filterTextLower: null,
+      selectDate: null,
+      loading: false,
+      progress: 0,
+      pWidth: 60
+    }
+  );
 
+  const updateReactData = (newData, force = false) => {
+    for (let oKey in newData) {
+      setReactData((prevValues) => ({
+        ...prevValues,
+        [oKey]: newData[oKey]
+      }));
+    }
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+
+  const showFilterText = () => {
+    return reactData.filterTextDisplayed || ' ';
+  };
+
+  const [detailEdit, setDetailEdit] = React.useState(false);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -166,18 +194,32 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   };
 
   function okToShow(this_event) {
-    if (singleFilterDigit) { return true; }
+    if (reactData.selectDate) { return reactData.selectDate.numeric$ === this_event.date; }
     else if (this_event.date === '29991231') { return false; }
+    else if (!reactData.filterTextLower) { return true; }
     else {
-      return (`${this_event.description} ${this_event.location}`).toLowerCase().includes(request_filter_lower);
+      return (`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower);
     }
   }
 
-  const extendDates = async (factor) => {
+  const screenStatus = (statusMessage, progressPct, progressWidth) => {
+    updateReactData({
+      loading: statusMessage,
+      progress: progressPct,
+      pWidth: progressWidth * 100
+    }, true);
+  };
+
+  const extendDates = async (factor, set_end = {}) => {
     let previousStart = myCalendar[0].date;
     let previousEnd = myCalendar[myCalendar.length - 1].date;
     let start_date, end_date;
-    if (factor > 0) {
+    if (set_end.hasOwnProperty('numeric$')) {
+      if (set_end.numeric$ <= previousEnd) { return; }
+      start_date = addDays(previousEnd, 1);
+      end_date = set_end.date;
+    }
+    else if (factor > 0) {
       start_date = addDays(previousEnd, 1);
       end_date = addDays(previousEnd, factor);
     }
@@ -190,7 +232,8 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
         client_id: myCalendar[0].client,
         start_date,
         end_date
-      }
+      },
+      screenStatus
     );
     if (factor > 0) {
       myCalendar.push(...newEntries);
@@ -198,36 +241,63 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
     else {
       myCalendar.unshift(...newEntries);
     }
+    myCalendar.sort((a, b) => {
+      if (a.date < b.date) { return -1; }
+      else if (a.date > b.date) { return 1; }
+      else if (a.time24 < b.time24) { return -1; }
+      else { return 1; }
+    });
+    updateReactData({
+      loading: false,
+      progress: 100,
+      pWidth: 60
+    }, true);
   };
 
   let scrollTimeOut;
   async function handleScroll() {
     clearTimeout(scrollTimeOut);
     scrollTimeOut = setTimeout(async () => {
-      setRowLimit(rowLimit + scrollValue);
-      if ((rowLimit + scrollValue) > myCalendar.length) {
+      let newLimit = reactData.rowLimit + scrollValue;
+      if (newLimit > myCalendar.length) {
         await extendDates(7);
+        updateReactData({ rowLimit: newLimit }, true);
       }
-      setForceRedisplay(!forceRedisplay);
     }, 500);
   };
 
-  let filterTimeOut;
-  const handleChangeRequestFilter = vCheck => {
+  const handleChangeRequestFilter = (vCheck, filterTimeOut) => {
     clearTimeout(filterTimeOut);
-    cl(`set timeout with ${vCheck}`);
-    filterTimeOut = setTimeout(() => {
-      cl(`timeout ended ${vCheck}`);
+    updateReactData({
+      filterTextDisplayed: vCheck.trim()
+    }, true);
+    let returnTimeOut = setTimeout(async () => {
+      cl(`timeout expired ${vCheck}`);
       if (!vCheck) {
-        setRequestFilterLower(null);
-        setSingleFilterDigit(true);
+        updateReactData({
+          filterTextLower: null,
+          selectDate: null
+        }, true);
       }
       else {
-        setRequestFilterLower(vCheck.toLowerCase());
-        setSingleFilterDigit(vCheck.length === 1);
+        let checkDate = makeDate(vCheck);
+        if (checkDate.error) {
+          updateReactData({
+            filterTextLower: ((vCheck.length === 1) ? null : vCheck.trim().toLowerCase()),
+            selectDate: null
+          }, true);
+        }
+        else {
+          await extendDates(0, checkDate);
+          updateReactData({
+            filterTextLower: null,
+            selectDate: checkDate
+          }, true);
+        }
       }
-      setForceRedisplay(!forceRedisplay);
-    }, 500);
+    }, 750);
+    cl(`set timeout ${returnTimeOut} with ${vCheck}`);
+    return returnTimeOut;
   };
 
   return (
@@ -237,7 +307,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
       fullScreen
       onScroll={async () => (await handleScroll())}
     >
-      {myCalendar && 
+      {myCalendar &&
         <React.Fragment>
           <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
             {rowsWritten = 0}
@@ -265,7 +335,9 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                   key={'vRowRefresh'}
                 >
                   <DialogContentText className={classes.subDescriptionText2} >
-                    From {makeDate(myCalendar[0].date).relative} to {makeDate(myCalendar[myCalendar.length - 1].date).relative}
+                    {reactData.selectDate ? reactData.selectDate.absolute_full :
+                      `From ${makeDate(myCalendar[0].date).relative} to ${makeDate(myCalendar[myCalendar.length - 1].date).relative}`
+                    }
                   </DialogContentText>
                 </Box>
                 :
@@ -337,143 +409,192 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
               </MenuList>
             </Menu>
           </Box>
-          <TextField
-            id='List Filter'
-            onChange={event => (handleChangeRequestFilter(event.target.value))}
-            className={classes.freeInput}
-            label={'Filter/Search'}
-            variant={'standard'}
-            autoComplete='off'
-          />
-          <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-            <Box >
-              <Grid item>
-                <GridList cellHeight='auto' cols={1} key='gridList' >
-                  {myCalendar.map((this_event, index) => (
-                    okToShow(this_event) && (rowsWritten < rowLimit) &&
-                    <React-fragment key={this_event.id + 'frag' + index} >
-                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                        {rowsWritten++}
-                      </Typography>
-                      {this_event.date !== working_date &&
+          <Box display='flex'
+            flexDirection='row'
+            marginLeft={2}
+            marginRight={2}
+            marginBottom={0.5}
+            border={showFilterText() ? 1 : 0}
+            borderRadius={'16px'}
+            key={'filterRow'}
+          >
+            <TextField
+              className={classes.freeInput}
+              id='List Filter'
+              variant={'standard'}
+              key={'filtertext'}
+              helperText={'Filter/Search or Date'}
+              multiline
+              onChange={(event) => {
+                let lastUsed = handleChangeRequestFilter(event.target.value, reactData.lastFilterTimeoutUsed)
+                updateReactData({ lastFilterTimeoutUsed: lastUsed }, true);
+              }}
+              autoComplete='off'
+              value={showFilterText()}
+            />
+          </Box>
+          {/* Loading spinner */}
+          {reactData.loading &&
+            <Box
+              display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+              key={'loadingBox'}
+              ml={2} mr={2} mb={2} mt={8}
+            >
+              <Box
+                component="img"
+                mb={2}
+                minWidth={150}
+                maxWidth={150}
+                alt=''
+                src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
+              />
+              <React.Fragment>
+                <Box
+                  display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                  flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                  key={'loadingBox'}
+                  mb={2}
+                >
+                  <Typography variant='h5' className={classes.lastName} >{`Loading More Dates`}</Typography>
+                  <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography>{reactData.loading}</Typography>
+                </Box>
+                <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: reactData.pWidth }} value={reactData.progress} />
+                <CircularProgress />
+              </React.Fragment>
+            </Box>
+          }
+          {!reactData.loading &&
+            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+              <Box >
+                <Grid item>
+                  <GridList cellHeight='auto' cols={1} key='gridList' >
+                    {myCalendar.map((this_event, index) => (
+                      okToShow(this_event) && (rowsWritten < reactData.rowLimit) &&
+                      <React-fragment key={this_event.id + 'frag' + index} >
+                        <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                          {rowsWritten++}
+                        </Typography>
+                        {this_event.date !== working_date &&
+                          <GridListTile
+                            key={this_event.id + 'rhead' + index}
+                            style={{ marginBottom: '0px', marginTop: (rowsWritten === 1 ? '0px' : '50px') }}
+                            cols={1}
+                          >
+                            <Box mb={0.5} py={1} px={0} borderBottom={2}>
+                              <Box flexGrow={1}>
+                                <Typography
+                                  key={this_event.date + 'dhead' + index}
+                                  className={classes.noDisplay}
+                                >
+                                  {working_date = this_event.date}
+                                </Typography>
+                                <Typography
+                                  key={working_date + 'head' + index}
+                                  variant='h6'
+                                >
+                                  {makeDate(working_date).absolute}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </GridListTile>
+                        }
                         <GridListTile
-                          key={this_event.id + 'rhead' + index}
-                          style={{ marginBottom: '0px', marginTop: (index === 0 ? '0px' : '50px') }}
+                          key={this_event.id + 'r' + index}
+                          style={{ marginBottom: '0px', marginTop: '0px' }}
                           cols={1}
                         >
-                          <Box mb={0.5} py={1} px={0} borderBottom={2}>
-                            <Box flexGrow={1}>
-                              <Typography
-                                key={this_event.date + 'dhead' + index}
-                                className={classes.noDisplay}
-                              >
-                                {working_date = this_event.date}
-                              </Typography>
-                              <Typography
-                                key={working_date + 'head' + index}
-                                variant='h6'
-                              >
-                                {makeDate(working_date).absolute}
-                              </Typography>
+                          <Paper
+                            component={Box}
+                            p={2}
+                            mt={0} mb={1}
+                            variant='outlined'
+                            style={{ background: this_event, marginBottom: '0px', marginTop: '0px' }}
+                            textAlign='left'
+                            onClick={async () => {
+                              let cEntries = await getCalendarEntries({
+                                person_id,
+                                client: this_event.client,
+                                event_id: this_event.event_key
+                              });
+                              this_event.occData = Object.assign({},
+                                cEntries[0].eventData.event_data,
+                                cEntries[0].eventData,
+                                { location: cEntries[0].eventData.event_data.location.description },
+                                { signup_type: cEntries[0].eventData.sign_up.type },
+                                cEntries[1],
+                                { date: cEntries[1].occurrence_date },
+                                { time$: `${cEntries[0].eventData.event_data.time.from}${(cEntries[0].eventData.event_data.time.to ? ' to ' + cEntries[0].eventData.event_data.time.to : '')}` },
+                                { time24: this_event.time24 }
+                              );
+                              this_event.index = index;
+                              setDetailEdit(this_event);
+                            }}
+                            square
+                          >
+                            <Box display='flex' flexDirection='row'
+                              justifyContent='flex-start' alignItems='center'
+                              onContextMenu={async (e) => {
+                                e.preventDefault();
+                                enqueueSnackbar(`Event data=${JSON.stringify(this_event)}`, { variant: 'info', persist: true });
+                              }}
+                            >
+                              <Typography variant='h5'>{`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}</Typography>
                             </Box>
-                          </Box>
+                          </Paper>
                         </GridListTile>
-                      }
+                      </React-fragment>
+                    ))}
+                    {(rowsWritten === 0) &&
                       <GridListTile
-                        key={this_event.id + 'r' + index}
+                        key={'rhead'}
                         style={{ marginBottom: '0px', marginTop: '0px' }}
                         cols={1}
                       >
-                        <Paper
-                          component={Box}
-                          p={2}
-                          mt={0} mb={1}
-                          variant='outlined'
-                          style={{ background: this_event, marginBottom: '0px', marginTop: '0px' }}
-                          textAlign='left'
-                          onClick={async () => {
-                            let cEntries = await getCalendarEntries({
-                              person_id,
-                              client: this_event.client,
-                              event_id: this_event.event_key
-                            });
-                            this_event.occData = Object.assign({},
-                              cEntries[0].eventData.event_data,
-                              cEntries[0].eventData,
-                              { location: cEntries[0].eventData.event_data.location.description },
-                              { signup_type: cEntries[0].eventData.sign_up.type },
-                              cEntries[1],
-                              { date: cEntries[1].occurrence_date },
-                              { time$: `${cEntries[0].eventData.event_data.time.from}${(cEntries[0].eventData.event_data.time.to ? ' to ' + cEntries[0].eventData.event_data.time.to : '')}` },
-                              { time24: this_event.time24 }
-                            );
-                            this_event.index = index;
-                            setDetailEdit(this_event);
-                          }}
-                          square
-                        >
-                          <Box display='flex' flexDirection='row'
-                            justifyContent='flex-start' alignItems='center'
-                            onContextMenu={async (e) => {
-                              e.preventDefault();
-                              enqueueSnackbar(`Event data=${JSON.stringify(this_event)}`, { variant: 'info', persist: true });
-                            }}
-                          >
-                            <Typography variant='h5'>{`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}</Typography>
+                        <Box mb={0.5} py={1} px={0} >
+                          <Box flexGrow={1}>
+                            <Typography
+                              key={'head'}
+                              variant='h6'
+                            >
+                              No Calendar Entries to Show!
+                            </Typography>
                           </Box>
-                        </Paper>
-                      </GridListTile>
-                    </React-fragment>
-                  ))}
-                  {(rowsWritten === 0) &&
-                    <GridListTile
-                      key={'rhead'}
-                      style={{ marginBottom: '0px', marginTop: '0px' }}
-                      cols={1}
-                    >
-                      <Box mb={0.5} py={1} px={0} >
-                        <Box flexGrow={1}>
-                          <Typography
-                            key={'head'}
-                            variant='h6'
-                          >
-                            No Calendar Entries to Show!
-                          </Typography>
                         </Box>
-                      </Box>
-                    </GridListTile>
+                      </GridListTile>
 
+                    }
+                  </GridList>
+                  {detailEdit &&
+                    <CalendarEventEditForm
+                      pEventCode={detailEdit.event_key}
+                      peopleList={peopleList}
+                      pPatient={person_id}
+                      pClient={detailEdit.client}
+                      pOccData={detailEdit.occData}
+                      onReset={(updatedData) => {
+                        myCalendar[detailEdit.index].description = updatedData.description;
+                        if ((myCalendar[detailEdit.index].date !== updatedData.date)
+                          || (myCalendar[detailEdit.index].time24 !== updatedData.time24)) {
+                          myCalendar[detailEdit.index].date = updatedData.date;
+                          myCalendar[detailEdit.index].time = updatedData.time$;
+                          myCalendar[detailEdit.index].time24 = updatedData.time24;
+                          myCalendar.sort((a, b) => {
+                            if (a.date < b.date) { return -1; }
+                            else if (a.date > b.date) { return 1; }
+                            else if (a.time24 < b.time24) { return -1; }
+                            else { return 1; }
+                          });
+                        }
+                        setDetailEdit(false);
+                        setForceRedisplay(forceRedisplay => !forceRedisplay);
+                      }}
+                    />
                   }
-                </GridList>
-                {detailEdit &&
-                  <CalendarEventEditForm
-                    pEventCode={detailEdit.event_key}
-                    peopleList={peopleList}
-                    pPatient={person_id}
-                    pClient={detailEdit.client}
-                    pOccData={detailEdit.occData}
-                    onReset={(updatedData) => {
-                      myCalendar[detailEdit.index].description = updatedData.description;
-                      if ((myCalendar[detailEdit.index].date !== updatedData.date)
-                        || (myCalendar[detailEdit.index].time24 !== updatedData.time24)) {
-                        myCalendar[detailEdit.index].date = updatedData.date;
-                        myCalendar[detailEdit.index].time = updatedData.time$;
-                        myCalendar[detailEdit.index].time24 = updatedData.time24;
-                        myCalendar.sort((a, b) => {
-                          if (a.date < b.date) { return -1; }
-                          else if (a.date > b.date) { return 1; }
-                          else if (a.time24 < b.time24) { return -1; }
-                          else { return 1; }
-                        });
-                      }
-                      setDetailEdit(false);
-                      setForceRedisplay(!forceRedisplay);
-                    }}
-                  />
-                }
-              </Grid>
-            </Box>
-          </DialogContent>
+                </Grid>
+              </Box>
+            </DialogContent>
+          }
         </React.Fragment>
       }
       <Box display='flex' flexDirection='row'
