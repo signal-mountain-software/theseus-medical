@@ -259,17 +259,15 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
     clearTimeout(scrollTimeOut);
     scrollTimeOut = setTimeout(async () => {
       let newLimit = reactData.rowLimit + scrollValue;
-      if (newLimit > myCalendar.length) {
-        await extendDates(7);
-        updateReactData({ rowLimit: newLimit }, true);
-      }
+      if (newLimit > myCalendar.length) { await extendDates(7); }
+      updateReactData({ rowLimit: newLimit }, true);
     }, 500);
   };
 
   const handleChangeRequestFilter = (vCheck, filterTimeOut) => {
     clearTimeout(filterTimeOut);
     updateReactData({
-      filterTextDisplayed: vCheck.trim()
+      filterTextDisplayed: vCheck.trimStart()
     }, true);
     let returnTimeOut = setTimeout(async () => {
       cl(`timeout expired ${vCheck}`);
@@ -539,7 +537,10 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                                 enqueueSnackbar(`Event data=${JSON.stringify(this_event)}`, { variant: 'info', persist: true });
                               }}
                             >
-                              <Typography variant='h5'>{`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}</Typography>
+                                <Typography
+                                  variant='h5'>
+                                  {`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}
+                                </Typography>
                             </Box>
                           </Paper>
                         </GridListTile>
