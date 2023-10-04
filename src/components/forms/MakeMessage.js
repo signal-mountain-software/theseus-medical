@@ -188,7 +188,7 @@ export default ({
   };
 
   const noInput = () => {
-    return (!reactData.textInput[makeArray(promptText).length - 1]);
+    return !(makeArray(promptText).some((n, p) => { return (!!reactData.textInput[p] && !!(reactData.textInput[p].trim())); }));
   };
 
   const handleSave = async () => {
@@ -605,7 +605,7 @@ export default ({
             <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
               <Button
                 className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
+                style={{ backgroundColor: (noInput() ? 'white' : 'green'), color: (noInput() ? 'green' : 'white') }}
                 size='small'
                 disabled={noInput()}
                 onClick={async () => {
