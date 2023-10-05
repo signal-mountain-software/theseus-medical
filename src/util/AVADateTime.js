@@ -30,7 +30,8 @@ export function makeDate(pInput) {
             'obs': '2099.1.1',
             'numeric': 20990101,
             'numeric$': '20990101',
-            'dayPart': 'day'   // afternoon
+            'dayPart': 'day',   // afternoon
+            'dayOfWeek': 0    // Sun = 0, Mon = 1, ... , Sat = 7
         };
     }
     let targetDateStamp, targetDate;
@@ -84,7 +85,8 @@ export function makeDate(pInput) {
                 'obs': '2099.1.1',
                 'numeric': 20990101,
                 'numeric$': '20990101',
-                'dayPart': 'day'
+                'dayPart': 'day',
+                'dayOfWeek': 9
             };
         }
     }
@@ -164,7 +166,8 @@ export function makeDate(pInput) {
         'obs': targetDateYMD.replace(regEx, '.'),
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
-        'dayPart': dayPart
+        'dayPart': dayPart,
+        'dayOfWeek': targetDate.getDay()
     };
 
     function buildDate(pString) {
