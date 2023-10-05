@@ -160,6 +160,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   const [reactData, setReactData] = React.useState(
     {
       rowLimit: 50,
+      priorTop: 0,
       filterTextDisplayed: null,
       filterTextLower: null,
       selectDate: null,
@@ -182,6 +183,8 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   const showFilterText = () => {
     return reactData.filterTextDisplayed || ' ';
   };
+
+  const lastRow = React.useRef(null);
 
   const [detailEdit, setDetailEdit] = React.useState(false);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
@@ -255,13 +258,23 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   };
 
   let scrollTimeOut;
-  async function handleScroll() {
+  async function handleScroll(e) {
     clearTimeout(scrollTimeOut);
-    scrollTimeOut = setTimeout(async () => {
-      let newLimit = reactData.rowLimit + scrollValue;
-      if (newLimit > myCalendar.length) { await extendDates(7); }
-      updateReactData({ rowLimit: newLimit }, true);
-    }, 500);
+    scrollTimeOut = setTimeout(async ([scrollHeight, visibleTop, visibleHeight]) => {
+      cl({ scrollHeight, visibleTop, priorTop: reactData.priorTop, visibleHeight });
+      if ((visibleTop > reactData.priorTop)    // scroll down
+        && ((scrollHeight - visibleTop) <= (visibleHeight * 1.05))) {       // on the last visible page
+        let newLimit = reactData.rowLimit + scrollValue;
+        if (newLimit > myCalendar.length) { await extendDates(7); }
+        updateReactData({ rowLimit: newLimit, priorTop: visibleTop }, true);
+        if (lastRow && lastRow.current) {
+          lastRow.current.scrollTo({
+            behavior: 'instant',
+            top: (visibleTop + visibleHeight),
+          });
+        }
+      }
+    }, 500, [e.target.scrollHeight, e.target.scrollTop, e.target.clientHeight]);
   };
 
   const handleChangeRequestFilter = (vCheck, filterTimeOut) => {
@@ -303,7 +316,6 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
       open={true || forceRedisplay}
       p={2}
       fullScreen
-      onScroll={async () => (await handleScroll())}
     >
       {myCalendar &&
         <React.Fragment>
@@ -424,7 +436,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
               helperText={'Filter/Search or Date'}
               multiline
               onChange={(event) => {
-                let lastUsed = handleChangeRequestFilter(event.target.value, reactData.lastFilterTimeoutUsed)
+                let lastUsed = handleChangeRequestFilter(event.target.value, reactData.lastFilterTimeoutUsed);
                 updateReactData({ lastFilterTimeoutUsed: lastUsed }, true);
               }}
               autoComplete='off'
@@ -463,7 +475,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
             </Box>
           }
           {!reactData.loading &&
-            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }} ref={lastRow} onScroll={async (event) => (await handleScroll(event))}>
               <Box >
                 <Grid item>
                   <GridList cellHeight='auto' cols={1} key='gridList' >
@@ -500,7 +512,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                         <GridListTile
                           key={this_event.id + 'r' + index}
                           style={{ marginBottom: '0px', marginTop: '0px' }}
-                          cols={1}
+                            cols={1}
                         >
                           <Paper
                             component={Box}
@@ -537,10 +549,10 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                                 enqueueSnackbar(`Event data=${JSON.stringify(this_event)}`, { variant: 'info', persist: true });
                               }}
                             >
-                                <Typography
-                                  variant='h5'>
-                                  {`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}
-                                </Typography>
+                              <Typography
+                                variant='h5'>
+                                {`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}
+                              </Typography>
                             </Box>
                           </Paper>
                         </GridListTile>
@@ -566,35 +578,35 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
 
                     }
                   </GridList>
-                  {detailEdit &&
-                    <CalendarEventEditForm
-                      pEventCode={detailEdit.event_key}
-                      peopleList={peopleList}
-                      pPatient={person_id}
-                      pClient={detailEdit.client}
-                      pOccData={detailEdit.occData}
-                      onReset={(updatedData) => {
-                        myCalendar[detailEdit.index].description = updatedData.description;
-                        if ((myCalendar[detailEdit.index].date !== updatedData.date)
-                          || (myCalendar[detailEdit.index].time24 !== updatedData.time24)) {
-                          myCalendar[detailEdit.index].date = updatedData.date;
-                          myCalendar[detailEdit.index].time = updatedData.time$;
-                          myCalendar[detailEdit.index].time24 = updatedData.time24;
-                          myCalendar.sort((a, b) => {
-                            if (a.date < b.date) { return -1; }
-                            else if (a.date > b.date) { return 1; }
-                            else if (a.time24 < b.time24) { return -1; }
-                            else { return 1; }
-                          });
-                        }
-                        setDetailEdit(false);
-                        setForceRedisplay(forceRedisplay => !forceRedisplay);
-                      }}
-                    />
-                  }
                 </Grid>
               </Box>
             </DialogContent>
+          }
+          {!reactData.loading && detailEdit &&
+            <CalendarEventEditForm
+              pEventCode={detailEdit.event_key}
+              peopleList={peopleList}
+              pPatient={person_id}
+              pClient={detailEdit.client}
+              pOccData={detailEdit.occData}
+              onReset={(updatedData) => {
+                myCalendar[detailEdit.index].description = updatedData.description;
+                if ((myCalendar[detailEdit.index].date !== updatedData.date)
+                  || (myCalendar[detailEdit.index].time24 !== updatedData.time24)) {
+                  myCalendar[detailEdit.index].date = updatedData.date;
+                  myCalendar[detailEdit.index].time = updatedData.time$;
+                  myCalendar[detailEdit.index].time24 = updatedData.time24;
+                  myCalendar.sort((a, b) => {
+                    if (a.date < b.date) { return -1; }
+                    else if (a.date > b.date) { return 1; }
+                    else if (a.time24 < b.time24) { return -1; }
+                    else { return 1; }
+                  });
+                }
+                setDetailEdit(false);
+                setForceRedisplay(forceRedisplay => !forceRedisplay);
+              }}
+            />
           }
         </React.Fragment>
       }
