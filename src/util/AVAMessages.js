@@ -781,7 +781,7 @@ export async function sendMessages(body) {
         'message_text': env.messageText,
         'html_message_text': env.htmlText,
         'preferred_method': env.preferred_method,
-        'subject': env.subject
+        'subject': env.subject.replace(/\n/g, " ").trim()      // dont allow invlid characters in the message subject
       },
       TableName: "PostOffice"
     };

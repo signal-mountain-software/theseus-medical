@@ -950,7 +950,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     author: fact.patient_id,
                     proxy_user: fact.session.user_id,
                     requestType: fact.value.freeText.requestType,
-                    onBehalfOf: oBo,
+                    onBehalfOf: oBo.replace(/\n/g, " ").trim(),
                     foreign_key,
                     request: requestObj,
                     messaging: fact.messaging
