@@ -953,7 +953,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     onBehalfOf: oBo.replace(/\n/g, " ").trim(),
                     foreign_key,
                     request: requestObj,
-                    messaging: fact.messaging
+                    messaging: fact.messaging,
+                    activity_key: fact.activity_key
                   };
                   if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
                     putSR.attachments = reactData.attachmentList;

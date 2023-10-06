@@ -1,4 +1,5 @@
-import { clt, cl, recordExists, dbClient, makeArray } from '../util/AVAUtilities';
+import { clt, cl, recordExists, dbClient, makeArray, sentenceCase } from '../util/AVAUtilities';
+import { getActivity } from '../util/AVAObservations';
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
 import { prepareMessage, sendMessages } from '../util/AVAMessages';
@@ -136,6 +137,7 @@ export async function putServiceRequest(body) {
               update_time: <optional, if missing set to current time>
               requestStatus: <optional - if missing defaults to 'submitted'>,
               notes: <optional text>
+              activity_key
       };
   */
   let currentTime = makeDate(new Date());
@@ -160,6 +162,7 @@ export async function putServiceRequest(body) {
     "on_behalf_of": body.onBehalfOf,
     "request_type": body.requestType,
     "request_date": body.requestDate,
+    "activity_key": body.activity_key,
     "original_request": body.request,
     "history": historyArray,
     "local_key": body.local_key,
@@ -236,6 +239,68 @@ export async function putServiceRequest(body) {
     'requestRec': serviceRequestRec,
     'body': body,
     'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
+  };
+}
+
+export async function printServiceRequest(serviceRequestRec) {
+  if (!serviceRequestRec.hasOwnProperty('activity_key')) {
+    let customizationsRec = await dbClient
+      .get({
+        Key: { client_id: serviceRequestRec.client_id, custom_key: 'service_request_types' },
+        TableName: "Customizations"
+      })
+      .promise()
+      .catch(error => { cl(`***ERR reading Customizations*** caught error is: ${error}`); });
+    if (recordExists(customizationsRec) && customizationsRec.Item.customization_value && customizationsRec.Item.customization_value[serviceRequestRec.request_type]) {
+      serviceRequestRec.activity_key = customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code
+    }
+  }
+  let activityRec = await getActivity(serviceRequestRec.client_id, serviceRequestRec.activity_key);
+  if (!(activityRec.hasOwnProperty('activity_code'))) { 
+    return {
+      'success': false,
+      'message': (`AVA could not find enough information to retransmit this request`)
+    };
+   }
+  let body = Object.assign({}, activityRec, serviceRequestRec, serviceRequestRec.original_request);
+  let success = true;
+  let rMsg;
+  if (body.messaging) {
+    if (body.history) { body.reprint = 'Reprint'; }
+    let preparedMessages = await prepareMessage(body);
+    if (preparedMessages.length > 0) {
+      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
+      let rTime = makeDate(new Date().getTime());
+      serviceRequestRec.messages = preparedMessages;
+      serviceRequestRec.last_update = rTime.timestamp;
+      if (body.messaging?.format?.method === 'hold') {
+        serviceRequestRec.last_status = 'Prepared & Held';
+        rMsg = sentenceCase(`${body.reprint || ''} held for future processing`);
+      }
+      else {
+        let sendResults = (await sendMessages(preparedMessages)).pop();
+        if (!sendResults.sent) {
+          serviceRequestRec.last_status = 'Failed to send';
+          rMsg = sentenceCase(`${body.reprint || ''} failed to send`);
+          success = false;
+        }
+        else {
+          serviceRequestRec.last_status = 'Sent';
+          rMsg = sentenceCase(`${body.reprint || ''} sent successfully`);
+        }
+      }
+      rMsg += ` ${rTime.oaDate}`;
+      if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
+        serviceRequestRec.history.unshift(rMsg);
+      }
+      else { serviceRequestRec.history = [rMsg]; }
+    }
+  }
+  cl({ 'updating ServiceRequestRec with': serviceRequestRec });
+  await updateServiceRequest(serviceRequestRec)
+  return {
+    success,
+    'message': rMsg
   };
 }
 

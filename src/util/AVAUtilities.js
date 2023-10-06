@@ -184,6 +184,7 @@ export function clt() {
 export function sentenceCase(pString) {
   if (!pString) { return ''; }
   if (typeof (pString) === 'object') { return JSON.stringify(pString); }
+  pString = pString.trimStart();
   if (pString.slice(0, 2).toLowerCase() === 'mc') {
     return (
       pString.slice(0, 1).toUpperCase() +

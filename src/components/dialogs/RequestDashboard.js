@@ -2,7 +2,7 @@ import React from 'react';
 import { sentenceCase, makeArray, isObject, cl, titleCase } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
-import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
+import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, sendMessages, messageHistory } from '../../util/AVAMessages';
 import AVATextInput from '../forms/AVATextInput';
 
@@ -27,6 +27,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import TextField from '@material-ui/core/TextField';
 
 import SendIcon from '@material-ui/icons/Send';
+import RedoIcon from '@material-ui/icons/Redo';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
@@ -217,7 +218,7 @@ export default ({ session, filter = {}, onClose }) => {
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
-  
+
   const statusWords = {
     delivery: 'Delivered',
     open: 'Opened'
@@ -796,20 +797,31 @@ export default ({ session, filter = {}, onClose }) => {
                             !(session.service_request_types[filter.request_type].hasOwnProperty('allowStatusUpdateFromDashboard'))
                             || session.service_request_types[filter.request_type].allowStatusUpdateFromDashboard)
                           &&
-                          <Checkbox
-                            edge='start'
-                            checked={this_item.workData.checked || false}
-                            disableRipple
-                            key={'checkbox' + index}
-                            onClick={() => { toggleCheck(index); }}
-                          />
+                          <Box display='flex' flexDirection='row'>
+                            <Checkbox
+                              checked={this_item.workData.checked || false}
+                              disableRipple
+                              key={'checkbox' + index}
+                              onClick={() => { toggleCheck(index); }}
+                            />
+                          </Box>
                         }
-                        <SendIcon
-                          onClick={() => {
-                            toggleCheck(index);
-                            setPromptForUpdate(true);
-                          }}
-                        />
+                        <Box display='flex' flexDirection='row' marginRight='10px'>
+                          <RedoIcon
+                            onClick={async () => {
+                              let result = await printServiceRequest(Object.assign(this_item));
+                              enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
+                            }}
+                          />
+                        </Box>
+                        <Box display='flex' flexDirection='row'>
+                          <SendIcon
+                            onClick={() => {
+                              toggleCheck(index);
+                              setPromptForUpdate(true);
+                            }}
+                          />
+                        </Box>
                       </Box>
                     </Box>
                   </Paper>
