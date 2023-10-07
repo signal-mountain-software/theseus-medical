@@ -86,7 +86,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
   const { state } = useSession();
 
   let user_fontSize = 1;
-  if (state.session.customizations && state.session.customizations.font_size) {
+  if (state.session && state.session.customizations && state.session.customizations.font_size) {
     user_fontSize = Math.max(state.session.customizations.font_size, 1);
   }
 

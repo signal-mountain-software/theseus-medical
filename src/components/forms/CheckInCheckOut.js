@@ -25,6 +25,29 @@ export default ({ onSave, onClose }) => {
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
+  let user_fontSize = 1;
+  if (state.session && state.session.customizations && state.session.customizations.font_size) {
+    user_fontSize = Math.max(state.session.customizations.font_size, 1);
+  }
+
+  const titleStyle = {
+    fontSize: `${user_fontSize * 1.3}rem`,
+    fontWeight: 'bold',
+    lineHeight: 1
+  };
+
+  const textStyle = {
+    fontSize: `${user_fontSize * 0.8}rem`,
+    lineHeight: 1
+  };
+
+  const subTitleStyle = {
+    marginRight: 2,
+    marginBottom: 0.5,
+    fontSize: `${user_fontSize * 1.2}rem`,
+    lineHeight: 1
+  };
+
   const [forceRedisplay, setForceRedisplay] = React.useState();
   const [reactData, setReactData] = React.useState(
     {
@@ -338,8 +361,8 @@ export default ({ onSave, onClose }) => {
               :
               <Dialog open={forceRedisplay || true} fullWidth >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                  <Typography variant='h5' id='dialog-title'>{makeGreeting()}</Typography>
-                  <Typography variant='subtitle2' id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
+                    <Typography style={titleStyle} id='dialog-title'>{makeGreeting()}</Typography>
+                    <Typography style={textStyle} id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
                 </Box>
                 <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
                   {reactData.candidates.map((candidate, cIndex) => (
@@ -363,8 +386,8 @@ export default ({ onSave, onClose }) => {
                       }}
                     >
                       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                        <Typography variant='h5'>{`${titleCase(candidate.name.first)} ${titleCase(candidate.name.last)}`}</Typography>
-                        <Typography style={{ fontSize: '0.8em' }} variant='h6'>{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
+                        <Typography style={titleStyle}>{`${titleCase(candidate.name.first)} ${titleCase(candidate.name.last)}`}</Typography>
+                        <Typography style={subTitleStyle} variant='h6'>{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
                       </Box>
                     </Box>
                   )
