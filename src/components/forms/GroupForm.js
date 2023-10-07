@@ -41,7 +41,7 @@ import PersonFilter from '../forms/PersonFilter';
 import AVAConfirm from './AVAConfirm';
 import MakeMessage from './MakeMessage';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVATextVariableStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -242,68 +242,12 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
 
-  let user_fontSize = 1;
-  if (state.session.customizations && state.session.customizations.font_size) {
-    user_fontSize = Math.max(state.session.customizations.font_size, 1);
-  }
-
-  const locationLineStyle = {
-    fontSize: `${user_fontSize * 1.0}rem`,
-    lineHeight: 1,
-    marginBottom: 8
-  };
-
-  function preferenceLineStyle(prefLine) {
-    let textOut = prefLineText(prefLine);
-    let textBreadth = textOut.length * user_fontSize;
-    let renderSize = `${user_fontSize * (50 / Math.max(50, textBreadth))}rem`;
-    return {
-      lineHeight: 1,
-      textWrap: 'anywhere',
-      fontSize: renderSize,
-      marginBottom: 8
-    };
-  }
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   function prefLineText(prefLine) {
     if (prefLine.private) { return `${prefLine.type} un-published`; }
     else if (prefLine.type === 'e-Mail') { return prefLine.display.join('@'); }
     else { return `${prefLine.type} ${prefLine.display[0]}`; }
-  };
-
-  function lastNameStyle(textOut) {
-    let textBreadth = textOut.length * user_fontSize;
-    let renderSize = `${user_fontSize * 2 * (25 / Math.max(25, textBreadth))}rem`;
-    return {
-      fontWeight: 'bold',
-      fontSize: renderSize,
-      marginTop: 16,
-      marginRight: 16,
-      lineHeight: 0.8
-    };
-  };
-
-  const titleStyle = {
-    fontSize: `${user_fontSize * 1.3}rem`,
-    marginTop: 24,
-    marginLeft: 16,
-    marginRight: 16,
-    fontWeight: 'bold',
-    lineHeight: 1
-  };
-
-  const memberOfStyle = {
-    fontWeight: 'bold',
-    fontSize: `${user_fontSize}rem`,
-    marginTop: 16,
-    marginRight: 16,
-    lineHeight: 0.8
-  };
-
-  const firstNameStyle = {
-    fontSize: `${user_fontSize * 1.5}rem`,
-    lineHeight: 1,
-    marginBottom: 16
   };
 
   let params = {
@@ -564,7 +508,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             {!showSuperSize &&
               <React.Fragment>
                 <Typography
-                  className={classes.title} style={titleStyle}
+                  className={classes.title} style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
                 >
                   {multiGroups ? 'Directory Listing' : `Members of the ${pGroupName} Group`}
                 </Typography>
@@ -597,7 +541,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           key={this_item.person_id + 'r' + index}
                           className={classes.listItem}
                         >
-                          <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                          <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center' overflow={'hidden'}>
                             <Box
                               onClick={async () => {
                                 this_item.role = await getRole(pGroup, this_item.person_id);
@@ -610,17 +554,17 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               }}
                               display='flex' flexDirection='column'>
                               <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                                <Typography style={lastNameStyle(this_item.name.last || this_item.display_name)} >{this_item.name.last || this_item.display_name}</Typography>
-                                <Typography style={firstNameStyle}>{this_item.name.first}</Typography>
+                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
+                                <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{this_item.name.first}</Typography>
                               </Box>
                               {multiGroups && this_item.hasOwnProperty('member_of') &&
-                                <Typography key={`member_of-${index}`} style={memberOfStyle}>{sentenceCase(this_item.member_of)}</Typography>
+                                <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 1, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
                               }
                               {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
-                                <Typography key={`locationLine-${index}.${locIndex}`} style={locationLineStyle}>{locLine.trim()}</Typography>
+                                <Typography key={`locationLine-${index}.${locIndex}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{locLine.trim()}</Typography>
                               ))}
                               {(this_item.directory_option === 'exclude') &&
-                                <Typography key={`excluded-${index}`} style={locationLineStyle}>{'** Excluded from Directory **'}</Typography>
+                                <Typography key={`excluded-${index}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{'** Excluded from Directory **'}</Typography>
                               }
                               <Box
                                 display='flex'
@@ -637,7 +581,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                         style={{ color: 'inherit', textDecoration: 'none' }}>
                                         <Typography
                                           key={`prefLine-${index}.${prefIndex}`}
-                                          style={preferenceLineStyle(prefLine)}
+                                          style={AVATextVariableStyle(prefLine, { margin: { bottom: 0.5 } })}
                                         >
                                           {prefLineText(prefLine)}
                                         </Typography>
@@ -675,7 +619,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 ))}
                 {(rowsWritten === 0) &&
                   <Box display='flex' marginLeft={3} flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                    <Typography style={firstNameStyle}>{'No Directory entries match your search!'}</Typography>
+                    <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{'No Directory entries match your search!'}</Typography>
                   </Box>
                 }
               </List>

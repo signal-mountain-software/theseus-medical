@@ -11,8 +11,7 @@ import CheckIcon from '@material-ui/icons/DoneSharp';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
-import { AVAclasses } from '../../util/AVAStyles';
-import useSession from '../../hooks/useSession';
+import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -72,31 +71,6 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
-  const { state } = useSession();
-
-  let user_fontSize = 1;
-  if (state.session.customizations && state.session.customizations.font_size) {
-    user_fontSize = Math.max(state.session.customizations.font_size, 1);
-  }
-
-  const titleStyle = {
-    marginTop: 24,
-    marginRight: 16,
-    fontSize: `${user_fontSize * 1.5}rem`,
-    fontWeight: 'bold',
-    lineHeight: 1
-  };
-
-  function notTitleStyle(str) {
-    return {
-      marginTop: (str.match(/(indent=.)/g) ? 0 : 24),
-      marginRight: 16,
-      fontSize: (str.match(/(indent=.)/g) ? `${user_fontSize * 0.8}rem` : `${user_fontSize}rem`),
-      lineHeight: 1
-    };
-  };
-
-
 
   // **************************
 
@@ -112,7 +86,11 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
         marginLeft={3 + (3 * Number(makeIndent(promptLines[0])))}
       >
         <Typography
-          style={titleStyle}
+          style={AVATextStyle({
+            margin: { top: 3, right: 2 },
+            size: 1.5,
+            bold: true
+          })}
           id='scroll-dialog-title'
           key={'promptConfirm'}
         >
@@ -133,7 +111,18 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
                 marginLeft={3 + (3 * Number(makeIndent(pLine)))}
               >
                 <Typography
-                  style={index === 0 ? titleStyle : notTitleStyle(pLine)}
+                  style={index === 0 ?
+                    AVATextStyle({
+                      margin: { top: 3, right: 2 },
+                      size: 1.5,
+                      bold: true
+                    })
+                    :
+                    AVATextStyle({
+                      margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 1.5), right: 1 },
+                      size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
+                    })
+                  }
                   id='scroll-dialog-title'
                   key={'promptConfirm' + index}
                 >

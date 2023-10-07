@@ -7,6 +7,7 @@ import { getImage } from '../../util/AVAPeople';
 import { getAllOccurrences } from '../../util/AVACalendars';
 import { getMemberList, prepareTargets, getAllGroups } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
+import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -158,8 +159,8 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
   },
   sectionHeader: {
-    marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(1),
+    marginTop: theme.spacing(2),
+    marginBottom: theme.spacing(2),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
   },
@@ -267,6 +268,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const msBeforeSleeping = 5 * oneMinute;
 
   const subMenuHead = React.useRef(null);
+
+  let user_fontSize = AVADefaults({fontSize: 'get'});
+
+  const avatarStyle = {
+    width: `${(30 * user_fontSize)}px`,
+    height: `${(30 * user_fontSize)}px`
+  };
 
   let idleTimer = React.createRef();
 
@@ -883,7 +891,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         }
         case 'events': {
           setLoading('Loading');
-          setForceRedisplay(!forceRedisplay);          
+          setForceRedisplay(!forceRedisplay);
           let date_offset = 7;
           switch (dPart) {
             case 'future': { date_offset = 7; break; }
@@ -1025,13 +1033,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               overflow='auto'
               flexDirection='column'>
               <Typography
-                className={classes.hello}
+                style={AVATextStyle({size: 1.5, margin: {left: 1, right: 1}})}
                 id='scroll-dialog-title'
               >
                 {`${greetingWords},`}
               </Typography>
               <Typography
-                className={classes.hello}
+                style={AVATextStyle({ size: 1.5, margin: { left: 1, right: 1 } })}
                 id='scroll-dialog-title'
               >
                 {`${greetingName}!`}
@@ -1236,23 +1244,23 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             <React.Fragment>
               <Box
                 display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                flexWrap='wrap' textOverflow='ellipsis' width='100%' overflow={'hidden'}
                 key={'loadingBox'}
                 mb={2}
               >
-                <Typography variant='h5' className={classes.lastName} >{`Loading AVA`}</Typography>
-                <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
+                <Typography style={AVATextStyle({ size: 0.5, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
                     flexWrap='wrap' textOverflow='ellipsis' width='100%'
                     key={'loadingWordBox'}
                   >
-                    <Typography>{'Common activities for'}</Typography>
-                    <Typography>{loading.split(' for ')[1]}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.5 })}>{'Common activities for'}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.5 })}>{loading.split(' for ')[1]}</Typography>
                   </Box>
                   :
-                  <Typography>{loading}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.5 })}>{loading}</Typography>
                 }
               </Box>
               <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
@@ -1296,9 +1304,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                       />
                       <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
                         <Box display='flex' flexDirection='column'>
-                          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                            <Typography variant='h5' ref={subMenuHead}
-                              className={classes.lastName} >{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
+                          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' overflow='hidden'>
+                            <Typography style={AVATextStyle({ size: 1.5 })} ref={subMenuHead}>{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
                           </Box>
                         </Box>
                       </Box>
@@ -1337,16 +1344,16 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               <Box flex={1} justifyContent='flex-start' alignItems='center'>
                                 <Avatar
                                   src={this_row.section_icon}
-                                  sx={{ width: 30, height: 30 }}
+                                 style={avatarStyle}
                                   alt=""
                                   variant="square"
                                 />
                               </Box>
-                              <Box display='flex' flex={4} justifyContent='center' alignItems='center'>
+                              <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
                                 <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                                   {(currentSection = this_row.section_name)}
                                 </Typography>
-                                <Typography variant='h5' className={classes.boldCenter} >{this_row.section_name.trim()}</Typography>
+                                <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >{this_row.section_name.trim()}</Typography>
                               </Box>
                               <Box flex={1} display='flex' justifyContent='flex-end' alignItems='center'>
                                 {(currentMenu !== 'main') ? null : (!sectionOpen[this_row.section_name] ? 'Show' : 'Hide')}
@@ -1384,6 +1391,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                 flexDirection='row'
                                 justifyContent='space-between'
                                 alignItems='center'
+                                overflow={'hidden'}
                                 onClick={async () => {
                                   await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
                                   if (!toggleClick && (this_row.row_type !== 'document')) {
@@ -1411,10 +1419,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               >
                                 {this_row.row_type === 'document' ?
                                   <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
-                                    <Typography variant='h5'>{this_row.activity_name}</Typography>
+                                    <Typography style={AVATextStyle({ size: 1.5 })}>{this_row.activity_name}</Typography>
                                   </a>
                                   :
-                                  <Typography variant='h5'>{this_row.activity_name}</Typography>
+                                  <Typography style={AVATextStyle({ size: 1.5 })}>{this_row.activity_name}</Typography>
                                 }
                               </Box>
                               <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>

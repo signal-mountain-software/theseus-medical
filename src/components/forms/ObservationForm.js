@@ -32,8 +32,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 
 import AVAConfirm from './AVAConfirm';
 
-import { AVAclasses } from '../../util/AVAStyles';
-import useSession from '../../hooks/useSession';
+import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   textLine: {
@@ -180,79 +179,7 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
-  const { state } = useSession();
-
-  let user_fontSize = 1;
-  if (state.session.customizations && state.session.customizations.font_size) {
-    user_fontSize = Math.max(state.session.customizations.font_size, 1);
-  }
-
-  const titleStyle = {
-    fontSize: `${user_fontSize * 1.3}rem`,
-    fontWeight: 'bold',
-    lineHeight: 1
-  };
-
-  const subTitleStyle = {
-    marginRight: 2,
-    marginBottom: 0.5,
-    fontSize: `${user_fontSize * 1.2}rem`,
-    lineHeight: 1
-  };
-
-
-  const headerLineStyle = {
-    marginTop: '3rem',
-    marginBottom: '1rem',
-    fontSize: `${user_fontSize * 1.3}rem`,
-    fontWeight: 'bold'
-  };
-
-  const textLineStyle = {
-    fontSize: `${user_fontSize}rem`,
-    flexGrow: 0,
-    marginRight: '7px',
-    lineHeight: 1
-  };
-
-  const descTextStyle = {
-    fontSize: `${user_fontSize * 0.7}rem`,
-    marginLeft: 15,
-    marginBottom: 10,
-    marginTop: 0,
-    paddingLeft: 0,
-    paddingRight: 50,
-    lineHeight: 1
-  };
-
-  const qualOptionStyle = {
-    marginTop: 0,
-    marginLeft: 10,
-    marginRight: 2,
-    marginBottom: 0.95,
-    fontSize: `${user_fontSize * 0.6}rem`
-  };
-
-  const qualTextStyle = {
-    fontSize: `${user_fontSize * 0.7}rem`,
-    marginLeft: 5,
-    marginBottom: 0,
-    marginTop: 10,
-    paddingLeft: 0,
-    paddingRight: 50,
-    fontWeight: 'bold'
-  };
-
-  const radioTextStyle = {
-    fontSize: `${user_fontSize * 0.6}rem`,
-    marginLeft: 5,
-    marginBottom: 0,
-    marginTop: 0,
-    paddingLeft: 0,
-    paddingRight: 50,
-  };
-
-
+  let user_fontSize = AVADefaults({fontSize: 'get'});
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -706,12 +633,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           >
             <Box display='flex' flexDirection='column' key={'titlesection'}>
               <Typography
-                className={classes.title} style={titleStyle}
+                className={classes.title} style={AVATextStyle({ size: 1.3, bold: true })}
               >
                 {factName}
               </Typography>
               <Typography
-                className={classes.subTitle} style={subTitleStyle}
+                className={classes.subTitle} style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 2, bottom: 0.5 } })}
               >
                 {prompt || `Please select from these options`}
               </Typography>
@@ -836,7 +763,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                     {!this_item.input &&
                       <Typography
-                        style={this_item.header ? headerLineStyle : textLineStyle}
+                        style={this_item.header ? AVATextStyle({ size: 1.3, bold: true, margin: { top: 3, bottom: 1 } }) : AVATextStyle({ margin: { right: 0.5 } })}
                       >
                         {this_item.bold
                           ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
@@ -871,20 +798,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                   </Box>
                   {(this_item.desc && isChecked(this_item)) &&
-                    <Typography style={descTextStyle}>{this_item.desc}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.7, margin: { left: 1, bottom: 0.8, right: 3 } })}>{this_item.desc}</Typography>
                   }
                   {showQualifier(this_item) &&
                     dataRows[this_item.text].map((qR, qRndx) => (
                       <Box
                         key={'qRow' + qRndx}
                         display="flex"
-                        style={qualOptionStyle}
+                        style={AVATextStyle({ size: 0.6, margin: { left: 0.8, bottom: 0.2, right: 0.4 } })}
                         flexDirection='column'
                         justifyContent="center"
                       >
                         <Box display='flex' flexDirection='column' justifyContent='center'
                           alignItems='flex-start' key={'qrRow' + qR.title}>
-                          <Typography style={qualTextStyle}>{qR.title}</Typography>
+                          <Typography style={AVATextStyle({ size: 0.7, margin: { left: 0.3, top: 0.8, right: 3 } })}>{qR.title}</Typography>
                           <Box display='flex' flexDirection='row' justifyContent='flex-start'
                             alignItems='center' flexWrap='wrap' key={'qrOpt' + qR.title}
                           >
@@ -901,7 +828,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       className={classes.radioButton}
                                       size="small"
                                       checked={isQChecked(this_item, qR, opt.display)} />
-                                    <Typography style={radioTextStyle}>{opt.display}</Typography>
+                                    <Typography style={AVATextStyle({ size: 0.6, margin: { left: 0.3, right: 3 } })}>{opt.display}</Typography>
                                   </React.Fragment>
                                 }
                                 {opt.type === 'prompt' &&
@@ -911,7 +838,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       size="small"
                                       checked={isQChecked(this_item, qR, opt.display)} />
                                     <TextField
-                                      style={radioTextStyle}
+                                      style={AVATextStyle({ size: 0.6, margin: { left: 0.3, right: 3 } })}
                                       id={'text' + this_index + oX}
                                       variant={'standard'}
                                       key={'text' + this_index + oX}
@@ -953,7 +880,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         setForceRedisplay(!forceRedisplay);
                       }}
                     />
-                    <Typography style={radioTextStyle}>{a.Key}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.6, margin: { left: 0.3, right: 3 } })}>{a.Key}</Typography>
                   </Box>
                 ))}
               </Box>

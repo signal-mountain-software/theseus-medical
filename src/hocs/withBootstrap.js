@@ -4,6 +4,7 @@ import { isMemberOf, accountAccess } from '../util/AVAGroups';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
+import { AVADefaults } from '../util/AVAStyles';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -588,6 +589,10 @@ export default Component => props => {
       setDoneTrying(true);
       return [false, null];
     }
+    if (sessionRec.Item.customizations && sessionRec.Item.customizations.font_size) {
+      AVADefaults({ fontSize: Math.max(sessionRec.Item.customizations.font_size, 1) });
+    }
+    else { AVADefaults({ fontSize: 1 }); }
     let logoRec = await dbClient
       .get({
         Key: {

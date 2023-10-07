@@ -17,8 +17,7 @@ import Checkbox from '@material-ui/core/Checkbox';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import { AVAclasses } from '../../util/AVAStyles';
-import useSession from '../../hooks/useSession';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   containerBox: {
@@ -47,10 +46,6 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
     marginBottom: 0,
-  },
-  titleRow: {
-    fontSize: '1.3rem',
-    fontWeight: 'bold'
   },
   AVAButton: {
     marginLeft: theme.spacing(1),
@@ -83,18 +78,8 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
-  const { state } = useSession();
 
-  let user_fontSize = 1;
-  if (state.session && state.session.customizations && state.session.customizations.font_size) {
-    user_fontSize = Math.max(state.session.customizations.font_size, 1);
-  }
-
-  const titleStyle = {
-    fontSize: `${user_fontSize * 1.3}rem`,
-    fontWeight: 'bold',
-    lineHeight: 1
-  };
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   let keyPressed = 0;
 
@@ -153,7 +138,14 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
       >
         <DialogContent id='dialog-title'>
           {titleText && titleArray.map((t, tx) => (
-            <Typography key={`title-${tx}`} style={titleStyle} className={classes.titleRow}>{t}</Typography>
+            <Typography key={`title-${tx}`}
+              style={AVATextStyle({
+                size: 1.3,
+                bold: true
+              })}
+              className={classes.titleRow}>
+              {t}
+            </Typography>
           ))}
         </DialogContent>
         <DialogContent className={classes.contentBox} id='dialog-content'>

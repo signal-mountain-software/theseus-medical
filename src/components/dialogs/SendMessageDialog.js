@@ -206,7 +206,7 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
             <List component='nav'>
               {(message_targets.length > 0) &&
                 <PersonFilter
-                  prompt={'Send a message to...?'}
+                  prompt={'who?'}
                   peopleList={message_targets}
                   onCancel={() => {
                     onClose();

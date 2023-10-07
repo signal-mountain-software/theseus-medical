@@ -6,7 +6,6 @@ import { makeArray, s3, dbClient } from '../../util/AVAUtilities';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
-import DialogContentText from '@material-ui/core/DialogContentText';
 
 import { useSnackbar } from 'notistack';
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -26,7 +25,7 @@ import SendMessageDialog from '../dialogs/SendMessageDialog';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import useSession from '../../hooks/useSession';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   containerBox: {
@@ -122,6 +121,8 @@ export default ({
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
+  let user_fontSize = AVADefaults({fontSize: 'get'});
+
   const setFocus = React.useRef(null);
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -206,13 +207,13 @@ export default ({
     let voiceMailText = '';
     let subjectText = '';
     if (promptUse && reactData.textInput.length > 1) {
-      makeArray(promptUse).forEach((u, n) => { 
+      makeArray(promptUse).forEach((u, n) => {
         switch (u) {
           case 'subject': { subjectText += ' ' + reactData.textInput[n]; break; }
           case 'voicemail': { voiceMailText += ' ' + reactData.textInput[n]; break; }
           default: { principalMessageText += ' ' + reactData.textInput[n]; }
         }
-      })
+      });
       if (!voiceMailText) { voiceMailText = principalMessageText; }
       if (!subjectText) { subjectText = `Message from ${senderName}`; }
     }
@@ -418,9 +419,15 @@ export default ({
             justifyContent='center'
             alignItems='flex-start'
           >
-            <DialogContentText className={classes.title} id='scroll-dialog-title'>
+            <Typography style={AVATextStyle({
+              size: 1.3, bold: true, margin: {
+                top: 3,
+                left: 2,
+                right: 2,
+              }
+            })} id='scroll-dialog-title'>
               {reactData.titleText || makeTitle(reactData)}
-            </DialogContentText>
+            </Typography>
             <Box
               className={classes.imageArea}
               component="img"
@@ -476,6 +483,8 @@ export default ({
                       key={`prompt-msg_${x}`}
                       fullWidth
                       multiline
+                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                       ref={(x === (makeArray(promptText).length - 1)) ? setFocus : null}
                       helperText={p}
                       value={reactData.textInput[x] || ''}
@@ -507,7 +516,7 @@ export default ({
                         }}
                         checked={reactData.allowReplyAll}
                       />
-                      <Typography className={classes.radioText}>Allow Reply all</Typography>
+                      <Typography style={AVATextStyle({ size: 0.5, margin: { left: 0.5 } })}>Allow Reply all</Typography>
                     </Box>
                   </Box>
                 }
@@ -532,17 +541,17 @@ export default ({
                       }}
                       checked={reactData.isUrgent}
                     />
-                    <Typography className={classes.radioText}>Mark as Urgent</Typography>
+                    <Typography style={AVATextStyle({ size: 0.5, margin: {left: 0.5 } })}>Mark as Urgent</Typography>
                   </Box>
                 </Box>
                 {(reactData.attachmentList.length > 0) &&
                   <Box display='flex' flexDirection='column' justifyContent='flex-start'
                     alignItems='flex-start' key={'qrOpt_attachmentlist'}
                   >
-                    <Typography className={classes.radioHead}>Attachments:</Typography>
+                    <Typography style={AVATextStyle({ size: 0.9, margin: { top: 1 } })}>Attachments:</Typography>
                     {reactData.attachmentList.map((a, x) => (
                       <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                        alignItems='flex-start' key={`qrOpt_attachmentLine-${x}`}
+                        alignItems='center' key={`qrOpt_attachmentLine-${x}`} overflow='hidden'
                       >
                         <DeleteIcon
                           className={classes.radioButton}
@@ -554,7 +563,7 @@ export default ({
                             setForceRedisplay(!forceRedisplay);
                           }}
                         />
-                        <Typography className={classes.radioText}>{a.Key}</Typography>
+                        <Typography style={AVATextStyle({ size: 0.5 })}>{a.Key}</Typography>
                       </Box>
                     ))}
                   </Box>
