@@ -33,6 +33,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 import AVAConfirm from './AVAConfirm';
 
 import { AVAclasses } from '../../util/AVAStyles';
+import useSession from '../../hooks/useSession';
 
 const useStyles = makeStyles(theme => ({
   textLine: {
@@ -111,7 +112,7 @@ const useStyles = makeStyles(theme => ({
   radioButton: {
     marginTop: 0,
     marginRight: 0,
-    marginLeft: 0,
+    marginLeft: 3,
     paddingLeft: 0,
     paddingRight: 1,
   },
@@ -136,6 +137,7 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
     marginBottom: theme.spacing(0.75),
+    flexWrap: 'nowrap'
   },
   page: {
     height: 950,
@@ -177,6 +179,80 @@ const useStyles = makeStyles(theme => ({
 }));
 
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
+
+  const { state } = useSession();
+
+  let user_fontSize = 1;
+  if (state.session.customizations && state.session.customizations.font_size) {
+    user_fontSize = Math.max(state.session.customizations.font_size, 1);
+  }
+
+  const titleStyle = {
+    fontSize: `${user_fontSize * 1.3}rem`,
+    fontWeight: 'bold',
+    lineHeight: 1
+  };
+
+  const subTitleStyle = {
+    marginRight: 2,
+    marginBottom: 0.5,
+    fontSize: `${user_fontSize * 1.2}rem`,
+    lineHeight: 1
+  };
+
+
+  const headerLineStyle = {
+    marginTop: '3rem',
+    marginBottom: '1rem',
+    fontSize: `${user_fontSize * 1.3}rem`,
+    fontWeight: 'bold'
+  };
+
+  const textLineStyle = {
+    fontSize: `${user_fontSize}rem`,
+    flexGrow: 0,
+    marginRight: '7px',
+    lineHeight: 1
+  };
+
+  const descTextStyle = {
+    fontSize: `${user_fontSize * 0.7}rem`,
+    marginLeft: 15,
+    marginBottom: 10,
+    marginTop: 0,
+    paddingLeft: 0,
+    paddingRight: 50,
+    lineHeight: 1
+  };
+
+  const qualOptionStyle = {
+    marginTop: 0,
+    marginLeft: 10,
+    marginRight: 2,
+    marginBottom: 0.95,
+    fontSize: `${user_fontSize * 0.6}rem`
+  };
+
+  const qualTextStyle = {
+    fontSize: `${user_fontSize * 0.7}rem`,
+    marginLeft: 5,
+    marginBottom: 0,
+    marginTop: 10,
+    paddingLeft: 0,
+    paddingRight: 50,
+    fontWeight: 'bold'
+  };
+
+  const radioTextStyle = {
+    fontSize: `${user_fontSize * 0.6}rem`,
+    marginLeft: 5,
+    marginBottom: 0,
+    marginTop: 0,
+    paddingLeft: 0,
+    paddingRight: 50,
+  };
+
+
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -309,6 +385,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if (defaultCheckedWords.includes(dValue)
           || (defaultObj.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaultObj[instruction[0]]))) {
           defaultChecked.push(instruction[0]);
+          /*   When default sets on a check box for something with qualifiers, we need to expose the qualifiers...  (but don't know how yet!)
+          if (!dataRows.hasOwnProperty('checked') || (dataRows.checked.length === 0)) {
+            dataRows.checked = [instruction[0]];
+            await getObservations(instruction[0], this_item.oKey, dataRows.checked);
+          }
+          */
         }
         continue;
       }
@@ -624,12 +706,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           >
             <Box display='flex' flexDirection='column' key={'titlesection'}>
               <Typography
-                className={classes.title}
+                className={classes.title} style={titleStyle}
               >
                 {factName}
               </Typography>
               <Typography
-                className={classes.subTitle}
+                className={classes.subTitle} style={subTitleStyle}
               >
                 {prompt || `Please select from these options`}
               </Typography>
@@ -706,8 +788,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   marginLeft={(this_item.checkbox || this_item.input) ? 2 : 0}
                   marginRight={2}
                   marginBottom={0.5}
+                  marginTop={0.5}
                   border={(isChecked(this_item) || textIsPresent(this_item.text)) ? 1 : 0}
                   borderRadius={'16px'}
+                  minHeight={`${user_fontSize * 2}rem`}
+                  justifyContent='center'
                   key={'fullRow' + this_index}
                 >
                   <Box
@@ -718,6 +803,28 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     className={this_item.input ? classes.inputRow : classes.listItem}
                     justifyContent='flex-start'
                     alignItems='center'
+                    onClick={async () => {
+                      if (this_item.checkbox) {
+                        if (!dataRows.hasOwnProperty('checked') || (dataRows.checked.length === 0)) {
+                          dataRows.checked = [this_item.text];
+                          await getObservations(this_item.text, this_item.oKey, dataRows.checked);
+                        }
+                        else {
+                          let x = dataRows.checked.indexOf(this_item.text);
+                          let workChecked = dataRows.checked;
+                          if (x === -1) {
+                            workChecked.push(this_item.text);
+                            await getObservations(this_item.text, this_item.oKey, workChecked);
+                          }
+                          else {
+                            workChecked.splice(x, 1);
+                            dataRows.checked = workChecked;
+                            setDataRows(dataRows);
+                            setForceRedisplay(!forceRedisplay);
+                          }
+                        }
+                      }
+                    }}
                   >
                     {this_item.checkbox &&
                       <Checkbox
@@ -725,31 +832,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         checked={isChecked(this_item)}
                         disableRipple
                         key={'checkbox' + this_index}
-                        onClick={async () => {
-                          if (!dataRows.hasOwnProperty('checked') || (dataRows.checked.length === 0)) {
-                            dataRows.checked = [this_item.text];
-                            await getObservations(this_item.text, this_item.oKey, dataRows.checked);
-                          }
-                          else {
-                            let x = dataRows.checked.indexOf(this_item.text);
-                            let workChecked = dataRows.checked;
-                            if (x === -1) {
-                              workChecked.push(this_item.text);
-                              await getObservations(this_item.text, this_item.oKey, workChecked);
-                            }
-                            else {
-                              workChecked.splice(x, 1);
-                              dataRows.checked = workChecked;
-                              setDataRows(dataRows);
-                              setForceRedisplay(!forceRedisplay);
-                            }
-                          }
-                        }}
                       />
                     }
                     {!this_item.input &&
                       <Typography
-                        className={this_item.header ? classes.headerLine : classes.textLine}
+                        style={this_item.header ? headerLineStyle : textLineStyle}
                       >
                         {this_item.bold
                           ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
@@ -764,6 +851,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         key={'text' + this_index}
                         helperText={this_item.text}
                         multiline
+                        inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                        FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                         onKeyPress={(event) => {
                           onCheckEnter(event, this_item);
                         }}
@@ -782,20 +871,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                   </Box>
                   {(this_item.desc && isChecked(this_item)) &&
-                    <Typography className={classes.descText}>{this_item.desc}</Typography>
+                    <Typography style={descTextStyle}>{this_item.desc}</Typography>
                   }
                   {showQualifier(this_item) &&
                     dataRows[this_item.text].map((qR, qRndx) => (
                       <Box
                         key={'qRow' + qRndx}
                         display="flex"
-                        className={classes.qualOption}
+                        style={qualOptionStyle}
                         flexDirection='column'
                         justifyContent="center"
                       >
                         <Box display='flex' flexDirection='column' justifyContent='center'
                           alignItems='flex-start' key={'qrRow' + qR.title}>
-                          <Typography className={classes.qualText}>{qR.title}</Typography>
+                          <Typography style={qualTextStyle}>{qR.title}</Typography>
                           <Box display='flex' flexDirection='row' justifyContent='flex-start'
                             alignItems='center' flexWrap='wrap' key={'qrOpt' + qR.title}
                           >
@@ -812,7 +901,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       className={classes.radioButton}
                                       size="small"
                                       checked={isQChecked(this_item, qR, opt.display)} />
-                                    <Typography className={classes.radioText}>{opt.display}</Typography>
+                                    <Typography style={radioTextStyle}>{opt.display}</Typography>
                                   </React.Fragment>
                                 }
                                 {opt.type === 'prompt' &&
@@ -822,7 +911,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       size="small"
                                       checked={isQChecked(this_item, qR, opt.display)} />
                                     <TextField
-                                      className={classes.radioText}
+                                      style={radioTextStyle}
                                       id={'text' + this_index + oX}
                                       variant={'standard'}
                                       key={'text' + this_index + oX}
@@ -864,7 +953,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         setForceRedisplay(!forceRedisplay);
                       }}
                     />
-                    <Typography className={classes.radioText}>{a.Key}</Typography>
+                    <Typography style={radioTextStyle}>{a.Key}</Typography>
                   </Box>
                 ))}
               </Box>
@@ -1033,7 +1122,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   {(!factType || (factType !== 'list')) &&
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color:'white' }}
+                      style={{ backgroundColor: 'green', color: 'white' }}
                       size='small'
                       onClick={() => {
                         let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, reactData.textInput);

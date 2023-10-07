@@ -12,6 +12,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
 import { AVAclasses } from '../../util/AVAStyles';
+import useSession from '../../hooks/useSession';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -71,6 +72,31 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
+  const { state } = useSession();
+
+  let user_fontSize = 1;
+  if (state.session.customizations && state.session.customizations.font_size) {
+    user_fontSize = Math.max(state.session.customizations.font_size, 1);
+  }
+
+  const titleStyle = {
+    marginTop: 24,
+    marginRight: 16,
+    fontSize: `${user_fontSize * 1.5}rem`,
+    fontWeight: 'bold',
+    lineHeight: 1
+  };
+
+  function notTitleStyle(str) {
+    return {
+      marginTop: (str.match(/(indent=.)/g) ? 0 : 24),
+      marginRight: 16,
+      fontSize: (str.match(/(indent=.)/g) ? `${user_fontSize * 0.8}rem` : `${user_fontSize}rem`),
+      lineHeight: 1
+    };
+  };
+
+
 
   // **************************
 
@@ -86,7 +112,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
         marginLeft={3 + (3 * Number(makeIndent(promptLines[0])))}
       >
         <Typography
-          className={classes.title}
+          style={titleStyle}
           id='scroll-dialog-title'
           key={'promptConfirm'}
         >
@@ -107,7 +133,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
                 marginLeft={3 + (3 * Number(makeIndent(pLine)))}
               >
                 <Typography
-                  className={index === 0 ? classes.title : classes.notTitle}
+                  style={index === 0 ? titleStyle : notTitleStyle(pLine)}
                   id='scroll-dialog-title'
                   key={'promptConfirm' + index}
                 >

@@ -22,7 +22,6 @@ import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContentText from '@material-ui/core/DialogContentText';
 
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
@@ -242,6 +241,70 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const { enqueueSnackbar } = useSnackbar();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
+
+  let user_fontSize = 1;
+  if (state.session.customizations && state.session.customizations.font_size) {
+    user_fontSize = Math.max(state.session.customizations.font_size, 1);
+  }
+
+  const locationLineStyle = {
+    fontSize: `${user_fontSize * 1.0}rem`,
+    lineHeight: 1,
+    marginBottom: 8
+  };
+
+  function preferenceLineStyle(prefLine) {
+    let textOut = prefLineText(prefLine);
+    let textBreadth = textOut.length * user_fontSize;
+    let renderSize = `${user_fontSize * (50 / Math.max(50, textBreadth))}rem`;
+    return {
+      lineHeight: 1,
+      textWrap: 'anywhere',
+      fontSize: renderSize,
+      marginBottom: 8
+    };
+  }
+
+  function prefLineText(prefLine) {
+    if (prefLine.private) { return `${prefLine.type} un-published`; }
+    else if (prefLine.type === 'e-Mail') { return prefLine.display.join('@'); }
+    else { return `${prefLine.type} ${prefLine.display[0]}`; }
+  };
+
+  function lastNameStyle(textOut) {
+    let textBreadth = textOut.length * user_fontSize;
+    let renderSize = `${user_fontSize * 2 * (25 / Math.max(25, textBreadth))}rem`;
+    return {
+      fontWeight: 'bold',
+      fontSize: renderSize,
+      marginTop: 16,
+      marginRight: 16,
+      lineHeight: 0.8
+    };
+  };
+
+  const titleStyle = {
+    fontSize: `${user_fontSize * 1.3}rem`,
+    marginTop: 24,
+    marginLeft: 16,
+    marginRight: 16,
+    fontWeight: 'bold',
+    lineHeight: 1
+  };
+
+  const memberOfStyle = {
+    fontWeight: 'bold',
+    fontSize: `${user_fontSize}rem`,
+    marginTop: 16,
+    marginRight: 16,
+    lineHeight: 0.8
+  };
+
+  const firstNameStyle = {
+    fontSize: `${user_fontSize * 1.5}rem`,
+    lineHeight: 1,
+    marginBottom: 16
+  };
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
@@ -500,23 +563,24 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
           <React.Fragment>
             {!showSuperSize &&
               <React.Fragment>
-                <DialogContentText
-                  className={classes.title}
-                  id='scroll-dialog-title'
+                <Typography
+                  className={classes.title} style={titleStyle}
                 >
                   {multiGroups ? 'Directory Listing' : `Members of the ${pGroupName} Group`}
-                </DialogContentText>
+                </Typography>
                 <TextField
                   id='List Filter'
                   onChange={event => (handleChangePersonFilter(event.target.value))}
                   className={classes.freeInput}
-                  label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+                  helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                  FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                   variant={'standard'}
                   autoComplete='off'
                 />
               </React.Fragment>
             }
-            <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+            <Paper component={Box} variant='outlined' overflow='auto' square>
               <List>
                 <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                   {rowsWritten = 0}
@@ -527,7 +591,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                         {rowsWritten++}
                       </Typography>
-                      <Box display='flex' flexDirection='column'>
+                      <Box display='flex' flexDirection='column' >
                         <Box
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
                           key={this_item.person_id + 'r' + index}
@@ -545,21 +609,18 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 setshowSuperSize(true);
                               }}
                               display='flex' flexDirection='column'>
-                              <Box >
-                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                  <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
-                                  {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
-                                </Box>
-                                {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                                <Typography style={lastNameStyle(this_item.name.last || this_item.display_name)} >{this_item.name.last || this_item.display_name}</Typography>
+                                <Typography style={firstNameStyle}>{this_item.name.first}</Typography>
                               </Box>
                               {multiGroups && this_item.hasOwnProperty('member_of') &&
-                                <Typography key={`member_of-${index}`} className={classes.lastName}>{sentenceCase(this_item.member_of)}</Typography>
+                                <Typography key={`member_of-${index}`} style={memberOfStyle}>{sentenceCase(this_item.member_of)}</Typography>
                               }
                               {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
-                                <Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>
+                                <Typography key={`locationLine-${index}.${locIndex}`} style={locationLineStyle}>{locLine.trim()}</Typography>
                               ))}
                               {(this_item.directory_option === 'exclude') &&
-                                <Typography key={`excluded-${index}`} className={classes.locationLine}>{'** Excluded from Directory **'}</Typography>
+                                <Typography key={`excluded-${index}`} style={locationLineStyle}>{'** Excluded from Directory **'}</Typography>
                               }
                               <Box
                                 display='flex'
@@ -576,18 +637,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                         style={{ color: 'inherit', textDecoration: 'none' }}>
                                         <Typography
                                           key={`prefLine-${index}.${prefIndex}`}
-                                          className={classes.preferenceLine}
+                                          style={preferenceLineStyle(prefLine)}
                                         >
-                                          {prefLine.type} {prefLine.display.join('@')}
+                                          {prefLineText(prefLine)}
                                         </Typography>
-                                        {(prefLine.private) &&
-                                          <Typography
-                                            key={`prefLine-${index}.${prefIndex}_UNPUB`}
-                                            className={classes.preferenceLine}
-                                          >
-                                            *UNPUBLISHED*
-                                          </Typography>
-                                        }
                                       </a>
                                     )))}
                                 </Box>
@@ -620,6 +673,11 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     </Paper>
                   )
                 ))}
+                {(rowsWritten === 0) &&
+                  <Box display='flex' marginLeft={3} flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                    <Typography style={firstNameStyle}>{'No Directory entries match your search!'}</Typography>
+                  </Box>
+                }
               </List>
             </Paper>
             {showAddPrompt &&
@@ -910,7 +968,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     {superSizeData.local_data && (Object.keys(superSizeData.local_data).length > 0) &&
                       <React.Fragment>
                         {Object.keys(superSizeData.local_data).map((local, l) => (
-                          <Box display='flex' className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
+                          <Box display='flex' key={`local_${l}`} className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
                             <Typography key={`localtext_${l}-superSize`} className={classes.adName}>
                               {`${sentenceCase(local)}`}
                             </Typography>
