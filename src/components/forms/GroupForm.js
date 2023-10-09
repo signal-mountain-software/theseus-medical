@@ -506,7 +506,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         {workingMemberList && workingMemberList.length > 0 &&
           <React.Fragment>
             {!showSuperSize &&
-              <React.Fragment>
+              <Box>
                 <Typography
                   className={classes.title} style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
                 >
@@ -522,7 +522,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   variant={'standard'}
                   autoComplete='off'
                 />
-              </React.Fragment>
+              </Box>
             }
             <Paper component={Box} variant='outlined' overflow='auto' square>
               <List>

@@ -1249,18 +1249,18 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 mb={2}
               >
                 <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
-                <Typography style={AVATextStyle({ size: 0.5, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                 {loading.startsWith('Common activities') ?
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
                     flexWrap='wrap' textOverflow='ellipsis' width='100%'
                     key={'loadingWordBox'}
                   >
-                    <Typography style={AVATextStyle({ size: 0.5 })}>{'Common activities for'}</Typography>
-                    <Typography style={AVATextStyle({ size: 0.5 })}>{loading.split(' for ')[1]}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
                   </Box>
                   :
-                  <Typography style={AVATextStyle({ size: 0.5 })}>{loading}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
                 }
               </Box>
               <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
