@@ -98,16 +98,6 @@ const useStyles = makeStyles(theme => ({
   popUpFooter: {
     fontSize: theme.typography.fontSize * 0.8,
   },
-
-  qualText: {
-    fontSize: theme.typography.fontSize * 1.0,
-    marginLeft: 0,
-    marginBottom: 0,
-    marginTop: 10,
-    paddingLeft: 0,
-    paddingRight: 50,
-    fontWeight: 'bold'
-  },
   radioButton: {
     marginTop: 0,
     marginRight: 0,
@@ -140,20 +130,6 @@ const useStyles = makeStyles(theme => ({
   },
   page: {
     height: 950,
-  },
-  qualOption: {
-    marginTop: 0,
-    marginLeft: theme.spacing(3),
-    marginRight: theme.spacing(2),
-    marginBottom: theme.spacing(0.9375),
-    fontSize: theme.typography.fontSize * 0.8
-  },
-  qualItem: {
-    marginTop: 0,
-    marginLeft: theme.spacing(3),
-    marginRight: theme.spacing(2),
-    marginBottom: 0,
-    fontSize: theme.typography.fontSize * 0.8
   },
   title: {
     marginTop: theme.spacing(2),
@@ -828,7 +804,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       className={classes.radioButton}
                                       size="small"
                                       checked={isQChecked(this_item, qR, opt.display)} />
-                                    <Typography style={AVATextStyle({ size: 0.6, margin: { left: 0.3, right: 3 } })}>{opt.display}</Typography>
+                                    <Typography style={AVATextStyle({ size: 0.6, margin: { top: 1, bottom: 1, left: 0.3, right: 3 } })}>{opt.display}</Typography>
                                   </React.Fragment>
                                 }
                                 {opt.type === 'prompt' &&
@@ -838,7 +814,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       size="small"
                                       checked={isQChecked(this_item, qR, opt.display)} />
                                     <TextField
-                                      style={AVATextStyle({ size: 0.6, margin: { left: 0.3, right: 3 } })}
+                                      style={AVATextStyle({ size: 0.6, margin: { top: 1, bottom: 1, left: 0.3, right: 3 } })}
                                       id={'text' + this_index + oX}
                                       variant={'standard'}
                                       key={'text' + this_index + oX}

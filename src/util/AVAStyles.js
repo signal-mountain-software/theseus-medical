@@ -94,15 +94,16 @@ export function AVATextStyle(options = {}) {
     let user_fontSize = AVADefaults({ fontSize: 'get' });
     let returnStyle = {
         fontSize: `${user_fontSize * (options.size || 1)}rem`,
-        lineHeight: (Math.max(1.2, user_fontSize * (options.size || 1) * 0.4)),
-        overflow: (options.overflow || 'hidden')
+        lineHeight: 0.9,
+        overflow: (options.overflow || 'hidden'),
+        paddingBottom: `${2 * user_fontSize * (options.size || 1)}px`
     };
     if (options.bold) { returnStyle.fontWeight = 'bold'; }
     if (options.margin) {
         if (options.margin.right) { returnStyle.marginRight = options.margin.right * 16; }
         if (options.margin.left) { returnStyle.marginLeft = options.margin.left * 16; }
         if (options.margin.top) { returnStyle.marginTop = options.margin.top * 16; }
-        if (options.margin.bottom) { returnStyle.marginBottom = options.margin.bottom * 16; }
+        if (options.margin.bottom) { returnStyle.marginBottom = (options.margin.bottom * 16) - (2 * user_fontSize * (options.size || 1)); }
     }
     if (options.align) { returnStyle.textAlign = options.align; }
     if (options.color) { returnStyle.textAlign = options.color; }

@@ -12,7 +12,7 @@ import { makeDate } from '../../util/AVADateTime';
 import { determineClass } from '../../util/AVAGroups';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getPerson, getImage, getPersonByWords, addGuest, addVendor, makeName } from '../../util/AVAPeople';
-import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
 
 import { useSnackbar } from 'notistack';
 
@@ -364,7 +364,7 @@ export default ({ onSave, onClose }) => {
                     >
                       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
                         <Typography style={AVATextStyle({ size: 1.3, bold: true })}>{`${titleCase(candidate.name.first)} ${titleCase(candidate.name.last)}`}</Typography>
-                        <Typography style={AVATextStyle({ size: 1.2, bold: true, margin: { right: 2, bottom: 0.5 } })} variant='h6'>{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
+                        <Typography style={AVATextVariableStyle(`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`, { bold: true, margin: { right: 2, bottom: 0.5 } })} >{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
                       </Box>
                     </Box>
                   )

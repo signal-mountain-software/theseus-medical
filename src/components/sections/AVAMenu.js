@@ -1492,8 +1492,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             patient={patient}
             groupData={groupData}
             open={true}
-            onClose={() => {
+            onClose={(updatedPerson) => {
               setShowProfileEdit(false);
+              if (updatedPerson && updatedPerson.person_id) {
+                window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+              }
             }}
           />
         }

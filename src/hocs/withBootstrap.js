@@ -589,10 +589,11 @@ export default Component => props => {
       setDoneTrying(true);
       return [false, null];
     }
+    let user_fontSize = 1;
     if (sessionRec.Item.customizations && sessionRec.Item.customizations.font_size) {
-      AVADefaults({ fontSize: Math.max(sessionRec.Item.customizations.font_size, 1) });
+      user_fontSize = sessionRec.Item.customizations.font_size;
     }
-    else { AVADefaults({ fontSize: 1 }); }
+    AVADefaults({ fontSize: Math.max(user_fontSize, 1) });
     let logoRec = await dbClient
       .get({
         Key: {

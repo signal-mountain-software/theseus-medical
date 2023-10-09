@@ -20,7 +20,6 @@ import IconButton from '@material-ui/core/IconButton';
 import Paper from '@material-ui/core/Paper';
 import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
-// import Tooltip from '@material-ui/core/Tooltip';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -31,7 +30,7 @@ import Radio from '@material-ui/core/Radio';
 import Checkbox from '@material-ui/core/Checkbox';
 import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
-// import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import Slider from '@material-ui/core/Slider';
 
 import CircularProgress from '@material-ui/core/CircularProgress';
 
@@ -39,8 +38,6 @@ import ClientsSection from '../sections/ClientsSection';
 import RelationshipSection from '../sections/RelationshipSection';
 import LinkedAccountsSection from '../sections/LinkedAccountsSection';
 import MessageRouting from '../sections/MessageRouting';
-
-// import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -171,6 +168,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
   const [photoChanges, setPhotoChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(false);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
+  const [fontFactorChanged, setFontFactorChanged] = React.useState(false);
 
   const [editPhotoKey, setEditPhotoKey] = React.useState();
   const [editPhoto, setEditPhoto] = React.useState(null);
@@ -178,6 +176,9 @@ export default ({ patient, picture, groupData, open, onClose }) => {
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
+
+  const [user_fontSize, setUserFontSize] = React.useState(1);
+  const [fontFactor, setFontFactor] = React.useState(1);
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
@@ -200,6 +201,9 @@ export default ({ patient, picture, groupData, open, onClose }) => {
           });
         }
         let targetSession = await getSessionData(patient.person_id);
+        if (targetSession.customizations && targetSession.customizations.font_size) {
+          setUserFontSize(targetSession.customizations.font_size);
+        }
         let respArray = [];
         if (!targetSession.hasOwnProperty('responsible_for') || !targetSession.responsible_for) { }
         else if (Array.isArray(targetSession.responsible_for)) { respArray.push(...targetSession.responsible_for); }
@@ -257,6 +261,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
         if (isNaN(localPersonRec.messaging?.surrogate)) { workLocalData.surrogate = localPersonRec.messaging?.surrogate; }
         else { workLocalData.surrogate = (formatPhone('' + localPersonRec.messaging?.surrogate)); }
         setLocalData(workLocalData);
+
       }
     }
     initialize();
@@ -283,7 +288,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
           }
           case 'boolean': {
             let bVal = ['yes', 'ok', 'true'].includes(localObj[ldKey]);
-            returnObj[ldKey] = ( bVal ? 'yes' : 'no' ); 
+            returnObj[ldKey] = (bVal ? 'yes' : 'no');
             break;
           }
           case 'date': {
@@ -294,7 +299,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
             returnObj[ldKey] = makeDate(localObj[ldKey]).absolute;
             break;
           }
-          default: {  }
+          default: { }
         }
       }
     }
@@ -527,6 +532,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       })
     };
     let updateExpression = 'set #s = :s, ';
+    let attributeNames = { "#s": "status" };
     if (responsibleArray) {
       attributeValues[':r'] = responsibleArray;
       updateExpression += 'responsible_for = :r, ';
@@ -558,13 +564,19 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       attributeValues[':p'] = patient.person_id;
       updateExpression += 'patient_id = :p, person_id = :p, user_id = :p, ';
     }
+    if (fontFactorChanged) {
+      attributeValues[':f'] = fontFactor * user_fontSize;
+      attributeNames['#c'] = 'customizations';
+      attributeNames['#f'] = 'font_size';
+      updateExpression += '#c.#f = :f, ';
+    }
     updateExpression = updateExpression.substring(0, updateExpression.length - 2);
     await dbClient
       .update({
         Key: { session_id: patient.person_id },
         UpdateExpression: updateExpression,
         ExpressionAttributeValues: attributeValues,
-        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeNames: attributeNames,
         TableName: "SessionsV2",
       })
       .promise()
@@ -891,9 +903,9 @@ export default ({ patient, picture, groupData, open, onClose }) => {
               {state.session.local_data &&
                 (Object.keys(state.session.local_data).length > 0) &&
                 <Box flexGrow={2} display='flex' flexDirection='column'>
-                  {Object.keys(state.session.local_data).map((local,lX) => (
-                    <TextField 
-                       key={`local_${lX}`} 
+                  {Object.keys(state.session.local_data).map((local, lX) => (
+                    <TextField
+                      key={`local_${lX}`}
                       classes={{ root: classes.idText }}
                       id={`loc-${local}`}
                       value={localData.local_data_display[local] || ' '}
@@ -904,7 +916,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                             localData.local_data_display[local] = formatPhone(event.target.value);
                             break;
                           }
-                          case 'boolean': {                             
+                          case 'boolean': {
                             localData.local_data[local] = ['yes', 'ok', 'true'].includes(event.target.value.toLowerCase());
                             localData.local_data_display[local] = event.target.value;
                             break;
@@ -1029,6 +1041,55 @@ export default ({ patient, picture, groupData, open, onClose }) => {
             session={patientSession}
           />
         }
+        < Box m={2} >
+          <Paper component={Box} variant={'outlined'}>
+            <Box mt={1} py={1} px={3} borderBottom={2}>
+              <Box flexGrow={1}>
+                <Typography variant='h6'>Font size</Typography>
+              </Box>
+            </Box>
+          </Paper>
+          <Paper
+            component={Box}
+            p={3}
+            variant='outlined'
+            display='flex'
+            flexDirection='row'
+            justifyContent='center'
+            alignItems='center'>
+            <Box flexGrow={1} mr={3}
+              display="flex"
+              flexDirection='column'
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Box width={300} >
+                <Slider
+                  value={fontFactor * user_fontSize}
+                  onChange={(event, newValue) => {
+                    setFontFactor(newValue / user_fontSize);
+                    setChanges(true);
+                    setFontFactorChanged(true);
+                  }}
+                  aria-labelledby="continuous-slider"
+                  step={.1}
+                  min={1}
+                  max={5}
+                />
+              </Box>
+              <Typography key={`default-fontsize`}
+                style={{
+                  fontSize: `${user_fontSize * 1.5 * (fontFactor || 1)}rem`,
+                  lineHeight: 1.2,
+                  overflow: ('hidden')
+                }}
+                className={classes.titleRow}>
+                {`This is the default font size for ${patient?.name?.first} ${patient?.name?.last}`}
+              </Typography>
+            </Box>
+          </Paper>
+        </Box >
+
         < Box m={2} >
           <Paper component={Box} variant={'outlined'}>
             <Box mt={1} py={1} px={3} borderBottom={2}>
