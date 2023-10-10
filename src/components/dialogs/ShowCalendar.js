@@ -5,7 +5,7 @@ import { useSnackbar } from 'notistack';
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays } from '../../util/AVADateTime';
 import { isEmpty, isObject } from '../../util/AVAUtilities';
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -367,14 +367,14 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                     key={'loadingBox'}
                     mb={2}
                   >
-                    <Typography variant='h5' className={classes.lastName} >{`Building your Calendar`}</Typography>
-                    <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography style={AVATextStyle({ size: 1.5, align: 'center' })} className={classes.lastName} >{`Building your Calendar`}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Box
                       display='flex' flexDirection='column' justifyContent='center' alignItems='center'
                       flexWrap='wrap' textOverflow='ellipsis' width='100%'
                       key={'loadingWordBox'}
                     >
-                      <Typography>{statusMessage}</Typography>
+                      <Typography style={AVATextStyle({ size: 0.8, align: 'center' })}>{statusMessage}</Typography>
                     </Box>
                   </Box>
                   <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />

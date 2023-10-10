@@ -17,6 +17,8 @@ import { makeArray } from '../../util/AVAUtilities';
 
 import useSession from '../../hooks/useSession';
 
+import { AVATextStyle } from '../../util/AVAStyles';
+
 const useStyles = makeStyles(theme => ({
   formControl: {
     marginTop: theme.spacing(4),
@@ -208,10 +210,10 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
                     key={'loadingBox'}
                     mb={2}
                   >
-                    <Typography variant='h5' className={classes.lastName} sx={{ marginBottom: '15px' }}>
+                    <Typography style={AVATextStyle({ size: 1.5, align: 'center' })} className={classes.lastName} >
                       {reactData.progressMessage}
                     </Typography>
-                    <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                   </Box>
                   <CircularProgress />
                 </React.Fragment>
