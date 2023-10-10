@@ -29,13 +29,12 @@ import AutorenewIcon from '@material-ui/icons/Autorenew';
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
-import DialogContentText from '@material-ui/core/DialogContentText';
 import DialogContent from '@material-ui/core/DialogContent';
 import Dialog from '@material-ui/core/Dialog';
 
 import Button from '@material-ui/core/Button';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -192,6 +191,8 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
 
   const [anchorEl, setAnchorEl] = React.useState(null);
 
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
+
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
@@ -336,25 +337,33 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
               justifyContent='center'
               alignItems='flex-start'
             >
-              <DialogContentText className={classes.title} id='scroll-dialog-title'>
+              <Typography
+                className={classes.title} style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
+              >
                 {!session.patient_display_name ? `Calendar of Events` : `${session.patient_display_name.split(',').pop()}'s Calendar`}
-              </DialogContentText>
-              {(myCalendar.length > 0) ?
-                <Box
-                  display='flex' flexDirection='row' alignItems={'center'}
-                  key={'vRowRefresh'}
-                >
-                  <DialogContentText className={classes.subDescriptionText2} >
+              </Typography>
+
+              <Box
+                display='flex' flexDirection='row' alignItems={'center'}
+                key={'vRowRefresh'}
+              >
+                {(myCalendar.length > 0) ?
+                  <Typography
+                    className={classes.subDescriptionText2} style={AVATextStyle({ margin: { left: 2, right: 2, bottom: 2 } })}
+                  >
                     {reactData.selectDate ? reactData.selectDate.absolute_full :
                       `From ${makeDate(myCalendar[0].date).relative} to ${makeDate(myCalendar[myCalendar.length - 1].date).relative}`
                     }
-                  </DialogContentText>
-                </Box>
-                :
-                <DialogContentText className={classes.subDescriptionText}>
-                  This Calendar is empty!
-                </DialogContentText>
-              }
+                  </Typography>
+
+                  :
+                  <Typography
+                    className={classes.subDescriptionText2} style={AVATextStyle({ margin: { left: 2, right: 2, bottom: 2 } })}
+                  >
+                    This Calendar is empty!
+                  </Typography>
+                }
+              </Box>
             </Box>
             <Box
               component="img"
@@ -434,6 +443,8 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
               variant={'standard'}
               key={'filtertext'}
               helperText={'Filter/Search or Date'}
+              inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+              FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
               multiline
               onChange={(event) => {
                 let lastUsed = handleChangeRequestFilter(event.target.value, reactData.lastFilterTimeoutUsed);
@@ -465,9 +476,9 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                   key={'loadingBox'}
                   mb={2}
                 >
-                  <Typography variant='h5' className={classes.lastName} >{`Loading More Dates`}</Typography>
-                  <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                  <Typography>{reactData.loading}</Typography>
+                  <Typography style={AVATextStyle({ size: 1.5, align: 'center' })} className={classes.lastName} >{`Loading More Dates`}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.8 })}>{reactData.loading}</Typography>
                 </Box>
                 <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: reactData.pWidth }} value={reactData.progress} />
                 <CircularProgress />
@@ -500,8 +511,8 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                                   {working_date = this_event.date}
                                 </Typography>
                                 <Typography
+                                  style={AVATextStyle({ size: 1.5 })}
                                   key={working_date + 'head' + index}
-                                  variant='h6'
                                 >
                                   {makeDate(working_date).absolute}
                                 </Typography>
@@ -512,7 +523,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                         <GridListTile
                           key={this_event.id + 'r' + index}
                           style={{ marginBottom: '0px', marginTop: '0px' }}
-                            cols={1}
+                          cols={1}
                         >
                           <Paper
                             component={Box}
@@ -549,8 +560,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                                 enqueueSnackbar(`Event data=${JSON.stringify(this_event)}`, { variant: 'info', persist: true });
                               }}
                             >
-                              <Typography
-                                variant='h5'>
+                                <Typography style={AVATextStyle({ })}>
                                 {`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}
                               </Typography>
                             </Box>
@@ -568,7 +578,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                           <Box flexGrow={1}>
                             <Typography
                               key={'head'}
-                              variant='h6'
+                              style={AVATextStyle({ size: 1.5 })}
                             >
                               No Calendar Entries to Show!
                             </Typography>

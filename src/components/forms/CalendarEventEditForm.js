@@ -39,9 +39,9 @@ import AVATextInput from '../forms/AVATextInput';
 import AVAConfirm from '../forms/AVAConfirm';
 import useSession from '../../hooks/useSession';
 
-import Input from '@material-ui/core/Input';
+import TextField from '@material-ui/core/TextField';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -186,6 +186,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     cancelPending: false,
     numberOfOwnedSlots: 0
   });
+
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   var rowsWritten = 0;
 
@@ -564,14 +566,14 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
               enqueueSnackbar(`AVA event=${pEventCode}`, { variant: 'info', persist: true });
             }}
           >
-            <Typography variant='h5' >{pOccData.description}</Typography>
+            <Typography style={AVATextStyle({ size: 1.2 })} >{pOccData.description}</Typography>
             {pOccData.date &&
-              <Typography className={classes.standardIndent} variant='body1'>
+              <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
                 {`${makeDate(pOccData.date).relative}${pOccData.time$ ? ' - ' + pOccData.time$ : ''}`}
               </Typography>
             }
             {pOccData.location &&
-              <Typography className={classes.standardIndent} variant='body1'>
+              <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
                 {pOccData.location}
               </Typography>
             }
@@ -630,11 +632,11 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                       {/* Slot Name */}
                       {(this_item.slotData.id !== this_item.slotData.owner) ?
                         <Box display='flex' mr={1} ml={1} flexDirection='row' justifyContent='center' alignItems='center'>
-                          <Typography variant='body1' className={classes.standard} >{makeSlotName(this_item.slotData.id)}</Typography>
+                          <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} >{makeSlotName(this_item.slotData.id)}</Typography>
                         </Box>
                         :
                         <Box display='flex' mr={0} ml={0} flexDirection='row' justifyContent='center' alignItems='center'>
-                          <Typography variant='body1' className={classes.standard} ></Typography>
+                          <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} ></Typography>
                         </Box>
                       }
                       {/* Image and Name */}
@@ -649,15 +651,19 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                             src={getImage(this_item.slotData.owner)}
                           />
                           <Box display='flex' flexWrap='wrap' flexDirection='column' flexGrow={1}>
-                            <Typography variant='h5' >{makeReadableName(this_item.slotData.name)}</Typography>
+                            <Typography style={AVATextStyle({ size: 1.2, margin: { right: 1 } })}  >{makeReadableName(this_item.slotData.name)}</Typography>
                             {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
                               (editNoteNumber === index ?
                                 <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>
-                                  <Input classes={{ root: classes.standard, input: classes.inputRule }}
+                                  <TextField
+                                    classes={{ root: classes.standard, input: classes.inputRule }}
+                                    id={`prompt-msg`}
+                                    key={`prompt-msg`}
                                     multiline
-                                    key={`noteData_${index}`}
+                                    inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
                                     defaultValue={this_item.slotData.notes || ''}
                                     onChange={(event) => { setNewNote(event.target.value); }}
+                                    autoComplete='off'
                                   />
                                   <SaveIcon
                                     aria-label="saveNote_icon"
@@ -671,7 +677,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                                   />
                                 </Box>
                                 :
-                                <Typography variant='body1' className={classes.standard} >
+                                <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} >
                                   {this_item.slotData.notes}
                                 </Typography>
                               )
