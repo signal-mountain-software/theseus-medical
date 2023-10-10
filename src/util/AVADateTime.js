@@ -7,8 +7,11 @@ export function addDays(pDate, pDays) {
 }
 
 export function daysDiff(d1, d2) {
+    let oneMinute = 1000 * 60;
     let one_day = 1000 * 60 * 60 * 24;
-    return Math.abs(Math.floor((d2.getTime() - d1.getTime()) / one_day));
+    let d1DST = d1.getTimezoneOffset();
+    let d2DST = d2.getTimezoneOffset();
+    return Math.abs(Math.floor((d2.getTime() - d1.getTime() - ((d2DST - d1DST) * oneMinute)) / one_day));
 }
 
 export function makeDate(pInput) {
@@ -27,7 +30,8 @@ export function makeDate(pInput) {
             'obs': '2099.1.1',
             'numeric': 20990101,
             'numeric$': '20990101',
-            'dayPart': 'day'   // afternoon
+            'dayPart': 'day',   // afternoon
+            'dayOfWeek': 0    // Sun = 0, Mon = 1, ... , Sat = 7
         };
     }
     let targetDateStamp, targetDate;
@@ -81,7 +85,8 @@ export function makeDate(pInput) {
                 'obs': '2099.1.1',
                 'numeric': 20990101,
                 'numeric$': '20990101',
-                'dayPart': 'day'
+                'dayPart': 'day',
+                'dayOfWeek': 9
             };
         }
     }
@@ -161,7 +166,8 @@ export function makeDate(pInput) {
         'obs': targetDateYMD.replace(regEx, '.'),
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
-        'dayPart': dayPart
+        'dayPart': dayPart,
+        'dayOfWeek': targetDate.getDay()
     };
 
     function buildDate(pString) {

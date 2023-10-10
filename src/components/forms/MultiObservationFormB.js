@@ -920,6 +920,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             author: c.account_id,
             proxy_user: fact.session.user_id,
             requestType: request_type,
+            activity_key: fact.activity_key,
             onBehalfOf: oBo,
             foreign_key,
             request: requestObj,

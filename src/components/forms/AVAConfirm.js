@@ -11,7 +11,7 @@ import CheckIcon from '@material-ui/icons/DoneSharp';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -86,7 +86,11 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
         marginLeft={3 + (3 * Number(makeIndent(promptLines[0])))}
       >
         <Typography
-          className={classes.title}
+          style={AVATextStyle({
+            margin: { top: 3, right: 2 },
+            size: 1.5,
+            bold: true
+          })}
           id='scroll-dialog-title'
           key={'promptConfirm'}
         >
@@ -107,7 +111,18 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
                 marginLeft={3 + (3 * Number(makeIndent(pLine)))}
               >
                 <Typography
-                  className={index === 0 ? classes.title : classes.notTitle}
+                  style={index === 0 ?
+                    AVATextStyle({
+                      margin: { top: 3, right: 2 },
+                      size: 1.5,
+                      bold: true
+                    })
+                    :
+                    AVATextStyle({
+                      margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 1.5), right: 1 },
+                      size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
+                    })
+                  }
                   id='scroll-dialog-title'
                   key={'promptConfirm' + index}
                 >

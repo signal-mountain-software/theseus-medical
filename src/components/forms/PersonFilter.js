@@ -1,5 +1,5 @@
 import React from 'react';
-import { listFromArray, makeArray } from '../../util/AVAUtilities';
+import { makeArray } from '../../util/AVAUtilities';
 import { makeName, getImage } from '../../util/AVAPeople';
 
 import Paper from '@material-ui/core/Paper';
@@ -10,9 +10,7 @@ import CheckIcon from '@material-ui/icons/Check';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContentText from '@material-ui/core/DialogContentText';
 import Button from '@material-ui/core/Button';
-import Slide from '@material-ui/core/Slide';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -21,7 +19,7 @@ import CloseIcon from '@material-ui/icons/Close';
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVATextVariableStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -33,15 +31,15 @@ const useStyles = makeStyles(theme => ({
     visibility: 'hidden'
   },
   freeInput: {
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
+    marginLeft: '25px',
+    marginRight: 2,
+    marginBottom: theme.spacing(2),
     paddingLeft: 0,
     paddingRight: 0,
-    paddingBottom: 0,
-    width: '90%',
+    paddingBottom: theme.spacing(1),
+    width: '60%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
-    minHeight: theme.typography.fontSize * 1.8,
   },
   title: {
     marginTop: theme.spacing(3),
@@ -67,14 +65,19 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(2),
     fontSize: theme.typography.fontSize * 0.8,
   },
+  listItem: {
+    justifyContent: 'flex-start',
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(1),
+  },
   idText: {
     paddingTop: 6,
     fontSize: theme.typography.fontSize * 0.8,
     marginLeft: theme.spacing(1)
   },
 }));
-
-const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({
   prompt,
@@ -94,16 +97,16 @@ export default ({
   const [maxY, setMaxY] = React.useState(0);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [checkList, setCheckList] = React.useState({});
-  const [selections, setSelections] = React.useState('');
   const [selectedNames, setSelectedNames] = React.useState([]);
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-
   const scrollValue = 20;
   var rowsWritten;
   let toggling = false;
+
+  const user_fontSize = AVADefaults({ fontSize: 'get' });
 
   const onScroll = event => {
     let newLimit = rowLimit + scrollValue;
@@ -131,7 +134,6 @@ export default ({
       tempNames.push(pName);
     }
     setSelectedNames(tempNames);
-    setSelections(listFromArray(tempNames));
     setCheckList(checkList);
     setForceRedisplay(!forceRedisplay);
   }
@@ -238,41 +240,35 @@ export default ({
       open={true || forceRedisplay}
       onScroll={onScroll}
       p={2}
-      height={250}
-      fullWidth
-      variant={'elevation'} elevation={2}
-      TransitionComponent={Transition}
+      fullScreen
     >
-      <DialogContentText
-        className={classes.title}
-        id='scroll-dialog-title'
-      >
-        {prompt}
-      </DialogContentText>
-      <TextField
-        id='Type a few letters to filter the list'
-        value={visible_filter}
-        onChange={handleChangePersonFilter}
-        className={classes.freeInput}
-        autoComplete='off'
-        variant="standard"
-      />
-      <Typography variant='h5' className={classes.orSeparator}>
-        {`You may filter the list below${!allowRandom ? '' : ', or enter a specific phone number or e-Mail address'}`}
-      </Typography>
-      {(Object.keys(checkList).length > 0) &&
-        <Typography variant='h5' className={classes.orSeparator}>
-          {`Selected: ${selections}`}
+      <React.Fragment>
+        <Typography
+          style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, bold: true, overflow: 'visible' })}
+          id='scroll-dialog-title'
+        >
+          {prompt}
         </Typography>
-      }
-      <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
-        <List component='nav'>
+        <TextField
+          id='List Filter'
+          onChange={event => (handleChangePersonFilter(event))}
+          value={visible_filter}
+          className={classes.freeInput}
+          helperText={'Search for...'}
+          inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+          FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+          variant={'standard'}
+          autoComplete='off'
+        />
+      </React.Fragment>
+      <Paper component={Box} variant='outlined' overflow='auto' square>
+        <List>
           <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
             {rowsWritten = 0}
           </Typography>
           {peopleList.map((listEntry, x) => (
             ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
-              <ListItem
+              <Paper
                 key={'person-list_' + x}
                 onClick={async () => {
                   if (!multiSelect) { onSelect(listEntry); }
@@ -281,12 +277,12 @@ export default ({
                     toggling = false;
                   }
                 }}
-                button
+                variant='outlined' overflow='auto' square
               >
                 <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                   {rowsWritten++}
                 </Typography>
-                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' className={classes.listItem}>
                   {multiSelect &&
                     <Checkbox
                       edge='start'
@@ -306,27 +302,29 @@ export default ({
                     mr={1}
                     minWidth={50}
                     maxWidth={50}
+                    minHeight={50}
+                    maxHeight={50}
                     alt=''
                     src={getImage(listEntry.split(':')[1])}
                   />
                   {!listEntry.split(':')[1].startsWith('GRP//') ?
-                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                      <Typography variant='h5' className={classes.lastName}>{`${makeLastName(listEntry)}`}</Typography>
-                      <Typography variant='h5' className={classes.firstName}>{makeFirstName(listEntry)}</Typography>
+                    <Box display='flex' flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                      <Typography style={AVATextVariableStyle(makeLastName(listEntry), { bold: true })}>{`${makeLastName(listEntry)}`}</Typography>
+                      <Typography style={AVATextVariableStyle(makeFirstName(listEntry), { size: 0.8 })}>{makeFirstName(listEntry)}</Typography>
                       {(x > 0) && (x < (peopleList.length - 1)) &&
                         ((peopleList[x - 1].split(':')[0] === listEntry.split(':')[0])
                           || (peopleList[x + 1].split(':')[0] === listEntry.split(':')[0])) &&
-                        <Typography variant='h5' className={classes.idText}>({listEntry.split(/[:]/)[1]})</Typography>
+                        <Typography style={AVATextVariableStyle(listEntry.split(/[:]/)[1], { size: 0.8 })}>({listEntry.split(/[:]/)[1]})</Typography>
                       }
                     </Box>
                     :
-                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                      <Typography variant='h5' className={classes.groupName}>{listEntry.split(':')[0]}</Typography>
-                      <Typography variant='h5' className={classes.idText}>(GROUP)</Typography>
+                    <Box display='flex' flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                      <Typography style={AVATextVariableStyle(listEntry.split(':')[0], { bold: true, color: 'red' })}>{listEntry.split(':')[0]}</Typography>
+                      <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>(GROUP)</Typography>
                     </Box>
                   }
                 </Box>
-              </ListItem>
+              </Paper>
             )
           ))}
           {(rowsWritten === 0) && (random_address) &&
@@ -338,8 +336,8 @@ export default ({
               button
             >
               <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                <Typography variant='h5' className={classes.lastName}>{'Someone new'}</Typography>
-                <Typography variant='h5' className={classes.idText}>({random_address})</Typography>
+                <Typography style={AVATextStyle({ bold: true })}>{'Someone new'}</Typography>
+                <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>({random_address})</Typography>
               </Box>
             </ListItem>
           }

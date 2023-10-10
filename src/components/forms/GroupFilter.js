@@ -9,7 +9,6 @@ import TextField from '@material-ui/core/TextField';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContentText from '@material-ui/core/DialogContentText';
 import Button from '@material-ui/core/Button';
 
 import Slide from '@material-ui/core/Slide';
@@ -25,7 +24,7 @@ import CircularProgress from '@material-ui/core/CircularProgress';
 
 import AVATextInput from '../forms/AVATextInput';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -72,7 +71,7 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 'bold',
     size: 'small',
   },
- title: {
+  title: {
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
@@ -191,20 +190,21 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
 
   const { enqueueSnackbar } = useSnackbar();
 
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   const handleChangeActivityFilter = event => {
     setActivityFilter(event.target.value);
     setLowerFilter(event.target.value.toLowerCase());
   };
 
-  function OKtoShow(inObj) { 
+  function OKtoShow(inObj) {
     if (!lower_activity_filter) { return true; }
     if (inObj.hasOwnProperty('group_name')) {
       if (inObj.group_name.toLowerCase().includes(lower_activity_filter)) {
         return true;
       }
     }
-    return (inObj.group_id.toLowerCase().includes(lower_activity_filter))
+    return (inObj.group_id.toLowerCase().includes(lower_activity_filter));
   };
 
   const handleCreateAGroup = async pGroupName => {
@@ -253,48 +253,53 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
         </Box>
         :
         <React.Fragment>
-          <DialogContentText
-            className={classes.title}
-            id='scroll-dialog-title'
-          >
-            {'Select a group from this list'}
-          </DialogContentText>
-          <TextField
-            id='List Filter'
-            value={activity_filter}
-            onChange={handleChangeActivityFilter}
-            className={classes.freeInput}
-            label={'Filter'}
-            variant={'standard'}
-            autoComplete='off'
-          />
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+            <Typography
+              className={classes.title}
+              style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
+              id='scroll-dialog-title'
+            >
+              {'Select a group from this list'}
+            </Typography>
+
+            <TextField
+              id='List Filter'
+              value={activity_filter}
+              className={classes.freeInput}
+              onChange={handleChangeActivityFilter}
+              helperText={'Filter'}
+              inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+              FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+              variant={'standard'}
+              autoComplete='off'
+            />
+          </Box>
           <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
             <List component='nav'>
               {Object.keys(groupsManagedObject).map((listEntry, x) => (
                 (OKtoShow(groupsManagedObject[listEntry]) &&
-                    <ListItem
-                      key={'activity-list_' + listEntry}
-                      onClick={() => {
-                        onSelect(listEntry);
+                  <ListItem
+                    key={'activity-list_' + listEntry}
+                    onClick={() => {
+                      onSelect(listEntry);
                     }}
                     onContextMenu={async (e) => {
                       e.preventDefault();
                       enqueueSnackbar(`Group ID = ${listEntry}`, { variant: 'info', persist: true });
                     }}
-                      button
-                    >
-                      <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
-                        <Typography className=
-                          {groupsManagedObject[listEntry].role === 'member' ? classes.listItemAVA :
-                            (groupsManagedObject[listEntry].role === 'non-member' ? classes.listItemAVALight :
-                              classes.listItemAVABold)}>
+                    button
+                  >
+                    <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
+                      <Typography
+                        style={AVATextStyle({
+                          size: 1.5, margin: { bottom: 1 },
+                          weight: (groupsManagedObject[listEntry].role === 'member' ? null
+                            : (groupsManagedObject[listEntry].role === 'non-member' ? 'light' : 'bold'))
+                        })}>
                         {groupsManagedObject[listEntry].group_name}
-                        </Typography>
-                        <Typography className={classes.rightEdgeSmall}>
-                          {groupsManagedObject[listEntry].role}
-                        </Typography>
-                      </Box>
-                    </ListItem>
+                      </Typography>
+                    </Box>
+                  </ListItem>
                 )
               ))
               }
@@ -313,32 +318,32 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
           </Paper>
         </React.Fragment>
       }
-        <DialogActions className={classes.buttonArea} >
-          <Button
+      <DialogActions className={classes.buttonArea} >
+        <Button
           className={AVAClass.AVAButton}
           style={{ backgroundColor: 'red', color: 'white' }}
           size='small'
           startIcon={<CloseIcon fontSize="small" />}
+          onClick={() => {
+            onCancel();
+          }}
+        >
+          {'Done'}
+        </Button>
+        {Object.keys(groupsManagedObject).length > 0 &&
+          <Button
             onClick={() => {
-              onCancel();
+              setPromptForName(true);
             }}
-          >
-            {'Done'}
-          </Button>
-          {Object.keys(groupsManagedObject).length > 0 &&
-            <Button
-              onClick={() => {
-                setPromptForName(true);
-              }}
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'green', color: 'white' }}
             size='small'
-              startIcon={<GroupAddIcon fontSize="small" />}
-            >
-              {`New Group`}
-            </Button>
-          }
-        </DialogActions>
+            startIcon={<GroupAddIcon fontSize="small" />}
+          >
+            {`New Group`}
+          </Button>
+        }
+      </DialogActions>
     </Dialog>
   );
 };

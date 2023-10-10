@@ -4,8 +4,8 @@ import { useSnackbar } from 'notistack';
 
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays } from '../../util/AVADateTime';
-import { isEmpty } from '../../util/AVAUtilities';
-import { AVAclasses } from '../../util/AVAStyles';
+import { isEmpty, isObject } from '../../util/AVAUtilities';
+import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -114,7 +114,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [reactData, setReactData] = React.useState({
     start_date: 0,
     end_date: 'today',
-    myCalendar: ((isEmpty(currentEvent) || !currentEvent.hasOwnProperty('eventList')) ? [] : currentEvent[0].eventList),
+    selectedEvent: (currentEvent && !isObject(currentEvent[0]) ? currentEvent[0] : ''),
+    myCalendar: ((isEmpty(currentEvent) || !currentEvent[0].hasOwnProperty('eventList')) ? [] : currentEvent[0].eventList),
     loading: false
   })
 
@@ -145,28 +146,18 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     let theCalendar = [];
     let oRecs;
     let checkClient = eventClient || (patient.adopted_client || patient.client_id);
-    if (currentEvent && currentEvent.length > 0) {
+    if (reactData.selectedEvent) {
       setShowAll(false);
       oRecs = await getCalendarEntries({
         client_id: checkClient,
         person_id: patient.patient_id,
-        event_id: currentEvent,
+        event_id: reactData.selectedEvent,
         type: ['occurrence'],
         allow_create: true
       });
     }
     else {
       setShowAll(true);
-      /*
-      if (calendarMode === 'history') {
-        reactData.end_date = new Date();
-        reactData.start_date = new Date(rightNow.setDate(this_date - 7));
-      }
-      else {
-        reactData.start_date = new Date();
-        reactData.end_date = new Date(rightNow.setDate(this_date + 7));
-      }
-      */
       oRecs = await getCalendarEntries({
         client_id: checkClient,
         startDate: reactData.start_date,
@@ -307,7 +298,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
 
   React.useEffect(() => {
     async function initialize() {
-      if ((reactData.myCalendar.length === 0) && currentEvent && Array.isArray(currentEvent)) {
+      // single event you're looking for?  
+      if (reactData.selectedEvent) {
         let calendarEntry = await setCalendar();
         if (!calendarEntry || (calendarEntry.length === 0)) {
           enqueueSnackbar(`AVA couldn't load that event`, { variant: 'error' });
@@ -375,14 +367,14 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                     key={'loadingBox'}
                     mb={2}
                   >
-                    <Typography variant='h5' className={classes.lastName} >{`Building your Calendar`}</Typography>
-                    <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                    <Typography style={AVATextStyle({ size: 1.5, align: 'center' })} className={classes.lastName} >{`Building your Calendar`}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
                     <Box
                       display='flex' flexDirection='column' justifyContent='center' alignItems='center'
                       flexWrap='wrap' textOverflow='ellipsis' width='100%'
                       key={'loadingWordBox'}
                     >
-                      <Typography>{statusMessage}</Typography>
+                      <Typography style={AVATextStyle({ size: 0.8, align: 'center' })}>{statusMessage}</Typography>
                     </Box>
                   </Box>
                   <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
@@ -455,7 +447,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
       }
       {!showAll && (reactData.myCalendar.length > 0) &&
         <CalendarEventEditForm
-          pEventCode={currentEvent}
+          pEventCode={reactData.selectedEvent}
           peopleList={peopleList}
           pPatient={patient.patient_id}
           pClient={eventClient || (patient.adopted_client || patient.client_id)}

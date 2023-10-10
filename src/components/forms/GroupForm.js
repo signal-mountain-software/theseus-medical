@@ -22,7 +22,6 @@ import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContentText from '@material-ui/core/DialogContentText';
 
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
@@ -42,7 +41,7 @@ import PersonFilter from '../forms/PersonFilter';
 import AVAConfirm from './AVAConfirm';
 import MakeMessage from './MakeMessage';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVATextVariableStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -242,6 +241,14 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const { enqueueSnackbar } = useSnackbar();
 
   const isMobile = useMediaQuery(theme => theme.breakpoints.down('sm')); // checks if current device is a smart phone
+
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
+
+  function prefLineText(prefLine) {
+    if (prefLine.private) { return `${prefLine.type} un-published`; }
+    else if (prefLine.type === 'e-Mail') { return prefLine.display.join('@'); }
+    else { return `${prefLine.type} ${prefLine.display[0]}`; }
+  };
 
   let params = {
     FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance',
@@ -499,24 +506,25 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         {workingMemberList && workingMemberList.length > 0 &&
           <React.Fragment>
             {!showSuperSize &&
-              <React.Fragment>
-                <DialogContentText
-                  className={classes.title}
-                  id='scroll-dialog-title'
+              <Box>
+                <Typography
+                  className={classes.title} style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
                 >
                   {multiGroups ? 'Directory Listing' : `Members of the ${pGroupName} Group`}
-                </DialogContentText>
+                </Typography>
                 <TextField
                   id='List Filter'
                   onChange={event => (handleChangePersonFilter(event.target.value))}
                   className={classes.freeInput}
-                  label={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+                  helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                  FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                   variant={'standard'}
                   autoComplete='off'
                 />
-              </React.Fragment>
+              </Box>
             }
-            <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+            <Paper component={Box} variant='outlined' overflow='auto' square>
               <List>
                 <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                   {rowsWritten = 0}
@@ -527,13 +535,13 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                         {rowsWritten++}
                       </Typography>
-                      <Box display='flex' flexDirection='column'>
+                      <Box display='flex' flexDirection='column' >
                         <Box
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
                           key={this_item.person_id + 'r' + index}
                           className={classes.listItem}
                         >
-                          <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                          <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center' overflow={'hidden'}>
                             <Box
                               onClick={async () => {
                                 this_item.role = await getRole(pGroup, this_item.person_id);
@@ -545,21 +553,18 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 setshowSuperSize(true);
                               }}
                               display='flex' flexDirection='column'>
-                              <Box >
-                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                  <Typography variant='h5' className={classes.lastName} >{this_item.name.last || this_item.display_name}</Typography>
-                                  {!isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
-                                </Box>
-                                {isMobile && <Typography variant='h5' className={classes.firstName}>{this_item.name.first}</Typography>}
+                              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
+                                <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{this_item.name.first}</Typography>
                               </Box>
                               {multiGroups && this_item.hasOwnProperty('member_of') &&
-                                <Typography key={`member_of-${index}`} className={classes.lastName}>{sentenceCase(this_item.member_of)}</Typography>
+                                <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 1, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
                               }
                               {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
-                                <Typography key={`locationLine-${index}.${locIndex}`} className={classes.locationLine}>{locLine.trim()}</Typography>
+                                <Typography key={`locationLine-${index}.${locIndex}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{locLine.trim()}</Typography>
                               ))}
                               {(this_item.directory_option === 'exclude') &&
-                                <Typography key={`excluded-${index}`} className={classes.locationLine}>{'** Excluded from Directory **'}</Typography>
+                                <Typography key={`excluded-${index}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{'** Excluded from Directory **'}</Typography>
                               }
                               <Box
                                 display='flex'
@@ -576,18 +581,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                         style={{ color: 'inherit', textDecoration: 'none' }}>
                                         <Typography
                                           key={`prefLine-${index}.${prefIndex}`}
-                                          className={classes.preferenceLine}
+                                          style={AVATextVariableStyle(prefLine, { margin: { bottom: 0.5 } })}
                                         >
-                                          {prefLine.type} {prefLine.display.join('@')}
+                                          {prefLineText(prefLine)}
                                         </Typography>
-                                        {(prefLine.private) &&
-                                          <Typography
-                                            key={`prefLine-${index}.${prefIndex}_UNPUB`}
-                                            className={classes.preferenceLine}
-                                          >
-                                            *UNPUBLISHED*
-                                          </Typography>
-                                        }
                                       </a>
                                     )))}
                                 </Box>
@@ -605,9 +602,12 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 component="img"
                                 ml={isMobile ? 2 : 5}
                                 mr={1}
+                                border={1}
+                                minHeight={100}
+                                maxHeight={200}
                                 minWidth={isMobile ? 100 : 150}
                                 maxWidth={isMobile ? 100 : 150}
-                                alt=''
+                                alt={''}
                                 src={getImage(this_item.person_id)}
                               />
                             </Box>
@@ -617,6 +617,11 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     </Paper>
                   )
                 ))}
+                {(rowsWritten === 0) &&
+                  <Box display='flex' marginLeft={3} flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                    <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{'No Directory entries match your search!'}</Typography>
+                  </Box>
+                }
               </List>
             </Paper>
             {showAddPrompt &&
@@ -907,7 +912,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     {superSizeData.local_data && (Object.keys(superSizeData.local_data).length > 0) &&
                       <React.Fragment>
                         {Object.keys(superSizeData.local_data).map((local, l) => (
-                          <Box display='flex' className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
+                          <Box display='flex' key={`local_${l}`} className={classes.giveSpaceBoth} flexDirection='column' justifyContent='center' alignItems='center' >
                             <Typography key={`localtext_${l}-superSize`} className={classes.adName}>
                               {`${sentenceCase(local)}`}
                             </Typography>

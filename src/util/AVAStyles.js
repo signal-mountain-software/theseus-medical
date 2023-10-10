@@ -1,5 +1,5 @@
 import makeStyles from '@material-ui/core/styles/makeStyles';
-
+let remembered = {};
 
 export const AVAclasses = makeStyles(theme => ({
     AVAButton: {
@@ -75,3 +75,52 @@ export const AVAclasses = makeStyles(theme => ({
         height: '5px'
     },
 }));
+
+export const AVADefaults = (options = {}) => {
+    let returnObj = {};
+    for (let key in options) {
+        if (options[key] === 'get') { returnObj[key] = remembered[key]; }
+        else { remembered[key] = options[key]; }
+    }
+    let oKey = Object.keys(returnObj);
+    switch (oKey.length) {
+        case 0: { return null; }
+        case 1: { return returnObj[oKey[0]]; }
+        default: { return returnObj; }
+    }
+}
+
+export function AVATextStyle(options = {}) {
+    let user_fontSize = AVADefaults({ fontSize: 'get' });
+    let returnStyle = {
+        fontSize: `${user_fontSize * (options.size || 1)}rem`,
+        lineHeight: 0.9,
+        overflow: (options.overflow || 'hidden'),
+        paddingBottom: `${2 * user_fontSize * (options.size || 1)}px`,
+        color: 'black'
+    };
+    if (options.bold) { returnStyle.fontWeight = 'bold'; }
+    if (options.weight) { returnStyle.fontWeight = options.weight; }
+    if (options.margin) {
+        if (options.margin.right) { returnStyle.marginRight = options.margin.right * 16; }
+        if (options.margin.left) { returnStyle.marginLeft = options.margin.left * 16; }
+        if (options.margin.top) { returnStyle.marginTop = options.margin.top * 16; }
+        if (options.margin.bottom) { returnStyle.marginBottom = (options.margin.bottom * 16) - (2 * user_fontSize * (options.size || 1)); }
+    }
+    if (options.padding) {
+        if (options.padding.right) { returnStyle.paddingRight = options.padding.right * 16; }
+        if (options.padding.left) { returnStyle.paddingLeft = options.padding.left * 16; }
+        if (options.padding.top) { returnStyle.paddingTop = options.padding.top * 16; }
+        if (options.padding.bottom) { returnStyle.paddingBottom = (options.padding.bottom * 16); }
+    }
+    if (options.align) { returnStyle.textAlign = options.align; }
+    if (options.color) { returnStyle.color = options.color; }
+    return returnStyle;
+}
+
+export function AVATextVariableStyle(outText, options = {}) { 
+    let returnStyle = AVATextStyle(options);
+    let user_fontSize = AVADefaults({ fontSize: 'get' }) * (options.size || 1);
+    returnStyle.fontSize = `${user_fontSize * (50 / Math.max(50, outText.length * user_fontSize * (1000 / window.innerWidth)))}rem`;
+    return returnStyle;
+}

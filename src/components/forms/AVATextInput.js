@@ -17,7 +17,7 @@ import Checkbox from '@material-ui/core/Checkbox';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   containerBox: {
@@ -47,10 +47,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(2),
     marginBottom: 0,
   },
-  titleRow: {
-    fontSize: '1.3rem',
-    fontWeight: 'bold'
-  },
   AVAButton: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
@@ -69,7 +65,6 @@ const useStyles = makeStyles(theme => ({
     marginBottom: theme.spacing(1)
   },
   idText: {
-    fontSize: theme.typography.fontSize * 0.8,
     minWidth: '100%',
     marginTop: 10,
     marginBottom: 10,
@@ -83,6 +78,8 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
+
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   let keyPressed = 0;
 
@@ -141,7 +138,14 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
       >
         <DialogContent id='dialog-title'>
           {titleText && titleArray.map((t, tx) => (
-            <Typography key={`title-${tx}`} className={classes.titleRow}>{t}</Typography>
+            <Typography key={`title-${tx}`}
+              style={AVATextStyle({
+                size: 1.3,
+                bold: true
+              })}
+              className={classes.titleRow}>
+              {t}
+            </Typography>
           ))}
         </DialogContent>
         <DialogContent className={classes.contentBox} id='dialog-content'>
@@ -183,12 +187,14 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                   </Box>
                   :
                   <Box display='flex'
-                    flexDirection='row'
+                    flexDirection='column'
                     mt={0.5}
                     mb={0.5}
                     paddingLeft={2}
                     paddingRight={2}
                     minWidth={'100%'}
+                    justifyContent={'center'}
+                    minHeight={`${user_fontSize * 2}rem`}
                     border={textInput[ndx] ? 1 : 0}
                     borderRadius={'16px'}
                     key={'fullRow' + ndx}
@@ -198,6 +204,8 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                       id={`prompt-${ndx}`}
                       key={`prompt-${ndx}`}
                       multiline
+                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                       error={!!(errorText && errorText[ndx])}
                       value={textInput[ndx] || ''}
                       onChange={(event) => {
@@ -247,17 +255,17 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
             buttonArray.map((b, i) => (
               (i > 1) &&
               b &&
-                <Button
-                  className={AVAClass.AVAButton}
-                  key={`extra-button_${i}`}
-                  style={{ backgroundColor: 'blue', color: 'white' }}
-                  size='small'
-                  onClick={() => {
-                    keyPressed = i;
-                    handleSave();
-                  }}
-                >
-                  {b}
+              <Button
+                className={AVAClass.AVAButton}
+                key={`extra-button_${i}`}
+                style={{ backgroundColor: 'blue', color: 'white' }}
+                size='small'
+                onClick={() => {
+                  keyPressed = i;
+                  handleSave();
+                }}
+              >
+                {b}
               </Button>
             ))
           }

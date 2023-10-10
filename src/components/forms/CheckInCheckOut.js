@@ -12,7 +12,7 @@ import { makeDate } from '../../util/AVADateTime';
 import { determineClass } from '../../util/AVAGroups';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getPerson, getImage, getPersonByWords, addGuest, addVendor, makeName } from '../../util/AVAPeople';
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
 
 import { useSnackbar } from 'notistack';
 
@@ -338,8 +338,8 @@ export default ({ onSave, onClose }) => {
               :
               <Dialog open={forceRedisplay || true} fullWidth >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                  <Typography variant='h5' id='dialog-title'>{makeGreeting()}</Typography>
-                  <Typography variant='subtitle2' id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
+                    <Typography style={AVATextStyle({ size: 1.3, bold: true })} id='dialog-title'>{makeGreeting()}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8 })} id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
                 </Box>
                 <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
                   {reactData.candidates.map((candidate, cIndex) => (
@@ -363,8 +363,8 @@ export default ({ onSave, onClose }) => {
                       }}
                     >
                       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                        <Typography variant='h5'>{`${titleCase(candidate.name.first)} ${titleCase(candidate.name.last)}`}</Typography>
-                        <Typography style={{ fontSize: '0.8em' }} variant='h6'>{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
+                        <Typography style={AVATextStyle({ size: 1.3, bold: true })}>{`${titleCase(candidate.name.first)} ${titleCase(candidate.name.last)}`}</Typography>
+                        <Typography style={AVATextVariableStyle(`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`, { bold: true, margin: { right: 2, bottom: 0.5 } })} >{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
                       </Box>
                     </Box>
                   )

@@ -46,14 +46,19 @@ export async function prepareMessage(inBody) {
   let returnResults = [];
   let results;
   let requestInfo = Object.assign({}, {
-    activityName: inBody.activityName,
-    client: inBody.client,
-    author: inBody.author,
-    onBehalfOf: inBody.onBehalfOf,
+    activityName: inBody.activityName || inBody.name,
+    client: inBody.client || inBody.client_id,
+    author: inBody.author ||  inBody.requestor,
+    onBehalfOf: inBody.onBehalfOf || inBody.on_behalf_of,
     local_key: inBody.local_key,
-    requestDate: inBody.requestDate,
-    requestID: inBody.requestID
+    requestDate: inBody.requestDate  || inBody.request_date,
+    requestID: inBody.requestID || inBody.request_ID || inBody.request_id,
+    selections: inBody.selections,
+    qualifiers: inBody.qualifiers,
+    textInput: inBody.textInput,
+    reprint: inBody.reprint
   },
+    inBody.original_request,
     inBody.request);
   if (inBody.hasOwnProperty('attachments')) {
     requestInfo.attachments = inBody.attachments.map(a => { return a.Location; });
@@ -353,6 +358,7 @@ export async function formatRequestDetails(body, summaryType) {
   if (!titleWords && body.activityName) { titleWords = body.activityName; }
   if (!titleWords) { titleWords = 'AVA Request'; }
   else { titleWords = await resolveMessageVariables(titleWords, body); }
+  if (body.reprint) { titleWords = '*** REPRINT ' + titleWords + ' ***'; };
 
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${titleWords}</span></h1>`;
   let rawMessage = `${titleWords}\n\r`;
@@ -370,7 +376,8 @@ export async function formatRequestDetails(body, summaryType) {
   }
   htmlMessage += `</h2>`;
 
-  const pTime = makeDate(new Date().getTime()).absolute + ' by ' + await makeName(body.author);
+  if (!body.requestDate) { body.requestDate = new Date(); }
+  const pTime = makeDate(body.requestDate).absolute + ' by ' + await makeName(body.author);
   htmlMessage += `<p style = "color: black;">created: <strong>${pTime}</strong>`;
   rawMessage += `${pTime}\n\r`;
 
@@ -468,9 +475,9 @@ export async function formatRequestDetails(body, summaryType) {
     rawMessage += `\n\rAVA request number: ${body.local_key}`;
   }
 
-  htmlMessage += `<div>AVA reference: ${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})</div>`;
+  htmlMessage += `<div>AVA reference: ${body.client || body.client_id}/${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})</div>`;
   htmlMessage += `<div>***** END *****</div></p>`;
-  rawMessage += `\n\rAVA reference: ${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})\n***** END *****`;
+  rawMessage += `\n\rAVA reference: ${body.client || body.client_id}/${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})\n***** END *****`;
 
   return [htmlMessage, rawMessage];
 }
@@ -551,6 +558,7 @@ export async function mealTicketFormat(body) {
   // ********** TITLE ********** //
   let titleWords = body.subject || body?.format?.subject || body.activityName || 'Meal Ticket';
   titleWords = await resolveMessageVariables(titleWords, body);
+  if (body.reprint) { titleWords = '*** REPRINT ' + titleWords + ' ***'; };
   style = `"text-align:center; font-size: ${page.font.size.large};"`;
   let outTitle = titleCase(titleWords);
   pdfLine(outTitle, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
@@ -781,7 +789,7 @@ export async function sendMessages(body) {
         'message_text': env.messageText,
         'html_message_text': env.htmlText,
         'preferred_method': env.preferred_method,
-        'subject': env.subject
+        'subject': env.subject.replace(/\n/g, " ").trim()      // dont allow invlid characters in the message subject
       },
       TableName: "PostOffice"
     };
