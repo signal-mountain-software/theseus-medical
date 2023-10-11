@@ -187,7 +187,7 @@ export async function putServiceRequest(body) {
         rMsg = `Held for future processing ${rTime.oaDate}`;
       }
       else {
-        let sendResults = (await sendMessages(preparedMessages)).pop();
+        let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
         if (!sendResults.sent) {
           serviceRequestRec.last_status = 'Failed to send';
           rMsg = `Failed to send ${rTime.oaDate}`;

@@ -64,7 +64,7 @@ export async function prepareMessage(inBody) {
     requestInfo.attachments = inBody.attachments.map(a => { return a.Location; });
   }
   do {
-    let this_request = Object.assign({}, requestInfo, messageList.shift());
+    let this_request = Object.assign({}, requestInfo, messageList.shift());   // this removes the message from the messageList
     cl({ 'in prepare messages': { this_request } });
     results = {};
     if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
@@ -782,8 +782,8 @@ export async function sendMessages(body) {
       Item: {
         'client_id': env.client,
         'thread_id': env.thread_id,
-        'message_id': `${postTime}~AVAMessages`,
-        'deliver_time': postTime,
+        'message_id': `${env.thread_id}.${m}~AVAMessages`,
+        'deliver_time': postTime += m,
         'patient_id': env.person_id || env.author,
         'from': env.author,
         'message_text': env.messageText,
