@@ -2,6 +2,7 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 import { parseSpreadsheet, makeArray, uuid, s3, stepFunctions, resolveVariables } from '../../util/AVAUtilities';
 import { getPersonByWords, getPerson } from '../../util/AVAPeople';
+import { determineClass } from '../../util/AVAGroups';
 import { makeDate } from '../../util/AVADateTime';
 import { getServiceRequests } from '../../util/AVAServiceRequest';
 import { AVAclasses } from '../../util/AVAStyles';
@@ -309,10 +310,13 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
       setForceRedisplay(forceRedisplay => !forceRedisplay);
       let this_name = nameList[x];
       let pList = await getPersonByWords(state.session.client_id, makeArray(this_name.replace(',', ' ').toLowerCase(), ' '));
+      pList = pList.filter(p => {
+        return (determineClass(p.groups, state.session.group_assignments) !== 'inactive');
+      })
       returnObj.found += pList.length;
       returnObj.count++;
       switch (pList.length) {
-        case 0: {
+        case 0: {    // name not found by words?  see if this is a userID instead...
           let pRec = await getPerson(this_name.toLowerCase());
           if (pRec.person_id) {
             returnList.push({ pID: pRec.person_id, pName: (`${pRec.first} ${pRec.last}`).trim(), pRec: pRec, pStatus: 'match' });
