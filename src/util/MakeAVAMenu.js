@@ -519,8 +519,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let favorite = false;
     if (pReason === 'History') { favorite = true; }
     else { 
-      let foundIndex = requestor.favorite_activities.findIndex(r => { return (r.split('~')[0] === activityRec.activity_code); });
-      if (foundIndex > -1) { favorite = true; }
+      if (requestor.hasOwnProperty('favorite_activities')) {
+        let foundIndex = makeArray(requestor.favorite_activities).findIndex(r => { return (r.split('~')[0] === activityRec.activity_code); });
+        if (foundIndex > -1) { favorite = true; }
+      }
     } 
     let pSort;
     if (activityRec.section_name && !favorite) {
