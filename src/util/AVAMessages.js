@@ -1,10 +1,15 @@
 import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
+import { getCustomizations } from './AVAUtilities';
 import { getServiceRequests } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
+
+let page = {};
+let pdfCurrent = {};
+let doc;
 
 // Functions
 
@@ -45,13 +50,13 @@ export async function prepareMessage(inBody) {
   else { messageList.push(inBody.messaging); }
   let returnResults = [];
   let results;
-  let requestInfo = Object.assign({}, {
+  let requestInfo = Object.assign({}, inBody, {
     activityName: inBody.activityName || inBody.name,
     client: inBody.client || inBody.client_id,
-    author: inBody.author ||  inBody.requestor,
+    author: inBody.author || inBody.requestor,
     onBehalfOf: inBody.onBehalfOf || inBody.on_behalf_of,
     local_key: inBody.local_key,
-    requestDate: inBody.requestDate  || inBody.request_date,
+    requestDate: inBody.requestDate || inBody.request_date,
     requestID: inBody.requestID || inBody.request_ID || inBody.request_id,
     selections: inBody.selections,
     qualifiers: inBody.qualifiers,
@@ -65,7 +70,7 @@ export async function prepareMessage(inBody) {
   }
   do {
     let this_request = Object.assign({}, requestInfo, messageList.shift());   // this removes the message from the messageList
-    cl({ 'in prepare messages': { this_request } });
+    // cl({ 'in prepare messages': { this_request } });
     results = {};
     if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
     else { results.recipientList = [this_request.recipientList]; }
@@ -82,7 +87,7 @@ export async function prepareMessage(inBody) {
       case 'mealOrder':
       case 'checklist':
       case 'factForm': {
-        [results.htmlText, results.messageText] = await formatRequestDetails(this_request, this_request.format.type);
+        [results.htmlText, results.messageText, results.pdfInfo] = await formatRequestDetails(this_request, this_request.format.type);
         break;
       }
       case 'mealTicket': {
@@ -349,6 +354,10 @@ export async function resolveMessageVariables(inString, body) {
 };
 
 export async function formatRequestDetails(body, summaryType) {
+  // Prep the PDF output
+  if (!body.margin) { body.margin = {}; }
+  await pdfLaunch(Object.assign({}, body, { client_id: (body.client || body.client_id) }));
+
   let textInput = {};
   if (body.textInput && (Object.keys(body.textInput).length > 0)) {
     textInput = Object.assign({}, body.textInput);
@@ -362,24 +371,39 @@ export async function formatRequestDetails(body, summaryType) {
 
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${titleWords}</span></h1>`;
   let rawMessage = `${titleWords}\n\r`;
+  pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+  pdfLine(titleWords, { style: 'bold', size: 'large', align: 'center', after: 1 });
+
 
   // Person
   let pRec = await getPerson(body.author);
 
-  let pName = body.onBehalfOf || await makeName(body.author);
+  let authorName = await makeName(body.author);
+  let pName = body.onBehalfOf || authorName;
   htmlMessage += `<h2 style = "color: black;" >${pName}`;
   rawMessage += `${pName}\n`;
+  if (titleWords.toLowerCase().includes(pName.toLowerCase())) {
+    pdfLine(`for ${pName}`, { style: 'normal', align: 'center', size: 'large' });
+  }
 
   if (pRec.location) {
     htmlMessage += `<br />${pRec.location}`;
     rawMessage += `${pRec.location}\n`;
+    pdfLine(pRec.location, { align: 'center' });
   }
   htmlMessage += `</h2>`;
 
   if (!body.requestDate) { body.requestDate = new Date(); }
-  const pTime = makeDate(body.requestDate).absolute + ' by ' + await makeName(body.author);
+  let pDateTime = makeDate(body.requestDate).absolute;
+  let pTime = pDateTime + ' by ' + await makeName(body.author);
   htmlMessage += `<p style = "color: black;">created: <strong>${pTime}</strong>`;
   rawMessage += `${pTime}\n\r`;
+  if (pName.toLowerCase().includes(authorName.toLowerCase())) {
+    pdfLine(`created: ${pDateTime}`, { size: 'medium', align: 'center' });
+  }
+  else {
+    pdfLine(`created: ${pTime}`, { size: 'medium', align: 'center' });
+  }
 
   for (let cTyp in pRec.messaging) {
     if ((cTyp in pRec) && (pRec[cTyp].trim() !== '')) {
@@ -391,8 +415,10 @@ export async function formatRequestDetails(body, summaryType) {
         default: { cLab = cTyp; }
       }
       htmlMessage += `<br />${cLab}: <strong>${pRec[cTyp]}</strong>`;
+      pdfLine(`${pRec[cTyp]}`, { align: 'center' });
     }
   }
+  pdfDown(2);
 
   htmlMessage += '</p><h2 style = "color: black;" >%%custom_text%%</h2>';
   rawMessage += '\n\r%%custom_text%%\n\r';
@@ -409,6 +435,7 @@ export async function formatRequestDetails(body, summaryType) {
       if (['Dinner', 'Lunch', 'Pick-up', 'Deliver (+$5)', 'Deliver ($5)'].includes(aVal.trim())) {
         htmlMessage += pTag + aVal.trim();
         rawMessage += `${aVal}\r\n`;
+        pdfLine(aVal);
         pXTag = '</h2>';
         pTag = ' / ';
         body.selections.splice(x, 1);
@@ -417,25 +444,33 @@ export async function formatRequestDetails(body, summaryType) {
     };
     htmlMessage += `${pXTag}<h2 style = "color: black;" >Order filled by: _______________________</h2>`;
     rawMessage += '\n\nOrder filled by: ________________________\n\n';
+
     renderCheckBox = '&#8414;   ';
     htmlMessage += `<h2 style="color: black;">Order Details</h2><dl style="padding-left: 40px;">`;
+    pdfLine('Order Details', { style: 'bold', before: 1, align: 'left' });
   }
   else {
     if (textInput && (Object.keys(textInput).length > 0)) {
+      pdfStyle('reset');
       for (let topic in textInput) {
         if (!body.selections.includes(topic)) {
           let sVal = sentenceCase(topic.trim());
           rawMessage += `\n${sVal}\n${textInput[topic]}\n`;
           htmlMessage += `<h2><span style="color: black;">${sVal}</span></h2>`;
           htmlMessage += `<div style="padding-left: 10px; margin-top: -15px; font-size: 1.2em;">${textInput[topic]}</div>`;
+          pdfLine(sVal, { before: 1 });
+          pdfLine(textInput[topic], { noNewLine: true, before: 1, indent: 15, size: 'small' });
+          pdfStyle('reset');
           delete textInput[topic];
         }
       }
     }
     if (body.selections.length > 0) {
       htmlMessage += `<h2 style="color: black;">Options Selected</h2><dl style="padding-left: 40px;">`;
+      //    pdfLine('Options Selected', {style: 'bold', before: 1, align: 'left'});
     }
   }
+  pdfStyle('reset');
 
   let lineSpacing = '0px';
   if (!textInput) { textInput = {}; }
@@ -443,7 +478,10 @@ export async function formatRequestDetails(body, summaryType) {
     let sVal = sentenceCase(aVal.trim());
     htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[aVal] || ''}</dt>`;
     rawMessage += `\n${sVal}\n`;
+    pdfStyle('reset');
+    pdfLine(sVal, { before: 1 });
     if (textInput[aVal]) {
+      pdfLine(textInput[aVal], { noNewLine: true, before: 1, indent: 15, size: 'small' });
       rawMessage += `${textInput[aVal]}\n`;
       delete textInput[aVal];
     }
@@ -453,33 +491,72 @@ export async function formatRequestDetails(body, summaryType) {
         let tOut = listFromArray(body.qualifiers[aVal][qual]) || 'No selection';
         htmlMessage += `<dd>${sentenceCase(qual)}: ${tOut}</dd>`;
         rawMessage += `${sentenceCase(qual)}: ${tOut}\n`;
+        pdfLine(`${sentenceCase(qual)}: ${tOut}`, { noNewLine: true, before: 1, indent: 15, size: 'small' });
       }
     }
     lineSpacing = `${spaceBetweenLines}px`;
   });
+  pdfStyle('reset');
 
   if (textInput && (Object.keys(textInput).length > 0)) {
     for (let topic in textInput) {
       let sVal = sentenceCase(topic.trim());
       htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[topic]}</dt>`;
       rawMessage += `\n${sVal}\n${textInput[topic]}\n`;
+      pdfStyle('reset');
+      pdfLine(sVal, { before: 1 });
+      pdfLine(textInput[topic], { noNewLine: true, before: 1, indent: 15, size: 'small' });
       lineSpacing = `${spaceBetweenLines}px`;
     }
   }
 
   // Finish
+  if (summaryType === 'mealOrder') {
+    pdfStyle('reset');
+    pdfLine('Order filled by: ________________________', { before: 4, after: 1 });
+  }
   htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
 
+  let refText = `AVA reference: ${body.client || body.client_id}/${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})`;
   if (body.local_key) {
     htmlMessage += `<div>AVA request number: <strong>${body.local_key}</strong></div>`;
     rawMessage += `\n\rAVA request number: ${body.local_key}`;
+    pdfLine(`AVA request number: ${body.local_key}`, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    pdfLine(refText, { noNewPage: true, noNewLine: true, before: 1, align: 'center' });
+  }
+  else {
+    pdfLine(refText, { noNewPage: true, yPos: 'footer', align: 'center' });
   }
 
-  htmlMessage += `<div>AVA reference: ${body.client || body.client_id}/${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})</div>`;
+  htmlMessage += `<div>${refText}</div>`;
   htmlMessage += `<div>***** END *****</div></p>`;
-  rawMessage += `\n\rAVA reference: ${body.client || body.client_id}/${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})\n***** END *****`;
+  rawMessage += `\n\r${refText}\n***** END *****`;
 
-  return [htmlMessage, rawMessage];
+  pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
+
+  let s3Resp;
+  if (body.PDF) {
+    window.open(doc.output('bloburl'), '_blank');
+    /*
+    let pBlob = doc.output('blob');
+    let data64 = (doc.output('datauri')).split(';base64,')[1];
+    s3Resp = await s3
+      .upload({
+        Bucket: 'theseus-medical-storage',
+        Key: `${body.client || body.client_id}_${body.fileName}`,
+        Body: pBlob,
+        ACL: 'public-read-write',
+        ContentType: 'application/pdf'
+      })
+      .promise()
+      .catch(err => {
+        cl(`PDF not saved by AVA.  The reason is ${err.message}`);
+      });
+    s3Resp.data = data64;
+    doc.save(`${body.client || body.client_id}_${body.fileName}`);  
+    */
+  }
+  return [htmlMessage, rawMessage, s3Resp];
 }
 
 export async function mealTicketFormat(body) {
@@ -502,14 +579,14 @@ export async function mealTicketFormat(body) {
   //  Sort the requests
   requestList.sort((a, b) => {
     let aSort, bSort;
-    if (a.original_request.textInput && a.original_request.textInput[seat_key]) { 
+    if (a.original_request.textInput && a.original_request.textInput[seat_key]) {
       aSort = a.original_request.textInput[seat_key];
-    } 
+    }
     if (b.original_request.textInput && b.original_request.textInput[seat_key]) {
       bSort = b.original_request.textInput[seat_key];
     }
     return ((aSort < bSort) ? -1 : 1);
-  })
+  });
 
   // Prep the PDF output
   let htmlText = [];
@@ -561,12 +638,12 @@ export async function mealTicketFormat(body) {
   if (body.reprint) { titleWords = '*** REPRINT ' + titleWords + ' ***'; };
   style = `"text-align:center; font-size: ${page.font.size.large};"`;
   let outTitle = titleCase(titleWords);
-  pdfLine(outTitle, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
+  pdfLineMealTicket(outTitle, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
   htmlText.push(`<div style=${style}><b>${outTitle}</b></div>`);
   plainText.push(outTitle);
   if (body.client_name) {
     let outClientName = titleCase(body.client_name);
-    pdfLine(outClientName, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
+    pdfLineMealTicket(outClientName, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
     htmlText.push(`<div style=${style}><b>${outClientName}</b></div>`);
     plainText.push(outClientName);
   }
@@ -582,15 +659,15 @@ export async function mealTicketFormat(body) {
   let table_key = body.tableNumberKey || 'Table Number';
   style = `"text-align:center; font-size: ${page.font.size.small};"`;
   let outServer = titleCase(server_name);
-  pdfLine(`Server: ${outServer}`, page.font.size.small, 'normal', 0, -0.2, 0, { align: 'center' });
+  pdfLineMealTicket(`Server: ${outServer}`, page.font.size.small, 'normal', 0, -0.2, 0, { align: 'center' });
   htmlText.push(`<dt style=${style}>Server: ${outServer}</dt>`);
   plainText.push(outServer);
   let outTime = makeDate(order_timestamp).absolute;
-  pdfLine(`${outTime}`, page.font.size.small, 'normal', 0, 0, 0, { align: 'center' });
+  pdfLineMealTicket(`${outTime}`, page.font.size.small, 'normal', 0, 0, 0, { align: 'center' });
   htmlText.push(`<dt style=${style}>${outTime}</dt>`);
   plainText.push(outTime);
   if (this_request.original_request.textInput && this_request.original_request.textInput[table_key]) {
-    pdfLine(`Table: ${this_request.original_request.textInput[table_key]}`, page.font.size.small, 'bold', 0, 0, 0, { align: 'center' });
+    pdfLineMealTicket(`Table: ${this_request.original_request.textInput[table_key]}`, page.font.size.small, 'bold', 0, 0, 0, { align: 'center' });
     htmlText.push(`<dt style=${style}><b>Table: ${this_request.original_request.textInput[table_key]}</b></dt>`);
     plainText.push(`Table: ${this_request.original_request.textInput[table_key]}`);
   }
@@ -606,18 +683,18 @@ export async function mealTicketFormat(body) {
     plainText.push(' ');
     style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
     let outSeat = '';
-    if (this_request.original_request.textInput && this_request.original_request.textInput[seat_key]) { 
+    if (this_request.original_request.textInput && this_request.original_request.textInput[seat_key]) {
       outSeat = this_request.original_request.textInput[seat_key] + ' - ';
     }
     let outRequestor = outSeat + titleCase(requestor);
-    pdfLine(outRequestor, page.font.size.medium, 'bold', 0, 1);
+    pdfLineMealTicket(outRequestor, page.font.size.medium, 'bold', 0, 1);
     htmlText.push(`<div style=${style}><b>${outRequestor}</b></div>`);
     plainText.push(outRequestor);
     // eslint-disable-next-line
     this_request.original_request.selections.forEach(s => {
       style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em; padding-left: 0;"`;
       let [selection, options] = s.split(/[()]/);
-      pdfLine(selection, page.font.size.medium, 'normal');
+      pdfLineMealTicket(selection, page.font.size.medium, 'normal');
       htmlText.push(`<div style=${style}>${selection}</div>`);
       plainText.push(selection);
       if (options) {
@@ -625,7 +702,7 @@ export async function mealTicketFormat(body) {
         let optionList = options.split(',');
         optionList.forEach((o, i) => {
           let outO = titleCase(o);
-          pdfLine(outO, page.font.size.small, 'normal', 1, (i === 0 ? -0.2 : -0.1), ((i === (optionList.length - 1)) ? 0.2 : 0));
+          pdfLineMealTicket(outO, page.font.size.small, 'normal', 1, (i === 0 ? -0.2 : -0.1), ((i === (optionList.length - 1)) ? 0.2 : 0));
           htmlText.push(`<div style=${style}><i>${outO}</i></div>`);
           plainText.push(outO);
         });
@@ -634,14 +711,14 @@ export async function mealTicketFormat(body) {
     for (let field in this_request.original_request.textInput) {
       if ((field !== table_key) && (field !== seat_key)) {
         /*
-        pdfLine(field, page.font.size.medium, 'normal');
+        pdfLineMealTicket(field, page.font.size.medium, 'normal');
         style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
         htmlText.push(`<div style=${style}>${field}</div>`);
         plainText.push(field);
         */
-        let tLine = `>>> ${this_request.original_request.textInput[field]} <<<`; 
-        // pdfLine(tLine, page.font.size.small, 'normal', 1, -0.5);
-        pdfLine(tLine, page.font.size.medium, 'normal');
+        let tLine = `>>> ${this_request.original_request.textInput[field]} <<<`;
+        // pdfLineMealTicket(tLine, page.font.size.small, 'normal', 1, -0.5);
+        pdfLineMealTicket(tLine, page.font.size.medium, 'normal');
         // style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
         style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
         htmlText.push(`<div style=${style}><i>${tLine}</i></div>`);
@@ -653,7 +730,7 @@ export async function mealTicketFormat(body) {
 
   // ********** INITIALS ********** //
   if (body.initials) {
-    pdfLine('Initials _________', page.font.size.medium, 'normal', 0, 2, 1);
+    pdfLineMealTicket('Initials _________', page.font.size.medium, 'normal', 0, 2, 1);
     htmlText.push(`<p style="font-size: ${page.font.size.medium}; padding-top: 4em;">Initials _________</p>`);
     plainText.push(' ');
     plainText.push(' ');
@@ -661,9 +738,9 @@ export async function mealTicketFormat(body) {
   }
 
   // ********** FOOTERS ********** //
-  pdfLine('AVA Senior Living', page.font.size.tiny, 'normal', 0, 2, 0, { align: 'center' });
-  pdfLine(`ID ${this_request.local_key}`, page.font.size.tiny, 'normal', 0, 0, 0, { align: 'center' });
-  pdfLine('****** END ******', page.font.size.tiny, 'normal', 0, 0, 4, { align: 'center' });
+  pdfLineMealTicket('AVA Senior Living', page.font.size.tiny, 'normal', 0, 2, 0, { align: 'center' });
+  pdfLineMealTicket(`ID ${this_request.local_key}`, page.font.size.tiny, 'normal', 0, 0, 0, { align: 'center' });
+  pdfLineMealTicket('****** END ******', page.font.size.tiny, 'normal', 0, 0, 4, { align: 'center' });
   htmlText.push(`<p style="padding-top: 1.5em;">`);
   style = `"font-size: ${page.font.size.tiny}; text-align:center;"`;
   htmlText.push(`<div style=${style}>${this_request.local_key}/${this_request.request_id}</div>`);
@@ -700,7 +777,7 @@ export async function mealTicketFormat(body) {
 
   return [htmlText.join(''), plainText.join('\n'), s3Resp];
 
-  function pdfLine(text, size, style, indent = 0, before, after, options) {
+  function pdfLineMealTicket(text, size, style, indent = 0, before, after, options) {
     if (style) { doc.setFont(page.font.family, style); }
     let lastSize = page.font.size.medium;
     if (size) {
@@ -737,6 +814,252 @@ export async function mealTicketFormat(body) {
     }
     if (after) { yPos += (after * size); }
     return;
+  }
+}
+
+async function pdfLaunch(body) {
+  if (!body.hasOwnProperty('pdf')) { body.pdf = {}; }
+  doc = new jsPDF({
+    orientation: "portrait",
+    unit: "px",
+    format: ((body.pdf.pageWidth) ? [body.pdf.pageWidth, (body.pdf.pageHeight || 9999)] : [563, 750])
+  });
+  doc.autoPrint();
+  page = {
+    width: doc.internal.pageSize.width,
+    height: doc.internal.pageSize.height,
+    center: (doc.internal.pageSize.width / 2),
+    border: (body.pdf.hasOwnProperty('border')) ? body.pdf.border : true,
+    font: {
+      family: 'Helvetica',
+      size: { large: 20, medium: 16, small: 12, tiny: 8 }
+    },
+    layout: (body.pdf.hasOwnProperty('orientation')) ? body.pdf.orientation : 'portrait',
+    info: { author: 'AVA Senior Living' },
+    margin: {
+      top: (body.pdf.margin && body.pdf.margin.top) || (doc.internal.pageSize.height / 20),
+      bottom: (body.pdf.margin && body.pdf.margin.bottom) || (doc.internal.pageSize.height / 15),
+      left: (body.pdf.margin && body.pdf.margin.left) || (doc.internal.pageSize.width / 12),
+      right: (body.pdf.margin && body.pdf.margin.right) || (doc.internal.pageSize.width / 12)
+    }
+  };
+  page.bottom = page.height - (2 * page.margin.bottom);
+  page.right = page.width - page.margin.right;
+  page.centerPoint = page.width / 2;
+  page.printableArea = page.width - page.margin.left - page.margin.right;
+  page.title = body.pdf.title || 'AVA Senior Living';
+  page.info.title = page.title;
+  clt({ page });
+  let nowTime = makeDate(new Date());
+  pdfCurrent = {
+    yPos: page.margin.top,
+    xPos: page.margin.left,
+    pageNumber: 1,
+    indent: 0,
+    reportTime: nowTime.absolute,
+    timestamp: nowTime.numeric24
+  };
+  let customizations = await getCustomizations('*all', body.client);
+  if (customizations['client_name']) {
+    pdfCurrent.client_name = customizations['client_name'];
+  }
+  else {
+    pdfCurrent.client_name = `Client = ${body.client_id}`;
+  };
+  if (customizations['print']) {
+    let print_specs = customizations['print'];
+    if (print_specs.size) {
+      page.font.size = {
+        large: ((print_specs.size <= 5) ? 20 * print_specs.size : print_specs.size),
+        medium: ((print_specs.size <= 5) ? 16 * print_specs.size : print_specs.size),
+        small: ((print_specs.size <= 5) ? 12 * print_specs.size : print_specs.size),
+        tiny: ((print_specs.size <= 5) ? 8 * print_specs.size : print_specs.size),
+      };
+    }
+  }
+  else {
+    pdfCurrent.client_name = `Client = ${body.client_id}`;
+  };
+  if (customizations['logo']) {
+    pdfCurrent.logo = customizations['logo'];
+    if (customizations['logo_dimensions']) {
+      pdfCurrent.logo_width = customizations['logo_dimensions'][0] / 2;
+      pdfCurrent.logo_height = customizations['logo_dimensions'][1] / 2;
+    }
+    else {
+      pdfCurrent.logo_width = 75;
+      pdfCurrent.logo_height = 75;
+    }
+  }
+  pdfStyle('reset');
+}
+
+function pdfHeader(pageN) {
+  clt({ pdfCurrent });
+  let savedStyle = Object.assign({}, pdfCurrent);
+  pdfCurrent.yPos = page.margin.top;
+  if (pageN > 1) {
+    pdfStyle('reset');
+    doc.addPage({
+      orientation: "portrait",
+      unit: "px",
+      format: (page.width ? [page.width, page.height] : 'letter')
+    });
+  }
+  else if (pdfCurrent.logo) {
+    //     doc.addImage(pdfCurrent.logo, 'PNG', page.center - (pdfCurrent.logo_width / 2), pdfCurrent.yPos, pdfCurrent.logo_width, pdfCurrent.logo_height);
+    //     pdfCurrent.yPos += pdfCurrent.logo_height;
+  }
+  pdfStyle({ size: 'large', align: 'center', style: 'bold' });
+  doc.text(pdfCurrent.client_name, page.center, pdfCurrent.yPos, { align: 'center' });
+  pdfStyle({ size: 'medium', before: 1, style: 'normal' });
+  doc.text(page.title, page.center, pdfCurrent.yPos, { align: 'center' });
+  pdfDown(1);
+  doc.text(pdfCurrent.reportTime, page.center, pdfCurrent.yPos, { align: 'center' });
+  if (pageN > 1) {
+    pdfStyle({ size: 'small', before: 1 });
+    doc.text(`Page ${pdfCurrent.pageNumber}`, page.width / 2, pdfCurrent.yPos, { align: 'center' });
+    pdfDown(2);
+    if (pdfCurrent.key) {
+      pdfStyle({ size: 'medium', align: 'left', style: 'bold' });
+      doc.text(titleCase(pdfCurrent.key), page.margin.left, pdfCurrent.yPos);
+      let newX = page.margin.left + doc.getTextWidth(titleCase(pdfCurrent.key)) + 5;
+      pdfStyle({ size: 'small', style: 'normal' });
+      doc.text('(continued)', newX, pdfCurrent.yPos);
+    }
+    pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
+    pdfStyle(pdfCurrent);
+  }
+  else {
+    pdfStyle('reset');
+    pdfDown(2);
+  }
+}
+
+function pdfLine(text, options = {}) {
+  clt({ pdfLine: text, options });
+  if (options) { pdfStyle(options); }
+  if (options.before) { pdfDown(options.before); }
+  if (options.yPos && !isNaN(options.yPos)) {
+    pdfCurrent.yPos = options.yPos;
+  }
+  else if (options.yPos && (options.yPos === 'footer')) {
+    pdfCurrent.yPos = page.height - page.margin.bottom - 54;
+    pdfCurrent.xPos = page.margin.left;
+    options.noNewPage = true;
+  }
+  else if (options.yPos && (options.yPos === 'header')) {
+    pdfCurrent.yPos = page.margin.top;
+    options.noNewPage = true;
+  }
+  else if (!options.noNewLine) {
+    pdfDown(1);
+  }
+  if (!options.noNewPage && (pdfCurrent.yPos >= (page.bottom - page.margin.bottom))) {
+    pdfHeader(++pdfCurrent.pageNumber);
+  }
+  if (options.image) {
+    let imageSize = pdfCurrent.fontSize * 5;
+    let xOffset;
+    switch (pdfCurrent.align) {
+      case 'center': {
+        xOffset = page.centerPoint - (imageSize / 2);
+        doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+        pdfCurrent.xPos = page.centerPoint + (imageSize / 2);
+        break;
+      }
+      case 'right': {
+        xOffset = page.width - page.margin.right - imageSize;
+        doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+        pdfCurrent.xPos = page.width - page.margin.right;
+        break;
+      }
+      default: {
+        xOffset = pdfCurrent.xPos + pdfCurrent.indent;
+        doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+        pdfCurrent.xPos = xOffset + imageSize;
+      }
+    }
+    pdfCurrent.yPos += imageSize;
+  }
+  else {
+    // this little chunk deals with text overflow
+    {
+      let tWords = [];
+      if ((pdfCurrent.align === 'center') && (doc.getTextWidth(text) > page.printableArea)) {
+        tWords = doc.splitTextToSize(text, page.printableArea);
+      }
+      else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
+        tWords = doc.splitTextToSize(text, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
+      }
+      if (tWords.length > 0) {
+        for (let t = 0; t < tWords.length - 1; t++) {
+          pdfLine(tWords[t], options);
+        }
+        pdfDown(1);
+        text = tWords[tWords.length - 1];
+      }
+    }
+    if (pdfCurrent.align === 'center') {
+      let xOffset = page.centerPoint - (doc.getTextWidth(text) / 2);
+      doc.text(text, xOffset, pdfCurrent.yPos);
+      pdfCurrent.xPos = page.centerPoint + (doc.getTextWidth(text) / 2) + pdfCurrent.fontSize;
+    }
+    else if (pdfCurrent.align === 'right') {
+      doc.text(text, page.width - page.margin.right, pdfCurrent.yPos, { align: 'right' });
+      pdfCurrent.xPos = page.margin.right;
+    }
+    else if (pdfCurrent.noNewLine) {
+      doc.text(text, pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
+      pdfCurrent.xPos += doc.getTextWidth(text) + pdfCurrent.fontSize;
+    }
+    else {
+      doc.text(text, pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
+      pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent) + doc.getTextWidth(text) + pdfCurrent.fontSize;
+    }
+  }
+  if (options.after) { pdfDown(options.after); }
+  return;
+}
+
+function pdfDown(n = 1) {
+  pdfCurrent.yPos += ((isNaN(n) ? 1 : n) * (pdfCurrent.fontSize * 0.75));
+  pdfCurrent.xPos = page.margin.left;
+}
+
+function pdfStyle(options = {}) {
+  if (options === 'reset') {
+    pdfCurrent.style = 'normal';
+    doc.setFont(page.font.family, 'normal');
+    pdfCurrent.fontSize = page.font.size['medium'];
+    doc.setFontSize(pdfCurrent.fontSize);
+    pdfCurrent.indent = 0;
+    pdfCurrent.align = '';
+  }
+  else {
+    if (options.style) {
+      pdfCurrent.style = options.style;
+      doc.setFont(page.font.family, options.style);
+    }
+    if (options.size) {
+      if (isNaN(options.size)) {
+        if (page.font.size.hasOwnProperty(options.size)) {
+          pdfCurrent.fontSize = page.font.size[options.size];
+        }
+      }
+      else { pdfCurrent.fontSize = options.size; }
+      doc.setFontSize(pdfCurrent.fontSize);
+    }
+    if (options.fontSize) {
+      pdfCurrent.fontSize = options.fontSize;
+      doc.setFontSize(pdfCurrent.fontSize);
+    }
+    if (options.hasOwnProperty('indent')) {   // different because when options.indent === 0, options.indent is false
+      pdfCurrent.indent = options.indent;
+    }
+    if (options.align) {
+      pdfCurrent.align = options.align;
+    }
   }
 }
 
