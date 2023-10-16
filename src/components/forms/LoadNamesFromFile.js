@@ -168,6 +168,23 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
         reactData.request.author = state.session[options.runType].message.author;
       }
     }
+    callList.sort((a, b) => { 
+      if (a.Status === b.Status) { 
+        if (a.Action === b.Action) {
+          if (a.Name < b.Name) { return -1; }
+          else { return 1; }
+        }
+        else {
+          if (a.Action < b.Action) { return -1; }
+          else { return 1; }
+        }
+      }
+      else {
+        if (a.Status === 'Submitted') { return -1; }
+        else if (a.Status < b.Status) { return -1; }
+        else { return 1; }
+      }
+    })
     reactData.callList = callList;
     let newWorksheet = XLSX.utils.json_to_sheet(callList, {});
     let newWorkbook = XLSX.utils.book_new();
@@ -309,6 +326,16 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
       setReactData(reactData);
       setForceRedisplay(forceRedisplay => !forceRedisplay);
       let this_name = nameList[x];
+      if (this_name.toLowerCase().includes(' and ') || this_name.includes(' & ')) {
+        let wordList = makeArray(this_name, ' ');
+        let foundAt = wordList.indexOf('and');
+        if (foundAt === -1) { foundAt = wordList.indexOf('&'); }
+        if (foundAt > -1) {
+          this_name = wordList.toSpliced(foundAt, 2).join(' ');
+          let rightName = wordList.toSpliced(foundAt - 1, 2).join(' ');
+          nameList.push(rightName);
+        }
+      }
       let pList = await getPersonByWords(state.session.client_id, makeArray(this_name.replace(',', ' ').toLowerCase(), ' '));
       pList = pList.filter(p => {
         return (determineClass(p.groups, state.session.group_assignments) !== 'inactive');
@@ -403,7 +430,7 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
           }
           {(reactData.stage === 'confirm_list') &&
             <AVAConfirm
-              promptText={[`You are going to call ${reactData.request.recipientList.length} people.  Please confirm.`]}
+            promptText={[`You are going to call ${reactData.request.recipientList.length} ${(reactData.request.recipientList.length === 1) ? 'person' : 'people'}.  Please confirm.`]}
               cancelText={`Cancel`}
               confirmText={`Confirm and proceed`}
               onCancel={() => {
