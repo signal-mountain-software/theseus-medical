@@ -647,11 +647,25 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                             mr={1}
                             minWidth={50}
                             maxWidth={50}
+                            minHeight={50}
+                            maxHeight={50}
+                            border={1}
                             alt=''
-                            src={getImage(this_item.slotData.owner)}
+                            src={(state.user.account_class
+                              && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                              && !(isEventOwner || isSlotOwner(this_item.slotData))
+                            ) ? null
+                              : getImage(this_item.slotData.owner)
+                            }
                           />
                           <Box display='flex' flexWrap='wrap' flexDirection='column' flexGrow={1}>
-                            <Typography style={AVATextStyle({ size: 1.2, margin: { right: 1 } })}  >{makeReadableName(this_item.slotData.name)}</Typography>
+                            <Typography style={AVATextStyle({ size: 1.2, margin: { right: 1 } })}  >
+                              {(state.user.account_class
+                                && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                                && !(isEventOwner || isSlotOwner(this_item.slotData))
+                              ) ? 'Reserved' : makeReadableName(this_item.slotData.name)
+                              }
+                            </Typography>
                             {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
                               (editNoteNumber === index ?
                                 <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>

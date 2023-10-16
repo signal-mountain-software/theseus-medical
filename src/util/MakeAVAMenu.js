@@ -166,30 +166,6 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       requestor.favorite_activities = [];
     }
 
-    /*
-    // Also add anything that you've used 3 or more times recently
-    // Get Recent history
-    // ({ '** HISTORY **': (activityHistory || 'no history found') });
-    if (!('favorite_blocked' in requestor)) { requestor.favorite_blocked = []; }
-    sectionSort = '**2a';
-    sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} frequently used`;
-    sectionColor = '#4bb491';
-    sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-star-half-empty-50.png';
-    activityHistory = await getActivityLog(pPerson);
-    let hL = Object.keys(activityHistory).length;
-    let h = 0;
-    for (const hActivity in activityHistory) {
-      h++;
-      if ((activityHistory[hActivity].length > 4) &&
-        !(requestor.favorite_activities.includes(hActivity)) &&
-        !(requestor.favorite_blocked.includes(hActivity))) {
-        screenStatus('Frequently Used', ((h / hL) * 100), ((hL / 40) + .75));
-        let this_row = await addRow(hActivity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'History');
-        if (this_row) { returnArray.push(this_row); }
-      }
-    }
-    */
-
     // ({ '** PRIORITIES **': (requestor.priority_activities || 'no priority activities') });
     if (requestor.hasOwnProperty('priority_activities')) {
       sectionSort = '**2b';
@@ -399,6 +375,15 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       }
     }
 
+    // Filter the result to remove sections or functions prohibited by People record
+    if (requestor.hasOwnProperty('prohibited')) {
+      if (!requestor.prohibited.activity_code) { requestor.prohibited.activity_code = []; } 
+      if (!requestor.prohibited.section) { requestor.prohibited.section = []; }
+      returnArray = returnArray.filter(row => {
+        return !(requestor.prohibited.activity_code.includes(row.activity_code) || (requestor.prohibited.section.includes(row.section_name)))
+      });
+    }
+
     // Add sort key where needed
     for (let ndx = 0; ndx < returnArray.length; ndx++) {
       let row = returnArray[ndx];
@@ -534,8 +519,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let favorite = false;
     if (pReason === 'History') { favorite = true; }
     else { 
-      let foundIndex = requestor.favorite_activities.findIndex(r => { return (r.split('~')[0] === activityRec.activity_code); });
-      if (foundIndex > -1) { favorite = true; }
+      if (requestor.hasOwnProperty('favorite_activities')) {
+        let foundIndex = makeArray(requestor.favorite_activities).findIndex(r => { return (r.split('~')[0] === activityRec.activity_code); });
+        if (foundIndex > -1) { favorite = true; }
+      }
     } 
     let pSort;
     if (activityRec.section_name && !favorite) {

@@ -79,10 +79,11 @@ export default ({ onSave, onClose }) => {
       }
     }
     for (let p = 0; p < personRecs.length; p++) {
-      personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);
+      personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);      
       if (personRecs[p].messaging.voice) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`; }
       else if (personRecs[p].messaging.sms) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`; }
     }
+    personRecs = personRecs.filter(p => { return (p.account_class !== 'inactive'); })
     switch (personRecs.length) {
       case 0: {
         return { result: 'invalid', error_field: 1, reason: `That information doesn't match any ${nonRes ? titleCase(nonRes) : 'Resident'} accounts that we can find` };

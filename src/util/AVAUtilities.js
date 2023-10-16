@@ -93,22 +93,25 @@ export function listFromArray(inArray, options) {
 export async function getCustomizations(pKey, pClient) {
   if (!pKey || !pClient) { return false; }
   if (pKey.toLowerCase() === '*all') {
-    let qParm = {
-      KeyConditionExpression: 'client_id = :c',
-      ExpressionAttributeValues: { ':c': pClient },
-      TableName: "Customizations"
-    };
+    let customizations = {};
     let cRecs = await dbClient
-      .query(qParm)
+      .query({
+        KeyConditionExpression: 'client_id = :c',
+        ExpressionAttributeValues: {
+          ':c': pClient,
+        },
+        TableName: "Customizations"
+      })
       .promise()
       .catch(error => {
-        cl({
-          'Error reading Groups': error,
-          client_id: `<${pClient}>`
-        });
+        clt(`Error reading Customizations`, error);
       });
-    if (!recordExists(cRecs)) { return false; }
-    else { return cRecs.Items; }
+    if (recordExists(cRecs)) {
+      cRecs.Items.forEach(cRec => {
+        customizations[cRec.custom_key] = cRec.customization_value || cRec.icon;
+      });
+    }
+    return customizations;
   }
   else {
     let cRec = await dbClient

@@ -169,7 +169,14 @@ export async function getPersonByWords(pClient, pWords) {
         });
     if (recordExists(qR)) {
         for (let p = 0; p < qR.Items.length; p++) {
-            foundPeople[qR.Items[p].person_id] = qR.Items[p];
+            let searchWords = qR.Items[p].search_data.split(' ');
+            let notFoundWords = pWords.filter(w => { return (w && !searchWords.includes(w)); })
+            if (notFoundWords.length === 0) {
+                foundPeople[qR.Items[p].person_id] = qR.Items[p];
+            }
+            else {
+                qR.Items.splice(p, 1);
+            }
         }
         return qR.Items;
     }

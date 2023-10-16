@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, dbClient, makeArray, sentenceCase } from '../util/AVAUtilities';
+import { clt, cl, recordExists, dbClient, makeArray } from '../util/AVAUtilities';
 import { getActivity } from '../util/AVAObservations';
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
@@ -187,7 +187,7 @@ export async function putServiceRequest(body) {
         rMsg = `Held for future processing ${rTime.oaDate}`;
       }
       else {
-        let sendResults = (await sendMessages(preparedMessages)).pop();
+        let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
         if (!sendResults.sent) {
           serviceRequestRec.last_status = 'Failed to send';
           rMsg = `Failed to send ${rTime.oaDate}`;
@@ -242,7 +242,7 @@ export async function putServiceRequest(body) {
   };
 }
 
-export async function printServiceRequest(serviceRequestRec) {
+export async function printServiceRequest(serviceRequestRec, options = {}) {
   if (!serviceRequestRec.hasOwnProperty('activity_key')) {
     let customizationsRec = await dbClient
       .get({
@@ -252,55 +252,32 @@ export async function printServiceRequest(serviceRequestRec) {
       .promise()
       .catch(error => { cl(`***ERR reading Customizations*** caught error is: ${error}`); });
     if (recordExists(customizationsRec) && customizationsRec.Item.customization_value && customizationsRec.Item.customization_value[serviceRequestRec.request_type]) {
-      serviceRequestRec.activity_key = customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code
+      serviceRequestRec.activity_key = customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code;
     }
   }
   let activityRec = await getActivity(serviceRequestRec.client_id, serviceRequestRec.activity_key);
-  if (!(activityRec.hasOwnProperty('activity_code'))) { 
+  if (!(activityRec.hasOwnProperty('activity_code'))) {
     return {
       'success': false,
-      'message': (`AVA could not find enough information to retransmit this request`)
+      'message': `AVA could not find enough information to retransmit this request`
     };
-   }
+  }
   let body = Object.assign({}, activityRec, serviceRequestRec, serviceRequestRec.original_request);
   let success = true;
-  let rMsg;
   if (body.messaging) {
-    if (body.history) { body.reprint = 'Reprint'; }
-    let preparedMessages = await prepareMessage(body);
+    let preparedMessages = await prepareMessage(Object.assign({}, body, options));
     if (preparedMessages.length > 0) {
       preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
-      let rTime = makeDate(new Date().getTime());
-      serviceRequestRec.messages = preparedMessages;
-      serviceRequestRec.last_update = rTime.timestamp;
-      if (body.messaging?.format?.method === 'hold') {
-        serviceRequestRec.last_status = 'Prepared & Held';
-        rMsg = sentenceCase(`${body.reprint || ''} held for future processing`);
-      }
-      else {
-        let sendResults = (await sendMessages(preparedMessages)).pop();
-        if (!sendResults.sent) {
-          serviceRequestRec.last_status = 'Failed to send';
-          rMsg = sentenceCase(`${body.reprint || ''} failed to send`);
-          success = false;
-        }
-        else {
-          serviceRequestRec.last_status = 'Sent';
-          rMsg = sentenceCase(`${body.reprint || ''} sent successfully`);
-        }
-      }
-      rMsg += ` ${rTime.oaDate}`;
-      if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
-        serviceRequestRec.history.unshift(rMsg);
-      }
-      else { serviceRequestRec.history = [rMsg]; }
-    }
+      return {
+        success,
+        preparedMessages,
+        'message': `${preparedMessages.length} message${(preparedMessages.length > 1) ? 's' : ''}`
+      };
+    };
   }
-  cl({ 'updating ServiceRequestRec with': serviceRequestRec });
-  await updateServiceRequest(serviceRequestRec)
   return {
-    success,
-    'message': rMsg
+    'success': false,
+    'message': `Nothing to print`
   };
 }
 

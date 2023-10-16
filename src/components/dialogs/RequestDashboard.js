@@ -7,6 +7,7 @@ import { getMessages, sendMessages, messageHistory } from '../../util/AVAMessage
 import AVATextInput from '../forms/AVATextInput';
 
 import { useSnackbar } from 'notistack';
+// import { print } from "pdf-to-printer";
 
 import List from '@material-ui/core/List';
 
@@ -27,8 +28,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import TextField from '@material-ui/core/TextField';
 
 import SendIcon from '@material-ui/icons/Send';
-import RedoIcon from '@material-ui/icons/Redo';
-
+import PrintIcon from '@material-ui/icons/Print';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 
@@ -807,9 +807,10 @@ export default ({ session, filter = {}, onClose }) => {
                           </Box>
                         }
                         <Box display='flex' flexDirection='row' marginRight='10px'>
-                          <RedoIcon
+                          <PrintIcon
                             onClick={async () => {
-                              let result = await printServiceRequest(Object.assign(this_item));
+                              let result = await printServiceRequest(Object.assign(this_item), { PDF: true, fileName: 'test_PDF' });
+                              // await print(result.preparedMessages[0].pdfInfo.Location);
                               enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
                             }}
                           />
