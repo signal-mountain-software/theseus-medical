@@ -88,53 +88,90 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
     let nowTime = makeDate(new Date()).numeric$;
     let thread_id = `${options.runType}.${state.session.client_id}.${nowTime}.${uuid(6)}`;
     let callList = [];
+    let noCallList = [];
+    let colWidth = {
+      AVA_ID: 10,
+      Name: 25,
+      Action: 10,
+      Status: 10
+    };
     let fakeNumber = 0;
     for (let l = 0; l < summaryList.length; l++) {
       let p = summaryList[l];
       let avaID = p.pID;
-      if (p.pStatus === 'no match') { p.result = 'No AVA account found'; }
-      else if (p.pStatus === 'multiple') { p.result = 'Multiple AVA accounts found'; }
+      if (p.pStatus === 'no match') {
+        p.result = 'No AVA account found';
+      }
+      else if (p.pStatus.startsWith('multiple inactive')) {
+        p.result = `${p.pStatus.split(':')[1]} accounts found.  All are inactive.`;
+      }
+      else if (determineClass(p.pRec.groups, state.session.group_assignments) === 'inactive') {
+        p.result = 'This is an inactive account';
+      }
+      else if (p.pStatus === 'multiple') {
+        p.result = 'Multiple AVA accounts found';
+      }
+      else if (excludeThisPerson(p.pRec)) {
+        p.result = 'Person is on the exclusion list';
+      }
+      else if (recipientList.includes(p.pID)) {
+        p.result = 'Duplicate';
+      }
       else {
-        if (excludeThisPerson(p.pRec)) { p.result = 'Person is on the exclusion list'; }
-        else {
-          if (recipientList.includes(p.pID)) { p.result = 'Duplicate'; }
+        if (substituteNames) {
+          let tID = testList.shift();
+          if (tID) {
+            p.result = 'Message Scheduled';
+            recipientList.push(tID);
+            avaID = tID;
+          }
           else {
-            if (substituteNames) {
-              let tID = testList.shift();
-              if (tID) {
-                p.result = 'Message Scheduled';
-                recipientList.push(tID);
-                avaID = tID;
-              }
-              else {
-                p.result = 'Message would have been sent, but no substitute for testing identified';
-                recipientList.push(`fakeID_${fakeNumber++}`);
-              }
-            }
-            else {
-              recipientList.push(p.pID);
-              p.result = 'Message Scheduled';
-            }
-            recipientNameList.push(p.pName);
-            p.thread = thread_id;
+            p.result = 'Message would have been sent, but no substitute for testing identified';
+            recipientList.push(`fakeID_${fakeNumber++}`);
           }
         }
-        let reqArray = await getServiceRequests({
-          client_id: state.session.client_id,
-          person_id: p.pID,
-          foreign_key: 'resident',
-          request_type: "checkout"
-        });
-        if ((reqArray.length > 0) && (reqArray[0].last_status === 'out')) {
-          p.result += ` (Checked out since ${makeDate(reqArray[0].last_update).relative})`;
+        else {
+          recipientList.push(p.pID);
+          p.result = 'Message Scheduled';
         }
+        recipientNameList.push(p.pName);
+        p.thread = thread_id;
       }
-      callList.push({
-        AVA_ID: avaID,
-        Name: p.pName,
-        Action: p.result,
-        Status: ((p.result === 'Message Scheduled') ? 'Submitted' : 'No message')
+      let reqArray = await getServiceRequests({
+        client_id: state.session.client_id,
+        person_id: p.pID,
+        foreign_key: 'resident',
+        request_type: "checkout"
       });
+      if ((reqArray.length > 0) && (reqArray[0].last_status === 'out')) {
+        p.result += ` (Checked out since ${makeDate(reqArray[0].last_update).relative})`;
+      }
+      if (p.result === 'Message Scheduled') {
+        let rowData = {
+          AVA_ID: avaID,
+          Name: p.pName,
+          Action: p.result,
+          Status: 'Submitted'
+        };
+        callList.push(rowData);
+        Object.keys(rowData).forEach(k => { 
+          let w = rowData[k].length;
+          if (w > colWidth[k]) { colWidth[k] = w; }
+        })
+      }
+      else {
+        let rowData = {
+          AVA_ID: avaID,
+          Name: p.pName,
+          Action: p.result,
+          Status: 'No message'
+        }
+        noCallList.push(rowData);
+        Object.keys(rowData).forEach(k => {
+          let w = rowData[k].length;
+          if (w > colWidth[k]) { colWidth[k] = w; }
+        })
+      }
     };
     if (recipientList.length === 0) {
       enqueueSnackbar(`Nobody found to contact!`, { variant: 'error', persist: false });
@@ -168,31 +205,36 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
         reactData.request.author = state.session[options.runType].message.author;
       }
     }
-    callList.sort((a, b) => { 
-      if (a.Status === b.Status) { 
-        if (a.Action === b.Action) {
-          if (a.Name < b.Name) { return -1; }
-          else { return 1; }
-        }
-        else {
-          if (a.Action < b.Action) { return -1; }
-          else { return 1; }
-        }
-      }
-      else {
-        if (a.Status === 'Submitted') { return -1; }
-        else if (a.Status < b.Status) { return -1; }
-        else { return 1; }
-      }
-    })
-    reactData.callList = callList;
-    let newWorksheet = XLSX.utils.json_to_sheet(callList, {});
+    callList.sort((a, b) => {
+      if (a.Name < b.Name) { return -1; }
+      else { return 1; }
+    });
+    noCallList.sort((a, b) => {
+      if (a.Name < b.Name) { return -1; }
+      else { return 1; }
+    });
+    let emptyRow = {
+      AVA_ID: '',
+      Name: '',
+      Action: '',
+      Status: ''
+    };
+    let finalList = [];
+    finalList.push(emptyRow);
+    finalList.push(...callList);
+    finalList.push(emptyRow);
+    finalList.push(emptyRow);
+    finalList.push(emptyRow);
+    finalList.push(...noCallList);
+    reactData.callList = finalList;
+    let newWorksheet = XLSX.utils.json_to_sheet(finalList, {});
+    newWorksheet["!cols"] = Object.values(colWidth).map(v => { return {wch: v}})
     let newWorkbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Call List");
-    let bufferInfo = XLSX.write(newWorkbook, { type: 'buffer', bookType: 'csv' });
+    let bufferInfo = XLSX.write(newWorkbook, { type: 'buffer', bookType: 'xlsx' });
     const pFile = {
       Bucket: 'theseus-medical-storage',
-      Key: `public_uploads/${thread_id}.csv`,
+      Key: `public_uploads/${thread_id}.xlsx`,
       Body: bufferInfo,
       ACL: 'public-read-write',
     };
@@ -337,9 +379,16 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
         }
       }
       let pList = await getPersonByWords(state.session.client_id, makeArray(this_name.replace(',', ' ').toLowerCase(), ' '));
-      pList = pList.filter(p => {
-        return (determineClass(p.groups, state.session.group_assignments) !== 'inactive');
-      })
+      if (pList.length > 1) {    // if more than one account was found, remove any inactive accounts before proceeding
+        let pCount = pList.length;
+        pList = pList.filter(p => {
+          return (determineClass(p.groups, state.session.group_assignments) !== 'inactive');
+        });
+        if (pList.length === 0) {
+          returnList.push({ pID: '', pName: this_name, pRec: {}, pStatus: `multiple inactive:${pCount}` });
+          break;
+        }
+      }
       returnObj.found += pList.length;
       returnObj.count++;
       switch (pList.length) {
@@ -430,7 +479,7 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
           }
           {(reactData.stage === 'confirm_list') &&
             <AVAConfirm
-            promptText={[`You are going to call ${reactData.request.recipientList.length} ${(reactData.request.recipientList.length === 1) ? 'person' : 'people'}.  Please confirm.`]}
+              promptText={[`You are going to call ${reactData.request.recipientList.length} ${(reactData.request.recipientList.length === 1) ? 'person' : 'people'}.  Please confirm.`]}
               cancelText={`Cancel`}
               confirmText={`Confirm and proceed`}
               onCancel={() => {
