@@ -230,6 +230,7 @@ export async function getPerson(pID, pElement = '*all', override = false) {
 };
 
 export function formatPhone(numberIn) {
+    if (!numberIn) { return ''; }
     if (typeof (numberIn) === 'string') { numberIn = Number(numberIn.replace(/\D/g, '')); }
     let response = '';
     switch (true) {
