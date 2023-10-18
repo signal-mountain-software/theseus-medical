@@ -146,7 +146,7 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
       if ((reqArray.length > 0) && (reqArray[0].last_status === 'out')) {
         p.result += ` (Checked out since ${makeDate(reqArray[0].last_update).relative})`;
       }
-      if (p.result === 'Message Scheduled') {
+      if (p.result.startsWith('Message Scheduled')) {
         let rowData = {
           AVA_ID: avaID,
           Name: p.pName,
