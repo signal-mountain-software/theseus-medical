@@ -263,8 +263,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         return formatPhone(inData);
       }
       case 'boolean': {
-        let bVal = ['yes', 'ok', 'true'].includes(inData);
-        return (bVal ? 'yes' : 'no');
+        return (inData ? 'Yes' : 'No');
       }
       case 'date': {
         return makeDate(inData).dateOnly;
@@ -644,7 +643,11 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 patient={editPersonRec}
                 groupData={groupData}
                 open={true}
-                onClose={() => {
+                onClose={(updatedPerson) => {
+                  if (updatedPerson) {
+                    updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
+                    setSuperSizeData(Object.assign(superSizeData, updatedPerson));
+                  }
                   setEditPersonRec(null);
                   setShowEditPerson(null);
                 }}
