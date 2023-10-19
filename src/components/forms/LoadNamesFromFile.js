@@ -136,15 +136,15 @@ export default ({ options = { runType: 'welfare_check' }, onClose }) => {
         }
         recipientNameList.push(p.pName);
         p.thread = thread_id;
-      }
-      let reqArray = await getServiceRequests({
-        client_id: state.session.client_id,
-        person_id: p.pID,
-        foreign_key: 'resident',
-        request_type: "checkout"
-      });
-      if ((reqArray.length > 0) && (reqArray[0].last_status === 'out')) {
-        p.result += ` (Checked out since ${makeDate(reqArray[0].last_update).relative})`;
+        let reqArray = await getServiceRequests({
+          client_id: state.session.client_id,
+          person_id: p.pID,
+          foreign_key: 'resident',
+          request_type: "checkout"
+        });
+        if ((reqArray.length > 0) && (reqArray[0].last_status === 'out')) {
+          p.result += ` (Checked out since ${makeDate(reqArray[0].last_update).relative})`;
+        }
       }
       if (p.result.startsWith('Message Scheduled')) {
         let rowData = {

@@ -125,6 +125,18 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
+  local_boolean: {
+    paddingTop: 16,
+    paddingBottom: 16,
+    marginRight: 32,
+    fontSize: theme.typography.fontSize * 0.857,
+    color: '#0000008A'
+  },
+  local_tiny: {
+    paddingTop: 16,
+    paddingBottom: 16,
+    fontSize: theme.typography.fontSize * 0.5
+  },
   idText1: {
     fontSize: theme.typography.fontSize * 0.8,
     marginTop: 10,
@@ -287,8 +299,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
             break;
           }
           case 'boolean': {
-            let bVal = ['yes', 'ok', 'true'].includes(localObj[ldKey]);
-            returnObj[ldKey] = (bVal ? 'yes' : 'no');
+            returnObj[ldKey] = localObj[ldKey];
             break;
           }
           case 'date': {
@@ -352,7 +363,32 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       setPatientPChange(sessionRec.Item.password_change_date);
       return sessionRec.Item;
     }
-    return { "failed": true };
+    else {
+      let temp_session = {
+        "session_id": pWho,
+        "patient_id": pWho,
+        "user_id": pWho,
+        "person_id": pWho,
+        "patient_display_name": "New Account",
+        "user_display_name": "New Account",
+        "assigned_to": "",
+        "client_id": state.session.client_id,
+        "groups_managed": [],
+        "kiosk_mode": false,
+        "last_login": "",
+        "method": "add_from_dialog",
+        "password_change_date": "",
+        "platform": "",
+        "requirePassword": false,
+        "responsible_for": [],
+        "status": {},
+        "storePassword": true,
+        "url_parameters": {},
+        "user_homeClient": state.session.client_id
+      };
+      setPatientSession(temp_session);
+      return temp_session;
+    }
   };
 
   const getGroupMemberList = async () => {
@@ -497,6 +533,8 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       pwdReset: resettingPwd,
       newPassword: localData.inputPWD
     };
+    updatePerson.messaging = putPerson.messaging;
+    updatePerson.name = putPerson.name;
     await dbClient
       .put({
         Item: putPerson,
@@ -556,13 +594,16 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     attributeValues[':sp'] = localData.storePassword;
     updateExpression += 'storePassword = :sp, ';
 
-    if (localData.sessionClient === '#need') {
+    if ((localData.sessionClient !== myClient) || (localData.sessionPatient !== patient.person_id)) {
       attributeValues[':c'] = myClient;
       updateExpression += 'client_id = :c, ';
     }
-    if ((localData.sessionPatient === '#need') && !proxy) {
+    if (localData.sessionPatient !== patient.person_id) {
       attributeValues[':p'] = patient.person_id;
-      updateExpression += 'patient_id = :p, person_id = :p, user_id = :p, ';
+      updateExpression += 'person_id = :p, user_id = :p, ';
+      if (!proxy) {
+        updateExpression += 'patient_id = :p, ';
+      }
     }
     if (fontFactorChanged) {
       attributeValues[':f'] = fontFactor * user_fontSize;
@@ -904,40 +945,69 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                 (Object.keys(state.session.local_data).length > 0) &&
                 <Box flexGrow={2} display='flex' flexDirection='column'>
                   {Object.keys(state.session.local_data).map((local, lX) => (
-                    <TextField
-                      key={`local_${lX}`}
-                      classes={{ root: classes.idText }}
-                      id={`loc-${local}`}
-                      value={localData.local_data_display[local] || ' '}
-                      onChange={(event) => {
-                        switch (state.session.local_data[local]) {
-                          case 'phone': {
-                            localData.local_data[local] = '+1' + Number(event.target.value.replace(/\D/g, '')).toString();
-                            localData.local_data_display[local] = formatPhone(event.target.value);
-                            break;
+                    (state.session.local_data[local] !== 'boolean') ?
+                      <TextField
+                        key={`local_${lX}`}
+                        classes={{ root: classes.idText }}
+                        id={`loc-${local}`}
+                        value={localData.local_data_display[local] || ' '}
+                        onChange={(event) => {
+                          switch (state.session.local_data[local]) {
+                            case 'phone': {
+                              if (event.target.value) {
+                                localData.local_data[local] = '+1' + Number(event.target.value.replace(/\D/g, '')).toString();
+                              }
+                              else {
+                                localData.local_data[local] = '';
+                              }
+                              localData.local_data_display[local] = formatPhone(event.target.value);
+                              break;
+                            }
+                            case 'fulldate':
+                            case 'date': {
+                              let lDate = makeDate(event.target.value);
+                              if (!lDate.error) { localData.local_data[local] = lDate.numeric$; }
+                              localData.local_data_display[local] = event.target.value;
+                              break;
+                            }
+                            default: {
+                              localData.local_data[local] = event.target.value.trim();
+                              localData.local_data_display[local] = event.target.value;
+                            }
                           }
-                          case 'boolean': {
-                            localData.local_data[local] = ['yes', 'ok', 'true'].includes(event.target.value.toLowerCase());
-                            localData.local_data_display[local] = event.target.value;
-                            break;
-                          }
-                          case 'fulldate':
-                          case 'date': {
-                            let lDate = makeDate(event.target.value);
-                            if (!lDate.error) { localData.local_data[local] = lDate.numeric$; }
-                            localData.local_data_display[local] = event.target.value;
-                            break;
-                          }
-                          default: {
-                            localData.local_data[local] = event.target.value.trim();
-                            localData.local_data_display[local] = event.target.value;
-                          }
-                        }
-                        setRefreshTrigger(!refreshTrigger);
-                        setChanges(true);
-                      }}
-                      helperText={local}
-                    />
+                          setRefreshTrigger(!refreshTrigger);
+                          setChanges(true);
+                        }}
+                        helperText={local}
+                      />
+                      :
+                      <React.Fragment>
+                        <Box flexGrow={2} display='flex' alignItems='center'
+                          justifyContent='flex-start' flexDirection='row'>
+                          <Typography className={classes.local_boolean} >{local}</Typography>
+                          <Box flexGrow={2} display='flex' alignItems='center'
+                            justifyContent='flex-start' flexDirection='row'>
+                            <Typography className={classes.local_tiny} >No</Typography>
+                            <Switch
+                              checked={localData.local_data && localData.local_data[local]}
+                              onChange={() => {
+                                if (!localData.local_data) {
+                                  localData.local_data = {};
+                                  localData.local_data[local] = true;
+                                }
+                                else {
+                                  localData.local_data[local] = !localData.local_data[local];
+                                }
+                                setRefreshTrigger(!refreshTrigger);
+                                setChanges(true);
+                              }}
+                              name={local}
+                              color="primary"
+                            />
+                            <Typography className={classes.local_tiny} >Yes</Typography>
+                          </Box>
+                        </Box>
+                      </React.Fragment>
                   ))}
                 </Box>
               }
