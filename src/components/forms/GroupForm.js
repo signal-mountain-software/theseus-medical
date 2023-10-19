@@ -420,7 +420,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   function okToShow(pPerson) {
     try {
-      if (singleFilterDigit) {
+      if ((pRole !== 'admin') && (pRole !== 'responsible') && (!masterAccount) && (pPerson.directory_option === 'exclude')) {
+        return false;
+      }
+      else if (singleFilterDigit) {
         return (pPerson.name.last.toLowerCase().startsWith(person_filter_lower.trim()) || pPerson.location.toLowerCase().startsWith(person_filter_lower.trim() + '-'));
       }
       else {
