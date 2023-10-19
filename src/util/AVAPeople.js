@@ -169,7 +169,7 @@ export async function getPersonByWords(pClient, pWords) {
         });
     if (recordExists(qR)) {
         for (let p = 0; p < qR.Items.length; p++) {
-            let searchWords = qR.Items[p].search_data.split(' ');
+            let searchWords = qR.Items[p].search_data.split(/[\W,]/);
             let notFoundWords = pWords.filter(w => { return (w && !searchWords.includes(w)); })
             if (notFoundWords.length === 0) {
                 foundPeople[qR.Items[p].person_id] = qR.Items[p];
