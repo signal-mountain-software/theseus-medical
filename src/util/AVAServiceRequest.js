@@ -242,32 +242,55 @@ export async function putServiceRequest(body) {
   };
 }
 
-export async function printServiceRequest(serviceRequestRec, options = {}) {
-  if (!serviceRequestRec.hasOwnProperty('activity_key')) {
-    let customizationsRec = await dbClient
-      .get({
-        Key: { client_id: serviceRequestRec.client_id, custom_key: 'service_request_types' },
-        TableName: "Customizations"
-      })
-      .promise()
-      .catch(error => { cl(`***ERR reading Customizations*** caught error is: ${error}`); });
-    if (recordExists(customizationsRec) && customizationsRec.Item.customization_value && customizationsRec.Item.customization_value[serviceRequestRec.request_type]) {
-      serviceRequestRec.activity_key = customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code;
+export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
+  let requestsIn = [];
+  let requestList = [];
+  if (Array.isArray(serviceRequestRecsIn)) { requestsIn.push(...serviceRequestRecsIn); }
+  else { requestsIn.push(serviceRequestRecsIn); }
+  let remembered_customizationsRec;
+  let remembered_activityRec = {};
+  for (let r = 0; r < requestsIn.length; r++) {
+    let serviceRequestRec = requestsIn[r];
+    if (!remembered_customizationsRec) {
+      remembered_customizationsRec = await dbClient
+        .get({
+          Key: { client_id: serviceRequestRec.client_id, custom_key: 'service_request_types' },
+          TableName: "Customizations"
+        })
+        .promise()
+        .catch(error => { cl(`***ERR reading Customizations*** caught error is: ${error}`); });
+    }
+    if (recordExists(remembered_customizationsRec)) {
+      serviceRequestRec.activity_key = remembered_customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code;
+    }
+    if (!remembered_activityRec.hasOwnProperty(serviceRequestRec.activity_key)) {
+      remembered_activityRec[serviceRequestRec.activity_key] = await getActivity(serviceRequestRec.client_id, serviceRequestRec.activity_key);
+    }
+    let activityRec = remembered_activityRec[serviceRequestRec.activity_key];
+    if (!(activityRec.hasOwnProperty('activity_code'))) {
+      return {
+        'success': false,
+        'message': `AVA could not find enough information for this request (key=${serviceRequestRec.activity_key})`
+      };
+    }
+    let body = Object.assign({}, activityRec, serviceRequestRec, serviceRequestRec.original_request);
+    if (body.messaging) {
+      requestList.push(Object.assign({}, body, options));
     }
   }
-  let activityRec = await getActivity(serviceRequestRec.client_id, serviceRequestRec.activity_key);
-  if (!(activityRec.hasOwnProperty('activity_code'))) {
-    return {
-      'success': false,
-      'message': `AVA could not find enough information to retransmit this request`
-    };
+  if (requestList.length > 1) {
+    requestList.forEach((r, x) => {
+      r.multiPrint = {
+        firstDoc: (x === 0),
+        lastDoc: (x === (requestList.length - 1))
+      };
+    });
   }
-  let body = Object.assign({}, activityRec, serviceRequestRec, serviceRequestRec.original_request);
   let success = true;
-  if (body.messaging) {
-    let preparedMessages = await prepareMessage(Object.assign({}, body, options));
+  if (requestList.length > 0) {
+    let preparedMessages = await prepareMessage(requestList);
     if (preparedMessages.length > 0) {
-      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
+      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${requestList[x].requestType}/${requestList[x].requestID}`; });
       return {
         success,
         preparedMessages,

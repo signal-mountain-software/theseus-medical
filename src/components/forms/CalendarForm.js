@@ -176,6 +176,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
         [oKey]: newData[oKey]
       }));
     }
+    // setReactData((prevValues) => (Object.assign(prevValues, newData)));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
@@ -215,21 +216,27 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   };
 
   const extendDates = async (factor, set_end = {}) => {
-    let previousStart = myCalendar[0].date;
-    let previousEnd = myCalendar[myCalendar.length - 1].date;
-    let start_date, end_date;
-    if (set_end.hasOwnProperty('numeric$')) {
+    let previousStart = reactData.firstDate || myCalendar[0].date;
+    let previousEnd = reactData.lastDate || myCalendar[myCalendar.length - 1].date;
+    let start_date, end_date, update_start, update_end;
+    if (set_end.hasOwnProperty('numeric$')) {       // moving forward from 1 past end to a specific date
       if (set_end.numeric$ <= previousEnd) { return; }
-      start_date = addDays(previousEnd, 1);
+      start_date = addDays(previousEnd, 1);  
       end_date = set_end.date;
+      update_start = previousStart;
+      update_end = set_end.numeric$;
     }
-    else if (factor > 0) {
+    else if (factor >= 0) {          // moving forward from 1 past end by <factor> days
       start_date = addDays(previousEnd, 1);
       end_date = addDays(previousEnd, factor);
+      update_start = previousStart;
+      update_end = makeDate(end_date).numeric$;
     }
-    else {
+    else {            // moving backward from 1 before start by <factor> days
       start_date = addDays(previousStart, factor);
       end_date = addDays(previousStart, -1);
+      update_start = makeDate(start_date).numeric$;
+      update_end = previousEnd;
     }
     let newEntries = await getAllOccurrences(
       {
@@ -239,7 +246,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
       },
       screenStatus
     );
-    if (factor > 0) {
+    if (factor >= 0) {
       myCalendar.push(...newEntries);
     }
     else {
@@ -252,6 +259,8 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
       else { return 1; }
     });
     updateReactData({
+      firstDate: update_start,
+      lastDate: update_end,
       loading: false,
       progress: 100,
       pWidth: 60
@@ -263,10 +272,10 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
     clearTimeout(scrollTimeOut);
     scrollTimeOut = setTimeout(async ([scrollHeight, visibleTop, visibleHeight]) => {
       cl({ scrollHeight, visibleTop, priorTop: reactData.priorTop, visibleHeight });
-      if ((visibleTop > reactData.priorTop)    // scroll down
+      if ((visibleTop >= reactData.priorTop)    // scroll down
         && ((scrollHeight - visibleTop) <= (visibleHeight * 1.05))) {       // on the last visible page
         let newLimit = reactData.rowLimit + scrollValue;
-        if (newLimit > myCalendar.length) { await extendDates(7); }
+        if (newLimit > myCalendar.length) { await extendDates(30); }
         updateReactData({ rowLimit: newLimit, priorTop: visibleTop }, true);
         if (lastRow && lastRow.current) {
           lastRow.current.scrollTo({

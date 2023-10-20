@@ -49,25 +49,29 @@ export function makeDate(pInput) {
             // 20200101 - 29991231 yyyy mm dd
             //          > 29991231 java timestamp
             if (pInput <= 1231) {
-                targetDate = buildDate(`${Math.floor(pInput / 100)}/${pInput % 100}`);
+                targetDate = buildDate(`${Math.floor(pInput / 100)}/${pInput % 100}`).date;
             }
             else if (pInput <= 123199) {
-                targetDate = buildDate(`${Math.floor(pInput / 10000)}/${Math.floor((pInput % 10000) / 100)}/20${pInput % 100}`);
+                targetDate = buildDate(`${Math.floor(pInput / 10000)}/${Math.floor((pInput % 10000) / 100)}/20${pInput % 100}`).date;
             }
             else if (pInput <= 991231) {
-                targetDate = buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/20${Math.floor(pInput / 10000)}`);
+                targetDate = buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/20${Math.floor(pInput / 10000)}`).date;
             }
             else if (pInput <= 12312999) {
-                targetDate = buildDate(`${Math.floor(pInput / 1000000)}/${Math.floor((pInput % 1000000) / 10000)}/${pInput % 10000}`);
+                targetDate = buildDate(`${Math.floor(pInput / 1000000)}/${Math.floor((pInput % 1000000) / 10000)}/${pInput % 10000}`).date;
             }
             else if (pInput <= 29991231) {
-                targetDate = buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/${Math.floor(pInput / 10000)}`);
+                targetDate =  buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/${Math.floor(pInput / 10000)}`).date;
             }
             else { targetDate = new Date(pInput); }
         }
         else if ((typeof pInput) !== 'string') { targetDate = new Date(pInput); }
-        else { targetDate = buildDate(pInput); }
-        if (targetDate instanceof Date) {
+        else {
+            let response = buildDate(pInput);
+            targetDate = response.date;
+            pInput = response.leftOver_text
+        }
+        if (isDate(targetDate)) {
             targetDateStamp = targetDate.getTime();
         }
         else {
@@ -86,7 +90,8 @@ export function makeDate(pInput) {
                 'numeric': 20990101,
                 'numeric$': '20990101',
                 'dayPart': 'day',
-                'dayOfWeek': 9
+                'dayOfWeek': 9,
+                'textOut': pInput
             };
         }
     }
@@ -167,7 +172,8 @@ export function makeDate(pInput) {
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
         'dayPart': dayPart,
-        'dayOfWeek': targetDate.getDay()
+        'dayOfWeek': targetDate.getDay(),
+        'textOut': pInput
     };
 
     function buildDate(pString) {
@@ -177,9 +183,48 @@ export function makeDate(pInput) {
             daysToAdd = parseInt(days$.trim(), 10) * (pString.includes('-') ? -1 : 1);
             pString = words.trim();
         }
-        if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }
+        if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }      // a string that is all numbers
         let goodDate = new Date(pString);
-        if (isNaN(goodDate)) {
+        if (!isDate(goodDate) || goodDate.getFullYear() === 2001) {
+            let m = pString.match(/(\d+:*\d*)\s*([PpAa].*[Mm])/);
+            if (m) { pString = pString.replace(m[0], `${m[1]}${m[2]}`); }
+            let pWords = pString.split(/\s+/);
+            let currentDate, timePart;
+            pWords = pWords.filter(f => {      // filter expression will consume words that successfully contribute to the date 
+                let culledDate = dateFromText(f);
+                if (!culledDate) {
+                    if (f.match(/\d+/)) {
+                        timePart = makeTime(f);
+                        timePart.exists = true;
+                        return false;
+                    }
+                }   
+                else {
+                    currentDate = culledDate;
+                    return false;
+                }
+                return true;
+            });
+            if (!isDate(currentDate)) {
+                return { date: null, leftOver_text: pString };
+            }
+            if (timePart && timePart.exists) {
+                currentDate.setHours(timePart.hh24, timePart.mm);
+            }
+            let variant = 0;
+            const foundAt = pWords.findIndex(value => /last|next/.test(value));
+            if (foundAt > -1) {
+                if (pWords[foundAt] === 'last') {
+                    variant = -7;
+                }
+                else { variant = 7; }
+                pWords.splice(foundAt, 1);
+            }
+            return {
+                date: addDays(currentDate, (variant + daysToAdd)),
+                leftOver_text: pWords.join(' ')
+            };
+            /*
             let currentDate = new Date();
             let tDate = pString.trim().substr(0, 3).toLowerCase();
             if (tDate === 'now') { tDate = 'tod'; }
@@ -227,6 +272,7 @@ export function makeDate(pInput) {
                     return null;
                 }
             }
+            */
         }
         else {
             // the date passed in was a good date
@@ -235,18 +281,98 @@ export function makeDate(pInput) {
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 2) { return goodDate; }
+            if (Math.abs(resolvedYear - thisYear) < 2) { 
+                return {
+                    date: goodDate,
+                    leftOver_text: null
+                };
+             }
             goodDate.setFullYear(thisYear);
-            if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) { return goodDate; }
+            if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) { 
+                return {
+                    date: goodDate,
+                    leftOver_text: null
+                };
+            }
             let resolvedMonth = goodDate.getMonth();
             if (resolvedMonth > 9) { goodDate.setFullYear(thisYear - 1); }
-            return goodDate;
+            return {
+                date: goodDate,
+                leftOver_text: null
+            };
+        }
+    }
+
+    function dateFromText(pString) {
+        if (pString.match(/\d+\/\d+/)) {     // pString is in the form dd/dd
+            let dateFromString = new Date(pString);
+            if (dateFromString.getFullYear() === 2001) {
+                dateFromString.setFullYear(new Date().getFullYear());
+            }
+            return dateFromString;
+        }
+        else {
+            let ordinal = pString.match(/(\d+)(st|nd|rd|th)/);  // pString looks like an ordinal (1st, 2nd, 3rd, etc)          
+            if (ordinal) { 
+                let n = ordinal[1];      // the numeric part is in array position 1 (array position 0 is the entire matched ordinal)
+                let now = new Date();
+                let thisMonth_target = new Date();
+                thisMonth_target.setDate(n);
+                if (thisMonth_target >= now) {
+                    let lastMonth_target = new Date();
+                    lastMonth_target.setMonth(now.getMonth() - 1, n);
+                    if (daysDiff(now, lastMonth_target) < 7) { return lastMonth_target; }
+                    else {
+                        return thisMonth_target;
+                    }
+                }
+                else {
+                    if (daysDiff(thisMonth_target, now) < 7) { return thisMonth_target; }
+                    else {
+                        let nextMonth_target = new Date();
+                        nextMonth_target.setMonth(now.getMonth() + 1, n);
+                        return nextMonth_target;
+                    }
+                }
+            }
+        }
+        let currentDate = new Date();
+        if (pString === 'now') { pString = 'today'; }
+        else { currentDate.setHours(0, 0, 0, 0); }
+        if (pString === 'tomorrow') {
+            return addDays(currentDate, 1);
+        }
+        else if (pString === 'today') {
+            return currentDate;
+        }
+        else if (pString === 'yesterday') {
+            return addDays(currentDate, - 1);
+        }
+        else {
+            let currentDofWeek = new Date().getDay();
+            let requestedDofWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(pString.slice(0,3));
+            if (requestedDofWeek > -1) {
+                // if you entered a word only (ie "Tuesday"), choose the PRIOR Tuesday if it is yesterday or the day before; otherwise choose the NEXT Tuesday.
+                let variant = requestedDofWeek - currentDofWeek;
+                if (variant < -2) { variant += 7; }
+                else if (variant > 5) { variant -= 7; }
+                return addDays(currentDate, variant);
+            }
+            else {
+                return null;
+            }
         }
     }
 };
 
 export function isDate(pIn) {
-    return (pIn instanceof Date);
+    return ((pIn instanceof Date) && !isNaN(pIn.getTime()));
+}
+
+export function sameDate(d1, d2) {
+    if (!d1 || !d2) { return false; }
+    if (d1 === d2) { return true; }
+    return (makeDate(d1).numeric === makeDate(d2).numeric);
 }
 
 export function makeTime(pTime) {
@@ -271,6 +397,7 @@ export function makeTime(pTime) {
             if (!mm$) { mm = hh % 100; }
             hh = Math.floor(hh / 100);
         }
+        if (!ampm && (hh < 7)) { hh += 12; }
         if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
         if (mm > 59) {
             let hAdd = Math.floor(mm / 60);
@@ -294,13 +421,20 @@ export function makeTime(pTime) {
     if ((ampm === 'pm') && (hh < 12)) { numeric24 = ((hh + 12) * 100) + mm; }
     else { numeric24 = (hh * 100) + mm; }
     let dayPart;
-    if (hh < 12) { dayPart = "morning"; }
-    else if (hh < 17) { dayPart = "afternoon"; }
+    if (numeric24 < 1200) { dayPart = "morning"; }
+    else if (numeric24 < 1700) { dayPart = "afternoon"; }
     else (dayPart = "evening");
+    if (mm === 0) { mm$ = '00'; }
+    else if (mm < 10) { mm$ = mm.toString().padStart(2, '0'); }
+    else { mm$ = mm.toString(); }
     return {
-        'time': `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`,
-        'short': `${hh}:${mm < 10 ? ('0' + mm) : mm}`,
-        'hhmm': `${hh}${mm}`,
+        'time': `${hh}:${mm$} ${ampm}`,
+        'short': `${hh}:${mm$}`,
+        'hhmm': `${hh}${mm$}`,
+        hh,
+        hh24: Math.floor(numeric24/100),
+        mm,
+        ampm,
         numeric24,
         dayPart
     };
