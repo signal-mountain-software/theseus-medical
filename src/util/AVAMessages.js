@@ -44,94 +44,103 @@ export async function getMessages(body) {
   else { return []; }
 }
 
-export async function prepareMessage(inBody) {
+export async function prepareMessage(inBodyData) {
+  let bodyList = [];
   let messageList = [];
-  if (Array.isArray(inBody.messaging)) { messageList.push(...inBody.messaging); }
-  else { messageList.push(inBody.messaging); }
-  let returnResults = [];
   let results;
-  let requestInfo = Object.assign({}, inBody, {
-    activityName: inBody.activityName || inBody.name,
-    client: inBody.client || inBody.client_id,
-    author: inBody.author || inBody.requestor,
-    onBehalfOf: inBody.onBehalfOf || inBody.on_behalf_of,
-    local_key: inBody.local_key,
-    requestDate: inBody.requestDate || inBody.request_date,
-    requestID: inBody.requestID || inBody.request_ID || inBody.request_id,
-    selections: inBody.selections,
-    qualifiers: inBody.qualifiers,
-    textInput: inBody.textInput,
-    reprint: inBody.reprint
-  },
-    inBody.original_request,
-    inBody.request);
-  if (inBody.hasOwnProperty('attachments')) {
-    requestInfo.attachments = inBody.attachments.map(a => { return a.Location; });
-  }
+  let returnResults = [];
+  if (Array.isArray(inBodyData)) { bodyList.push(...inBodyData); }
+  else { bodyList.push(inBodyData); }
   do {
-    let this_request = Object.assign({}, requestInfo, messageList.shift());   // this removes the message from the messageList
-    // cl({ 'in prepare messages': { this_request } });
-    results = {};
-    if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
-    else { results.recipientList = [this_request.recipientList]; }
-    for (let i = 0; i < results.recipientList.length; i++) {
-      results.recipientList[i] = await resolveMessageVariables(results.recipientList[i], this_request);
+    let inBody = bodyList.shift();
+    messageList = [];
+    if (Array.isArray(inBody.messaging)) { messageList.push(...inBody.messaging); }
+    else { messageList.push(inBody.messaging); }
+    returnResults = [];
+    results = null;
+    let requestInfo = Object.assign({}, inBody, {
+      activityName: inBody.activityName || inBody.name,
+      client: inBody.client || inBody.client_id,
+      author: inBody.author || inBody.requestor,
+      onBehalfOf: inBody.onBehalfOf || inBody.on_behalf_of,
+      local_key: inBody.local_key,
+      requestDate: inBody.requestDate || inBody.request_date,
+      requestID: inBody.requestID || inBody.request_ID || inBody.request_id,
+      selections: inBody.selections,
+      qualifiers: inBody.qualifiers,
+      textInput: inBody.textInput,
+      reprint: inBody.reprint
+    },
+      inBody.original_request,
+      inBody.request);
+    if (inBody.hasOwnProperty('attachments')) {
+      requestInfo.attachments = inBody.attachments.map(a => { return a.Location; });
     }
-    results.client = this_request.client;
-    results.author = this_request.author;
-    results.preferred_method = this_request.method;
-    if (!('format' in this_request)) { this_request.format = { 'type': 'factForm' }; }
-    if ('subject' in this_request.format) { results.subject = this_request.format.subject; }
-    if ('method' in this_request.format) { results.preferred_method = this_request.format.method; }
-    switch (this_request.format.type) {
-      case 'mealOrder':
-      case 'checklist':
-      case 'factForm': {
-        [results.htmlText, results.messageText, results.pdfInfo] = await formatRequestDetails(this_request, this_request.format.type);
-        break;
+    do {
+      let this_request = Object.assign({}, requestInfo, messageList.shift());   // this removes the message from the messageList
+      // cl({ 'in prepare messages': { this_request } });
+      results = {};
+      if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
+      else { results.recipientList = [this_request.recipientList]; }
+      for (let i = 0; i < results.recipientList.length; i++) {
+        results.recipientList[i] = await resolveMessageVariables(results.recipientList[i], this_request);
       }
-      case 'mealTicket': {
-        [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request);
-        if (results.attachments) {
-          requestInfo.attachments = results.attachments;
+      results.client = this_request.client;
+      results.author = this_request.author;
+      results.preferred_method = this_request.method;
+      if (!('format' in this_request)) { this_request.format = { 'type': 'factForm' }; }
+      if ('subject' in this_request.format) { results.subject = this_request.format.subject; }
+      if ('method' in this_request.format) { results.preferred_method = this_request.format.method; }
+      switch (this_request.format.type) {
+        case 'mealOrder':
+        case 'checklist':
+        case 'factForm': {
+          [results.htmlText, results.messageText, results.pdfInfo] = await formatRequestDetails(this_request, this_request.format.type);
+          break;
         }
-        break;
+        case 'mealTicket': {
+          [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request);
+          if (results.attachments) {
+            requestInfo.attachments = results.attachments;
+          }
+          break;
+        }
+        case 'inBody': {
+          results.htmlText = inBody.htmlText;
+          results.messageText = inBody.messageText;
+          break;
+        }
+        case 'plainText':
+        default: {
+          results.messageText = await resolveMessageVariables(this_request.format.text, this_request) + ' %%custom_text%%';
+          results.htmlText = results.messageText;
+        }
       }
-      case 'inBody': {
-        results.htmlText = inBody.htmlText;
-        results.messageText = inBody.messageText;
-        break;
+      if ('test' in this_request) {
+        let ruleStatus = await processRules(this_request);
+        if (ruleStatus === 'cancel') { continue; }
       }
-      case 'plainText':
-      default: {
-        results.messageText = await resolveMessageVariables(this_request.format.text, this_request) + ' %%custom_text%%';
-        results.htmlText = results.messageText;
+      if (results.subject) {
+        results.subject = await resolveMessageVariables(results.subject, this_request);
       }
-    }
-    if ('test' in this_request) {
-      let ruleStatus = await processRules(this_request);
-      if (ruleStatus === 'cancel') { continue; }
-    }
-    if (results.subject) {
-      results.subject = await resolveMessageVariables(results.subject, this_request);
-    }
-    results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
-    results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
+      results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
+      results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
 
-    if (requestInfo.hasOwnProperty('attachments')) {
-      results.htmlText += '<br>';
-      // eslint-disable-next-line
-      requestInfo.attachments.forEach((a, x) => {
-        let fNArr = a.split('/').pop().split('.');
-        fNArr.pop();
-        let fName = decodeURI(fNArr.join('.'));
-        results.messageText += `\r\n\nAttachment ${fName}: ${a}`;
-        results.htmlText += `<br><a href=${a}>Attachment: ${fName}</a>`;
-      });
-    }
+      if (requestInfo.hasOwnProperty('attachments')) {
+        results.htmlText += '<br>';
+        // eslint-disable-next-line
+        requestInfo.attachments.forEach((a, x) => {
+          let fNArr = a.split('/').pop().split('.');
+          fNArr.pop();
+          let fName = decodeURI(fNArr.join('.'));
+          results.messageText += `\r\n\nAttachment ${fName}: ${a}`;
+          results.htmlText += `<br><a href=${a}>Attachment: ${fName}</a>`;
+        });
+      }
 
-    returnResults.push(results);
-  } while (messageList.length > 0);
+      returnResults.push(results);
+    } while (messageList.length > 0);
+  } while (bodyList.length > 0);
 
   return returnResults;
 
@@ -532,18 +541,29 @@ export async function formatRequestDetails(body, summaryType) {
   htmlMessage += `<div>***** END *****</div></p>`;
   rawMessage += `\n\r${refText}\n***** END *****`;
 
-  pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
-
   let s3Resp;
-  if (body.PDF) {
-    window.open(doc.output('bloburl'), '_blank');
-    /*
-    let pBlob = doc.output('blob');
-    let data64 = (doc.output('datauri')).split(';base64,')[1];
+  if (!body.multiPrint || body.multiPrint.lastDoc) {
+    pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
+    savePDF(doc, { local: true });
+    if (body.PDF) {
+      window.open(doc.output('bloburl'), '_blank');
+    }
+  }
+  return [htmlMessage, rawMessage, s3Resp];
+}
+
+export async function savePDF(doc, options = {}) {
+  let pBlob = doc.output('blob');
+  let s3Resp;
+  let responseStatus = 400;
+  let responseData = { message: [] };
+  let saveName = options.key || options.name || `AVAPDF.${new Date().getTime()}`;
+  if (options.S3) {
+    let goodS3 = true;
     s3Resp = await s3
       .upload({
-        Bucket: 'theseus-medical-storage',
-        Key: `${body.client || body.client_id}_${body.fileName}`,
+        Bucket: (options.bucket || 'theseus-medical-storage'),
+        Key: saveName,
         Body: pBlob,
         ACL: 'public-read-write',
         ContentType: 'application/pdf'
@@ -551,12 +571,27 @@ export async function formatRequestDetails(body, summaryType) {
       .promise()
       .catch(err => {
         cl(`PDF not saved by AVA.  The reason is ${err.message}`);
+        goodS3 = false;
+        responseStatus = 401;
+        responseData.message = err.message;
       });
-    s3Resp.data = data64;
-    doc.save(`${body.client || body.client_id}_${body.fileName}`);  
-    */
+    if (goodS3) {
+      window.open(s3Resp.Location)
+      responseStatus = 200;
+      responseData.message.push(`S3 saved at ${s3Resp.Location}`);
+      responseData.s3Resp = s3Resp;
+    }
   }
-  return [htmlMessage, rawMessage, s3Resp];
+  if (options.local) {
+    doc.save(saveName);
+    responseStatus++;
+    responseData.message.push(`Locally saved as ${saveName}`);
+  }
+  return {
+    responseStatus,
+    responseData
+  };
+
 }
 
 export async function mealTicketFormat(body) {
@@ -819,11 +854,19 @@ export async function mealTicketFormat(body) {
 
 async function pdfLaunch(body) {
   if (!body.hasOwnProperty('pdf')) { body.pdf = {}; }
-  doc = new jsPDF({
-    orientation: "portrait",
-    unit: "px",
-    format: ((body.pdf.pageWidth) ? [body.pdf.pageWidth, (body.pdf.pageHeight || 9999)] : [563, 750])
-  });
+  if (!body.multiPrint || body.multiPrint.firstDoc) {
+    doc = new jsPDF({
+      orientation: "portrait",
+      unit: "px",
+      format: ((body.pdf.pageWidth) ? [body.pdf.pageWidth, (body.pdf.pageHeight || 9999)] : [563, 750])
+    });
+  }
+  else {
+    doc.addPage({
+      orientation: "portrait",
+      format: ((body.pdf.pageWidth) ? [body.pdf.pageWidth, (body.pdf.pageHeight || 9999)] : [563, 750])
+    })
+  }
   doc.autoPrint();
   page = {
     width: doc.internal.pageSize.width,
@@ -854,7 +897,7 @@ async function pdfLaunch(body) {
   pdfCurrent = {
     yPos: page.margin.top,
     xPos: page.margin.left,
-    pageNumber: 1,
+    pageNumber: ((body.multiPrint && !body.multiPrint.firstDoc) ? doc.internal.getNumberOfPages() + 1 : 1),
     indent: 0,
     reportTime: nowTime.absolute,
     timestamp: nowTime.numeric24

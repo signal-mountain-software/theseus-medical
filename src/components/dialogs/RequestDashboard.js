@@ -1,6 +1,6 @@
 import React from 'react';
 import { sentenceCase, makeArray, isObject, cl, titleCase } from '../../util/AVAUtilities';
-import { makeDate } from '../../util/AVADateTime';
+import { addDays, daysDiff, makeDate, sameDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, sendMessages, messageHistory } from '../../util/AVAMessages';
@@ -144,7 +144,7 @@ const useStyles = makeStyles(theme => ({
   lastName: {
     fontWeight: 'bold',
     fontSize: theme.typography.fontSize * 1.8,
-    marginRight: theme.spacing(1),
+    marginTop: theme.spacing(-0.75),
   },
   messageArea: {
     alignItems: 'center',
@@ -201,8 +201,9 @@ export default ({ session, filter = {}, onClose }) => {
   const [dataRows, setDataRows] = React.useState();
   const [loading, setLoading] = React.useState(false);
   const [filters, setFilters] = React.useState({
-    rowLimit: 5
+    rowLimit: 5,
   });
+  const [targetDatesExist, setTargetDatesExist] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const showDeleted = false;
@@ -213,7 +214,7 @@ export default ({ session, filter = {}, onClose }) => {
   const [anchorEl, setAnchorEl] = React.useState(null);
 
   const scrollValue = 5;
-  var rowsWritten;
+  let rowsDisplayed = [];
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
@@ -308,20 +309,17 @@ export default ({ session, filter = {}, onClose }) => {
       return w;
     }));
     setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
+    setForceRedisplay(forceRedisplay => !forceRedisplay);
   }
 
   let scrollTimeOut;
   function handleScroll() {
     clearTimeout(scrollTimeOut);
     scrollTimeOut = setTimeout(() => {
-      setFilters({
-        request_filter: filters.request_filter,
-        request_filter_lower: filters.request_filter_lower,
-        singleFilterDigit: filters.singleFilterDigit,
-        rowLimit: (filters.rowLimit + scrollValue),
-        forceRedisplay: !forceRedisplay
-      });
+      let updatedFilters = filters;
+      updatedFilters.rowLimit = filters.rowLimit + scrollValue;
+      setFilters(updatedFilters);
+      setForceRedisplay(forceRedisplay => !forceRedisplay);
     }, 500);
   };
 
@@ -329,44 +327,175 @@ export default ({ session, filter = {}, onClose }) => {
   const handleChangeRequestFilter = vCheck => {
     clearTimeout(filterTimeOut);
     filterTimeOut = setTimeout(() => {
-      if (vCheck.length === 0) {
+      let dateFilterType = 0;
+      let dateFilterWords = '';
+      if (vCheck.length < 2) {
         setFilters({
           request_filter: '',
           request_filter_lower: '',
-          singleFilterDigit: false,
-          rowLimit: filters.rowLimit,
-          forceRedisplay: !forceRedisplay
+          singleFilterDigit: ((vCheck && (vCheck.length === 1)) ? true : false),
+          filter_date: { error: true, good: false },
+          request_filter_words: '',
+          dateFilterType: 0,
+          rowLimit: ((filters.rowLimit === 999) ? 5 : filters.rowLimit),
         });
+        setForceRedisplay(forceRedisplay => !forceRedisplay);
       }
       else {
+        // quoted words will not be evaluated as possible date time filters
+        let quotedWords = vCheck.match(/"([^"]*)"/gm);
+        if (quotedWords) {
+          quotedWords.forEach(q => {
+            vCheck = vCheck.replace(q, '');
+          });
+        }
+        let dateTime_filter = makeDate(vCheck.trim());  // words that were not in quotes are evaluated to see if they construct a date
+        if (!dateTime_filter.error) {
+          /* 
+            They entered a date.
+            
+            All Service Requests carry a "requested on" date in their request_date (this shows up here as a timestamp in the workData.request_date)
+            Some type of Service Requests carry a "requested for fulfillment" date in their foreign_key (a meal ordered in advance for next Sunday, for example)
+              If there are any "requested for fulfillment" type requests on this dashboard, the targetDatesExist variable will be true
+                        
+            There are four kinds of date searches available:
+               1. Search for requests "entered on" a date,
+               2. Search for requests "entered after" a date,
+               3. Search for requests "requested for fulfillment on" a date,
+               4. Search for requests "requested for fulfillment after" a date
+            Type 1 & 2 don't make sense for future dates.
+            Type 3 & 4 don't make sense if targetDatesExist is false
+            
+            We will determine the type by looking for keywords:
+               1. "on", or no keyWord and date is today or in the past
+               2. "after" (for dates in the past), or "since"
+               3. "for", or no keyWord and date is in the future
+               4. "after" (for today and dates in the future)
+
+            NOTE: In addition to date searching, AVA includes search by word (see quotedWords and elsewhere in this function)   
+          */
+          vCheck = dateTime_filter.textOut;
+          let keyWord = vCheck.toLowerCase().match(/\b(on|for|since|after)\b/gm);
+          const today = new Date();
+          if (!keyWord) {
+            if (dateTime_filter.date <= today) {
+              dateFilterType = 1;
+              dateFilterWords = `entered on ${dateTime_filter.absolute}`;
+            }
+            else {
+              dateFilterType = 3;
+              dateFilterWords = `requested for ${dateTime_filter.absolute}`;
+            }
+          }
+          else {
+            switch (keyWord[0]) {
+              case 'on': {
+                if (dateTime_filter.date <= today) {
+                  dateFilterType = 1;
+                  dateFilterWords = `entered on ${dateTime_filter.absolute}`;
+                  break;
+                }
+                // "on" is invalid for future dates
+                else if (daysDiff(dateTime_filter.date, today) < 7) {
+                  // if the date is within a week of today, coerce it back to a past date
+                  dateTime_filter = makeDate(addDays(dateTime_filter.date, -7));
+                  dateFilterType = 1;
+                  dateFilterWords = `entered on ${dateTime_filter.absolute}`;
+                  break;
+                }
+                else {
+                  // if we can't fix it, make this filter "FOR <future_date>" (missing break is intentional)
+                  keyWord[0] = 'for';
+                }
+              }
+              // eslint-disable-next-line
+              case 'for': {
+                if (targetDatesExist) {
+                  dateFilterType = 3;
+                  dateFilterWords = `requested for ${dateTime_filter.absolute}`;
+                }
+                break;
+              }
+              case 'since': {
+                if (dateTime_filter.date < today) {
+                  dateFilterType = 2;
+                  dateFilterWords = `entered on or after ${dateTime_filter.relative}`;
+                }
+                else if ((daysDiff(dateTime_filter.date, today) < 7)) {
+                  dateTime_filter = makeDate(addDays(dateTime_filter.date, -7));
+                  dateFilterType = 2;
+                  dateFilterWords = `entered on or after ${dateTime_filter.relative}`;
+                }
+                else {    // future date that's more than 7 days in the future; it can't be "entered after <future date>"                  
+                  dateFilterType = 4;
+                  dateFilterWords = `requested for dates on or after ${dateTime_filter.relative}`;
+                }
+                break;
+              }
+              case 'after': {
+                if (dateTime_filter.date < today) {
+                  dateFilterType = 2;
+                  dateFilterWords = `entered on or after ${dateTime_filter.relative}`;
+                }
+                else if ((daysDiff(dateTime_filter.date, today) < 7) && (targetDatesExist)) {
+                  dateFilterType = 4;
+                  dateFilterWords = `requested for dates on or after ${dateTime_filter.relative}`;
+                }
+                break;
+              }
+              default: { }
+            }
+            if (dateFilterType > 0) {
+              vCheck = vCheck.split(/\s+/).filter(f => { return (f !== keyWord[0]); }).join(' ');
+            }
+          }
+        }
+        if (quotedWords) {
+          quotedWords.forEach(q => {
+            vCheck = vCheck += q.replace(/"/g, '') + ' ';
+          });
+        }
+        let filter_words;
+        if (vCheck) {
+          filter_words = `All items that contain "${vCheck}"`;
+          if (!dateTime_filter.error) {
+            filter_words += ` and were ${dateFilterWords}`;
+          }
+        }
+        else if (!dateTime_filter.error) {
+          filter_words = `All items ${dateFilterWords}`;
+        }
         setFilters({
-          request_filter: vCheck || '',
-          request_filter_lower: vCheck.toLowerCase() || '',
-          singleFilterDigit: (vCheck.length === 1),
-          rowLimit: filters.rowLimit,
-          forceRedisplay: !forceRedisplay
+          request_filter: vCheck || !dateTime_filter.error,
+          request_filter_lower: (vCheck ? vCheck.toLowerCase() : ''),
+          singleFilterDigit: false,
+          filter_date: dateTime_filter,
+          request_filter_words: filter_words,
+          dateFilterType,
+          rowLimit: 999,
         });
+        setForceRedisplay(forceRedisplay => !forceRedisplay);
       }
-    }, 500);
+    }, 1000);
 
   };
 
   function toggleCheck(pI) {
     dataRows[pI].workData.checked = !dataRows[pI].workData.checked;
     setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
+    setForceRedisplay(forceRedisplay => !forceRedisplay);
   }
 
   async function toggleOpen(pI) {
     dataRows[pI].workData.open = !dataRows[pI].workData.open;
     if (!dataRows[pI].workData.messageRecs) {
-      dataRows[pI].workData.messageRecs = await prepareMessage(dataRows[pI].request_id);
+      dataRows[pI].workData.messageRecs = await prepareMessageHistory(dataRows[pI].request_id);
     }
     setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
+    setForceRedisplay(forceRedisplay => !forceRedisplay);
   }
 
-  async function prepareMessage(thread) {
+  async function prepareMessageHistory(thread) {
     let qR = await getMessages({ 'thread_id': thread });
     let mRow = [];
     let workingKey = '';
@@ -416,9 +545,43 @@ export default ({ session, filter = {}, onClose }) => {
 
   function filteredRequest(pRec) {
     if (filters.singleFilterDigit) { return true; }
-    else {
+    else if (!filters.filter_date.error) {
+      switch (filters.dateFilterType) {
+        case 1: {
+          // Search for requests "entered on" a date
+          if (!sameDate(pRec.workData.requestTime, filters.filter_date.date)) {
+            return false;
+          }
+          break;
+        }
+        case 2: {
+          // Search for requests "entered after" a date
+          if (pRec.workData.requestTime < filters.filter_date.timestamp) {
+            return false;
+          }
+          break;
+        }
+        case 3: {
+          // Search for requests "requested for fulfillment on" a date
+          if (pRec.workData.orderForDate.numeric !== filters.filter_date.numeric) {
+            return false;
+          }
+          break;
+        }
+        case 4: {
+          // Search for requests "requested for fulfillment after" a date
+          if (pRec.workData.orderForDate.numeric < filters.filter_date.numeric) {
+            return false;
+          }
+          break;
+        }
+        default: { }
+      }
+    }
+    if (filters.request_filter_lower) {
       return (`${pRec.workData.search_data} ${pRec.workData.formatted_type}`).toLowerCase().includes(filters.request_filter_lower);
     }
+    else { return true; }
   }
 
   const buildDashboard = async () => {
@@ -428,7 +591,6 @@ export default ({ session, filter = {}, onClose }) => {
     else { filter = { 'person': session.patient_id }; }
     filter.limit = Math.min(filters.rowLimit, 5) * 3;
     filter.request_type = makeArray(filter.request_type, ',');
-    // if (!filter.hasOwnProperty('client_id')) { filter.client_id = session.client_id; } 
     qList = await getServiceRequests(filter);
     let limit = Math.min(filter.limit, qList.length);
     for (let x = 0; x < limit; x++) {
@@ -465,16 +627,21 @@ export default ({ session, filter = {}, onClose }) => {
     }
     if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
     let AVAupdateDate = makeDate(i.last_update);
-    i.workData.display_date = AVAupdateDate.relative;
+    let AVArequestDate = makeDate(i.request_date);
+    i.workData.display_date = AVArequestDate.relative;    // the date/time the request was first created
     let anonymous = false;
     let requestorRec = await getPerson(i.requestor, '*all');
     i.workData.requestor_name = await makeName(i.requestor);
     i.workData.requestor_location = requestorRec.location;
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
-    let AVArequestDate = makeDate(i.request_date);
-    i.workData.update_date = AVArequestDate.relative;
-    i.workData.formatted_request.push(['head', `Since: ${i.workData.update_date}`]);
+    i.workData.update_date = AVAupdateDate.relative;
+    i.workData.requestTime = AVArequestDate.timestamp;
+    i.workData.orderForDate = makeDate(i.foreign_key);
+    if (!i.workData.orderForDate.error) { setTargetDatesExist(true); }
+    if (AVAupdateDate.relative !== AVArequestDate.relative) {
+      i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
+    }
     i.workData.formatted_request.push(['head', `Current status: ${sentenceCase(i.last_status)}`]);
     i.workData.formatted_request.push(['head', 'Details']);
     if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
@@ -706,11 +873,13 @@ export default ({ session, filter = {}, onClose }) => {
             onChange={event => (handleChangeRequestFilter(event.target.value))}
             className={classes.freeInput}
             label={'Filter/Search'}
+            helperText={filters.request_filter_words}
             variant={'standard'}
             autoComplete='off'
           />
           <Paper
-            onScroll={() => (handleScroll())}
+            onScroll={() => (
+              handleScroll())}
             component={Box}
             // className={classes.page}
             variant='outlined'
@@ -719,17 +888,28 @@ export default ({ session, filter = {}, onClose }) => {
           >
             <List  >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                {rowsWritten = 0}
+                {rowsDisplayed = []}
               </Typography>
               {dataRows.map((this_item, index) => (
-                ((rowsWritten <= filters.rowLimit) && this_item.workData
+                ((rowsDisplayed.length <= filters.rowLimit) && this_item.workData
                   && (!filters.request_filter || filteredRequest(this_item, filters.request_filter))
                   && (!this_item.workData.delete_flag || showDeleted) &&
                   <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      {rowsWritten++}
+                      {rowsDisplayed.push(index)}
                     </Typography>
-                    <Box display='flex' flexDirection='column'>
+                    <Box display='flex' flexDirection='column'
+                      onContextMenu={async (e) => {
+                        e.preventDefault();
+                        enqueueSnackbar(<div>
+                          Type={this_item.request_type}<br />
+                          Requestor={this_item.requestor}<br />
+                          ForeignKey={this_item.foreign_key}<br />
+                          LastUpdate={makeDate(this_item.last_update).absolute}<br />
+                          ReqTime={makeDate(this_item.workData.requestTime).absolute}<br />
+                          OrderFor={this_item.workData.orderForDate.absolute}
+                        </div>, { variant: 'info', persist: true });
+                      }}>
                       <Box
                         display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
                         key={this_item.message_id + 'r' + index}
@@ -748,10 +928,13 @@ export default ({ session, filter = {}, onClose }) => {
                                 alt=' '
                                 src={this_item.workData.requestor_image}
                               />
-                              <Box display='flex' flexDirection='column'>
+                              <Box display='flex' flexDirection='column' marginBottom={1.5}>
                                 <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
                                 <Typography variant='h5' className={classes.firstName}>{`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}</Typography>
-                                <Typography variant='h5' className={classes.timeLine}>{this_item.workData.display_date}</Typography>
+                                <Typography variant='h5' className={classes.firstName}>{this_item.workData.display_date}</Typography>
+                                {!(this_item?.workData?.orderForDate.error) &&
+                                  <Typography variant='h5' className={classes.firstName}>{`For ${this_item?.workData?.orderForDate.relative}`}</Typography>
+                                }
                               </Box>
                             </Box>
                             {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
@@ -793,6 +976,7 @@ export default ({ session, filter = {}, onClose }) => {
                         </Box>
                         {filter.request_type
                           && (makeArray(filter.request_type).length === 1)
+                          && session.service_request_types.hasOwnProperty(filter.request_type)
                           && (
                             !(session.service_request_types[filter.request_type].hasOwnProperty('allowStatusUpdateFromDashboard'))
                             || session.service_request_types[filter.request_type].allowStatusUpdateFromDashboard)
@@ -828,6 +1012,11 @@ export default ({ session, filter = {}, onClose }) => {
                   </Paper>
                 )
               ))}
+              {(rowsDisplayed.length === 0) &&
+                <Box display='flex' flexDirection='column' flexWrap={'wrap'} justifyContent={'center'} alignContent={'center'}>
+                  <Typography variant='h5' className={classes.lastName} >Nothing matches your search criteria</Typography>
+                </Box>
+              }
             </List>
           </Paper>
           {
@@ -858,6 +1047,7 @@ export default ({ session, filter = {}, onClose }) => {
                   </Button>
                   {filter.request_type
                     && (makeArray(filter.request_type).length === 1)
+                    && session.service_request_types.hasOwnProperty(filter.request_type)
                     && (
                       !(session.service_request_types[filter.request_type].hasOwnProperty('allowStatusUpdateFromDashboard'))
                       || session.service_request_types[filter.request_type].allowStatusUpdateFromDashboard)
@@ -872,6 +1062,23 @@ export default ({ session, filter = {}, onClose }) => {
                       startIcon={<SendIcon size="small" />}
                     >
                       {'Message / Update'}
+                    </Button>
+                  }
+                  {((rowsDisplayed.length > 0) && (!!filters.request_filter))
+                    &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        let printList = [];
+                        rowsDisplayed.forEach(r => printList.push(Object.assign(dataRows[r])));
+                        let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
+                        enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
+                      }}
+                      startIcon={<PrintIcon size="small" />}
+                    >
+                      {'Print all'}
                     </Button>
                   }
                 </Box>
