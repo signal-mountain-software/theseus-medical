@@ -204,6 +204,7 @@ export default ({ session, filter = {}, onClose }) => {
     rowLimit: 5,
   });
   const [targetDatesExist, setTargetDatesExist] = React.useState(false);
+  const [rowsSelected, setRowsSelected] = React.useState({});
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const showDeleted = false;
@@ -301,6 +302,10 @@ export default ({ session, filter = {}, onClose }) => {
         updateRows.push(r);
         dataRows[x] = await buildRequestDetails(r);
         dataRows[x].workData.checked = false;
+        if (rowsSelected[x]) {
+          delete rowsSelected[x];
+          setRowsSelected(rowsSelected);
+        }
       }
     };
     updateServiceRequest(updateRows.map(u => {
@@ -483,6 +488,9 @@ export default ({ session, filter = {}, onClose }) => {
   function toggleCheck(pI) {
     dataRows[pI].workData.checked = !dataRows[pI].workData.checked;
     setDataRows(dataRows);
+    if (rowsSelected[pI]) { delete rowsSelected[pI]; }
+    else { rowsSelected[pI] = true; }
+    setRowsSelected(rowsSelected);
     setForceRedisplay(forceRedisplay => !forceRedisplay);
   }
 
@@ -1045,12 +1053,7 @@ export default ({ session, filter = {}, onClose }) => {
                   >
                     {'Close'}
                   </Button>
-                  {filter.request_type
-                    && (makeArray(filter.request_type).length === 1)
-                    && session.service_request_types.hasOwnProperty(filter.request_type)
-                    && (
-                      !(session.service_request_types[filter.request_type].hasOwnProperty('allowStatusUpdateFromDashboard'))
-                      || session.service_request_types[filter.request_type].allowStatusUpdateFromDashboard)
+                  {(Object.keys(rowsSelected).length > 0)
                     &&
                     <Button
                       className={AVAClass.AVAButton}
@@ -1061,7 +1064,7 @@ export default ({ session, filter = {}, onClose }) => {
                       }}
                       startIcon={<SendIcon size="small" />}
                     >
-                      {'Message / Update'}
+                      {'Message/Update Selected'}
                     </Button>
                   }
                   {((rowsDisplayed.length > 0) && (!!filters.request_filter))
@@ -1072,13 +1075,36 @@ export default ({ session, filter = {}, onClose }) => {
                       size='small'
                       onClick={async () => {
                         let printList = [];
-                        rowsDisplayed.forEach(r => printList.push(Object.assign(dataRows[r])));
+                        rowsDisplayed.forEach(r => {
+                          printList.push(Object.assign(dataRows[r]));
+                          dataRows[r].workData.checked = true;
+                        });
                         let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
+                        setDataRows(dataRows);
+                        await handleUpdates(['Printed']);                       
                         enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
                       }}
                       startIcon={<PrintIcon size="small" />}
                     >
                       {'Print all'}
+                    </Button>
+                  }
+                  {(Object.keys(rowsSelected).length > 0)
+                    &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        let printList = [];
+                        Object.keys(rowsSelected).forEach(r => { if (rowsSelected[r]) { printList.push(Object.assign(dataRows[r])); } });
+                        let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
+                        enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
+                        await handleUpdates(['Printed'])
+                      }}
+                      startIcon={<PrintIcon size="small" />}
+                    >
+                      {'Print selected'}
                     </Button>
                   }
                 </Box>
