@@ -155,7 +155,7 @@ const useStyles = makeStyles(theme => ({
 
 export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, listValues, onSave, onClose }) => {
 
-  let user_fontSize = AVADefaults({fontSize: 'get'});
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -213,9 +213,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   let displayItalic = false;
   const defaultCheckedWords = ['checked', 'on', 'selected', 'true'];
 
-  if (!reactData.initialLoadComplete) {
+  async function initialLoad() {
+  //if (!reactData.initialLoadComplete) {
     let defaultObj = {};
     let defaultChecked = [];
+    let defaultDataRows = {};
     if (defaultValue) {
       (Array.isArray(defaultValue) ? [...defaultValue] : [defaultValue]).forEach(i => {
         let [key, value] = i.split('=');
@@ -287,13 +289,27 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         //   a passed in default for this item instructs AVA to set the checkbox ON
         if (defaultCheckedWords.includes(dValue)
           || (defaultObj.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaultObj[instruction[0]]))) {
+          delete defaultObj[instruction[0]];
           defaultChecked.push(instruction[0]);
-          /*   When default sets on a check box for something with qualifiers, we need to expose the qualifiers...  (but don't know how yet!)
-          if (!dataRows.hasOwnProperty('checked') || (dataRows.checked.length === 0)) {
-            dataRows.checked = [instruction[0]];
-            await getObservations(instruction[0], this_item.oKey, dataRows.checked);
+          let oItem = await getObservationItems(rObj.oKey);
+          if (oItem && oItem.hasOwnProperty('options')) {
+            defaultDataRows[instruction[0]] = oItem.options.display_value;
+            let workChosenQ = {};
+            if (defaultDataRows.hasOwnProperty('chosenQual')) {
+              workChosenQ = defaultDataRows.chosenQual;
+            }
+            if (!workChosenQ.hasOwnProperty(instruction[0])) {
+              workChosenQ[instruction[0]] = {};
+              oItem.options.display_value.forEach(v => {
+                if (v.default) {
+                  if (Array.isArray(v.default)) { workChosenQ[instruction[0]][v.title] = v.default; }
+                  else { workChosenQ[instruction[0]][v.title] = [v.default]; }
+                }
+                else { workChosenQ[instruction[0]][v.title] = []; }
+              });
+            }
+            defaultDataRows.chosenQual = workChosenQ;
           }
-          */
         }
         continue;
       }
@@ -346,9 +362,24 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     }
     reactData.initialLoadComplete = true;
-    setDataRows({ displayRows: displayRowList, dataRows: {}, checked: defaultChecked });
+    let setValue = Object.assign({
+      displayRows: displayRowList,
+      dataRows: {},
+      checked: defaultChecked
+    },
+    defaultDataRows);
+    setDataRows(setValue);
     setReactData(reactData);
   }
+
+  React.useEffect(() => {
+    async function initialize() {
+      await initialLoad();
+    }
+    if (!reactData.initialLoadComplete) {
+      initialize();
+    }
+  }, [defaultValue]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function getObservations(pText, pObsKey, pChecked) {
     let workDataRows = dataRows;
