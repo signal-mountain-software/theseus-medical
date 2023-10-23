@@ -621,7 +621,42 @@ export default ({ patient, picture, groupData, open, onClose }) => {
         TableName: "SessionsV2",
       })
       .promise()
-      .catch(error => { cl(`caught error updating SessionsV2; error is: `, error); });
+      .catch(async (error) => {
+        let resolved = true;
+        if ((error.code === 'ValidationException') && fontFactorChanged) {
+          await dbClient
+            .update({
+              Key: { session_id: patient.person_id },
+              UpdateExpression: 'set #c = :m',
+              ExpressionAttributeValues: { ':m': {} },
+              ExpressionAttributeNames: { '#c': 'customizations' },
+              TableName: "SessionsV2",
+            })
+            .promise()
+            .catch(error => {
+              resolved = false;
+              cl(`caught error updating SessionsV2; error is: `, error);
+            });
+          if (resolved) {
+            await dbClient
+              .update({
+                Key: { session_id: patient.person_id },
+                UpdateExpression: updateExpression,
+                ExpressionAttributeValues: attributeValues,
+                ExpressionAttributeNames: attributeNames,
+                TableName: "SessionsV2",
+              })
+              .promise()
+              .catch(error => {
+                resolved = false;
+                cl(`caught error updating SessionsV2; error is: `, error);
+              });
+          }
+        }
+        else {
+          cl(`caught error updating SessionsV2; error is: `, error);
+        }
+      });
 
     enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
     patient.name.first = localData.firstName;
