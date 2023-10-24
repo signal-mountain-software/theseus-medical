@@ -140,11 +140,12 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
           {titleText && titleArray.map((t, tx) => (
             <Typography key={`title-${tx}`}
               style={AVATextStyle({
-                size: 1.3,
-                bold: true
+                size: ((tx === 0) ? 1.3 : 1.0),
+                bold: (tx === 0),
+                italic: (t.includes('[italic]'))
               })}
               className={classes.titleRow}>
-              {t}
+              {t.replace('[italic]','')}
             </Typography>
           ))}
         </DialogContent>
