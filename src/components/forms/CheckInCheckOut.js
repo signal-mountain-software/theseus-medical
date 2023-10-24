@@ -275,7 +275,7 @@ export default ({ onSave, onClose }) => {
                   valueText={[
                     (!reactData.kiosk_mode ? reactData.residentName : '')
                   ]}
-                  buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Exit', (state.session.adminAccount ? 'Admin' : null)]}
+                  buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (state.session.adminAccount ? 'Admin' : null)]}
                   onCancel={() => {
                     onClose();
                   }}
