@@ -332,6 +332,7 @@ export default Component => props => {
           <AVATextInput
             titleText="AVA Sign-in"
             promptText={"User ID"}
+            options={{ 'save_on_enter': true }}
             buttonText='Sign In'
             onCancel={() => {
               enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
@@ -361,6 +362,7 @@ export default Component => props => {
           <AVATextInput
             titleText={"AVA Sign-in"}
             promptText={"Password"}
+            options={{ 'save_on_enter': true }}
             buttonText='Continue'
             onCancel={() => {
               setMessageList([]);
@@ -799,7 +801,7 @@ export default Component => props => {
       return false;
     }
     // create an accessList of accounts you are allowed to see/view/proxy
-    accountAccess(pLaunchUser, currentSession.client_id, dispatch);   
+    accountAccess(pLaunchUser, currentSession.client_id, dispatch);
     // Get the Patient's profile (info about the active person - usually the same as the logged in user)
     let currentPatient;
     if (currentSession.patient_id === pLaunchUser) {
@@ -838,7 +840,7 @@ export default Component => props => {
             currentSession.client_name = cRec.customization_value;
             break;
           }
-          case 'group_assignments': { 
+          case 'group_assignments': {
             currentSession.group_assignments = cRec.customization_value;
             break;
           }

@@ -91,7 +91,7 @@ export const AVADefaults = (options = {}) => {
 }
 
 export function AVATextStyle(options = {}) {
-    let user_fontSize = AVADefaults({ fontSize: 'get' });
+    let user_fontSize = AVADefaults({ fontSize: 'get' }) || 1.5;
     let returnStyle = {
         fontSize: `${user_fontSize * (options.size || 1)}rem`,
         lineHeight: 1.2,
