@@ -1,5 +1,5 @@
 import React from 'react';
-import { sentenceCase, makeArray, isObject, cl, titleCase } from '../../util/AVAUtilities';
+import { sentenceCase, makeArray, isObject, cl, titleCase, listFromArray } from '../../util/AVAUtilities';
 import { addDays, daysDiff, makeDate, sameDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
@@ -337,7 +337,7 @@ export default ({ session, filter = {}, onClose }) => {
       if (vCheck.length < 2) {
         setFilters({
           request_filter: '',
-          request_filter_lower: '',
+          request_filter_lower: [],
           singleFilterDigit: ((vCheck && (vCheck.length === 1)) ? true : false),
           filter_date: { error: true, good: false },
           request_filter_words: '',
@@ -462,7 +462,8 @@ export default ({ session, filter = {}, onClose }) => {
         }
         let filter_words;
         if (vCheck) {
-          filter_words = `All items that contain "${vCheck}"`;
+          let checkwords = makeArray(vCheck.trim(), ' ');
+          filter_words = `All items that contain "${listFromArray(checkwords)}"`;
           if (!dateTime_filter.error) {
             filter_words += ` and were ${dateFilterWords}`;
           }
@@ -472,7 +473,7 @@ export default ({ session, filter = {}, onClose }) => {
         }
         setFilters({
           request_filter: vCheck || !dateTime_filter.error,
-          request_filter_lower: (vCheck ? vCheck.toLowerCase() : ''),
+          request_filter_lower: (vCheck ? makeArray(vCheck.toLowerCase(), ' ') : []),
           singleFilterDigit: false,
           filter_date: dateTime_filter,
           request_filter_words: filter_words,
@@ -586,8 +587,11 @@ export default ({ session, filter = {}, onClose }) => {
         default: { }
       }
     }
-    if (filters.request_filter_lower) {
-      return (`${pRec.workData.search_data} ${pRec.workData.formatted_type}`).toLowerCase().includes(filters.request_filter_lower);
+    if (filters.request_filter_lower && (filters.request_filter_lower.length > 0)) {
+      let searchString = `${pRec.workData.search_data} ${pRec.workData.formatted_type}`;
+      return filters.request_filter_lower.every(w => { 
+        return searchString.toLowerCase().includes(w);
+      })
     }
     else { return true; }
   }
@@ -651,17 +655,18 @@ export default ({ session, filter = {}, onClose }) => {
       i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
     }
     i.workData.formatted_request.push(['head', `Current status: ${sentenceCase(i.last_status)}`]);
+    i.workData.search_data = `status=${i.last_status.trim().toLowerCase()}`;
     i.workData.formatted_request.push(['head', 'Details']);
     if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
       anonymous = (i.original_request.selections && i.original_request.selections.join(' ').includes('anonymous'));
       let [fReq, fSearch] = formatRequest(i, i.original_request);
       i.workData.formatted_request.push(...fReq);
-      i.workData.search_data = fSearch;
+      i.workData.search_data += ` ${fSearch}`;
     }
     else {
       anonymous = i.original_request.includes('anonymous');
       i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
-      i.workData.search_data = i.original_request;
+      i.workData.search_data += ` ${i.original_request}`;
     }
     if (i.attachments && (i.attachments.length > 0)) {
       i.attachments.forEach(a => {
@@ -720,7 +725,7 @@ export default ({ session, filter = {}, onClose }) => {
         delete req.textInput[s];
       }
       returnMessage.push(['detail', dLine]);
-      returnSearch += ` ${dLine}}`;
+      returnSearch += ` ${dLine}`;
       if (s in req.qualifiers) {
         for (let q in req.qualifiers[s]) {
           let qLast = req.qualifiers[s][q].length - 1;
