@@ -1387,7 +1387,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                       justifyContent='flex-start' marginTop={-1} marginBottom={2} flexDirection='row'>
                       <Typography className={localData.requirePassword ? classes.radioText : classes.radioTextBold}>Simplfied Log-in</Typography>
                       <Switch
-                        checked={localData.requirePassword}
+                        checked={!!localData.requirePassword}
                         onChange={() => {
                           localData.requirePassword = !localData.requirePassword;
                           setRefreshTrigger(!refreshTrigger);
