@@ -109,11 +109,10 @@ export async function getServiceRequests(body) {
         return 0;
       });
       sortedList = sortedList.concat(thisSort);
-      if (!qR.LastEvaluatedKey || (sortedList.length > body.limit)) {
-        return sortedList;
-      }
     }
-    else { return sortedList; }
+    if (!qR.LastEvaluatedKey || (sortedList.length > body.limit)) {
+      return sortedList;
+    }
     qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
     loopCount++;
   } while (qQ.ExclusiveStartKey && (loopCount < 10));
