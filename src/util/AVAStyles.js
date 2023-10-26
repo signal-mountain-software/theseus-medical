@@ -91,15 +91,16 @@ export const AVADefaults = (options = {}) => {
 }
 
 export function AVATextStyle(options = {}) {
-    let user_fontSize = AVADefaults({ fontSize: 'get' });
+    let user_fontSize = AVADefaults({ fontSize: 'get' }) || 1.5;
     let returnStyle = {
         fontSize: `${user_fontSize * (options.size || 1)}rem`,
-        lineHeight: 0.9,
+        lineHeight: 1.2,
         overflow: (options.overflow || 'hidden'),
-        paddingBottom: `${2 * user_fontSize * (options.size || 1)}px`,
-        color: 'black'
+ //       paddingBottom: `${2 * user_fontSize * (options.size || 1)}px`,
+ //       color: 'black'
     };
     if (options.bold) { returnStyle.fontWeight = 'bold'; }
+    if (options.italic) { returnStyle.fontStyle = 'italic'; }
     if (options.weight) { returnStyle.fontWeight = options.weight; }
     if (options.margin) {
         if (options.margin.right) { returnStyle.marginRight = options.margin.right * 16; }
@@ -121,6 +122,6 @@ export function AVATextStyle(options = {}) {
 export function AVATextVariableStyle(outText, options = {}) { 
     let returnStyle = AVATextStyle(options);
     let user_fontSize = AVADefaults({ fontSize: 'get' }) * (options.size || 1);
-    returnStyle.fontSize = `${user_fontSize * (50 / Math.max(50, outText.length * user_fontSize * (1000 / window.innerWidth)))}rem`;
+    returnStyle.fontSize = `${user_fontSize * (50 / Math.max(50, outText.length * user_fontSize * (600 / window.innerWidth)))}rem`;
     return returnStyle;
 }

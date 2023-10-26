@@ -39,6 +39,10 @@ import AVATextInput from '../forms/AVATextInput';
 import AVAConfirm from '../forms/AVAConfirm';
 import useSession from '../../hooks/useSession';
 
+import Menu from '@material-ui/core/Menu';
+import MenuList from '@material-ui/core/MenuList';
+import MenuItem from '@material-ui/core/MenuItem';
+
 import TextField from '@material-ui/core/TextField';
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
@@ -127,6 +131,17 @@ const useStyles = makeStyles(theme => ({
   confirm: {
     backgroundColor: 'green',
   },
+  popUpMenu: {
+    marginRight: theme.spacing(3),
+    paddingRight: 2,
+  },
+  popUpMenuRow: {
+    marginLeft: theme.spacing(1),
+    fontSize: theme.typography.fontSize * 1.0,
+  },
+  popUpFooter: {
+    fontSize: theme.typography.fontSize * 0.8,
+  },
   standardIndent: {
     marginLeft: theme.spacing(1),
     variant: 'body1',
@@ -161,6 +176,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
 
   const [editIndex, setEditIndex] = React.useState();
   const [editSlot, setEditSlot] = React.useState();
+  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
 
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [recipient, setRecipient] = React.useState();
@@ -187,6 +203,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     numberOfOwnedSlots: 0
   });
 
+  const [anchorEl, setAnchorEl] = React.useState(null);
+
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   var rowsWritten = 0;
@@ -198,6 +216,10 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   function isSlotOwner(slotData) {
     return (slotData.owner === pPatient);
   }
+
+  const handleClick = async (event) => {
+    setAnchorEl(event.currentTarget);
+  };
 
   const setChoices = async (inList) => {
     if (choiceList.length > 0) { return; }
@@ -558,28 +580,183 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         {/* Screen header - Description, Date, Location... */}
         {!loading &&
           <Box
-            display='flex'
-            className={classes.title}
-            flexDirection='column'
-            onContextMenu={async (e) => {
-              e.preventDefault();
-              enqueueSnackbar(`AVA event=${pEventCode}`, { variant: 'info', persist: true });
-            }}
+            display='flex' flexDirection='row'
+            className={classes.messageArea}
+            key={'topBox'}
           >
-            <Typography style={AVATextStyle({ size: 1.2 })} >{pOccData.description}</Typography>
-            {pOccData.date &&
-              <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
-                {`${makeDate(pOccData.date).relative}${pOccData.time$ ? ' - ' + pOccData.time$ : ''}`}
+            <Box
+              display='flex'
+              className={classes.title}
+              flexDirection='column'
+              flexGrow={1}
+              onContextMenu={async (e) => {
+                e.preventDefault();
+                enqueueSnackbar(`AVA event=${pEventCode}`, { variant: 'info', persist: true });
+              }}
+            >
+              <Typography style={AVATextStyle({ size: 1.5, bold: true })} >{pOccData.description}</Typography>
+              {pOccData.date &&
+                <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
+                  {`${makeDate(pOccData.date).relative}${pOccData.time$ ? ' - ' + pOccData.time$ : ''}`}
+                </Typography>
+              }
+              {pOccData.location &&
+                <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
+                  {pOccData.location}
+                </Typography>
+              }
+              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                {rowsWritten = 0}
               </Typography>
+            </Box>
+            {isEventOwner &&
+              <React.Fragment>
+                <Box
+                  component="img"
+                  ml={2}
+                  mr={2}
+                  mt={2}
+                  aria-controls='hidden-menu'
+                  aria-haspopup='true'
+                  minWidth={50}
+                  maxWidth={50}
+                  minHeight={50}
+                  maxHeight={50}
+                  onClick={(event) => {
+                    handleClick(event);
+                    setPopupMenuOpen(true);
+                  }}
+                  alt=''
+                  src={process.env.REACT_APP_AVA_LOGO}
+                />
+                <Menu
+                  id='hidden-menu'
+                  anchorEl={anchorEl}
+                  open={popupMenuOpen}
+                  onClose={() => { setPopupMenuOpen(false); }}
+                  keepMounted>
+                  <MenuList className={classes.popUpMenu}>
+                    {(pOccData.signup_type === 'none') && isEventOwner &&
+                      <MenuItem
+                        onClick={async () => {
+                          await setChoices(peopleList);
+                          setEditIndex(false);
+                          setEditSlot(false);
+                          setSelectNewSlotOwner(true);
+                        }}
+                      >
+                        <Box
+                          display='flex' flexDirection='row' alignItems={'center'}
+                          key={'vRowHome'}
+                        >
+                          <PersonAddIcon />
+                          <Typography className={classes.popUpMenuRow} >{'Add a person'}</Typography>
+                        </Box>
+                      </MenuItem>
+                    }
+                    <MenuItem
+                      onClick={async () => {
+                        await handlePrint(pEventCode, 'full');
+                      }}
+                    >
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'}
+                        key={'vRowHome'}
+                      >
+                        <PrintIcon />
+                        <Typography className={classes.popUpMenuRow} >{'Detail report'}</Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem
+                      onClick={async () => {
+                        await handlePrint(pEventCode, 'sign-up');
+                      }}
+                    >
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'}
+                        key={'vRowHome'}
+                      >
+                        <StorageOutlined />
+                        <Typography className={classes.popUpMenuRow} > {'Sign-up sheet'}</Typography>
+                      </Box>
+                    </MenuItem>
+                    {(reactData.numberOfOwnedSlots > 0) &&
+                      <MenuItem
+                        onClick={() => {
+                          setPromptForMessage(true);
+                          setMessageType('Group');
+                          setRecipient(eventSlotList.map(e => { return e.slotData.id; }));
+                        }}
+                      >
+                        <Box
+                          display='flex' flexDirection='row' alignItems={'center'}
+                          key={'vRowHome'}
+                        >
+                          <SendIcon />
+                          <Typography className={classes.popUpMenuRow} > {'Message All'}</Typography>
+                        </Box>
+                      </MenuItem>
+                    }
+                    <MenuItem
+                      onClick={() => {
+                        reactData.editEventInfo = true;
+                        reactData.editInfoErrorList = [];
+                        setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
+                      }}
+                    >
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'}
+                        key={'vRowHome'}
+                      >
+                        <EditIcon />
+                        <Typography className={classes.popUpMenuRow} > {'Update event info'}</Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        reactData.cancelPending = true;
+                        setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
+                      }}
+                    >
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'}
+                        key={'vRowHome'}
+                      >
+                        <DeleteIcon />
+                        <Typography className={classes.popUpMenuRow} > {'Cancel this event'}</Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        reactData.editOwnerInfo = true;
+                        setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
+                      }}
+                    >
+                      <Box
+                        display='flex' flexDirection='row' alignItems={'center'}
+                        key={'vRowHome'}
+                      >
+                        <PersonAddIcon />
+                        <Typography className={classes.popUpMenuRow} > {'Add owners'}</Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem>
+                      <Box
+                        display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                        key={'vRowRefresh'}
+                      >
+                        <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                        <Typography className={classes.popUpFooter} >{`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}</Typography>
+                        <Typography className={classes.popUpFooter} >{`Event: ${pEventCode}`}</Typography>
+                      </Box>
+                    </MenuItem>
+                  </MenuList>
+                </Menu>
+              </React.Fragment>
             }
-            {pOccData.location &&
-              <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
-                {pOccData.location}
-              </Typography>
-            }
-            <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-              {rowsWritten = 0}
-            </Typography>
           </Box>
         }
         {/* Slots */}
@@ -884,7 +1061,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 <Tooltip title={`Exit`} placement='top'>
                   <Button
                     className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'red', color: 'white', marginBottom: '-12px' }}
+                    style={{ backgroundColor: 'red', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
                     size='small'
                     onClick={() => { onReset(pOccData); }}
                     startIcon={<CloseIcon size="small" />}
@@ -892,13 +1069,11 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     {'Done'}
                   </Button>
                 </Tooltip>
-              </Box>
-              <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
                 {!ownerOfSlots &&
                   <Tooltip title={'Add myself to the list'} placement='top'>
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px' }}
+                      style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
                       size='small'
                       onClick={async () => {
                         let pName = await makeName(pPatient);
@@ -913,128 +1088,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     </Button>
                   </Tooltip>
                 }
-                {(pOccData.signup_type === 'none') && isEventOwner &&
-                  <Tooltip title={'Add a person'} placement='top'>
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px' }}
-                      size='small'
-                      onClick={async () => {
-                        await setChoices(peopleList);
-                        setEditIndex(false);
-                        setEditSlot(false);
-                        setSelectNewSlotOwner(true);
-                      }}
-                      startIcon={<PersonAddIcon size="small" />}
-                    >
-                      {'Add a person'}
-                    </Button>
-                  </Tooltip>
-                }
               </Box>
-              {isEventOwner &&
-                <React.Fragment>
-                  <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                    <Tooltip title={'Prepare Detail Report'} placement='top'>
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px' }}
-                        size='small'
-                        onClick={async () => {
-                          await handlePrint(pEventCode, 'full');
-                        }}
-                        startIcon={<PrintIcon size='small' />}
-                      >
-                        {'Detail report'}
-                      </Button>
-                    </Tooltip>
-                    <Tooltip title={'Prepare Sign-up sheet'} placement='top'>
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'brown', color: 'white', marginBottom: '-12px' }}
-                        size='small'
-                        onClick={async () => {
-                          await handlePrint(pEventCode, 'sign-up');
-                        }}
-                        startIcon={<StorageOutlined size='small' />}
-                      >
-                        {'Sign-up sheet'}
-                      </Button>
-                    </Tooltip>
-                    {(reactData.numberOfOwnedSlots > 0) &&
-                      <Tooltip title={'Send a message to everyone that is signed-up'} >
-                        <Button
-                          className={AVAClass.AVAButton}
-                          style={{ backgroundColor: 'orange', color: 'white', marginBottom: '-12px' }}
-                          size='small'
-                          onClick={() => {
-                            setPromptForMessage(true);
-                            setMessageType('Group');
-                            setRecipient(eventSlotList.map(e => { return e.slotData.id; }));
-                          }}
-                          startIcon={<SendIcon size='small' />}
-                        >
-                          {'Message all'}
-                        </Button>
-                      </Tooltip>
-                    }
-                  </Box>
-                  <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                    <Box display='flex' flexDirection='column' paddingBottom={1} justifyContent='center' alignItems='center'>
-                      <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                        <Tooltip title={'Change Description, Date, Location, or Time'} >
-                          <Button
-                            className={AVAClass.AVAButton}
-                            style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
-                            size='small'
-                            onClick={() => {
-                              reactData.editEventInfo = true;
-                              reactData.editInfoErrorList = [];
-                              setReactData(reactData);
-                              setForceRedisplay(!forceRedisplay);
-                            }}
-                            startIcon={<EditIcon size='small' />}
-                          >
-                            {'Update Event Info'}
-                          </Button>
-                        </Tooltip>
-                        <Tooltip title={'Add event owners'} >
-                          <Button
-                            className={AVAClass.AVAButton}
-                            style={{ backgroundColor: 'purple', color: 'white', marginBottom: '-12px' }}
-                            size='small'
-                            onClick={() => {
-                              reactData.editOwnerInfo = true;
-                              setReactData(reactData);
-                              setForceRedisplay(!forceRedisplay);
-                            }}
-                            startIcon={<PersonAddIcon size='small' />}
-                          >
-                            {'Add Event Owners'}
-                          </Button>
-                        </Tooltip>
-                      </Box>
-                      <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                        <Tooltip title={'Add event owners'} >
-                          <Button
-                            className={AVAClass.AVAButton}
-                            style={{ backgroundColor: 'red', color: 'white', marginBottom: '-12px' }}
-                            size='small'
-                            onClick={() => {
-                              reactData.cancelPending = true;
-                              setReactData(reactData);
-                              setForceRedisplay(!forceRedisplay);
-                            }}
-                            startIcon={<DeleteIcon size='small' />}
-                          >
-                            {'Cancel Event'}
-                          </Button>
-                        </Tooltip>
-                      </Box>
-                    </Box>
-                  </Box>
-                </React.Fragment>
-              }
             </Box>
           </DialogActions>
         }

@@ -208,17 +208,25 @@ export default ({
     let subjectText = '';
     if (promptUse && reactData.textInput.length > 1) {
       makeArray(promptUse).forEach((u, n) => {
-        switch (u) {
-          case 'subject': { subjectText += ' ' + reactData.textInput[n]; break; }
-          case 'voicemail': { voiceMailText += ' ' + reactData.textInput[n]; break; }
-          default: { principalMessageText += ' ' + reactData.textInput[n]; }
+        if (reactData.textInput[n]) {
+          switch (u) {
+            case 'subject': { subjectText += ' ' + reactData.textInput[n]; break; }
+            case 'voicemail': {
+              voiceMailText += ' ' + reactData.textInput[n]; 
+              if (!principalMessageText) {
+                principalMessageText = voiceMailText;
+              }
+              break;
+            }
+            default: { principalMessageText += ' ' + reactData.textInput[n]; }
+          }
         }
       });
       if (!voiceMailText) { voiceMailText = principalMessageText; }
       if (!subjectText) { subjectText = `Message from ${senderName}`; }
     }
     else {
-      principalMessageText = reactData.textInput[promptArray.length - 1];
+      principalMessageText = reactData.textInput[0];
       voiceMailText = principalMessageText;
       subjectText = (promptArray.length > 1 ? reactData.textInput[0] : `Message from ${senderName}`);
     }

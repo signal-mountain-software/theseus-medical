@@ -383,7 +383,7 @@ export async function getCalendarEntries(body, statusUpdate) {
   }
   // end of loop for requested types
   // at this point, returnArr has all of the records requested
-  
+
   /*  THIS CODE REPLACES THE "CANDIDATE FOR DEPRECIATION" CODE BELOW BUT IS ALSO NOT NECESSARY
   // get a list of (up to 10) occurrences for this event over the next 90 days
   let today = makeDate(new Date());
@@ -449,7 +449,7 @@ export async function getCalendarEntries(body, statusUpdate) {
     }
   }
   */
-  
+
   // return the list of calendar entries sorted by date/slot in event key (oldest first)
   return returnArr.sort((a, b) => {
     if ((a.event_key.split(/#(.*)/)[1] || null) > (b.event_key.split(/#(.*)/)[1] || null)) { return 1; }
@@ -627,7 +627,7 @@ export async function getOccurenceList(request) {
     case "bi-weekly": {
       let firstWeek = [];
       let count = 0;
-      let firstDate = makeDate(occPattern.first_date).date; 
+      let firstDate = makeDate(occPattern.first_date).date;
       for (let d = addDays(firstDate, count); count < 7; count++) {
         firstWeek[d.getDay()] = d;
       }
@@ -763,9 +763,9 @@ export async function getOccurenceList(request) {
     response.occArray.push(numericDate);
     // Add this date to the response.occArray
     if (!eventRec.occExists) { eventRec.occExists = []; }
-  //  else if (eventRec.occExists.includes(stringDate)) {
-  //    return numericDate;
-  //  }
+    //  else if (eventRec.occExists.includes(stringDate)) {
+    //    return numericDate;
+    //  }
     let oResp = await putEventOccurrence(request.client, event_id, stringDate, eventRec.occExists);
     if (Array.isArray(oResp)) { response.occRec[stringDate] = oResp[1]; }
     return numericDate;
@@ -1178,6 +1178,8 @@ export async function printOccurrenceSheet(body) {
 
   // Get the event master record
   let oData = await occurrenceData(body);
+  let eoData = await getSlotList({ "client": body.client || body.client_id, "event": body.event || body.event_id });
+  oData.slots = eoData.slotObj;
 
   // Prep the PDF output
   let default_font = 'Helvetica';
@@ -1232,7 +1234,7 @@ export async function printOccurrenceSheet(body) {
   let titleWords = await resolveMessageVariables(page.info.title, body);
   page.info.title = titleCase(titleWords);
   doc.info = { author: 'AVA', title: titleCase(titleWords) };
-  pdfLine(page.info.title, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
+  pdfLine(page.info.title, page.font.size.large, 'bold', 0, 0, 0, { align: 'center' });
   if (body.client_name) {
     let outClientName = titleCase(body.client_name);
     pdfLine(outClientName, page.font.size.large, 'normal', 0, 0, 0, { align: 'center' });
@@ -1257,26 +1259,39 @@ export async function printOccurrenceSheet(body) {
 
   let totalLines = 0;
   let detail_indent = (page.width / 10) + page.margin.left;
-  let nameRow_indent = detail_indent - 10;
+  // let nameRow_indent = detail_indent - 10;
 
   let slotList = Object.keys(oData.slots).sort();
 
   for (let s = 0; s < slotList.length; s++) {
     let sID = slotList[s];
-
+    let outName;
+    let occupiedSlot = false;
     if (oData.slots[sID].owner && (oData.slots[sID].owner !== 'available') && (oData.slots[sID].owner !== '')) {
+      occupiedSlot = true;
+      if (!oData.slots[sID].display_name) { outName = oData.slots[sID].owner; }
+      else {
+        let oParts = oData.slots[sID].display_name.split(',');
+        if (oParts.length === 1) { outName = oParts[0].trim(); }
+        else { outName = (`${oParts[1].trim()} ${oParts[0].trim()}`).trim(); }
+      }
+    };
+    if (body.request_type === 'sign-up') {
+      pdfLine(((oData.type === 'time') ? formatTime(sID) : sID), page.font.size.large, 'normal', 0, 1.5, 0, { align: 'left' });
+      if (occupiedSlot) {
+        pdfLine(outName, page.font.size.large, 'bold', 0, 0, 0, { xPos: detail_indent + 10, noNewLine: true });
+      }
+      doc.line(detail_indent, yPos + 3, detail_indent + 300, yPos + 3, 'F');
+    }
+    else if (occupiedSlot) {
       pdfLine('image', page.font.size.large, 'normal', 0, 1.5, 0, { image: `https://theseus-medical-storage.s3.amazonaws.com/public/patients/${oData.slots[sID].owner}.jpg` });
-      let outName;
-      let oParts = oData.slots[sID].display_name.split(',');
-      if (oParts.length === 1) { outName = oParts[0].trim(); }
-      else { outName = `${oParts[1].trim()} ${oParts[0].trim()}`; }
       pdfLine(outName, page.font.size.large, 'bold', 0, 0.5, 0, { noNewLine: true });
       let nameY = yPos;
       if (oData.type === 'time') {
-        pdfLine(`Time: ${formatTime(sID)}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+        pdfLine(`${formatTime(sID)}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
       }
       else if (oData.type === 'seats') {
-        pdfLine(`Seat: ${sID}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
+        pdfLine(`${sID}`, page.font.size.medium, 'normal', 0, 0, 0, { align: 'vertical', noBreak: true });
       }
       if (oData.slots[sID].owner && body.request_type === 'full') {
         let pRec = await getPerson(oData.slots[sID].owner);
@@ -1302,7 +1317,6 @@ export async function printOccurrenceSheet(body) {
         pdfLine('image', page.font.size.small, 'normal', 0, 0, 0, { yPos: nameY, noNewLine: true, align: 'right', image: `https://ava-icons.s3.amazonaws.com/icons8-check-192.png` });
       }
     }
-    else { doc.line(nameRow_indent, yPos, nameRow_indent + 400, yPos, 'F'); }
     totalLines += 2;
   }
 
@@ -1465,6 +1479,16 @@ export async function printOccurrenceSheet(body) {
           doc.text(text, page.width - page.margin.right, yPos, { align: 'right' });
           previousXPos = page.width - page.margin.right - doc.getTextWidth(text);
           xPos = page.margin.right;
+        }
+        else if (options.align === 'left') {
+          doc.text(text, page.margin.left + indent, yPos);
+          previousXPos = page.margin.left + indent;
+          xPos = page.margin.left + indent + doc.getTextWidth(text) + lastSize;
+        }
+        else if (options.xPos) {
+          doc.text(text, options.xPos, yPos);
+          previousXPos = options.xPos;
+          xPos = options.xPos + doc.getTextWidth(text) + lastSize;
         }
         else if (options.noNewLine) {
           doc.text(text, xPos + indent, yPos);

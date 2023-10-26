@@ -275,7 +275,7 @@ export default ({ onSave, onClose }) => {
                   valueText={[
                     (!reactData.kiosk_mode ? reactData.residentName : '')
                   ]}
-                  buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Exit', (state.session.adminAccount ? 'Admin' : null)]}
+                  buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (state.session.adminAccount ? 'Admin' : null)]}
                   onCancel={() => {
                     onClose();
                   }}
@@ -348,6 +348,7 @@ export default ({ onSave, onClose }) => {
                       style={{ marginBottom: '2em', marginLeft: '1em', }}
                       flexDirection='row' key={`ambiguous-${cIndex}`} justifyContent='flex-start' alignItems='center'
                       paddingX={2}
+                      flexGrow={1}
                       paddingY={1}
                       marginRight={2}
                       minWidth={'90%'}
@@ -363,9 +364,9 @@ export default ({ onSave, onClose }) => {
                         setForceRedisplay(!forceRedisplay);
                       }}
                     >
-                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                      <Box display='flex' flexGrow={1} flexDirection='column' justifyContent='center' alignItems='flex-start'>
                         <Typography style={AVATextStyle({ size: 1.3, bold: true })}>{`${titleCase(candidate.name.first)} ${titleCase(candidate.name.last)}`}</Typography>
-                        <Typography style={AVATextVariableStyle(`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`, { bold: true, margin: { right: 2, bottom: 0.5 } })} >{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
+                        <Typography style={AVATextVariableStyle(`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`, { bold: true, margin: { right: 2 } })} >{`${titleCase(candidate.account_class)} - ${(candidate.phone_key || candidate.location)}`}</Typography>
                       </Box>
                     </Box>
                   )
@@ -412,7 +413,11 @@ export default ({ onSave, onClose }) => {
             &&
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
               <AVATextInput
-                titleText={[makeGreeting(reactData.personRec.name.first), `Check out - ${makeDate(new Date()).absolute}`]}
+                  titleText={[
+                    makeGreeting(reactData.personRec.name.first),
+                    `[italic]You are currently checked in`,
+                    `Tap below to check out`
+                  ]}
                 promptText={reactData.residentPrompts || []}
                 buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
                 onCancel={() => {
@@ -443,7 +448,11 @@ export default ({ onSave, onClose }) => {
               />
               :
               <AVAConfirm
-                promptText={[`Welcome home, ${reactData.personRec.name.first}!`, `[italic]Checked out ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`]}
+                  promptText={[
+                    `Welcome home, ${reactData.personRec.name.first}!`,
+                    `[italic]You've been checked out since ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`,
+                    `Tap below to check in`
+                  ]}
                 cancelText={`Cancel`}
                 confirmText={`Check-in`}
                 onCancel={() => {
