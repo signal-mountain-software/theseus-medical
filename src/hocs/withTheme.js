@@ -1,16 +1,17 @@
 import React from 'react';
 import CssBaseline from '@material-ui/core/CssBaseline';
-// import useMediaQuery from '@material-ui/core/useMediaQuery';
+import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { ThemeProvider, unstable_createMuiStrictModeTheme } from '@material-ui/core/styles';
 
 import useDarkMode from '../hooks/useDarkMode';
 import { SET_MODE } from '../contexts/DarkMode/actions';
 
 export default Component => props => {
-  // const { state, dispatch } = useDarkMode();
-  // const { mode } = state;        TEMPORARY FIX TO FORCE LIGHT MODE
-  const { dispatch } = useDarkMode();
-  const mode = 'light';
+  const { state, dispatch } = useDarkMode();
+  const { mode } = state;        
+  //TEMPORARY FIX TO FORCE LIGHT MODE
+  //const { dispatch } = useDarkMode();
+  //const mode = 'light';
   const theme = React.useMemo(
     () =>
       unstable_createMuiStrictModeTheme({
@@ -61,8 +62,8 @@ export default Component => props => {
     [mode]
   );
 
-  // let prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
-  let prefersDarkMode = false;
+  let prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+  //let prefersDarkMode = false;
   React.useEffect(() => {
     const localTheme = localStorage.getItem('theseus-medical-theme');
     const initial = localTheme || (prefersDarkMode ? 'dark' : 'light');

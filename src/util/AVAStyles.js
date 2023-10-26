@@ -97,7 +97,7 @@ export function AVATextStyle(options = {}) {
         lineHeight: 1.2,
         overflow: (options.overflow || 'hidden'),
  //       paddingBottom: `${2 * user_fontSize * (options.size || 1)}px`,
-        color: 'black'
+ //       color: 'black'
     };
     if (options.bold) { returnStyle.fontWeight = 'bold'; }
     if (options.italic) { returnStyle.fontStyle = 'italic'; }
