@@ -491,7 +491,7 @@ export async function updateCalendarEntry(body) {
       })
       .promise()
       .catch(error => {
-        clt({ 'Bad batch write on ServiceRequests - caught error is': error });
+        clt({ 'Bad batch write on Calendars - caught error is': error });
       });
     if (writeResponse
       && ('UnprocessedItems' in writeResponse)
