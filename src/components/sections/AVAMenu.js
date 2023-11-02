@@ -265,11 +265,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const oneMinute = 1000 * 60;
   const oneHour = 60 * oneMinute;
-  const msBeforeSleeping = 5 * oneMinute;
+  const msBeforeSleeping = 1 * oneMinute;
 
   const subMenuHead = React.useRef(null);
 
-  let user_fontSize = AVADefaults({fontSize: 'get'});
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   const avatarStyle = {
     width: `${(30 * user_fontSize)}px`,
@@ -830,19 +830,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   async function getActivityDetail(pActRec) {
     let resolvedActivity = await makeObservationList(pActRec.activity_rec || pActRec.activity_code, session);
     resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
-    resolvedActivity.activityRec.default_value = await prepareDefaults(pActRec);
+    [resolvedActivity.activityRec.default_value, resolvedActivity.activityRec.default_object] = await prepareDefaults(pActRec);
     setSelected(resolvedActivity.activityRec);
     return resolvedActivity;
   };
 
   async function prepareDefaults(fact) {
     let excludeList = ['reservation', 'play_video'];
-    if (!fact.default_value) { return; }
+    let returnArray = [];
+    let returnObject = {};
+    if (!fact.default_value) { return [returnArray, returnObject]; }
     if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
     if (fact.activity_rec?.type === 'make_message') {
 
     }
-    let returnArray = [];
+    
     // check for default values in the person's record
     if (patient.hasOwnProperty('defaultValues')) {
       let pDefaults = patient.defaultValues;
@@ -851,41 +853,88 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       }
     }
     // now pull in default values associated with this specific function call
-    let factClient;
-    let defaultValues = makeArray(fact.default_value, /\s~|~\s/g);
-    for (let d = 0; d < defaultValues.length; d++) {
-      let dField, dValue;
-      if (isObject(defaultValues[d])) {
-        dField = Object.keys(defaultValues[d])[0];
-        dValue = defaultValues[d][dField];
+    let defaultValues = {};
+    if (isObject(fact.default_value)) {
+      defaultValues = Object.assign({}, fact.default_value);
+    }
+    else {
+      // old style is a string of key/value pairs (in the form key=value) separated by " ~ "
+      makeArray(fact.default_value, /\s~|~\s/g).forEach((d, x) => {
+        if (d.includes('=')) {
+          let dO = d.split('=');
+          defaultValues[dO[0]] = dO[1];
+        }
+        else {
+          // a value may not be in the form key=value; in this case, just use value
+          defaultValues[`_key_${x}`] = d;
+        }
+      });
+    }
+    for (let dField in defaultValues) {
+      let dValue = await resolveDefaults(fact, defaultValues[dField]);
+      // we're returning an array and an object, they are duplicates of one another and consumed as needed by their targets
+      // each entry is a default value which could be:
+      //     a string alone (as in "myDefault")
+      //     a string with some field name (as in "requestType=myDefault")
+      //     an object (as in {requestType: myDefault, peopleList: [person1, person2, ...], ...})
+      let rKey;
+      let k = dField.match(/_key_(.*)/);
+      if (k) {          // if no field name was specified
+        rKey = `d${k[1]}`;
       }
-      else if (defaultValues[d].includes('=')) { [dField, dValue] = defaultValues[d].split('='); }
-      else { dValue = defaultValues[d]; }
-      let dInstr, dPart;
-      if (dValue.includes('.')) { [dInstr, dPart] = dValue.split('.'); }
-      else { dPart = dValue; }
-      dPart = await resolveVariables(dPart, session, { ignoreArrayCheck: true });
-      switch (dInstr) {
+      else {
+        rKey = (dField.split('.')).pop();
+      }
+      returnObject[rKey] = dValue;
+      if (typeof dValue !== 'string') {
+        returnArray.push({ [rKey]: dValue });
+      }
+      else {
+        returnArray.push(`${k ? '' : (rKey + '=')}${dValue}`);
+      }
+    }
+    return [returnArray, returnObject];
+  }
+
+  async function resolveDefaults(fact, this_value) {
+    if (typeof (this_value) !== 'string') {
+      for (let aKey in this_value) {
+        this_value[aKey] = await resolveDefaults(fact, this_value[aKey]);
+      }
+      return this_value;
+    }
+    let a = this_value.split('.');
+    let dValue = await resolveVariables(a.pop(), session, { ignoreArrayCheck: true });
+    // if anything remains in array a (after the pop above), the value was in the form instruction=value
+    // we'll act as per that instruction here
+    if (a.length > 0) {
+      switch (a[0]) {
         case 'people': {
-          if (!factClient) {
-            if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
-            else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//'); }
-            else { factClient = defaultClient; }
-          }
-          dPart = await getMemberList(makeArray(dPart, ','), factClient, { sort: true, shortList: true });
+          let factClient;
+          if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
+          else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//'); }
+          else { factClient = defaultClient; }
+          dValue = await getMemberList(makeArray(dValue, ','), factClient, { sort: true, shortList: true });
+          break;
+        }
+        case 'person': {
+          dValue = {
+            'peopleList': [state.patient]
+          };
           break;
         }
         case 'select': {
-          if (dPart === 'accessList') {
-            dPart = state.accessList[state.session.client_id].shortList;
-            dField = 'selectionList';
+          if (dValue === 'accessList') {
+            dValue = {
+              'selectionList': state.accessList[state.session.client_id].shortList
+            };
           }
           else if (state.patients) {
-            dPart = state.patients;
+            dValue = state.patients;
           }
           else {
             let targetObj = await prepareTargets(session.patient_id, session.client_id, { includeGroups: true });
-            dPart = targetObj.responsibleList.sort();
+            dValue = targetObj.responsibleList.sort();
           }
           break;
         }
@@ -893,20 +942,19 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           setLoading('Loading');
           setForceRedisplay(!forceRedisplay);
           let date_offset = 7;
-          switch (dPart) {
+          switch (dValue) {
             case 'future': { date_offset = 7; break; }
             case 'past':
             case 'history': { date_offset = -7; break; }
             default: {
-              let s = Number(dPart);
+              let s = Number(dValue);
               if (s) { date_offset = s; break; }
             }
           }
           let rightNow = new Date();
           let offset_date = addDays(rightNow, date_offset);
           screenStatus('Retreiving the Calendar', 0, daysDiff(rightNow, offset_date));
-          dField = 'eventList';
-          dPart = await getAllOccurrences(
+          let oList = await getAllOccurrences(
             {
               client_id: session.client_id,
               start_date: ((date_offset < 0) ? offset_date : rightNow),
@@ -914,28 +962,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             },
             screenStatus
           );
+          dValue = { 'eventList': oList };
           setLoading(false);
           break;
         }
         default: { }
       }
-      let returnValue;
-      if (dField) {
-        if (dField.includes('.')) { dField = dField.split('.')[1]; }
-        if ((typeof dPart !== 'string') || isObject(defaultValues[d])) {
-          returnValue = {};
-          returnValue[dField] = dPart;
-        }
-        else { returnValue = `${dField}=${dPart}`; }
-      }
-      else {
-        if ((typeof dPart !== 'string')) { returnValue = {}; returnValue[`d${d}`] = dPart; }
-        else { returnValue = dPart; }
-      }
-      returnArray.push(returnValue);
     }
-    return returnArray;
+    return dValue;
   }
+
+
 
   function makeGreetingName(pString) {
     setGreetingName(pString || 'AVA User');
@@ -993,6 +1030,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }
           }}
           onIdle={async () => {
+//            enqueueSnackbar(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`, { variant: 'warning' });
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
             await updateAVA(sectionOpen, mainMenu);
           }}
@@ -1033,7 +1071,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               overflow='auto'
               flexDirection='column'>
               <Typography
-                style={AVATextStyle({size: 1.5, margin: {left: 1, right: 1}})}
+                style={AVATextStyle({ size: 1.5, margin: { left: 1, right: 1 } })}
                 id='scroll-dialog-title'
               >
                 {`${greetingWords},`}
@@ -1344,7 +1382,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               <Box flex={1} justifyContent='flex-start' alignItems='center'>
                                 <Avatar
                                   src={this_row.section_icon}
-                                 style={avatarStyle}
+                                  style={avatarStyle}
                                   alt=""
                                   variant="square"
                                 />
