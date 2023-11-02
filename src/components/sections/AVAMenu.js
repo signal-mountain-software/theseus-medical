@@ -1,7 +1,7 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, isObject, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
+import { recordExists, isObject, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda, deepCopy } from '../../util/AVAUtilities';
 import { makeTime, addDays, daysDiff } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getAllOccurrences } from '../../util/AVACalendars';
@@ -962,7 +962,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             },
             screenStatus
           );
-          dValue = { 'eventList': oList };
+          dValue = deepCopy(oList);
           setLoading(false);
           break;
         }
