@@ -319,7 +319,7 @@ export async function updateServiceRequest(body) {
         "PutRequest": {
           "Item": {
             "client_id": r.client_id,
-            "log_time": r.last_update,
+            "log_time": r.last_update + x,
             "activity": r.history[0].replace(makeDate(r.last_update).oaDate, '##'),
             "request_id": r.request_id,
             "person": await makeName(r.requestor),
