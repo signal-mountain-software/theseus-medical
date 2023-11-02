@@ -185,7 +185,7 @@ export function makeDate(pInput) {
         }
         if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }      // a string that is all numbers
         let goodDate = new Date(pString);
-        if (!isDate(goodDate) || goodDate.getFullYear() === 2001) {
+        if (!isDate(goodDate)) {
             let m = pString.match(/(\d+:*\d*)\s*([PpAa].*[Mm])/);
             if (m) { pString = pString.replace(m[0], `${m[1]}${m[2]}`); }
             let pWords = pString.split(/\s+/);
@@ -276,7 +276,7 @@ export function makeDate(pInput) {
         }
         else {
             // the date passed in was a good date
-            // if the year is more than 100 years from now, assume that no year was passed in
+            // if the year is more than 2 years from now, assume that no year was passed in
             // Adjust the year to be the year that makes the month and day closest to now
             let today = new Date();
             let thisYear = today.getFullYear();
@@ -294,8 +294,9 @@ export function makeDate(pInput) {
                     leftOver_text: null
                 };
             }
-            let resolvedMonth = goodDate.getMonth();
-            if (resolvedMonth > 9) { goodDate.setFullYear(thisYear - 1); }
+            // date is more than 120 days before today
+            let resolvedMonth = goodDate.getMonth();        
+            if (resolvedMonth > 9) { goodDate.setFullYear(thisYear - 1); }   // and date is October or later, then assume last year
             return {
                 date: goodDate,
                 leftOver_text: null
