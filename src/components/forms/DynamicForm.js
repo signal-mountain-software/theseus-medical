@@ -47,6 +47,7 @@ export default ({
   values,
   qualifierTable,
   defaultValue,
+  defaultObject,
   observationKey,
   onError,
   onSave,
@@ -369,7 +370,7 @@ export default ({
         <MultiObservationFormB
           fact={newFact}
           factName={factName}
-          defaultValue={defaultValue}
+          defaultValue={defaultObject}
           prompt={message}
           pClient={session.client_id}
           qualifiers={qualifierTable}
@@ -386,14 +387,18 @@ export default ({
         />
       );
     case 'request_dashboard': {
-      let filter = { person_id: session.patient_id };
-      if (newFact?.value?.freeText?.requestType) {
+      let filter = {};
+      if (defaultObject.hasOwnProperty('request_type')) { }
+      else if (newFact?.value?.freeText?.requestType) {
         filter = { request_type: newFact.value.freeText.requestType };
       }
+      else {
+        filter = { person_id: session.patient_id }
+      };
       return (
         <RequestDashboard
           session={session}
-          filter={filter}
+          filter={Object.assign(filter, defaultObject)}
           onClose={onClose}
         />
       );
