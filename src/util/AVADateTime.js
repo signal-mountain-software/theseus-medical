@@ -381,10 +381,8 @@ export function makeDate(pInput) {
             let currentDofWeek = new Date().getDay();
             let requestedDofWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(pStringLower.slice(0, 3));
             if (requestedDofWeek > -1) {
-                // if you entered a word only (ie "Tuesday"), choose the PRIOR Tuesday if it is yesterday or the day before; otherwise choose the NEXT Tuesday.
                 let variant = requestedDofWeek - currentDofWeek;
-                if (variant < -2) { variant += 7; }
-                else if (variant > 5) { variant -= 7; }
+                if (variant < 0) { variant += 7; }
                 return addDays(currentDate, variant);
             }
             else {
