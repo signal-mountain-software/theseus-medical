@@ -644,13 +644,21 @@ export default ({ session, filter = {}, onClose }) => {
       cl(`request type "${i.request_type}" not in session.service_request_types`);
       i.workData.formatted_type = titleCase(i.request_type);
     }
-    if (!('request_date' in i)) { i.request_date = i.request_id.split('~')[1]; }
+    let [enteredBy, requestTimeStamp] = i.request_id.split('~');
+    i.workData.enteredBy = enteredBy;
+    if (!('request_date' in i)) { i.request_date = requestTimeStamp; }
     let AVAupdateDate = makeDate(i.last_update);
     let AVArequestDate = makeDate(i.request_date);
     i.workData.display_date = AVArequestDate.relative;    // the date/time the request was first created
     let anonymous = false;
     let requestorRec = await getPerson(i.requestor, '*all');
     i.workData.requestor_name = await makeName(i.requestor);
+    if (i.requestor !== enteredBy) { 
+      i.workData.enteredBy_name = await makeName(enteredBy);
+    }
+    else {
+      i.workData.enteredBy_name = i.workData.requestor_name;
+    }
     i.workData.requestor_location = requestorRec.location;
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
@@ -692,6 +700,7 @@ export default ({ session, filter = {}, onClose }) => {
     }
     if (anonymous) {
       i.workData.requestor_name = 'Anonymous';
+      i.workData.enteredBy_name = 'Anonymous';
       i.workData.requestor_location = null;
       i.workData.requestor_image = null;
     }
@@ -715,7 +724,7 @@ export default ({ session, filter = {}, onClose }) => {
       i.workData.formatted_request.push(['head', 'Messages']);
       mHist.map(h => { return i.workData.formatted_request.push(['detail', h]); });
     }
-    i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name}`;
+    i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name} ~ ${i.workData.enteredBy_name}`;
     if (['closed', 'completed', 'cancelled'].includes(i.last_status.toLowerCase())) {
       i.workData.search_data += ` ~ closed`;
     }
@@ -959,6 +968,9 @@ export default ({ session, filter = {}, onClose }) => {
                               <Box display='flex' flexDirection='column' marginBottom={1.5}>
                                 <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
                                 <Typography variant='h5' className={classes.firstName}>{`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}</Typography>
+                                {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                  <Typography variant='h5' className={classes.firstName}>{`By ${this_item.workData.enteredBy_name}`}</Typography>
+                                }
                                 <Typography variant='h5' className={classes.firstName}>{this_item.workData.display_date}</Typography>
                                 {!(this_item?.workData?.orderForDate.error) &&
                                   <Typography variant='h5' className={classes.firstName}>{`For ${this_item?.workData?.orderForDate.relative}`}</Typography>
