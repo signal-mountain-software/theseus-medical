@@ -910,7 +910,6 @@ export default ({ session, filter = {}, onClose }) => {
             onScroll={() => (
               handleScroll())}
             component={Box}
-            // className={classes.page}
             variant='outlined'
             overflow='auto'
             square
@@ -1018,7 +1017,12 @@ export default ({ session, filter = {}, onClose }) => {
               ))}
               {(rowsDisplayed.length === 0) &&
                 <Box display='flex' flexDirection='column' flexWrap={'wrap'} justifyContent={'center'} alignContent={'center'}>
-                  <Typography variant='h5' className={classes.lastName} >Nothing matches your search criteria</Typography>
+                  <Box display='flex' flexDirection='row' justifyContent={'center'} alignContent={'center'}>
+                    <Typography variant='h5' className={classes.lastName} >Nothing found matches</Typography>
+                  </Box>
+                  <Box display='flex' flexDirection='row' justifyContent={'center'} alignContent={'center'}>
+                    <Typography variant='h5' className={classes.lastName} >{`"${makeFilterHelper()}"`}</Typography>
+                  </Box>
                 </Box>
               }
             </List>
@@ -1047,7 +1051,7 @@ export default ({ session, filter = {}, onClose }) => {
             <AVATextInput
               titleText={'Include only...'}
               promptText={
-                ['[display]What request dates?', 'Request date(s)?', '[display]~~~', '[display]Which status?']
+                ['[display]What request dates?', 'Request date(s)?', '[display]~~~', '[display]Include which status(es)?']
                   .concat(Object.keys(statusDisplayed).map(k => {
                     return `[checkbox]${k}`;
                   }))

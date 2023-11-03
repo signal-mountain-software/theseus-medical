@@ -31,7 +31,9 @@ export function makeDate(pInput) {
             'numeric': 20990101,
             'numeric$': '20990101',
             'dayPart': 'day',   // afternoon
-            'dayOfWeek': 0    // Sun = 0, Mon = 1, ... , Sat = 7
+            'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 7
+            'textOut': pInput
+
         };
     }
     let targetDateStamp, targetDate;
@@ -61,7 +63,7 @@ export function makeDate(pInput) {
                 targetDate = buildDate(`${Math.floor(pInput / 1000000)}/${Math.floor((pInput % 1000000) / 10000)}/${pInput % 10000}`).date;
             }
             else if (pInput <= 29991231) {
-                targetDate =  buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/${Math.floor(pInput / 10000)}`).date;
+                targetDate = buildDate(`${Math.floor((pInput % 10000) / 100)}/${pInput % 100}/${Math.floor(pInput / 10000)}`).date;
             }
             else { targetDate = new Date(pInput); }
         }
@@ -69,7 +71,7 @@ export function makeDate(pInput) {
         else {
             let response = buildDate(pInput);
             targetDate = response.date;
-            pInput = response.leftOver_text
+            pInput = response.leftOver_text || '';
         }
         if (isDate(targetDate)) {
             targetDateStamp = targetDate.getTime();
@@ -184,6 +186,28 @@ export function makeDate(pInput) {
             pString = words.trim();
         }
         if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }      // a string that is all numbers
+        else {
+            let pStringPieces = pString.split(/[./-]/gm);
+            if (pStringPieces.length > 1) {        // two or three strings separated by "." or "-" or "/"
+                let yearAt = pStringPieces.findIndex(p => { return (p > 2000); });
+                let yearPiece, monthPiece, dayPiece;
+                if (yearAt < 0) {
+                    yearPiece = new Date().getFullYear();
+                }
+                else {
+                    yearPiece = pStringPieces[yearAt];
+                    pStringPieces.splice(yearAt, 1);
+                }
+                monthPiece = pStringPieces[0];
+                if (pStringPieces.length === 1) {
+                    dayPiece = 1;
+                }
+                else {
+                    dayPiece = pStringPieces[1];
+                }
+                pString = `${monthPiece}/${dayPiece}/${yearPiece}`;
+            }
+        }
         let goodDate = new Date(pString);
         if (!isDate(goodDate)) {
             let m = pString.match(/(\d+:*\d*)\s*([PpAa].*[Mm])/);
@@ -198,7 +222,7 @@ export function makeDate(pInput) {
                         timePart.exists = true;
                         return false;
                     }
-                }   
+                }
                 else {
                     currentDate = culledDate;
                     return false;
@@ -281,21 +305,21 @@ export function makeDate(pInput) {
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 2) { 
+            if (Math.abs(resolvedYear - thisYear) < 2) {
                 return {
                     date: goodDate,
                     leftOver_text: null
                 };
-             }
+            }
             goodDate.setFullYear(thisYear);
-            if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) { 
+            if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) {
                 return {
                     date: goodDate,
                     leftOver_text: null
                 };
             }
             // date is more than 120 days before today
-            let resolvedMonth = goodDate.getMonth();        
+            let resolvedMonth = goodDate.getMonth();
             if (resolvedMonth > 9) { goodDate.setFullYear(thisYear - 1); }   // and date is October or later, then assume last year
             return {
                 date: goodDate,
@@ -305,7 +329,7 @@ export function makeDate(pInput) {
     }
 
     function dateFromText(pString) {
-        if (pString.match(/\d+\/\d+/)) {     // pString is in the form dd/dd
+        if (pString.match(/\d+\/\d+/)) {     // pString is in the form nn/nn
             let dateFromString = new Date(pString);
             if (dateFromString.getFullYear() === 2001) {
                 dateFromString.setFullYear(new Date().getFullYear());
@@ -314,7 +338,7 @@ export function makeDate(pInput) {
         }
         else {
             let ordinal = pString.match(/(\d+)(st|nd|rd|th)/);  // pString looks like an ordinal (1st, 2nd, 3rd, etc)          
-            if (ordinal) { 
+            if (ordinal) {
                 let n = ordinal[1];      // the numeric part is in array position 1 (array position 0 is the entire matched ordinal)
                 let now = new Date();
                 let thisMonth_target = new Date();
@@ -338,20 +362,24 @@ export function makeDate(pInput) {
             }
         }
         let currentDate = new Date();
-        if (pString === 'now') { pString = 'today'; }
+        let pStringLower = pString.toLowerCase();
+        if (pStringLower === 'now') {
+            pString = 'today';
+            pStringLower = 'today';
+        }
         else { currentDate.setHours(0, 0, 0, 0); }
-        if (pString === 'tomorrow') {
+        if (pStringLower === 'tomorrow') {
             return addDays(currentDate, 1);
         }
-        else if (pString === 'today') {
+        else if (pStringLower === 'today') {
             return currentDate;
         }
-        else if (pString === 'yesterday') {
+        else if (pStringLower === 'yesterday') {
             return addDays(currentDate, - 1);
         }
         else {
             let currentDofWeek = new Date().getDay();
-            let requestedDofWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(pString.slice(0,3).toLowerCase());
+            let requestedDofWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(pStringLower.slice(0, 3));
             if (requestedDofWeek > -1) {
                 // if you entered a word only (ie "Tuesday"), choose the PRIOR Tuesday if it is yesterday or the day before; otherwise choose the NEXT Tuesday.
                 let variant = requestedDofWeek - currentDofWeek;
@@ -433,7 +461,7 @@ export function makeTime(pTime) {
         'short': `${hh}:${mm$}`,
         'hhmm': `${hh}${mm$}`,
         hh,
-        hh24: Math.floor(numeric24/100),
+        hh24: Math.floor(numeric24 / 100),
         mm,
         ampm,
         numeric24,
