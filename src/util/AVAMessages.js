@@ -734,7 +734,7 @@ export async function mealTicketFormat(body) {
       plainText.push(selection);
       if (options) {
         style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
-        let optionList = options.split(',');
+        let optionList = options.split(/[,;]/g);
         optionList.forEach((o, i) => {
           let outO = titleCase(o);
           pdfLineMealTicket(outO, page.font.size.small, 'normal', 1, (i === 0 ? -0.2 : -0.1), ((i === (optionList.length - 1)) ? 0.2 : 0));

@@ -844,7 +844,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (fact.activity_rec?.type === 'make_message') {
 
     }
-    
+
     // check for default values in the person's record
     if (patient.hasOwnProperty('defaultValues')) {
       let pDefaults = patient.defaultValues;
@@ -871,7 +871,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       });
     }
     for (let dField in defaultValues) {
-      let dValue = await resolveDefaults(fact, defaultValues[dField]);
+      let dValue = await resolveDefaults(fact, dField, defaultValues[dField]);
       // we're returning an array and an object, they are duplicates of one another and consumed as needed by their targets
       // each entry is a default value which could be:
       //     a string alone (as in "myDefault")
@@ -896,19 +896,26 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return [returnArray, returnObject];
   }
 
-  async function resolveDefaults(fact, this_value) {
+  async function resolveDefaults(fact, this_key, this_value) {
     if (typeof (this_value) !== 'string') {
-      for (let aKey in this_value) {
-        this_value[aKey] = await resolveDefaults(fact, this_value[aKey]);
+      let workObj = deepCopy(this_value);
+      for (let aKey in workObj) {
+        workObj[aKey] = await resolveDefaults(fact, aKey, workObj[aKey]);
       }
-      return this_value;
+      workObj = await specialCases(this_key, workObj);
+      return workObj;
     }
     let a = this_value.split('.');
     let dValue = await resolveVariables(a.pop(), session, { ignoreArrayCheck: true });
     // if anything remains in array a (after the pop above), the value was in the form instruction=value
     // we'll act as per that instruction here
     if (a.length > 0) {
-      switch (a[0]) {
+      dValue = await specialCases(a[0], dValue);
+    }
+    return dValue;
+
+    async function specialCases(key, dValue) {
+      switch (key) {
         case 'people': {
           let factClient;
           if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
@@ -918,9 +925,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           break;
         }
         case 'person': {
-          dValue = {
-            'peopleList': [state.patient]
-          };
+          if (dValue === 'patientRec') {
+            dValue = state.patient;
+          }
+          else if (dValue === 'userRec') {
+            dValue = state.user;
+          }
+          else {
+            dValue = {
+              'peopleList': [state.patient]
+            };
+          }
           break;
         }
         case 'select': {
@@ -966,13 +981,37 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           setLoading(false);
           break;
         }
-        default: { }
+        case 'activities': {
+          setLoading('Loading');
+          setForceRedisplay(!forceRedisplay);
+          // activities dValue is an object with
+          //     global_defaults - pass to every column
+          //     column_list - an array with info about each column to return
+          //          response entries will be resolved activities (with observation records prepared as per the instructions in the array element)
+          //          each element is an object with
+          //              activity_id - optional; if missing use the activity_id that this is a part of
+          //              column_defaults - add these to the global defaults when resolving and handling the activity
+          let responseArray = [];
+          let global_defaults = dValue.global_defaults;
+          for (let m = 0; m < dValue.column_list.length; m++) {
+            let column_defaults = Object.assign({}, global_defaults, dValue.column_list[m].column_defaults);
+            let column_object = deepCopy(await makeObservationList(dValue.column_list[m].activity_id, session, column_defaults));
+            column_object.column_defaults = column_defaults;
+            responseArray.push(column_object);
+          }
+          dValue = responseArray;
+          setLoading(false);
+          break;
+        }
+        default: {
+          if (key && (typeof(dValue) === 'string') && (key !== 'default')) {
+            dValue = `${key}.${dValue}`;
+          }
+        }
       }
+      return dValue;
     }
-    return dValue;
   }
-
-
 
   function makeGreetingName(pString) {
     setGreetingName(pString || 'AVA User');
@@ -1030,7 +1069,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }
           }}
           onIdle={async () => {
-//            enqueueSnackbar(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`, { variant: 'warning' });
+            //            enqueueSnackbar(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`, { variant: 'warning' });
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
             await updateAVA(sectionOpen, mainMenu);
           }}

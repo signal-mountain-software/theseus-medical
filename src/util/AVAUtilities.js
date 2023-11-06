@@ -250,12 +250,33 @@ export function makeArray(input, delimiter = null) {
   return response;
 }
 
+export function makeObject(input) {
+  if (isObject(input)) { return input; }
+  else { makeObj(input); }
+}
+
 export function makeObj(input) {
   let returnObj = {};
-  let pairs = (input.split(','));
-  pairs.forEach(p => {
-    let [key, value] = p.split(':');
-    returnObj[key.trim()] = value.trim();
+  let pairs = [];
+  if (Array.isArray(input)) {
+    pairs = input;
+  }
+  else {
+    pairs = (input.split(','));
+  }
+  pairs.forEach((p, x) => {
+    let [key, value] = p.replace(/[{}]/g, '').split(':');
+    if (!value) {
+      returnObj[`${x}`] = key.trim();
+    }
+    else {
+      if (isNaN(Number(value))) {
+        returnObj[key.trim()] = value.trim();
+      }
+      else {
+        returnObj[key.trim()] = Number(value);
+      }
+    }
   })
   return returnObj;
 }
@@ -442,6 +463,15 @@ export async function resolveVariables(pKey, pSession, options = {}) {
       break;
     }
     let [, front, d1, middle, d2, back] = result;
+    if (middle.startsWith('%')) {
+      let [, before, , variable_name, , after] = middle.match(/(.*?)(%)(.*?)(%)(.*)/);
+      if (options.hasOwnProperty(variable_name)) {
+        middle = `${before}${options[variable_name]}${after}`;
+      }
+      else if (pSession.hasOwnProperty(variable_name)) { 
+        middle = `${before}${pSession[variable_name]}${after}`;
+      }
+    }
     let [instruction, dType] = middle.split(':');
     instruction = instruction.toLowerCase();
     switch (instruction) {

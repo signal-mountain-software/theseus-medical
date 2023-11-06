@@ -110,7 +110,7 @@ export async function getObservations(pClient, pKey, options = {}) {
   return [valueList, returnQual];
 };
 
-export async function makeObservationList(pObs, pSession) {
+export async function makeObservationList(pObs, pSession, variables = {}) {
   let returnList = [];
   let returnQObj = {};
   let activityRec;
@@ -123,7 +123,7 @@ export async function makeObservationList(pObs, pSession) {
   if (activityRec?.validation?.values) {
     let listLength = activityRec.validation.values.length;
     for (let v = 0; v < listLength; v++) {
-      let this_entry = await resolveVariables(activityRec.validation.values[v], pSession);
+      let this_entry = await resolveVariables(activityRec.validation.values[v], pSession, variables);
       if (!this_entry.startsWith('~')) { returnList.push(this_entry); }
       else {
         // deconstruct this_entry as ~<oType>.<oKey>  

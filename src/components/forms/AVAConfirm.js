@@ -12,6 +12,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+import { makeObject } from '../../util/AVAUtilities';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -65,6 +66,29 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
     }
   }
 
+  function makeStyle(str,
+    defStyle = {
+      margin: { top: 3, right: 2 },
+      size: 1.5,
+      bold: true
+    }
+  ) {
+    let a = str.match(/(style=.+})/g);
+    if (!a) {
+      return defStyle;
+    }
+    else {
+      let oStr = a[0].split('=');
+      if (oStr.length > 1) {
+        let r = makeObject(oStr.pop());
+        return r;
+      }
+      else {
+        return defStyle;
+      }
+    }
+  }
+
   let promptLines = [];
   if (Array.isArray(promptText)) { promptLines = promptText; }
   else { promptLines = [promptText]; }
@@ -86,11 +110,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
         marginLeft={3 + (3 * Number(makeIndent(promptLines[0])))}
       >
         <Typography
-          style={AVATextStyle({
-            margin: { top: 3, right: 2 },
-            size: 1.5,
-            bold: true
-          })}
+          style={AVATextStyle(makeStyle(promptLines[0]))}
           id='scroll-dialog-title'
           key={'promptConfirm'}
         >
@@ -112,16 +132,12 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
               >
                 <Typography
                   style={index === 0 ?
-                    AVATextStyle({
-                      margin: { top: 3, right: 2 },
-                      size: 1.5,
-                      bold: true
-                    })
+                    AVATextStyle(makeStyle(pLine))
                     :
-                    AVATextStyle({
+                    AVATextStyle(makeStyle(pLine, {
                       margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 1.5), right: 1 },
                       size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
-                    })
+                    }))
                   }
                   id='scroll-dialog-title'
                   key={'promptConfirm' + index}
