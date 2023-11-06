@@ -72,6 +72,25 @@ export function recordExists(recordId) {
   else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
 }
 
+export function deepCopy(pValue) {
+  if (Array.isArray(pValue)) {
+    var count = pValue.length;
+    var arr = new Array(count);
+    for (var i = 0; i < count; i++) {
+      arr[i] = deepCopy(pValue[i]);
+    }
+    return arr;
+  } else if (typeof pValue === 'object') {
+    var obj = {};
+    for (var prop in pValue) {
+      obj[prop] = deepCopy(pValue[prop]);
+    }
+    return obj;
+  } else { 
+    return pValue;
+  }
+}
+
 export function listFromArray(inArray, options) {
   if (!Array.isArray(inArray)) {
     if (!inArray || (inArray.trim() === '')) { return 'None'; }
@@ -85,7 +104,7 @@ export function listFromArray(inArray, options) {
     if (options && options.sentenceCase) { s = sentenceCase(s); }
     makeList$ += link + s;
     if (threeOrMore) { link = ', '; }
-    if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + 'and ');
+    if (x === nextToLast) (link += (!threeOrMore ? ' ' : '') + `${(options && options.or) ? 'or' : 'and'} `);
   });
   return makeList$;
 }
@@ -229,6 +248,16 @@ export function makeArray(input, delimiter = null) {
   }
   else { response.push(input); }
   return response;
+}
+
+export function makeObj(input) {
+  let returnObj = {};
+  let pairs = (input.split(','));
+  pairs.forEach(p => {
+    let [key, value] = p.split(':');
+    returnObj[key.trim()] = value.trim();
+  })
+  return returnObj;
 }
 
 export function extract(string, left, right = null, options = {}) {

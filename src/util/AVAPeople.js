@@ -191,7 +191,9 @@ export async function getPerson(pID, pElement = '*all', override = false) {
                 TableName: "People"
             })
             .promise()
-            .catch(error => { cl({ 'Error reading People': error }); });
+            .catch(error => {
+                cl({ 'Error reading People': error });
+            });
         if (!recordExists(personRec)) { return {}; }
         if (!personRec.Item.hasOwnProperty('messaging')) {
             personRec.Item.messaging = {};

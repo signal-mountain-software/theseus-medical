@@ -477,6 +477,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             values={fact.valid_values_list}
             qualifierTable={qualifierTable}
             defaultValue={executionDefaultValue}
+            defaultObject={fact.default_object}
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}

@@ -1016,7 +1016,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                         helperText={local}
                       />
                       :
-                      <React.Fragment>
+                      <React.Fragment key={`bool-switch_${lX}`}>
                         <Box flexGrow={2} display='flex' alignItems='center'
                           justifyContent='flex-start' flexDirection='row'>
                           <Typography className={classes.local_boolean} >{local}</Typography>
@@ -1338,7 +1338,9 @@ export default ({ patient, picture, groupData, open, onClose }) => {
                 style={{ display: 'none' }}
                 ref={hiddenFileInput}
                 onChange={async (target) => {
-                  setEditPhoto(await handleSaveTemporaryPhoto(target.target.files[0]));
+                  if (target.target.files.length > 0) {
+                    setEditPhoto(await handleSaveTemporaryPhoto(target.target.files[0]));
+                  }
                 }}
               />
             </Box>

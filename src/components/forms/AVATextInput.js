@@ -145,7 +145,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                 italic: (t.includes('[italic]'))
               })}
               className={classes.titleRow}>
-              {t.replace('[italic]','')}
+              {t.replace('[italic]', '')}
             </Typography>
           ))}
         </DialogContent>
@@ -163,7 +163,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
           >
             {promptArray.map((prompt, ndx) => (
               <React.Fragment key={`frag-${ndx}`}>
-                {prompt && (prompt.toLowerCase().startsWith('[checkbox]')) ?
+                {prompt && (prompt.toLowerCase().startsWith('[')) ?
                   <Box display='flex'
                     flexDirection='row'
                     mt={0.5}
@@ -176,15 +176,21 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                     borderRadius={'16px'}
                     key={'fullRow' + ndx}
                   >
-                    <Checkbox
-                      className={classes.radioButton}
-                      size="small"
-                      onClick={() => {
-                        toggleCheckbox(ndx);
-                      }}
-                      checked={(textInput[ndx] === 'checked')}
-                    />
-                    <Typography>{prompt.slice(10)}</Typography>
+                    {prompt.toLowerCase().startsWith('[checkbox]') &&
+                      <Checkbox
+                        className={classes.radioButton}
+                        size="small"
+                        onClick={() => {
+                          toggleCheckbox(ndx);
+                        }}
+                        checked={(textInput[ndx] === 'checked')}
+                      />
+                    }
+                    <Typography style={AVATextStyle({
+                      size: (1)
+                    })}>
+                      {prompt.split(']').pop()}
+                    </Typography>
                   </Box>
                   :
                   <Box display='flex'
