@@ -252,7 +252,7 @@ export function makeArray(input, delimiter = null) {
 
 export function makeObject(input) {
   if (isObject(input)) { return input; }
-  else { makeObj(input); }
+  else { return(makeObj(input)); }
 }
 
 export function makeObj(input) {
@@ -265,7 +265,7 @@ export function makeObj(input) {
     pairs = (input.split(','));
   }
   pairs.forEach((p, x) => {
-    let [key, value] = p.replace(/[{}]/g, '').split(':');
+    let [key, value] = p.replace(/[{}]/g, '').split(/[:=]/);
     if (!value) {
       returnObj[`${x}`] = key.trim();
     }
@@ -451,6 +451,18 @@ export function uuid(pLen) {
   }
   return ans.join('');
 }
+
+export async function deepResolve(pKey, pSession, options = {}) {
+  if (typeof (pKey) !== 'string') {
+    let workObj = deepCopy(pKey);
+    for (let aKey in workObj) {
+      workObj[aKey] = await deepResolve(workObj[aKey], pSession, options);
+    }    
+    return workObj;
+  }
+  return resolveVariables(pKey, pSession, options);
+}
+
 
 export async function resolveVariables(pKey, pSession, options = {}) {
   if (!pKey) { return ''; }

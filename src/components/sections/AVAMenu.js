@@ -1458,7 +1458,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               className={classes.listItem}
                               onContextMenu={async (e) => {
                                 e.preventDefault();
-                                enqueueSnackbar(<div>1. Function={this_row.activity_code}<br />2. Type={this_row.row_type}<br />3. Reason={this_row.reason}<br />4. User={session.user_id}<br />5. Inst={this_row.raw_data}</div>, { variant: 'info', persist: true });
+                                enqueueSnackbar(<div>
+                                  1. Func {this_row.activity_code}<br />
+                                  2. Type {this_row.row_type}<br />
+                                  3. Reas {this_row.reason}<br />
+                                  4. Defs {this_row.default_value}</div>,
+                                  { variant: 'info', persist: true });
                               }}
                             >
                               <Box

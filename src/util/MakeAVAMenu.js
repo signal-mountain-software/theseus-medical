@@ -1,4 +1,7 @@
-import { resolveVariables, stringToColor, cl, clt, recordExists, dbClient, makeArray } from '../util/AVAUtilities';
+import {
+  resolveVariables, stringToColor, cl, clt, recordExists,
+  dbClient, makeArray, isObject, deepCopy, deepResolve, makeObject
+} from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
 import { getGroup } from '../util/AVAGroups';
@@ -218,7 +221,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         if (!allowDuplicates && duplicateCheck.includes(this_activity)) {   // this_activity is already loaded
           continue;
         }
-        if (this_activity.startsWith('~~')) {
+        if ((typeof(this_activity) === 'string') && (this_activity.startsWith('~~'))) {
           if (this_activity.includes('~[adopt=')) {
             let [, oGroup,] = this_activity.split(/~\[adopt=|\]/g);
             let oClient;
@@ -565,6 +568,11 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   async function getActivity(pActivityCode) {
+    if (isObject(pActivityCode)) {
+      let aResolved = await getActivityFromObject(pActivityCode)
+      activityObj[pActivityCode] = aResolved;
+      return aResolved;
+    }
     if (pActivityCode in activityObj) { return activityObj[pActivityCode]; }
     let pClient = masterClient;
     let addClient = false;
@@ -646,6 +654,87 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       return aRecs.Item;
     }
     activityObj[pActivityCode] = {};
+    return {};
+  }
+
+  async function getActivityFromObject(pActivityObj) {
+    let pClient = pActivityObj.client || masterClient;
+    let addClient = !(pClient === masterClient);
+    let overrideDefault, overrideTitle;
+    let pActivity = pActivityObj.activity_code || pActivityObj.activity;
+    
+    for (let [iType, iData] of Object.entries(pActivityObj)) {
+      iData = await deepResolve(iData, { client_id: pClient, patient_id: pPerson, user_id: pPerson });
+      switch (iType) {
+        case 'default': {
+          overrideDefault = iData;
+          break;
+        }
+        case 'title': {
+          overrideTitle = iData;
+          break;
+        }
+        case 'env': {
+          if ((iData.toLowerCase() === 'test') && (!['T', 'L'].includes(ava_env))) { return {}; }
+          else if ((iData.toLowerCase() === 'dev') && (ava_env !== 'D')) { return {}; }
+          break;
+        }
+        case 'vers':
+        case 'rel':
+        case 'version':
+        case 'release': {
+          let checkVer = makeVersion(iData);
+          if ((checkVer >= 9999) && (!['T', 'L'].includes(ava_env))) { return {}; }
+          if ((iData.includes('<') && (ava_version_number >= checkVer))
+            || (iData.includes('>') && (ava_version_number <= checkVer))
+            || (iData.includes('=') && (checkVer !== ava_version_number))) {
+            return {};
+          }
+          break;
+        }
+        case 'date': {
+          let checkDate = makeNumber(iData);
+          if ((iData.includes('<') && (todays_numeric_date >= checkDate))
+            || (iData.includes('>') && (todays_numeric_date <= checkDate))
+            || (iData.includes('=') && (checkDate !== todays_numeric_date))) {
+            return {};
+          }
+          break;
+        }
+        default: { break; }
+      }
+    }
+    let aRecs = await dbClient
+      .get({
+        Key: {
+          client_id: pClient,
+          activity_code: pActivity
+        },
+        TableName: 'Activities'
+      })
+      .promise()
+      .catch(error => {
+        clt(`Error reading Activities is ${error}.`);
+      });
+    if (recordExists(aRecs)) {
+      if (addClient) { aRecs.Item.activity_code = `${pClient}//${pActivity}`; };
+      if (overrideDefault) {
+        if (!('validation' in aRecs.Item)) { aRecs.Item.validation = {}; }
+        if (!isObject(aRecs.Item.validation.default_value)) {
+          let a1 = aRecs.Item.validation.default_value.split('.');
+          let a2 = a1.pop();
+          let a3 = makeArray(a2, '~');
+          let a4 = makeObject(a3);
+          aRecs.Item.validation.default_value = a4;
+
+        }
+        aRecs.Item.validation.default_value = deepCopy(Object.assign({}, aRecs.Item.validation.default_value, overrideDefault));
+      }
+      if (overrideTitle) {
+        aRecs.Item.name = overrideTitle;
+      }
+      return aRecs.Item;
+    }
     return {};
   }
 
