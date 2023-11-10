@@ -38,10 +38,10 @@ export async function getServiceRequests(body) {
       qQ.FilterExpression = '(request_type = :t';
       qQ.ExpressionAttributeValues[':t'] = rTarray[0];
       if (rTarray.length > 1) {
-        rTarray.forEach((rTa, x) => {
+        for (let x = 1; x < rTarray.length; x++) {
           qQ.FilterExpression += ` or request_type = :t${x}`;
-          qQ.ExpressionAttributeValues[`:t${x}`] = rTa;
-        });
+          qQ.ExpressionAttributeValues[`:t${x}`] = rTarray[x];
+        };
       }
       qQ.FilterExpression += ')';
       if (rP) {
@@ -165,7 +165,7 @@ export async function putServiceRequest(body) {
     "original_request": body.request,
     "history": historyArray,
     "local_key": body.local_key,
-    "foreign_key": body.foreign_key || '*tbd*',
+    "foreign_key": body.foreign_key || '',
     "last_update": body.update_time || now,
     "last_status": body.requestStatus || 'submitted',
     "last_note": body.notes
@@ -202,6 +202,11 @@ export async function putServiceRequest(body) {
       else { serviceRequestRec.history = [rMsg]; }
     }
   }
+  serviceRequestRec.composite_key = '';
+  if (serviceRequestRec.foreign_key !== '') {
+    serviceRequestRec.composite_key = serviceRequestRec.foreign_key + '%';
+  }
+  serviceRequestRec.composite_key += `${serviceRequestRec.request_type}%${serviceRequestRec.last_status}`;
   cl({ 'adding ServiceRequestRec as': serviceRequestRec });
   let goodWrite = true;
   await dbClient
