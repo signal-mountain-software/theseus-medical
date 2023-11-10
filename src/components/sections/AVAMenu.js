@@ -543,7 +543,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if ('favorite_activities' in personRec.Item) {
         favoriteList = personRec.Item.favorite_activities;
       }
-      let indexAt = favoriteList.findIndex(r => { return (r.split('~')[0] === activityRow.activity_code); });
+      let indexAt = favoriteList.findIndex(r => {
+        if (typeof (r) === 'string') {
+          return (r.split('~')[0] === activityRow.activity_code);
+        }
+        else {
+          return (r.activity_code === activityRow.activity_code);
+        }
+      });
       if ((indexAt === -1) && (pType === 'add')) {
         favoriteList.unshift(activityLine);
         changeMade = true;
@@ -557,7 +564,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if ('favorite_blocked' in personRec.Item) {
         favoriteBlocked = personRec.Item.favorite_blocked;
       }
-      indexAt = favoriteBlocked.findIndex(r => { return (r.split('~')[0] === activityRow.activity_code); });
+      indexAt = favoriteBlocked.findIndex(r => {
+        if (typeof (r) === 'string') {
+          return (r.split('~')[0] === activityRow.activity_code);
+        }
+        else {
+          return (r.activity_code === activityRow.activity_code);
+        }
+      });
       if ((indexAt === -1) && (pType === 'remove')) {
         favoriteBlocked.push(activityLine);
         changeMade = true;
@@ -906,6 +920,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       return workObj;
     }
     let a = this_value.split('.');
+    // if there are two or more "." in the value, use the value itself 
+    if (a.length > 1) {
+      return this_value;
+    }    
     let dValue = await resolveVariables(a.pop(), session, { ignoreArrayCheck: true });
     // if anything remains in array a (after the pop above), the value was in the form instruction=value
     // we'll act as per that instruction here

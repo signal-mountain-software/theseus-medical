@@ -523,8 +523,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     if (pReason === 'History') { favorite = true; }
     else { 
       if (requestor.hasOwnProperty('favorite_activities')) {
-        let foundIndex = makeArray(requestor.favorite_activities).findIndex(r => { return (r.split('~')[0] === activityRec.activity_code); });
-        if (foundIndex > -1) { favorite = true; }
+        favorite = makeArray(requestor.favorite_activities).some(r => {
+          if (isObject(r)) {
+            return (r.activity_code === activityRec.activity_code);
+          }
+          else {
+            return (r.split('~')[0] === activityRec.activity_code);
+          }
+        });
       }
     } 
     let pSort;
