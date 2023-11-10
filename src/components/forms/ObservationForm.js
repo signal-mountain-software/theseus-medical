@@ -601,9 +601,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   function textIsPresent(fieldName) {
-    return (reactData.textInput
-      && (Object.keys(reactData.textInput).length > 0)
-      && reactData.textInput[fieldName]);
+    return (reactData.hasOwnProperty('textInput')
+      && reactData.textInput.hasOwnProperty('fieldName')
+      && (reactData.textInput[fieldName] !== ''));
   }
 
   async function handleSaveFile(pTarget) {
@@ -723,11 +723,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   marginRight={2}
                   marginBottom={0.5}
                   marginTop={0.5}
-                  border={(isChecked(this_item) || textIsPresent(this_item.text)) ? 1 : 0}
-                  borderRadius={'16px'}
+                  border={(isChecked(this_item) || textIsPresent(this_item.text)) ? 1 : null}
+                  borderRadius={(isChecked(this_item) || textIsPresent(this_item.text)) ? '16px' : null}
                   minHeight={`${user_fontSize * 2}rem`}
                   justifyContent='center'
-                  key={'fullRow' + this_index}
+                  key={'fullRow' + this_index + ((isChecked(this_item) || textIsPresent(this_item.text)) ? 'with_border' : 'clean')}
                 >
                   <Box
                     display='flex'
