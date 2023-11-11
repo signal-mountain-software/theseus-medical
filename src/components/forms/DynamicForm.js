@@ -295,7 +295,7 @@ export default ({
               let [dKey, dVal] = d.split('=');
               defaultValueObj[dKey] = dVal;
             }
-            else { 
+            else {
               for (let dKey in d) {
                 defaultValueObj[dKey] = d[dKey];
               }
@@ -408,12 +408,14 @@ export default ({
         filter = { request_type: newFact.value.freeText.requestType };
       }
       else {
-        filter = { person_id: session.patient_id }
+        filter = { person_id: session.patient_id };
       };
       return (
         <RequestDashboard
           session={session}
-          filter={Object.assign(filter, defaultObject)}
+          title={factName}
+          filter={Object.assign(filter, defaultObject, {options: null})}
+          options={defaultObject.options}
           onClose={onClose}
         />
       );
