@@ -770,7 +770,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                     {!this_item.input &&
                       <Typography
-                        style={this_item.header ? AVATextStyle({ size: 1.3, bold: true, margin: { top: 3, bottom: 1 } }) : AVATextStyle({ margin: { right: 0.5 } })}
+                        style={this_item.header ? AVATextStyle({ size: 1.3, bold: true, margin: { top: 1, bottom: 0.25 } }) : AVATextStyle({ margin: { right: 0.5 } })}
                       >
                         {this_item.bold
                           ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
