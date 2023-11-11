@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, dbClient, makeArray } from '../util/AVAUtilities';
+import { clt, cl, recordExists, dbClient, makeArray, deepCopy } from '../util/AVAUtilities';
 import { getActivity } from '../util/AVAObservations';
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
@@ -16,6 +16,11 @@ export function putServiceRequest_nonAsync(body) {
 }
 
 export async function getServiceRequests(body) {
+  let sortInstructions = {};
+  if (body.sort) {
+    sortInstructions = deepCopy(body.sort);
+    delete body.sort;
+  }
   if (body.filter) { Object.assign(body, body.filter); };
   let rP = body.person_id || body.person || body.requestor;
   let rT = body.request_type;
@@ -89,7 +94,7 @@ export async function getServiceRequests(body) {
     }
   }
   let loopCount = 0;
-  let sortedList = [];
+  let unSortedList = [];
   do {
     let qR = await dbClient
       .query(qQ)
@@ -101,22 +106,28 @@ export async function getServiceRequests(body) {
         console.log({ 'Error reading ServiceRequests': error, index: qQ.IndexName, qQ });
       });
     if (recordExists(qR)) {
-      let thisSort = qR.Items.sort((a, b) => {
-        a.sort = a.request_date || Number(a.request_id.split(/~/g).pop());
-        b.sort = b.request_date || Number(b.request_id.split(/~/g).pop());
-        if (a.sort > b.sort) { return -1; }
-        if (a.sort < b.sort) { return 1; }
-        return 0;
-      });
-      sortedList = sortedList.concat(thisSort);
-    }
-    if (!qR.LastEvaluatedKey || (sortedList.length > body.limit)) {
-      return sortedList;
+      unSortedList = unSortedList.concat(qR.Items);
     }
     qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
     loopCount++;
-  } while (qQ.ExclusiveStartKey && (loopCount < 10));
-  return sortedList;
+  } while (qQ.ExclusiveStartKey && (loopCount < 10) && (unSortedList.length < body.limit));
+  if (sortInstructions.hasOwnProperty('sort') && !sortInstructions.sort) {
+    return unSortedList;
+  }
+  if (!sortInstructions.hasOwnProperty('key')) {
+    sortInstructions.key = 'request_date';
+  }
+  let sort_order = 1;
+  if (sortInstructions.hasOwnProperty('order') && (sortInstructions.order.toLowerCase().slice(0, 4) === 'desc')) {
+    sort_order = -1;
+  }
+  return unSortedList.sort((a, b) => {
+    a.sort = a[sortInstructions.key] || Number(a.request_id.split(/~/g).pop());
+    b.sort = b[sortInstructions.key] || Number(b.request_id.split(/~/g).pop());
+    if (a.sort > b.sort) { return -1 * sort_order; }
+    if (a.sort < b.sort) { return sort_order; }
+    return 0;
+  });
 }
 
 export async function putServiceRequest(body) {
