@@ -372,6 +372,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         .promise()
         .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
+    if (idleTimer && idleTimer.current) {
+      idleTimer.current.start();
+    }
   };
   /*
     async function putS3Object(pMediaData, pType) {
@@ -921,7 +924,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
     let a = this_value.split('.');
     // if there are two or more "." in the value, use the value itself 
-    if (a.length > 1) {
+    if (a.length > 2) {
       return this_value;
     }    
     let dValue = await resolveVariables(a.pop(), session, { ignoreArrayCheck: true });
@@ -937,7 +940,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         case 'people': {
           let factClient;
           if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
-          else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//'); }
+          else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//')[0]; }
           else { factClient = defaultClient; }
           dValue = await getMemberList(makeArray(dValue, ','), factClient, { sort: true, shortList: true });
           break;
@@ -1011,11 +1014,19 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           //              column_defaults - add these to the global defaults when resolving and handling the activity
           let responseArray = [];
           let global_defaults = dValue.global_defaults;
-          for (let m = 0; m < dValue.column_list.length; m++) {
-            let column_defaults = Object.assign({}, global_defaults, dValue.column_list[m].column_defaults);
-            let column_object = deepCopy(await makeObservationList(dValue.column_list[m].activity_id, session, column_defaults));
+          if (!dValue.hasOwnProperty('column_list') || (dValue.column_list.length === 0)) {
+            let column_defaults = Object.assign({}, global_defaults);
+            let column_object = deepCopy(await makeObservationList(fact.activity_code, session, column_defaults));
             column_object.column_defaults = column_defaults;
             responseArray.push(column_object);
+          }
+          else {
+            for (let m = 0; m < dValue.column_list.length; m++) {
+              let column_defaults = Object.assign({}, global_defaults, dValue.column_list[m].column_defaults);
+              let column_object = deepCopy(await makeObservationList(dValue.column_list[m].activity_id, session, column_defaults));
+              column_object.column_defaults = column_defaults;
+              responseArray.push(column_object);
+            }
           }
           dValue = responseArray;
           setLoading(false);
@@ -1480,7 +1491,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                   1. Func {this_row.activity_code}<br />
                                   2. Type {this_row.row_type}<br />
                                   3. Reas {this_row.reason}<br />
-                                  4. Defs {this_row.default_value}</div>,
+                                  4. Defs {isObject(this_row.default_value) ? JSON.stringify(this_row.default_value) : this_row.default_value}</div>,
                                   { variant: 'info', persist: true });
                               }}
                             >
