@@ -3,7 +3,7 @@ import React from 'react';
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
 import { getMemberList } from '../../util/AVAGroups';
 import { deepCopy, makeObj, titleCase, sentenceCase } from '../../util/AVAUtilities';
-import { getObservationOptions, getObservationItems } from '../../util/AVAObservations';
+import { getObservationOptions, getObservationItems, getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { putServiceRequest, getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import PersonFilter from './PersonFilter';
@@ -127,10 +127,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const [reactData, setReactData] = React.useState({
     initialLoadComplete: null,
     defaultPerson: null,
-    defaultQualSelections: {}
+    defaultQualSelections: {},
+    defaultRequestType: null
   });
 
-  const [request_type, setRequestType] = React.useState('');
   const [foreign_key, setForeignKey] = React.useState('');
   const [records2Update, setRecords2Update] = React.useState([]);
   const [importTypes, setImportTypes] = React.useState('');
@@ -202,7 +202,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let columnList = [];
     let maxLength = 1;
     let foreignKey = '*tbd';
-    let requestType = fact.activity_key.split('.').pop();
     let defaultObj = {};
     updateReactData({
       defaultPerson: state.patient
@@ -219,7 +218,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             break;
           }
           case ('requestType'): {
-            requestType = defaultValue.requestType;
+            updateReactData({
+              defaultRequestType: defaultValue.requestType
+            }, false);
             break;
           }
           case ('importTypes'): {
@@ -275,19 +276,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       }
                       let a = pRec.display_name.trim().split(' ');
                       maxLength = Math.max(a.length, maxLength);
-                      let this_requestName;
-                      let this_requestType = defaultValue.requestType || requestType;
-                      if (state.session.service_request_types.hasOwnProperty(this_requestType)) {
-                        this_requestName = state.session.service_request_types[this_requestType].description || titleCase(this_requestType);
-                      }
-                      else {
-                        this_requestName = titleCase(defaultValue.requestType || requestType);
-                      }
                       return Object.assign({}, pRec, {   // return to the map function... adds an entry to the columnList
                         rowDetails: deepCopy(defaultDisplayRows),
                         foreignKey: defaultValue.foreignKey || foreignKey,
-                        requestType: defaultValue.requestType || requestType,
-                        requestName: this_requestName,
+                        requestType: defaultValue.requestType,
                         defaultValues: defaultObj,
                         column_id: pRec.person_id,
                         dName: [' ', ' ', ' '].concat(a)
@@ -308,26 +300,33 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
           case ('activities'): {
             for (let a = 0; a < defaultValue.activities.length; a++) {
-              let this_requestType = defaultValue.activities[a].column_defaults.requestType || defaultValue.requestType || requestType;
-              let this_requestName = titleCase(this_requestType);
-              if (state.session.service_request_types.hasOwnProperty(this_requestType)) {
-                this_requestName = state.session.service_request_types[this_requestType].description || titleCase(this_requestType);
+              let this_requestType, this_requestName;
+              if (!defaultValue.activities[a].hasOwnProperty('column_defaults')) {
+                defaultValue.activities[a].column_defaults = {};
               }
-              let this_foreignKey = defaultValue.activities[a].column_defaults.foreignKey || defaultValue.foreignKey || foreignKey;
+              if (defaultValue.activities[a].column_defaults.requestType) {
+                this_requestType = defaultValue.activities[a].column_defaults.requestType;
+                if (state.session.service_request_types.hasOwnProperty(this_requestType)) {
+                  this_requestName = state.session.service_request_types[this_requestType].description || titleCase(this_requestType);
+                }
+                else {
+                  this_requestName = titleCase(this_requestType);
+                }
+              }
               let words = this_requestName.split(' ');
               maxLength = Math.max(words.length, maxLength);
               let defaultsToUse = deepCopy(Object.assign({}, defaultObj, defaultValue.activities[a].column_defaults));
               columnList.push({
                 rowDetails: await buildDisplayRows(defaultValue.activities[a].activityRec.valid_values_list, defaultsToUse),
-                foreignKey: this_foreignKey,
-                requestType: this_requestType,
+                activity_key: defaultValue.activities[a].column_defaults.activity_code || defaultValue.activities[a].activityRec.activity_code,
+                foreignKey: defaultValue.activities[a].column_defaults.foreignKey,
+                requestType: defaultValue.activities[a].column_defaults.requestType,
                 requestName: this_requestName,
-                defaultValues: defaultsToUse,
-                column_id: `${this_foreignKey}/${this_requestType}`,
-                dName: [' ', ' ', ' '].concat(words).concat((makeDate(this_foreignKey).absolute).split(','))
+                defaultValues: defaultsToUse
               });
             }
             setAllowRemovePeople(false);
+            setAllowAddPeople(false);
             break;
           }
           default: {
@@ -339,45 +338,81 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     }
     setForeignKey(foreignKey);
-    setRequestType(defaultValue.requestType);
+    if (!defaultValue.requestType) {
+      let activityParts = fact.activity_key.split('//');
+      let activityCode = activityParts.pop();
+      let activityClient = state.session.client_id;
+      if (activityParts.length > 0) {
+        activityClient = activityParts[0];
+      }
+      let activityRec = await getActivity(activityClient, activityCode);
+      updateReactData({
+        defaultRequestType: activityRec.request_type
+      }, false);
+    }
     let displayRowList = await buildDisplayRows(listValues, defaultObj);
 
     // We'll pre-load the radio checkboxes and do a little manipulation on the names for display purposes
     let radioOn = {};
     let textValue = {};
-    columnList.forEach((c, x) => {         // for every column
-      radioOn[c.column_id] = {};
+    columnList.forEach((this_column, x) => {         // for every column
+      radioOn[this_column.column_id] = {};
       displayRowList.forEach((r, rx) => {
-        if (c.rowDetails[x].isChecked) {
-          radioOn[c.column_id][r.text] = true;
+        if (this_column.rowDetails[x].isChecked) {
+          radioOn[this_column.column_id][r.text] = true;
         }
         if (defaultObj.hasOwnProperty(r.text) || defaultValue.activities[x].column_defaults.hasOwnProperty(r.text)) {
           let textValueToUse = defaultValue.activities[x].column_defaults[r.text] || defaultObj[r.text];
-          if (!c.rowDetails[x].isChecked || !defaultCheckedWords.includes(textValueToUse.toLowerCase())) {
-            if (!textValue.hasOwnProperty(c.column_id)) {
-              textValue[c.column_id] = {};
+          if (!this_column.rowDetails[x].isChecked || !defaultCheckedWords.includes(textValueToUse.toLowerCase())) {
+            if (!textValue.hasOwnProperty(this_column.column_id)) {
+              textValue[this_column.column_id] = {};
             }
-            textValue[c.column_id][r.text] = textValueToUse;
+            textValue[this_column.column_id][r.text] = textValueToUse;
           }
         }
       });
       for (let dQ in defaultQualSelections) {
-        defaultQualSelections[dQ][c.column_id] = deepCopy(defaultQualSelections[dQ]['_default_']);
+        defaultQualSelections[dQ][this_column.column_id] = deepCopy(defaultQualSelections[dQ]['_default_']);
       }
-      if (c.hasOwnProperty('person_id')) {
-        if (c.hasOwnProperty('defaultValues')) {  // if this person carried global default values
+      if (!this_column.requestType) {
+        this_column.requestType = reactData.defaultRequestType;
+        if (state.session.service_request_types.hasOwnProperty(this_column.requestType)) {
+          this_column.requestName = state.session.service_request_types[this_column.requestType].description || titleCase(this_column.requestType);
+        }
+        else {
+          this_column.requestName = titleCase(this_column.requestType);
+        }
+      }
+      if (!this_column.foreignKey) {
+        this_column.foreignKey = reactData.defaultForeignKey;
+      }
+      if (!this_column.dName) {
+        let fDate = makeDate(this_column.foreignKey);
+        let words = this_column.requestName.split(' ').slice(-3);
+        if (!fDate.error) {
+          this_column.dName = [' ', ' ', ' '].concat(words).concat((fDate.absolute).split(','));
+        }
+        else {
+          this_column.dName = [' ', ' ', ' '].concat(words).concat((fDate.absolute).split(','));
+        }
+      }
+      if (!this_column.column_id) {
+        this_column.column_id = `${this_column.requestType}_${this_column.foreignKey}`;
+      }
+      if (this_column.hasOwnProperty('person_id')) {
+        if (this_column.hasOwnProperty('defaultValues')) {  // if this person carried global default values
           displayRowList.forEach((r, rx) => {
-            if (c.defaultValues.hasOwnProperty(r.text)) {
-              if (!textValue.hasOwnProperty(c.column_id)) { textValue[c.column_id] = {}; }
-              textValue[c.column_id][r.text] = c.defaultValues[r.text];
+            if (this_column.defaultValues.hasOwnProperty(r.text)) {
+              if (!textValue.hasOwnProperty(this_column.column_id)) { textValue[this_column.column_id] = {}; }
+              textValue[this_column.column_id][r.text] = this_column.defaultValues[r.text];
             }
           });
         }
-        if (!c.display_name) {
-          c.display_name = `${c.name.first} ${c.name.last}`;
+        if (!this_column.display_name) {
+          this_column.display_name = `${this_column.name.first} ${this_column.name.last}`;
         }
         if (!columnList[x].dName) {
-          let a = c.display_name.split(' ');
+          let a = this_column.display_name.split(' ');
           maxLength = Math.max(a.length, maxLength);
           columnList[x].dName = [' ', ' ', ' '].concat(a);
         }
@@ -941,7 +976,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let existingRequest = await getServiceRequests({
       client_id: pClient,
       foreign_key,
-      request_type: importTypes || request_type,
+      request_type: importTypes || reactData.defaultRequestType,
       requestor: pPerson
     });
     if (existingRequest.length > 0) {
@@ -1035,7 +1070,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         oBo = await makeName(this_column.person_id);
       }
       else {
-        oBo = await makeName(reactData.defaultPerson.person_id);
+        oBo = await makeName(reactData.defaultPerson ? reactData.defaultPerson.person_id : state.patient);
       }
       for (let rowNumber = 0; rowNumber < this_column.rowDetails.length; rowNumber++) {
         let this_row = this_column.rowDetails[rowNumber];
@@ -1082,7 +1117,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             client: state.session.client_id,
             author: this_column.person_id || state.session.patient_id,
             proxy_user: state.session.user_id,
-            requestType: this_column.request_type,
+            requestType: this_column.requestType,
             activity_key: this_column.activity_key,
             onBehalfOf: oBo,
             foreign_key: this_column.foreignKey,
@@ -1120,7 +1155,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             [html, plain, attachment] = await mealTicketFormat(formatCallObj);
             break;
           }
-        default: {}
+        default: { }
       }
       if (html) {  // if there is a message to send, send it and update all the Service Request records to show that it was sent
         // prepare message that contains the tickets (one for the whole group)
@@ -1306,11 +1341,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         left: 1,
                         bottom: 0
                       },
-                      size: 1,
+                      size: 1.3,
                       bold: true
                     })}
                   >
-                    {`for ${reactData.defaultPerson.name.first} ${reactData.defaultPerson.name.last}`}
+                    {`for ${(reactData.defaultPerson ? reactData.defaultPerson.name.first : state.patient.name.first)} ${(reactData.defaultPerson ? reactData.defaultPerson.name.last : state.patient.name.last)}`}
                   </Typography>
                   : ((dataRows.columnList.length === 1) ?
                     <Typography
@@ -1321,7 +1356,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                           left: 1,
                           bottom: 0
                         },
-                        size: 1,
+                        size: 1.3,
                         bold: true
                       })}
                     >
