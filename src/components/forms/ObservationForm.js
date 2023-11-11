@@ -602,7 +602,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   function textIsPresent(fieldName) {
     return (reactData.hasOwnProperty('textInput')
-      && reactData.textInput.hasOwnProperty('fieldName')
+      && reactData.textInput.hasOwnProperty(fieldName)
       && (reactData.textInput[fieldName] !== ''));
   }
 
