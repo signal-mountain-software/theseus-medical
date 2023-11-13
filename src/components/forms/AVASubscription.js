@@ -1,5 +1,6 @@
 import React from 'react';
 import { updateDb, makeArray } from '../../util/AVAUtilities';
+import { makeName } from '../../util/AVAPeople';
 import useSession from '../../hooks/useSession';
 import AVAConfirm from '../forms/AVAConfirm';
 
@@ -33,9 +34,7 @@ export default ({ defaults, onClose }) => {
           ]}
           cancelText={`Cancel`}
           confirmText={`Subscribe`}
-          onCancel={() => {
-            return;
-          }}
+          onCancel={onClose}
           onConfirm={() => {
             window.open(defaultValues.options.link || 'https://buy.stripe.com/3cs5lzbSS9RXecwcMN', 'AVA Subscription');
             setMode('checkSubscription');            
@@ -62,6 +61,8 @@ export default ({ defaults, onClose }) => {
             onClose();
           }}
           onConfirm={async () => {
+            let respID = makeArray(state.session.responsible_for)[0];
+            let respName = await makeName(respID);
             await updateDb(
               [
                 {
@@ -91,7 +92,9 @@ export default ({ defaults, onClose }) => {
                   "data": {
                     "assigned_to": "friends&family",
                     "subscription_status": "pending",
-                    "patient_id": (state.session.hasOwnProperty('responsible_for') ? makeArray(state.session.responsible_for)[0] : null)
+                    "patient_id": respID,
+                    "patient_display_name": respName,
+
                   }
                 }
               ]

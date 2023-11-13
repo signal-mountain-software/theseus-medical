@@ -1,6 +1,7 @@
 import React from 'react';
 import { dbClient, lambda, makeArray } from '../util/AVAUtilities';
 import { isMemberOf, accountAccess } from '../util/AVAGroups';
+import { makeName } from '../util/AVAPeople';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
@@ -190,9 +191,8 @@ export default Component => props => {
       return 'invalid';
     }
     else {
-      if ((foundSession.hasOwnProperty('subscription_status')) 
-        && (foundSession.hasOwnProperty('responsible_for')))
-      {
+      if ((foundSession.hasOwnProperty('subscription_status'))
+        && (foundSession.hasOwnProperty('responsible_for'))) {
         switch (foundSession.subscription_status) {
           case 'na':
           case 'active': {
@@ -200,6 +200,8 @@ export default Component => props => {
           }
           case 'none':
           case 'new': {
+            let respID = makeArray(foundSession.responsible_for)[0];
+            let respName = await makeName(respID);
             setAVAFollowUpData({
               'newSubscription': true,
               'prompt': [
@@ -217,7 +219,8 @@ export default Component => props => {
               pUser,
               pSource,
               client_id: foundSession.client_id,
-              responsible_for: makeArray(foundSession.responsible_for)[0]
+              responsible_for: respID,
+              responsible_name: respName
             });
             setDoneTrying(true);
             return 'subscription';
@@ -497,7 +500,8 @@ export default Component => props => {
             confirmText={`Subscribe`}
             onCancel={async () => {
               return (await genericLogin(AVAFollowUpData.pUser, AVAFollowUpData.pSource));
-            }} onConfirm={() => {
+            }}
+            onConfirm={() => {
               window.open(AVAFollowUpData.link, 'AVA Subscription');
               setAVAFollowUpData({
                 'checkSubscription': true,
@@ -507,7 +511,8 @@ export default Component => props => {
                 pUser: AVAFollowUpData.pUser,
                 pSource: AVAFollowUpData.pSource,
                 client_id: AVAFollowUpData.client_id,
-                responsible_for: AVAFollowUpData.responsible_for
+                responsible_for: AVAFollowUpData.responsible_for,
+                responsible_name: AVAFollowUpData.responsible_name
               });
               setDoneTrying(true);
               return 'subscription';
@@ -553,6 +558,7 @@ export default Component => props => {
                       "assigned_to": "friends&family",
                       "subscription_status": "pending",
                       "patient_id": AVAFollowUpData.responsible_for,
+                      "patient_display_name": AVAFollowUpData.responsible_name,
                     }
                   }
                 ]

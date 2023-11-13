@@ -123,7 +123,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
             let g = p.groups[x];
             // am I specificaly responsible for this person?
             if (session.hasOwnProperty('responsible_for') 
-            && session.responsible_for.includes(p.person_id)) {
+              && session.responsible_for.includes(p.person_id)
+              && ((myClass !== 'family') || !(['none','na','cancelled','inactive'].includes(session.subscription_status)))
+            ) {
               myMaxAccessLevelToThisPerson = 3;
               continue;
             }
@@ -509,17 +511,22 @@ export async function getMemberList(pGroups, pClient_id, options) {
         cl({ 'Bad scan on People in getGroupMembers - caught error is': error });
       });
     if (recordExists(gPeopleRecs)) {
-      gPeopleRecs.Items.forEach(i => {
+      for (let p = 0; p < gPeopleRecs.Items.length; p++) {
+        let i = gPeopleRecs.Items[p];
         if (!foundIDs.includes(i.person_id)) {
           foundIDs.push(i.person_id);
           if (!checkExclude || (i.directory_option !== 'exclude')) {
             if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
             if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
             i.display_name = AVAname(i);
+            if (options && options.withSession) {
+              i.session = await getSession(i.person_id);
+            }
             returnArray.push(i);
           }
+          
         }
-      });
+      };
     }
   };
   if (sortResults) {

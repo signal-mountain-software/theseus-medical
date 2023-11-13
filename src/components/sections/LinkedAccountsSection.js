@@ -197,6 +197,21 @@ export default ({ groupMemberList, session, updateSession, updateProxy, updateSu
                         </Typography>}
                     />
                   ))}
+                  <FormControlLabel
+                    key={`nameNlinkdaccts+${session.user_id}`}
+                    className={classes.formControlLbl}
+                    value={session.user_id}
+                    control={
+                      <Radio disableRipple
+                        className={classes.radioButton}
+                        size='small' />
+                    }
+                    label={
+                      <Typography
+                        className={classes.radioText}>
+                        None
+                      </Typography>}
+                  />
                 </RadioGroup>
               </FormControl>
             </React.Fragment>

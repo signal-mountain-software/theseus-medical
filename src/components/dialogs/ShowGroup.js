@@ -90,7 +90,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   async function getGroupMemberList(inGroup) {
     reactData.progressMessage = 'Getting all accounts';
-    let memberInfo = await getMemberList(inGroup, pSession.client_id, { "sort": true, "exclude": false });
+    let memberInfo = await getMemberList(inGroup, pSession.client_id, { "sort": true, "exclude": false, "withSession": true });
 
     if (memberInfo.peopleList.length === 0) {
       enqueueSnackbar(`AVA couldn't find any accounts.`, { variant: 'error' });

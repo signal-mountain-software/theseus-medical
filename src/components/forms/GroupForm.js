@@ -1,5 +1,5 @@
 import React from 'react';
-import { lambda, cl, sentenceCase, switchActiveAccount } from '../../util/AVAUtilities';
+import { lambda, cl, sentenceCase, switchActiveAccount, listFromArray } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
@@ -437,6 +437,22 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     }
   }
 
+  let nameXRef;
+  function makeResponsibleLines(respArray) {
+    if (respArray.length === 0) {
+      return '';
+    }
+    if (!nameXRef && state.accessList) {
+      nameXRef = {};
+      state.accessList[state.session.client_id].list.forEach(a => {
+        if (a.access !== 'none') {
+          nameXRef[a.person_id] = (`${a.name.first} ${a.name.last}`).trim();
+        }
+      });
+    }
+    return ('Linked to: ' + listFromArray(respArray.map(r => { return nameXRef[r]; })));
+  }
+
   function makeContactLines(pMessaging, pPreference, pPerson) {
     let returnArray = [];
     for (const messageType in pMessaging) {
@@ -556,9 +572,16 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               }}
                               display='flex' flexDirection='column'>
                               <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
+                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
                                 <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{this_item.name.first}</Typography>
                               </Box>
+                              {(this_item.session && this_item.session.responsible_for) &&
+                                <Box display='flex' flexDirection='column'>
+                                  <Typography id={`resp_line`} key={`resp_line`} style={AVATextStyle({ size: 0.7, margin: { top: -0.8, bottom: 1.5 } })}>
+                                    {makeResponsibleLines(this_item.session.responsible_for)}
+                                  </Typography>
+                                </Box>
+                              }
                               {multiGroups && this_item.hasOwnProperty('member_of') &&
                                 <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 1, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
                               }
@@ -583,7 +606,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                         style={{ color: 'inherit', textDecoration: 'none' }}>
                                         <Typography
                                           key={`prefLine-${index}.${prefIndex}`}
-                                          style={AVATextVariableStyle(prefLine, { margin: { bottom: 0.5 } })}
+                                          style={AVATextVariableStyle(prefLineText(prefLine), { margin: { bottom: 0.5 } })}
                                         >
                                           {prefLineText(prefLine)}
                                         </Typography>
