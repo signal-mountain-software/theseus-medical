@@ -38,6 +38,7 @@ import FavoriteIcon from '@material-ui/icons/FavoriteBorder';
 import NotFavorite from '@material-ui/icons/DeleteForever';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
+import SubscriptionIcon from '@material-ui/icons/CardMembership';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
@@ -1212,6 +1213,24 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   </Box>
                 </MenuItem>
               )
+              }
+              {(
+                state.hasOwnProperty('accessList') &&
+                  state.accessList.hasOwnProperty('subscription') &&
+                  state.accessList.subscription.subscription_active
+              )
+                &&
+                <MenuItem onClick={() => {
+                  window.open(`https://families.avaseniorliving.com/p/login/9AQ4hT0kI91OcFidQQ`);
+                }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowSwitch'}
+                  >
+                    <SubscriptionIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Manage Subscription'}</Typography>
+                  </Box>
+                </MenuItem>
               }
               {(
                 (state.hasOwnProperty('accessList') &&

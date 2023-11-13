@@ -104,7 +104,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         count: {},
         list: []
       };
-      accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; }); 
+      accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
       let allPeople = await getMemberList('*all', client_id);
       // get all the people in the client
       let pxL = allPeople.peopleList.length;
@@ -122,9 +122,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
           for (let x = 0; x < gL; x++) {
             let g = p.groups[x];
             // am I specificaly responsible for this person?
-            if (session.hasOwnProperty('responsible_for') 
+            if (session.hasOwnProperty('responsible_for')
               && session.responsible_for.includes(p.person_id)
-              && ((myClass !== 'family') || !(['none','na','cancelled','inactive'].includes(session.subscription_status)))
+              && ((myClass !== 'family') || !(['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)))
             ) {
               myMaxAccessLevelToThisPerson = 3;
               continue;
@@ -195,14 +195,28 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         else if (a.first < b.first) { return -1; }
         else { return 0; }
       });
-      accessList[client_id].shortList = accessList[client_id].list.map(p => { 
+      accessList[client_id].shortList = accessList[client_id].list.map(p => {
         accessList[client_id].count[p.access]++;
         let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
         if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
         // list is of the form <name>:<id>:<search_string>
         return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
-      })
+      });
       accessList[client_id].groups = myGroupAccessLevel;
+    }
+    if (myClass === 'family') {
+      if (['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)) {
+        accessList.subscription = {
+          subscription_active: false,
+          subscription_status: session.subscription_status
+        };
+      }
+      else {
+        accessList.subscription = {
+          subscription_active: true,
+          subscription_status: session.subscription_status
+        };
+      }
     }
   }
   dispatch({ type: SET_ACCESSLIST, payload: accessList });
@@ -226,8 +240,8 @@ export async function getAllClients() {
     everyClient.Items.sort((a, b) => {      // sort by client name
       if (a.customization_value > b.customization_value) { return 1; }
       else { return -1; }
-    })
-    returnArray = everyClient.Items.map(c => { return c.client_id; })
+    });
+    returnArray = everyClient.Items.map(c => { return c.client_id; });
   }
   return returnArray;
 }
@@ -302,7 +316,7 @@ export async function getGroupsResponsibleFor(person_id, options) {
       let this_group = everyGroup.Items[g];
       if (!(this_group.group_id in returnObject)) {
         if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
-        || (options && options.account_class && (['master', 'support'].includes(options.account_class)))) {
+          || (options && options.account_class && (['master', 'support'].includes(options.account_class)))) {
           returnObject[this_group.group_id] = {
             group_name: this_group.name,
             group_id: this_group.group_id,
@@ -524,7 +538,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
             }
             returnArray.push(i);
           }
-          
+
         }
       };
     }
@@ -542,7 +556,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
     foundIDs,
     'peopleList': returnArray,
     'groupList': gList
-  }
+  };
   if (shortList) {
     rObj.shortList = returnArray.map(p => {
       let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');

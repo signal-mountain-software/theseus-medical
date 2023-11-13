@@ -162,7 +162,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, picture, groupData, open, onClose }) => {
+export default ({ patient, picture, groupData, options = {}, open, onClose }) => {
   const classes = useStyles();
 
   const [localData, setLocalData] = React.useState({});
@@ -1359,20 +1359,25 @@ export default ({ patient, picture, groupData, open, onClose }) => {
             </Box>
           </Paper>
         </Box >
-        <ClientsSection
-          person={patient}
-          groupData={groupData}
-          updateGroups={handleChangeGroups}
-        />
-        <RelationshipSection person={patient} />
-        <LinkedAccountsSection
-          groupMemberList={localData.groupMemberList}
-          session={patientSession}
-          updateSession={handleChangeLinkedAccounts}
-          updateProxy={handleChangeProxy}
-          updateSubscription={(newStatus) => { handleChangeSubscriptionStatus(newStatus); }}
-          version={sessionVersion}
-        />
+        {((options && options.fullAccess) || (['master', 'support'].includes(state.user.account_class)))
+          &&
+          <React.Fragment>
+            <ClientsSection
+              person={patient}
+              groupData={groupData}
+              updateGroups={handleChangeGroups}
+            />
+            <RelationshipSection person={patient} />
+            <LinkedAccountsSection
+              groupMemberList={localData.groupMemberList}
+              session={patientSession}
+              updateSession={handleChangeLinkedAccounts}
+              updateProxy={handleChangeProxy}
+              updateSubscription={(newStatus) => { handleChangeSubscriptionStatus(newStatus); }}
+              version={sessionVersion}
+            />
+          </React.Fragment>
+        }
         <Box m={2}>
           <Paper component={Box} variant={'outlined'}>
             <Box mt={1} py={1} px={3} borderBottom={2}>
