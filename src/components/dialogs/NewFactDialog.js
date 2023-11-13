@@ -247,7 +247,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       enqueueSnackbar(`Warning!  You'll lose everything!  AVA is still recording.  Press the square button to stop recording, then Cancel or Save.`, { variant: 'warning', persist: true });
     }
     else {
-      onClose(factIOClass ? `You pressed CANCEL. ${fact.name} was not completed.` : null);
+      onClose();
     }
   };
 

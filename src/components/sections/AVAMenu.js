@@ -310,7 +310,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
 
     let forceRefresh = true;
-    let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
+    let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh, state);
 
     if (wholeMenu.length > 0) {
       // cl(`Reloaded menu at ${new Date().toLocaleString()}.`);
@@ -1214,11 +1214,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               )
               }
               {(
-                (state.accessList
+                (state.hasOwnProperty('accessList') &&
+                  state.accessList.hasOwnProperty(session.client_id) &&
+                  state.accessList[session.client_id].hasOwnProperty('count')
                   && (
-                    (Object.keys(state.accessList).length > 1)
-                    || ((state.accessList[Object.keys(state.accessList)[0]].count.proxy
-                      + state.accessList[Object.keys(state.accessList)[0]].count.full) > 1)
+                  (state.accessList[session.client_id].count.proxy > 0) ||
+                  (state.accessList[session.client_id].count.full > 0)
                   )
                 )
                 ||

@@ -12,7 +12,7 @@ let customObj = {};
 let activityObj = {};
 let groupObj = {};
 
-export default async (requestor, masterClient, screenStatus, subMenuData = null, forceRefresh = false) => {
+export default async (requestor, masterClient, screenStatus, subMenuData = null, forceRefresh = false, state) => {
 
   if (forceRefresh) {
     customObj = {};
@@ -220,6 +220,18 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         let overrideIcon = '';
         if (!allowDuplicates && duplicateCheck.includes(this_activity)) {   // this_activity is already loaded
           continue;
+        }
+        if ((typeof (this_activity) === 'string') && this_activity.includes('~[auth=')) {
+          let aPieces = this_activity.match(/~\[auth=.+|\]/g);
+          let foundAt = aPieces.findIndex(p => { return (p === '~[auth=view]'); })
+          if (foundAt > -1) {
+            if ((state.accessList[masterClient].groups.hasOwnProperty(this_group.group_id))
+              && (state.accessList[masterClient].groups[this_group.group_id] === 0)
+            ) {
+              continue;
+            }
+          }
+          this_activity = this_activity.replace('~[auth=view]', '');
         }
         if ((typeof(this_activity) === 'string') && (this_activity.startsWith('~~'))) {
           if (this_activity.includes('~[adopt=')) {

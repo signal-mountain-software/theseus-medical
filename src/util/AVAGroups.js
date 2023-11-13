@@ -61,9 +61,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   }
   // Now get a list of people that I can access
   let accessList = {};
+  let myGroupAccessLevel = {};
   if (myClass !== 'inactive') {
     let accessLevelTable = ['none', 'view', 'proxy', 'full'];
-    let myGroupAccessLevel = {};
     let clientList = [pClient_id];
     if ((myClass === 'support')
       && (myPeopleRec.hasOwnProperty('clients') && Array.isArray(myPeopleRec.clients))) {
@@ -118,6 +118,12 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
           let gL = p.groups.length;
           for (let x = 0; x < gL; x++) {
             let g = p.groups[x];
+            // am I specificaly responsible for this person?
+            if (session.hasOwnProperty('responsible_for') 
+            && session.responsible_for.includes(p.person_id)) {
+              myMaxAccessLevelToThisPerson = 3;
+              continue;
+            }
             // this person may belong to multiple groups; each group is assigned a type (flavor) earlier
             // which describes where that group lands in the client's hierarchy of groups
             // a person is given a flavor based on the most significant (lowest hierarchy number) group
@@ -191,6 +197,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         // list is of the form <name>:<id>:<search_string>
         return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
       })
+      accessList[client_id].groups = myGroupAccessLevel;
     }
   }
   dispatch({ type: SET_ACCESSLIST, payload: accessList });

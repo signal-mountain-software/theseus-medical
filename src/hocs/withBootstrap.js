@@ -5,6 +5,7 @@ import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
 import { AVADefaults } from '../util/AVAStyles';
+import AVAConfirm from '../components/forms/AVAConfirm';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -164,7 +165,8 @@ export default Component => props => {
         setDoneTrying(true);
         return 'network';
       }
-      await logAccessAttempt(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).  Trying names.`);
+      await logAccessAttempt(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).`);
+      /*
       setDoneTrying(false);
       let [goodUser, possibleUserRecs] = await validateUserAccount({    // look for account by name
         'nameTest': pUser,
@@ -181,12 +183,60 @@ export default Component => props => {
         }
       }
       await logAccessAttempt(pUser, '', false, `No UserID found from entered name: ${pUser}.`);
-      setDoneTrying(true);
       enqueueSnackbar(`"${pUser}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
+      */
+      setDoneTrying(true);
       setAVAFollowUpData({ 'NeedUser': true });
       return 'invalid';
     }
     else {
+      if ((foundSession.hasOwnProperty('subscription_status')) 
+        && (foundSession.hasOwnProperty('responsible_for')))
+      {
+        switch (foundSession.subscription_status) {
+          case 'na':
+          case 'active': {
+            break;
+          }
+          case 'none':
+          case 'new': {
+            setAVAFollowUpData({
+              'newSubscription': true,
+              'prompt': [
+                'Welcome to AVA!',
+                '[style={size:1.2,top:0}]Subscribe now to gain access to Community services, ',
+                '[style={size:1.2,top:0}]information, and direct communication with',
+                '[style={size:1.2,top:0}]Community Leaders and Staff',
+                '',
+                '[style={size:1.2,top:0}]You will be redirected to our subscription partner site.',
+                `[style={size:1.2,top:0}]Return here after you've completed that form.`,
+                '[style={size:1.2,top:0}]Thank you!',
+                '',
+              ],
+              'link': 'https://buy.stripe.com/3cs5lzbSS9RXecwcMN',
+              pUser,
+              pSource,
+              client_id: foundSession.client_id,
+              responsible_for: makeArray(foundSession.responsible_for)[0]
+            });
+            setDoneTrying(true);
+            return 'subscription';
+          }
+          case 'pending': {
+            break;
+          }
+          case 'cancelled': {
+            break;
+          }
+          case 'suspended': {
+            break;
+          }
+          case 'inactive': {
+            break;
+          }
+          default: { }
+        }
+      }
       if (foundSession.requirePassword && (pSource === 'entered')) {
         await logAccessAttempt(pUser, '', true, 'Good UserID entered.  Password is required for this account.');
         enqueueSnackbar(`This account requires a password.`, { variant: 'error', persist: true });
@@ -219,17 +269,9 @@ export default Component => props => {
       }
       // We know the person, but have not been able to log them in yet
       // Attempt to log person is with generic credentials
-      let [goodLogin, ,] = await cognitoLogin(AVA_default_user, AVA_default_password);
-      if (goodLogin) {
-        await logAccessAttempt(pUser, '', true, `Successful Log-in using generic credentials; user ID supplied from ${pSource}`);
-        await launchAVA(pUser);
+      let result = await genericLogin(pUser, pSource);
+      if (result === 'good') {
         return 'good';
-      }
-      else {
-        let eMessage = `Failed Log-in using generic credentials; user ID supplied from ${pSource}`;
-        await logAccessAttempt(pUser, '', false, eMessage);
-        enqueueSnackbar(`${eMessage}..  AVA support has been notified.`, { variant: 'error', persist: true });
-        sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
       }
       // If we got to here...  we had a good User, but did not get that user authenticated
       // Let's ask for the password and try to get in that way...
@@ -237,6 +279,22 @@ export default Component => props => {
       setAVAFollowUpData({ 'enteredUserID': pUser, 'NeedUser': false });
       setDoneTrying(true);
       return 'password';
+    }
+  }
+
+  async function genericLogin(pUser, pSource) {
+    let [goodLogin, ,] = await cognitoLogin(AVA_default_user, AVA_default_password);
+    if (goodLogin) {
+      await logAccessAttempt(pUser, '', true, `Successful Log-in using generic credentials; user ID supplied from ${pSource}`);
+      await launchAVA(pUser);
+      return 'good';
+    }
+    else {
+      let eMessage = `Failed Log-in using generic credentials; user ID supplied from ${pSource}`;
+      await logAccessAttempt(pUser, '', false, eMessage);
+      enqueueSnackbar(`${eMessage}..  AVA support has been notified.`, { variant: 'error', persist: true });
+      sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
+      return 'failed';
     }
   }
 
@@ -265,8 +323,20 @@ export default Component => props => {
     return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('enteredUserID'));
   }
 
+  function newSubscriptionPrompt() {
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('newSubscription'));
+  }
+
+  function verifySubscription() {
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('checkSubscription'));
+  }
+
   function testModeErrorTrap() {
-    return (doneTrying && (messageList.length > 0));
+    return (
+      doneTrying
+      && (messageList.length > 0)
+      && (window.location.href.split('//')[1].slice(0, 1).toUpperCase() === 'T')
+    );
   }
 
   if (!AVAReady && !localAVAReady) {
@@ -335,12 +405,12 @@ export default Component => props => {
             options={{ 'save_on_enter': true }}
             buttonText='Sign In'
             onCancel={() => {
-              enqueueSnackbar(`Please enter your User ID or Name to sign into AVA.`, { variant: 'info', persist: true });
+              enqueueSnackbar(`Please enter your AVA ID`, { variant: 'info', persist: true });
               setMessageList([]);
             }}
             onSave={async (enteredUserID) => {
               if (!enteredUserID) {
-                enqueueSnackbar(`You must enter a User ID or Name`, { variant: 'info' });
+                enqueueSnackbar(`You must enter an ID`, { variant: 'info' });
               }
               else {
                 setMessageList([]);
@@ -417,6 +487,77 @@ export default Component => props => {
               enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
               setDoneTrying(true);
               return;
+            }}
+          />
+        }
+        {newSubscriptionPrompt() &&
+          <AVAConfirm
+            promptText={AVAFollowUpData.prompt}
+            cancelText={`Cancel`}
+            confirmText={`Subscribe`}
+            onCancel={async () => {
+              return (await genericLogin(AVAFollowUpData.pUser, AVAFollowUpData.pSource));
+            }} onConfirm={() => {
+              window.open(AVAFollowUpData.link, 'AVA Subscription');
+              setAVAFollowUpData({
+                'checkSubscription': true,
+                'prompt': [
+                  'Tap below to continue'
+                ],
+                pUser: AVAFollowUpData.pUser,
+                pSource: AVAFollowUpData.pSource,
+                client_id: AVAFollowUpData.client_id,
+                responsible_for: AVAFollowUpData.responsible_for
+              });
+              setDoneTrying(true);
+              return 'subscription';
+            }}
+          />
+        }
+        {verifySubscription() &&
+          <AVAConfirm
+            promptText={AVAFollowUpData.prompt}
+            cancelText={`I didn't subscribe this time`}
+            confirmText={`Yes! I subscribed!`}
+            onCancel={async () => {
+              return (await genericLogin(AVAFollowUpData.pUser, AVAFollowUpData.pSource));
+            }}
+            onConfirm={async () => {
+              await updateDb(
+                [
+                  {
+                    "table": "People",
+                    "key": { "person_id": AVAFollowUpData.pUser },
+                    "data": {
+                      "clients": [
+                        {
+                          "groups": [
+                            "friends&family",
+                            "ALL",
+                            "_TOP_"
+                          ],
+                          "id": AVAFollowUpData.client_id
+                        }
+                      ],
+                      "groups": [
+                        "friends&family",
+                        "ALL",
+                        "_TOP_"
+                      ]
+                    }
+                  },
+                  {
+                    "table": "SessionsV2",
+                    "key": { "session_id": AVAFollowUpData.pUser },
+                    "data": {
+                      "assigned_to": "friends&family",
+                      "subscription_status": "pending",
+                      "patient_id": AVAFollowUpData.responsible_for,
+                    }
+                  }
+                ]
+              );
+              return (await genericLogin(AVAFollowUpData.pUser, AVAFollowUpData.pSource));
             }}
           />
         }
@@ -672,6 +813,43 @@ export default Component => props => {
     return;
   };
 
+
+  async function updateDb(pData) {
+    // pData in the form {["table": <tablename>, "key": {"key1": "keydata1", etc...}, "data": {"field_name1": "new value", "field_name2", "new value", ...}]}
+    let response = [];
+    for (let t = 0; t < pData.length; t++) {
+      let k_num = 0;
+      let aNamesObj = {};
+      let aValuesObj = {};
+      let expression = 'set';
+      for (let pKey in pData[t].data) {
+        let aKey = `n${k_num++}`;
+        aNamesObj[`#${aKey}`] = pKey;
+        aValuesObj[`:${aKey}`] = pData[t].data[pKey];
+        if (k_num > 1) {
+          expression += ', ';
+        }
+        expression += ` #${aKey} = :${aKey}`;
+      }
+      await dbClient
+        .update({
+          Key: pData[t].key,
+          UpdateExpression: expression,
+          ExpressionAttributeValues: aValuesObj,
+          ExpressionAttributeNames: aNamesObj,
+          TableName: pData[t].table,
+        })
+        .promise()
+        .catch(error => {
+          console.log(`caught error updating ${pData[t].table}; error is:`, error);
+          response.push(error);
+        });
+      response.push('OK');
+    }
+    return response;
+  }
+
+
   async function updateSession(pSessionID, pSession, pPatient, pProfile, pLogin, pURL, pMessage, pSessionInfo) {
     let attributeValues = {
       ':s': {
@@ -740,35 +918,6 @@ export default Component => props => {
       .catch(error => { console.error('Error adding a fact:', error.message); });
   }
 
-  async function validateUserAccount(payload) {
-    const fResp = await lambda
-      .invoke({
-        FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:validateUserAccount',
-        InvocationType: 'RequestResponse',
-        LogType: 'Tail',
-        Payload: JSON.stringify(payload)
-      })
-      .promise()
-      .catch(err => {
-        if (err.code === 'NetworkingError') {
-          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-        }
-        return [false, 'AVA could not validate your Account'];
-      });
-    try {
-      let fRespObj = JSON.parse(fResp.Payload);
-      if (!fRespObj.hasOwnProperty('status') || (fRespObj.status === 400)) {
-        return [false, fRespObj.body];
-      }
-      else {
-        return [true, fRespObj.body];
-      }
-    }
-    catch {
-      return [false, 'unknown'];
-    }
-  };
-
   async function launchAVA(pLaunchUser) {
     // Get the sessionlaunchAVA
     let [goodSession, currentSession, dbError] = await getSessionV2(pLaunchUser);
@@ -801,7 +950,7 @@ export default Component => props => {
       return false;
     }
     // create an accessList of accounts you are allowed to see/view/proxy
-    accountAccess(pLaunchUser, currentSession.client_id, dispatch);
+    await accountAccess(pLaunchUser, currentSession.client_id, dispatch);
     // Get the Patient's profile (info about the active person - usually the same as the logged in user)
     let currentPatient;
     if (currentSession.patient_id === pLaunchUser) {

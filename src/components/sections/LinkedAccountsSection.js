@@ -33,6 +33,10 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
+  formControl: {
+    margin: 0,
+    paddingTop: 0,
+  },
   formControlLbl: {
     margin: 0,
     paddingTop: 0,
@@ -47,7 +51,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ groupMemberList, session, updateSession, updateProxy, version }) => {
+export default ({ groupMemberList, session, updateSession, updateProxy, updateSubscription, version }) => {
   const classes = useStyles();
 
   const [person_filter, setPersonFilter] = React.useState(' ');
@@ -77,6 +81,11 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
       setPersonFilterLower(event.target.value.trim().toLowerCase());
       setenoughFilterDigits(event.target.value.length > 1);
     }
+  };
+
+  const handleUpdateSubscription = event => {
+    updateSubscription(event.target.value);
+    session.subscription_status = event.target.value;
   };
 
   function showName(pRec) {
@@ -192,6 +201,19 @@ export default ({ groupMemberList, session, updateSession, updateProxy, version 
               </FormControl>
             </React.Fragment>
           }
+          <React.Fragment>
+            <Typography className={classes.radioText} style={{marginTop: '16px'}}>Subscription status</Typography>
+            <FormControl className={classes.formControl} component="fieldset">
+              <RadioGroup row={false} defaultValue={session.subscription_status} aria-label="SubsStatus" name="subsStatus" value={session.subscription_status} onChange={handleUpdateSubscription}>
+                <FormControlLabel className={classes.formControlLbl} value="none" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>None/NA</Typography>} />
+                <FormControlLabel className={classes.formControlLbl} value="pending" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Pending</Typography>} />
+                <FormControlLabel className={classes.formControlLbl} value="active" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Active</Typography>} />
+                <FormControlLabel className={classes.formControlLbl} value="cancelled" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Cancelled</Typography>} />
+                <FormControlLabel className={classes.formControlLbl} value="suspended" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Suspended</Typography>} />
+                <FormControlLabel className={classes.formControlLbl} value="inactive" control={<Radio disableRipple className={classes.radioButton} size='small' />} label={<Typography className={classes.radioText}>Inactive</Typography>} />
+              </RadioGroup>
+            </FormControl>
+          </React.Fragment>
         </Box>
         :
         <Box

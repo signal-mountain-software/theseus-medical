@@ -22,6 +22,7 @@ import LoadNamesFromFile from '../forms/LoadNamesFromFile';
 import ShowGroup from '../dialogs/ShowGroup';
 import AVACarousel from '../dialogs/AVACarousel';
 import GroupForm from '../forms/GroupForm';
+import AVASubscription from '../forms/AVASubscription';
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
@@ -349,6 +350,13 @@ export default ({
             setNewFact(newFact);
             onSave();
           }}
+          onClose={onClose}
+        />
+      );
+    case 'subscription_management':
+      return (
+        <AVASubscription
+          defaults={defaultValue}
           onClose={onClose}
         />
       );

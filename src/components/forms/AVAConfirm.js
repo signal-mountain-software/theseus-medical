@@ -124,22 +124,30 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
         {promptLines.map((pLine, index) => (
           (index > 0 ?
             (pLine.trim() === ''
-              ? <Box key={`blank-line${index}`} marginTop={2} />
+              ?
+              <Box
+                key={`blank-line${index}`}
+                id={`BOX_for_blankLine_${index}`}
+                marginTop={2}
+              >
+                <br/>
+              </Box>
               :
               <Box
                 key={`box-line${index}`}
                 marginLeft={3 + (3 * Number(makeIndent(pLine)))}
+                id={`BOX_for_promptLine_${index}_withText`}
+                style={AVATextStyle(makeStyle(pLine, {
+                  margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 1.5), right: 1 }
+                }))
+                }
               >
                 <Typography
-                  style={index === 0 ?
-                    AVATextStyle(makeStyle(pLine))
-                    :
-                    AVATextStyle(makeStyle(pLine, {
-                      margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 1.5), right: 1 },
-                      size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
-                    }))
+                  style={AVATextStyle(makeStyle(pLine, {
+                    size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
+                  }))
                   }
-                  id='scroll-dialog-title'
+                  id={`promptLine_${index}_withText`}
                   key={'promptConfirm' + index}
                 >
                   {pLine.includes('[bold]')

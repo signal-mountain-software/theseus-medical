@@ -586,3 +586,38 @@ export async function switchActiveAccount(session, newClient, newPatient) {
   let jumpTo = window.location.href.replace('refresh', 'theseus');
   window.location.replace(jumpTo);
 };
+
+export async function updateDb(pData) {
+  // pData in the form {["table": <tablename>, "key": {"key1": "keydata1", etc...}, "data": {"field_name1": "new value", "field_name2", "new value", ...}]}
+  let response = [];
+  for (let t = 0; t < pData.length; t++) {
+    let k_num = 0;
+    let aNamesObj = {};
+    let aValuesObj = {};
+    let expression = 'set';
+    for (let pKey in pData[t].data) {
+      let aKey = `n${k_num++}`;
+      aNamesObj[`#${aKey}`] = pKey;
+      aValuesObj[`:${aKey}`] = pData[t].data[pKey];
+      if (k_num > 1) {
+        expression += ', ';
+      }
+      expression += ` #${aKey} = :${aKey}`;
+    }
+    await dbClient
+      .update({
+        Key: pData[t].key,
+        UpdateExpression: expression,
+        ExpressionAttributeValues: aValuesObj,
+        ExpressionAttributeNames: aNamesObj,
+        TableName: pData[t].table,
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error updating ${pData[t].table}; error is:`, error);
+        response.push(error);
+      });
+    response.push('OK');
+  }
+  return response;
+}

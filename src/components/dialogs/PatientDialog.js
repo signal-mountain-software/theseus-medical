@@ -264,6 +264,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
           photoURL: await getObject(`${patient.person_id}`, 'image'),
           requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
           storePassword: (targetSession.hasOwnProperty('storePassword') ? targetSession.storePassword : true),
+          subscription_status: targetSession.subscription_status || 'na',
           groupMemberList: (workingGroupMemberList || []),
           directoryOption: (localPersonRec.directory_option || 'normal'),
           directoryPartner: (localPersonRec.directory_partner || 'na'),
@@ -383,6 +384,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
         "responsible_for": [],
         "status": {},
         "storePassword": true,
+        "subscription_status": "na",
         "url_parameters": {},
         "user_homeClient": state.session.client_id
       };
@@ -484,6 +486,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       favorite_activities: localData.favorite_activities,
       favorite_blocked: localData.favorite_blocked,
       storePassword: localData.storePassword,
+      subscription_status: localData.subscription_status,
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || null,
       time_based_rules: patient.time_based_rules,
@@ -520,6 +523,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       favorite_blocked: localData.favorite_blocked,
       requirePassword: localData.requirePassword,
       storePassword: localData.storePassword,
+      subscription_status: localData.subscription_status || 'na',
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || 'na',
       time_based_rules: patient.time_based_rules,
@@ -593,6 +597,9 @@ export default ({ patient, picture, groupData, open, onClose }) => {
 
     attributeValues[':sp'] = localData.storePassword;
     updateExpression += 'storePassword = :sp, ';
+
+    attributeValues[':ss'] = localData.subscription_status;
+    updateExpression += 'subscription_status = :ss, ';
 
     if ((localData.sessionClient !== myClient) || (localData.sessionPatient !== patient.person_id)) {
       attributeValues[':c'] = myClient;
@@ -874,6 +881,12 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     setSessionVersion(sessionVersion + 1);
     setChanges(true);
   };
+
+  function handleChangeSubscriptionStatus(newStatus) {
+    localData.subscription_status = newStatus;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  }
 
   const onChangeMethod = tableRow => event => {
     patient.time_based_rules[tableRow].method = event.target.value;
@@ -1357,6 +1370,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
           session={patientSession}
           updateSession={handleChangeLinkedAccounts}
           updateProxy={handleChangeProxy}
+          updateSubscription={(newStatus) => { handleChangeSubscriptionStatus(newStatus); }}
           version={sessionVersion}
         />
         <Box m={2}>
