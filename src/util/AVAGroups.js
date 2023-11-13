@@ -63,6 +63,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   let accessList = {};
   let myGroupAccessLevel = {};
   if (myClass !== 'inactive') {
+    if (!session || (session.session_id !== person_id)) {
+      session = await getSession(person_id);
+    }
     let accessLevelTable = ['none', 'view', 'proxy', 'full'];
     let clientList = [pClient_id];
     if ((myClass === 'support')
