@@ -152,6 +152,11 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     // Get Favorites from the People record
     // ({ '** FAVORITES **': (requestor.favorite_activities || 'no favorite activities') });
     sectionSort = '**2';
+    if (!requestor.hasOwnProperty('name') || !requestor.name.hasOwnProperty('first')) {
+      requestor.name = {
+        first: requestor.person_id
+      }
+    }
     sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} favorites`;
     sectionColor = '#6bb44b';
     sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-favorite-50.png';

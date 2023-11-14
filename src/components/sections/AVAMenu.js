@@ -757,7 +757,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       async () => {
         setLoading('Getting your Information');
         setForceRedisplay(!forceRedisplay);
-        makeGreetingName(patient.name.first || session.patient_display_name || pPerson);
+        makeGreetingName(patient.hasOwnProperty('name') ? patient.name.first : (session.patient_display_name || pPerson));
         makeGreeting();
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);

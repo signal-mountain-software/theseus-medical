@@ -251,8 +251,13 @@ export function makeArray(input, delimiter = null) {
 }
 
 export function makeObject(input) {
-  if (isObject(input)) { return input; }
-  else { return(makeObj(input)); }
+  if (isObject(input)) {
+    return input;
+  }
+  else {
+    let returnO = makeObj(input);
+    return (returnO);
+  }
 }
 
 export function makeObj(input) {

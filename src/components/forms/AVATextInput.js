@@ -187,7 +187,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                       />
                     }
                     <Typography style={AVATextStyle({
-                      size: (1)
+                      size: 1
                     })}>
                       {prompt.split(']').pop()}
                     </Typography>

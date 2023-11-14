@@ -8,41 +8,10 @@ import Paper from '@material-ui/core/Paper';
 import Button from '@material-ui/core/Button';
 import GoBackIcon from '@material-ui/icons/SettingsBackupRestore';
 import CheckIcon from '@material-ui/icons/DoneSharp';
-import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { makeObject } from '../../util/AVAUtilities';
-
-const useStyles = makeStyles(theme => ({
-  title: {
-    marginTop: theme.spacing(3),
-    marginRight: theme.spacing(2),
-    fontSize: theme.typography.fontSize * 1.5,
-    fontWeight: 'bold',
-  },
-  page: {
-    paddingTop: theme.spacing(2),
-    paddingBottom: theme.spacing(2),
-  },
-  notTitle: {
-    marginRight: theme.spacing(2),
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    paddingRight: '16px',
-    paddingLeft: '16px',
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
-  }
-}));
 
 export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', onCancel, onConfirm }) => {
 
@@ -63,6 +32,19 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
     }
     else {
       return a[0].split('=')[1];
+    }
+  }
+
+  function makePageStyle(pLines) {
+    if (pLines.length < 2) {
+      return {top: 2, bottom: 2}
+    }
+    else {
+      let setStyle = AVATextStyle(pLines[1]);
+      return {
+        top: setStyle.top || 2,
+        bottom: setStyle.bottom || 2
+      }
     }
   }
 
@@ -93,7 +75,6 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
   if (Array.isArray(promptText)) { promptLines = promptText; }
   else { promptLines = [promptText]; }
 
-  const classes = useStyles();
   const AVAClass = AVAclasses();
 
   // **************************
@@ -108,6 +89,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       <Box
         key={`box-line`}
         marginLeft={3 + (3 * Number(makeIndent(promptLines[0])))}
+        marginRight={2}
       >
         <Typography
           style={AVATextStyle(makeStyle(promptLines[0]))}
@@ -120,7 +102,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
           }
         </Typography>
       </Box>
-      <Paper component={Box} className={classes.page} overflow='auto' square>
+      <Paper component={Box} style={AVATextStyle(makePageStyle(promptLines))} overflow='auto' square>
         {promptLines.map((pLine, index) => (
           (index > 0 ?
             (pLine.trim() === ''
@@ -128,7 +110,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
               <Box
                 key={`blank-line${index}`}
                 id={`BOX_for_blankLine_${index}`}
-                marginTop={2}
+                marginTop={0.1}
               >
                 <br/>
               </Box>
@@ -136,6 +118,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
               <Box
                 key={`box-line${index}`}
                 marginLeft={3 + (3 * Number(makeIndent(pLine)))}
+                marginRight={2}
                 id={`BOX_for_promptLine_${index}_withText`}
                 style={AVATextStyle(makeStyle(pLine, {
                   margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 1.5), right: 1 }

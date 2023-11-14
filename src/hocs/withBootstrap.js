@@ -167,28 +167,23 @@ export default Component => props => {
         return 'network';
       }
       await logAccessAttempt(pUser, '', false, `${pUser} is not a valid User ID (no SessionV2).`);
-      /*
-      setDoneTrying(false);
-      let [goodUser, possibleUserRecs] = await validateUserAccount({    // look for account by name
-        'nameTest': pUser,
-        'client': pClient
-      });
-      if (goodUser) {
-        if (possibleUserRecs.length === 1) {     // found exactly one match?
-          return tryUser(possibleUserRecs[0].person_id, pClient, `resolved ${pUser}`);
-        }
-        else if (possibleUserRecs.length > 1) {
-          enqueueSnackbar(`AVA found ${possibleUserRecs.length} matches for "${pUser}".  Please enter a password or apartment number to help figure out which one you are.`, { variant: 'error', persist: true });
-          setAVAFollowUpData({ 'enteredUserID': pUser, 'possibleUserRecs': possibleUserRecs });
-          return 'ambiguous';
-        }
+      const valideMail = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*$/;
+      if (pUser.match(valideMail)) {
+        setAVAFollowUpData({
+          'PromptSignUp': true,
+          'link': 'https://buy.stripe.com/3cs5lzbSS9RXecwcMN',
+          pUser,
+          pSource
+        });
+        setDoneTrying(true);
+        return 'promptSubscribe';
       }
-      await logAccessAttempt(pUser, '', false, `No UserID found from entered name: ${pUser}.`);
-      enqueueSnackbar(`"${pUser}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
-      */
-      setDoneTrying(true);
-      setAVAFollowUpData({ 'NeedUser': true });
-      return 'invalid';
+      else {
+        enqueueSnackbar(`"${pUser}" is not a User ID or Name that AVA recognizes. Please try again.`, { variant: 'error', persist: true });
+        setDoneTrying(true);
+        setAVAFollowUpData({ 'NeedUser': true });
+        return 'invalid';
+      }
     }
     else {
       if ((foundSession.hasOwnProperty('subscription_status'))
@@ -330,8 +325,16 @@ export default Component => props => {
     return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('newSubscription'));
   }
 
+  function promptSignUp() {
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('PromptSignUp'));
+  }
+
   function verifySubscription() {
     return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('checkSubscription'));
+  }
+
+  function verifySignUp() {
+    return (AVAFollowUpData && AVAFollowUpData.hasOwnProperty('checkSignUp'));
   }
 
   function testModeErrorTrap() {
@@ -493,6 +496,51 @@ export default Component => props => {
             }}
           />
         }
+        {promptSignUp() &&
+          <AVATextInput
+            titleText={"Sign-up for a new account?"}
+            promptText={[
+              "Community Name",
+              '[style={size:0.9,top:0}]Welcome to AVA!',
+              '[style={size:0.9,top:0}]That e-Mail address is not yet associated with an AVA Account.',
+              '[style={size:0.9,top:0}]Enter your Senior Living Community name above and tap "Yes" to sign up.',
+              '[style={size:0.9,top:0}]You will be redirected to our subscription partner site.',              
+              `[style={size:0.9,top:0}]Return here after you've completed that form.`,
+              '[style={size:0.9,top:0}]Thank you!',
+              '[style={size:0.9,top:0}]'
+            ]}
+            options={{ 'save_on_enter': true }}
+            buttonText='Sign-up!'
+            onCancel={() => {
+              setMessageList([]);
+              closeSnackbar();
+              enqueueSnackbar(`Please enter your User ID`, { variant: 'info', persist: true });
+              setAVAFollowUpData({ 'NeedUser': true });
+            }}
+            onSave={(enteredCommunityName) => {
+              window.open(AVAFollowUpData.link, 'AVA Subscription');
+              setAVAFollowUpData({
+                'checkSignUp': true,
+                'prompt': [
+                  'Welcome to AVA!',
+                  `[style={size:0.6, top:0, italic: true }]Software for Seniors and those that care for them`,
+                  '',
+                  `[style={size:0.8, top:0 }]For the security of our residents, your information will be validated with ${enteredCommunityName}.`,
+                  '',
+                  `[style={size:0.8, top:0 }]When your account is set up and ready, we'll contact you at ${AVAFollowUpData.pUser}.`,
+                  '',
+                  '[style={size:0.8, top:0 }]Thank you for using AVA!',
+                  '',
+                ],
+                pUser: AVAFollowUpData.pUser,
+                pSource: AVAFollowUpData.pSource,
+                client_name: enteredCommunityName,
+              });
+              setDoneTrying(true);
+              return 'subscription';
+            }}
+          />
+        }
         {newSubscriptionPrompt() &&
           <AVAConfirm
             promptText={AVAFollowUpData.prompt}
@@ -564,6 +612,59 @@ export default Component => props => {
                 ]
               );
               return (await genericLogin(AVAFollowUpData.pUser, AVAFollowUpData.pSource));
+            }}
+          />
+        }
+        {verifySignUp() &&
+          <AVAConfirm
+            promptText={AVAFollowUpData.prompt}
+            cancelText={`I didn't subscribe this time`}
+            confirmText={`Yes! I subscribed!`}
+            onCancel={async () => {
+              setMessageList([]);
+              closeSnackbar();
+              enqueueSnackbar(`Please enter your User ID`, { variant: 'info', persist: true });
+              setAVAFollowUpData({ 'NeedUser': true });
+            }}
+            onConfirm={async () => {
+              await updateDb(
+                [
+                  {
+                    "table": "People",
+                    "key": { "person_id": AVAFollowUpData.pUser },
+                    "data": {
+                      "clients": [
+                        {
+                          "groups": [
+                            "friends&family",
+                            "ALL",
+                            "_TOP_"
+                          ],
+                          "id": AVAFollowUpData.client_name
+                        }
+                      ],
+                      "groups": [
+                        "friends&family",
+                        "ALL",
+                        "_TOP_"
+                      ]
+                    }
+                  },
+                  {
+                    "table": "SessionsV2",
+                    "key": { "session_id": AVAFollowUpData.pUser },
+                    "data": {
+                      "client_id": AVAFollowUpData.client_name,
+                      "assigned_to": "friends&family",
+                      "subscription_status": "pending"
+                    }
+                  }
+                ]
+              );
+              setMessageList([]);
+              closeSnackbar();
+              enqueueSnackbar(`Please enter your User ID`, { variant: 'info', persist: true });
+              setAVAFollowUpData({ 'NeedUser': true });
             }}
           />
         }
@@ -971,7 +1072,12 @@ export default Component => props => {
         sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
         currentPatient = currentProfile;
         currentSession.patient_id = pLaunchUser;
-        currentSession.patient_name = (`${currentProfile.name.first} ${currentProfile.name.last}`).trim();
+        if (!currentProfile.name) {
+          currentSession.patient_name = pLaunchUser;
+        }
+        else {
+          currentSession.patient_name = (`${currentProfile.name.first} ${currentProfile.name.last}`).trim();
+        }
       }
     }
     // Get Client Defaults
