@@ -149,7 +149,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   React.useEffect(() => {
     async function prepare() {
-      if (pGroup_id) {
+      if (pGroup_id && makeArray(pGroup_id).length > 0) {
         await getGroupMemberList(makeArray(pGroup_id));
         reactData.showGroupSelect = false;
       }
