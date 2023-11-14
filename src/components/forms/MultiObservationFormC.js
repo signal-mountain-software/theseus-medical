@@ -1221,8 +1221,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function makeConfirm(pData) {
     let warningsExist = false;
     let dataExists = false;
-    let warningSection = [' ', `[bold][italic]There are no selections for:`, ' '];
-    let responseArray = [' ', `[bold][italic]AVA will send the following:`];
+    let warningSection = [`[bold][italic]There are no selections for:`, ' '];
+    let responseArray = [`[bold][italic]AVA will send the following:`];
     let everyoneText = [];
     if (pData.textValue && pData.textValue.hasOwnProperty('*all*')) {
       Object.keys(pData.textValue['*all*']).forEach(prompt => {
@@ -1277,6 +1277,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         responseArray.push(`[bold]${columnName}`);
         responseArray.push(...inputText);
         responseArray.push(...selectionText);
+        responseArray.push('[style = { bottom: 3 }] ');
         dataExists = true;
       }
     });

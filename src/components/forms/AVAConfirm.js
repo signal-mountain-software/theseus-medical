@@ -8,10 +8,40 @@ import Paper from '@material-ui/core/Paper';
 import Button from '@material-ui/core/Button';
 import GoBackIcon from '@material-ui/icons/SettingsBackupRestore';
 import CheckIcon from '@material-ui/icons/DoneSharp';
+import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
-import { makeObject } from '../../util/AVAUtilities';
+
+const useStyles = makeStyles(theme => ({
+  title: {
+    marginTop: theme.spacing(3),
+    marginRight: theme.spacing(2),
+    fontSize: theme.typography.fontSize * 1.5,
+    fontWeight: 'bold',
+  },
+  page: {
+    paddingTop: theme.spacing(2),
+    paddingBottom: theme.spacing(2),
+  },
+  notTitle: {
+    marginRight: theme.spacing(2),
+  },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    paddingRight: '16px',
+    paddingLeft: '16px',
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  }
+}));
 
 export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', onCancel, onConfirm }) => {
 
@@ -25,6 +55,18 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
     return str;
   }
 
+  function blankLine(p) {
+    let a = p.match(/(\[.+\])/gm);
+    let ans;
+    if (!a) {
+      ans = p;
+    }
+    else {
+      ans = p.replace(a.pop(), '');
+    }
+    return (!ans || (ans.trim() === ''))
+  }
+
   function makeIndent(str) {
     let a = str.match(/(indent=.)/g);
     if (!a) {
@@ -35,46 +77,11 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
     }
   }
 
-  function makePageStyle(pLines) {
-    if (pLines.length < 2) {
-      return {top: 2, bottom: 2}
-    }
-    else {
-      let setStyle = AVATextStyle(pLines[1]);
-      return {
-        top: setStyle.top || 2,
-        bottom: setStyle.bottom || 2
-      }
-    }
-  }
-
-  function makeStyle(str,
-    defStyle = {
-      margin: { top: 3, right: 2 },
-      size: 1.5,
-      bold: true
-    }
-  ) {
-    let a = str.match(/(style=.+})/g);
-    if (!a) {
-      return defStyle;
-    }
-    else {
-      let oStr = a[0].split('=');
-      if (oStr.length > 1) {
-        let r = makeObject(oStr.pop());
-        return r;
-      }
-      else {
-        return defStyle;
-      }
-    }
-  }
-
   let promptLines = [];
   if (Array.isArray(promptText)) { promptLines = promptText; }
   else { promptLines = [promptText]; }
 
+  const classes = useStyles();
   const AVAClass = AVAclasses();
 
   // **************************
@@ -89,10 +96,13 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       <Box
         key={`box-line`}
         marginLeft={3 + (3 * Number(makeIndent(promptLines[0])))}
-        marginRight={2}
       >
         <Typography
-          style={AVATextStyle(makeStyle(promptLines[0]))}
+          style={AVATextStyle({
+            margin: { top: 3, right: 2 },
+            size: 1.5,
+            bold: true
+          })}
           id='scroll-dialog-title'
           key={'promptConfirm'}
         >
@@ -102,35 +112,36 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
           }
         </Typography>
       </Box>
-      <Paper component={Box} style={AVATextStyle(makePageStyle(promptLines))} overflow='auto' square>
+      <Paper component={Box} className={classes.page} overflow='auto' square>
         {promptLines.map((pLine, index) => (
           (index > 0 ?
-            (pLine.trim() === ''
+            (blankLine(pLine)
               ?
               <Box
                 key={`blank-line${index}`}
-                id={`BOX_for_blankLine_${index}`}
-                marginTop={0.1}
-              >
-                <br/>
-              </Box>
+                id={`blank-line${index}`}
+                marginTop={'40px'}
+              />
               :
               <Box
                 key={`box-line${index}`}
+                id={`box-line${index}`}
                 marginLeft={3 + (3 * Number(makeIndent(pLine)))}
-                marginRight={2}
-                id={`BOX_for_promptLine_${index}_withText`}
-                style={AVATextStyle(makeStyle(pLine, {
-                  margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 1.5), right: 1 }
-                }))
-                }
               >
                 <Typography
-                  style={AVATextStyle(makeStyle(pLine, {
-                    size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
-                  }))
+                  style={index === 0 ?
+                    AVATextStyle({
+                      margin: { top: 3, right: 2 },
+                      size: 1.5,
+                      bold: true
+                    })
+                    :
+                    AVATextStyle({
+                      margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 0.5), right: 1 },
+                      size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
+                    })
                   }
-                  id={`promptLine_${index}_withText`}
+                  id='scroll-dialog-title'
                   key={'promptConfirm' + index}
                 >
                   {pLine.includes('[bold]')
