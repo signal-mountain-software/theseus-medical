@@ -1,7 +1,8 @@
 import React from 'react';
-import { dbClient, lambda, makeArray } from '../util/AVAUtilities';
+import { dbClient, lambda, makeArray, getCustomizations } from '../util/AVAUtilities';
 import { isMemberOf, accountAccess } from '../util/AVAGroups';
 import { makeName } from '../util/AVAPeople';
+import { sendMessages } from '../util/AVAMessages';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
@@ -59,6 +60,7 @@ export default Component => props => {
   const [AVAReady, setAVAReady] = React.useState(false);
   let localAVAReady = false;
   const [AVAFollowUpData, setAVAFollowUpData] = React.useState();
+  const [customizationData, setCustomizationData] = React.useState();
 
   const classes = useStyles();
   const [platform] = useIosCheck();
@@ -131,23 +133,35 @@ export default Component => props => {
         let sessionUserID = null;
         // Does the URL contain a User ID and/or client?
         let urlData = getParamsFromURL();
-        if (urlData && (urlData.user || urlData.user_id)) {
-          sessionUserID = urlData.user || urlData.user_id;
-          await tryUser(sessionUserID, (urlData.client || urlData.client_id || null), 'url');
-          return;
+        if (urlData) {
+          if (urlData.client || urlData.client_id) {
+            let cData = await getCustomizations('*all', (urlData.client || urlData.client_id));
+            cData.client_id = urlData.client || urlData.client_id;
+            setCustomizationData(cData);
+          }
+          if (urlData.user || urlData.user_id) {
+            sessionUserID = urlData.user || urlData.user_id;
+            await tryUser(sessionUserID, (urlData.client || urlData.client_id || null), 'url');
+            return;
+          }
         }
-        else {   // Check for a cookie
-          let cookieValues = getCookie();
-          if (cookieValues && cookieValues.user_id) {
+        // Check for a cookie
+        let cookieValues = getCookie();
+        if (cookieValues) {
+          if (cookieValues.client) {
+            let cData = await getCustomizations('*all', (cookieValues.client));
+            cData.client_id = cookieValues.client;
+            setCustomizationData(cData);
+          }
+          if (cookieValues.user_id) {
             sessionUserID = cookieValues.user_id;
             await tryUser(sessionUserID, cookieValues.client, 'cookie');
             return;
           }
-          else {    // No URL data and no cookie
-            setAVAFollowUpData({ 'NeedUser': true });
-            return;
-          }
         }
+        // No URL data and no cookie
+        setAVAFollowUpData({ 'NeedUser': true });
+        return;
       });
     checkUser();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -201,13 +215,11 @@ export default Component => props => {
               'newSubscription': true,
               'prompt': [
                 'Welcome to AVA!',
-                '[style={size:1.2,top:0}]Subscribe now to gain access to Community services, ',
-                '[style={size:1.2,top:0}]information, and direct communication with',
-                '[style={size:1.2,top:0}]Community Leaders and Staff',
+                '[style={size:1.2}]Subscribe now to gain access to Community services, information, and direct communication with Community Leaders and Staff',
                 '',
-                '[style={size:1.2,top:0}]You will be redirected to our subscription partner site.',
-                `[style={size:1.2,top:0}]Return here after you've completed that form.`,
-                '[style={size:1.2,top:0}]Thank you!',
+                `[style={size:1.2}]You will be redirected to our subscription partner site.  Return here after you've completed that form.`,
+                '',
+                '[style={size:1.2}]Thank you!',
                 '',
               ],
               'link': 'https://buy.stripe.com/3cs5lzbSS9RXecwcMN',
@@ -406,7 +418,7 @@ export default Component => props => {
         }
         {promptForUser() &&
           <AVATextInput
-            titleText="AVA Sign-in"
+          titleText={customizationData ? customizationData.client_name : 'AVA Sign-in'}
             promptText={"User ID"}
             options={{ 'save_on_enter': true }}
             buttonText='Sign In'
@@ -436,7 +448,7 @@ export default Component => props => {
         }
         {promptForPassword() &&
           <AVATextInput
-            titleText={"AVA Sign-in"}
+          titleText={customizationData ? customizationData.client_name : 'AVA Sign-in'}
             promptText={"Password"}
             options={{ 'save_on_enter': true }}
             buttonText='Continue'
@@ -503,11 +515,14 @@ export default Component => props => {
               "Community Name",
               '[style={size:0.9,top:0}]Welcome to AVA!',
               '[style={size:0.9,top:0}]That e-Mail address is not yet associated with an AVA Account.',
-              '[style={size:0.9,top:0}]Enter your Senior Living Community name above and tap "Yes" to sign up.',
-              '[style={size:0.9,top:0}]You will be redirected to our subscription partner site.',              
+              '[style={size:0.9,top:0}]Enter your Senior Living Community name above and tap "Sign up".',
+              '[style={size:0.9,top:0}]You will be redirected to our subscription partner site.',
               `[style={size:0.9,top:0}]Return here after you've completed that form.`,
               '[style={size:0.9,top:0}]Thank you!',
               '[style={size:0.9,top:0}]'
+            ]}
+            valueText={[
+              (customizationData ? customizationData.client_name : null)
             ]}
             options={{ 'save_on_enter': true }}
             buttonText='Sign-up!'
@@ -534,7 +549,8 @@ export default Component => props => {
                 ],
                 pUser: AVAFollowUpData.pUser,
                 pSource: AVAFollowUpData.pSource,
-                client_name: enteredCommunityName,
+                client_name: enteredCommunityName[0],
+                client_id: (customizationData ? customizationData.client_id : null)
               });
               setDoneTrying(true);
               return 'subscription';
@@ -580,7 +596,7 @@ export default Component => props => {
                 [
                   {
                     "table": "People",
-                    "key": { "person_id": AVAFollowUpData.pUser },
+                    "key": { "person_id": AVAFollowUpData.pUser.toLowerCase() },
                     "data": {
                       "clients": [
                         {
@@ -601,7 +617,7 @@ export default Component => props => {
                   },
                   {
                     "table": "SessionsV2",
-                    "key": { "session_id": AVAFollowUpData.pUser },
+                    "key": { "session_id": AVAFollowUpData.pUser.toLowerCase() },
                     "data": {
                       "assigned_to": "friends&family",
                       "subscription_status": "pending",
@@ -611,6 +627,16 @@ export default Component => props => {
                   }
                 ]
               );
+              let request = {
+                client: AVAFollowUpData.client_id,
+                author: AVAFollowUpData.pUser.toLowerCase(),
+                person_id: AVAFollowUpData.pUser.toLowerCase(),
+                messageText:
+                  `The owner of this e-Mail address indicated their intention to subscribe to AVA in the ${AVAFollowUpData.client_id} client.  Please check the Stripe reports for more information.`,
+                recipientList: ['ava-support'],
+                subject: `New Subscription for ${AVAFollowUpData.pUser.toLowerCase()}`
+              };
+              await sendMessages(request);
               return (await genericLogin(AVAFollowUpData.pUser, AVAFollowUpData.pSource));
             }}
           />
@@ -631,36 +657,54 @@ export default Component => props => {
                 [
                   {
                     "table": "People",
-                    "key": { "person_id": AVAFollowUpData.pUser },
+                    "key": { "person_id": AVAFollowUpData.pUser.toLowerCase() },
                     "data": {
+                      "client_id": AVAFollowUpData.client_id || AVAFollowUpData.client_name,
+                      "name": {
+                        "first": AVAFollowUpData.pUser,
+                        "last": "New Subscriber"
+                      },
+                      "search_data": AVAFollowUpData.pUser.toLowerCase(),
+                      "messaging": {
+                        "email": AVAFollowUpData.pUser,
+                      },
+                      "preferred_method": "email",
                       "clients": [
                         {
                           "groups": [
-                            "friends&family",
-                            "ALL",
+                            "message_only",
                             "_TOP_"
                           ],
-                          "id": AVAFollowUpData.client_name
+                          "id": AVAFollowUpData.client_id || AVAFollowUpData.client_name
                         }
                       ],
                       "groups": [
-                        "friends&family",
-                        "ALL",
+                        "message_only",
                         "_TOP_"
                       ]
                     }
                   },
                   {
                     "table": "SessionsV2",
-                    "key": { "session_id": AVAFollowUpData.pUser },
+                    "key": { "session_id": AVAFollowUpData.pUser.toLowerCase() },
                     "data": {
-                      "client_id": AVAFollowUpData.client_name,
-                      "assigned_to": "friends&family",
-                      "subscription_status": "pending"
+                      "client_id": AVAFollowUpData.client_id || AVAFollowUpData.client_name,
+                      "user_id": AVAFollowUpData.pUser.toLowerCase(),
+                      "assigned_to": "message_only",
+                      "subscription_status": "inactive"
                     }
                   }
                 ]
               );
+              let request = {
+                client: AVAFollowUpData.client_id || AVAFollowUpData.client_name,
+                author: AVAFollowUpData.pUser.toLowerCase(),
+                person_id: AVAFollowUpData.pUser.toLowerCase(),
+                messageText: `The owner of this e-Mail address indicated their intention to subscribe to AVA in the ${AVAFollowUpData.client_id || AVAFollowUpData.client_name} client.  Please check the Stripe reports for more information.`,
+                recipientList: ['ava-support'],
+                subject: `New Subscription for ${AVAFollowUpData.pUser.toLowerCase()}`
+              };
+              await sendMessages(request);
               setMessageList([]);
               closeSnackbar();
               enqueueSnackbar(`Please enter your User ID`, { variant: 'info', persist: true });
@@ -1064,9 +1108,12 @@ export default Component => props => {
       currentPatient = currentProfile;
     }
     else {
+      if (!currentSession.patient_id && pLaunchUser) { 
+        currentSession.patient_id = pLaunchUser;
+      }
       [goodUser, currentPatient] = await getPerson(currentSession.patient_id);
       if (!goodUser) {
-        let eMessage = `Attempt to user account ${currentSession.patient_id} failed.  That Account is not set up properly in AVA.  Using ${pLaunchUser} instead.`;
+        let eMessage = `Attempt to use account ${currentSession.patient_id} failed.  That Account is not set up properly in AVA.  Using ${pLaunchUser} instead.`;
         await logAccessAttempt(pLaunchUser, '', false, eMessage);
         enqueueSnackbar(eMessage, { variant: 'error' });
         sendMessage('AVA', 'bootstrap', eMessage, 'ava_support');
