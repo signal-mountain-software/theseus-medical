@@ -1579,12 +1579,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   marginTop={(this_item.header ? 0 : 0.5)}
                   paddingTop={(this_item.header ? 0 : 1)}
                   border={(this_item.isChecked || (this_item.textValue && (this_item.textValue !== ''))) ? 1 : 'none'}
-                  key={`rowbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                  key={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                  id={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}`}
                 >
                   <Box
                     display='flex'
                     flexDirection='row'
-                    key={'row' + this_index}
+                    key={`rowbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                    id={`rowbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
                     className={classes.listItem}
                     mb={0.5}
                     mt={0.5}
@@ -1598,7 +1600,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   >
                     {this_item.checkbox &&
                       <Radio
-                        key={`radio-row${this_index}`}
+                      key={`checkbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                      id={`checkbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
                         checked={this_item.isChecked}
                         value={this_item.isChecked}
                         disableRipple
@@ -1611,12 +1614,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       <Box
                         display='flex'
                         flexDirection='row'
-                        key={`descriptor-row${this_index}`}
+                        key={`textoutbox_${selectedColumn}.${this_index}`}
+                        id={`textoutbox_${selectedColumn}.${this_index}`}
                         className={classes.listItem}
                         justifyContent='flex-start'
                         alignItems='center'
                       >
                         <Typography
+                          key={`textout_${selectedColumn}.${this_index}`}
+                          id={`textout_${selectedColumn}.${this_index}`}
                           style={this_item.style
                             ? AVATextStyle(this_item.style)
                             : (this_item.header
@@ -1634,9 +1640,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     {this_item.input &&
                       <TextField
                         className={classes.freeInput}
-                        id={'text' + this_index}
-                        variant={'standard'}
-                        key={'text' + this_index}
+                      variant={'standard'}
+                      key={`inputtextprompt_${selectedColumn}.${this_index}`}
+                      id={`inputtextprompt_${selectedColumn}.${this_index}`}
                         helperText={this_item.text}
                         multiline
                         inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
@@ -1654,13 +1660,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                   </Box>
                   {this_item.isChecked && this_item.desc &&
-                    <Typography style={AVATextStyle({ size: 0.7, margin: { left: 1, bottom: 0.8, right: 3 } })}>{this_item.desc}</Typography>
+                    <Typography
+                      key={`descriptiontext_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                      id={`descritpiontext_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                      style={AVATextStyle({ size: 0.7, margin: { left: 1, bottom: 0.8, right: 3 } })}
+                    >
+                      {this_item.desc}
+                    </Typography>
                   }
                   {this_item.isChecked
                     && dataRows.qualData.hasOwnProperty(this_item.text)
                     && dataRows.qualData[this_item.text].map((qR, qRndx) => (
                       <Box
-                        key={'qRow' + qRndx}
+                        key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
+                        id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
                         display="flex"
                         style={AVATextStyle({
                           margin: { left: 1.5, right: 1 },
@@ -1670,8 +1683,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         justifyContent="center"
                       >
                         <Box display='flex' flexDirection='column' justifyContent='center'
-                          alignItems='flex-start' key={'qrRow' + qR.title}>
+                          key={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
+                          id={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
+                          alignItems='flex-start'>
                           <Typography
+                            key={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
+                            id={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
                             style={AVATextStyle({
                               margin: { top: 0.8, bottom: 0, left: 0 },
                               padding: { left: 0, right: 3 },
@@ -1681,15 +1698,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                             {qR.title}
                           </Typography>
                           <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                            alignItems='center' flexWrap='wrap' key={'qrOpt' + qR.title}
+                            key={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
+                            id={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
+                            alignItems='center' flexWrap='wrap'
                           >
                             {qR.option && qR.option.map((opt, oX) => (
                               <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                alignItems='center' key={'qrOpt2' + oX}
+                                key={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                                id={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                            alignItems='center'
                               >
                                 {(!opt.type || (opt.type === 'checkbox')) &&
                                   <React.Fragment>
                                     <Checkbox
+                                      key={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                                      id={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                       className={classes.radioButton}
                                       size="small"
                                       onClick={() => {
@@ -1697,23 +1720,28 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       }}
                                       checked={isQualChecked(this_item.text, selectedColumn, this_index, qR.title, opt.display)}
                                     />
-                                    <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>{opt.display}</Typography>
+                                    <Typography
+                                      key={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                                      id={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                                      style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>{opt.display}</Typography>
                                   </React.Fragment>
                                 }
                                 {opt.type === 'prompt' &&
                                   <React.Fragment>
                                     <Checkbox
                                       className={classes.radioButton}
+                                      key={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                                      id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                       size="small"
                                       checked={isQualChecked(this_item.text, selectedColumn, this_index, qR.title, opt.display)}
                                     />
                                     <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>{opt.display}</Typography>
                                     <TextField
+                                      key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                                      id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                       style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
-                                      id={'text' + qRndx + oX}
                                       defaultValue={getQualTextValue(selectedColumn, this_index, this_item.text, qR.title, opt.display)}
                                       variant={'standard'}
-                                      key={'text' + qRndx + oX}
                                       multiline
                                       onChange={(event) => {
                                         optSelected(selectedColumn, this_index, this_item.text, qR.title, opt.display, event.target.value);

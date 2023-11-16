@@ -5,7 +5,7 @@ import { recordExists, isObject, cl, switchActiveAccount, resolveVariables, make
 import { makeTime, addDays, daysDiff } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getAllOccurrences } from '../../util/AVACalendars';
-import { getMemberList, prepareTargets, getAllGroups } from '../../util/AVAGroups';
+import { getMemberList, prepareTargets } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
@@ -1120,7 +1120,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             key={'personBox'}
             onClick={async () => {
               setPopupMenuOpen(false);
-              setGroupData(await getAllGroups(session.patient_id));
+              setGroupData(state.groups);
               setShowProfileEdit(true);
             }}
           >
@@ -1199,7 +1199,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               {!session?.kiosk_mode && (
                 <MenuItem onClick={async () => {
                   setPopupMenuOpen(false);
-                  setGroupData(await getAllGroups(session.patient_id));
+                  setGroupData(state.groups);
                   setShowProfileEdit(true);
                 }}>
                   <Box
@@ -1264,11 +1264,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 </MenuItem>
               }
               {(state.user.account_class
-                && ((state.user.account_class === 'master') || (state.user.account_class === 'support'))
+                && ((state.user.account_class === 'master') || (state.user.account_class === 'support') || (state.user.account_class === 'admin'))
               )
                 &&
                 <MenuItem onClick={async () => {
-                  setGroupData(await getAllGroups('*NEW~0', state.session.client_id));
+                  setGroupData(state.groups);
                   setPopupMenuOpen(false);
                   setShowAddAccount(true);
                 }}>

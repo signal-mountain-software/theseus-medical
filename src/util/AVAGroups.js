@@ -57,7 +57,23 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
     // What admin group do I belong to in the client_id?
     let allGroupObject = await getAllGroups(person_id, pClient_id);
     let myAdminGroup = await getGroup(allGroupObject.selectedID);
-    myClass = myAdminGroup.admin_class || 'local';
+    if (myAdminGroup.admin_class) {
+      myClass = myAdminGroup.admin_class;
+    }
+    else {
+      let clientGroupAssignments = await getCustomizations('group_assignments', pClient_id);
+      if (clientGroupAssignments && clientGroupAssignments.customization_value) { 
+        for (let accountClass in clientGroupAssignments.customization_value) { 
+          if (makeArray(clientGroupAssignments.customization_value[accountClass]).includes(myAdminGroup.group_id)) {
+            myClass = accountClass;
+            break;
+          }
+        }
+      }
+      if (!myClass) {
+        myClass = 'local';
+      }
+    }
   }
   // Now get a list of people that I can access
   let accessList = {};
