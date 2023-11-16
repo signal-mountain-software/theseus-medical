@@ -1,6 +1,6 @@
 import React from 'react';
 import { dbClient, lambda, makeArray, getCustomizations } from '../util/AVAUtilities';
-import { isMemberOf, accountAccess } from '../util/AVAGroups';
+import { isMemberOf, accountAccess, getAllGroups } from '../util/AVAGroups';
 import { makeName } from '../util/AVAPeople';
 import { sendMessages } from '../util/AVAMessages';
 import { useSnackbar } from 'notistack';
@@ -23,7 +23,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
-import { SET_PATIENT, SET_PROFILE, SET_SESSION, SET_USER } from '../contexts/Session/actions';
+import { SET_PATIENT, SET_PROFILE, SET_GROUPS, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 import AVATextInput from '../components/forms/AVATextInput';
 
 const useStyles = makeStyles(theme => ({
@@ -1197,6 +1197,9 @@ export default Component => props => {
     dispatch({ type: SET_USER, payload: currentProfile });
     dispatch({ type: SET_PATIENT, payload: currentPatient });
 
+    // synchronous load other data
+    loadSyncInfo(currentSession)
+
     let sessionInfo = await Auth
       .currentSession()
       .catch(e => {
@@ -1215,6 +1218,16 @@ export default Component => props => {
     localAVAReady = true;
     setAVAFollowUpData({ 'Completed': true });
     return true;
+  }
+
+  function loadSyncInfo(pSession) { 
+    console.log(`in loadSyncInfo with ${pSession}`);
+    getAllGroups(pSession.user_id, pSession.client_id)
+      .then(groupsObj => {
+        dispatch({ type: SET_GROUPS, payload: groupsObj });
+        console.log(`done with loadSyncInfo. Got groupsObj as ${groupsObj}`);
+      });
+    return;
   }
 
   async function adminAccount(currentSession) {
