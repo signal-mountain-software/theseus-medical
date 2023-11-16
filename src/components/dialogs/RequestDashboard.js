@@ -1,5 +1,5 @@
 import React from 'react';
-import { sentenceCase, makeArray, cl, titleCase, listFromArray } from '../../util/AVAUtilities';
+import { sentenceCase, makeArray, cl, titleCase, listFromArray, dbClient, recordExists } from '../../util/AVAUtilities';
 import { addDays, daysDiff, makeDate, sameDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
@@ -218,7 +218,6 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
 
   const { enqueueSnackbar } = useSnackbar();
 
-  // const [dataRows, setDataRows] = React.useState();
   const [loading, setLoading] = React.useState(false);
   const [filters, setFilters] = React.useState({
     rowLimit: 5,
@@ -229,10 +228,12 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
   const [statusDisplayed, setStatusDisplayed] = React.useState({});
 
   const [reactData, setReactData] = React.useState({
+    rebuilding: false,
     firstSelectedRowIndex: null,
     selectedPersonName: null,
     displayVersion: 0,
-    dataRows: []
+    dataRows: [],
+    requestIDs: []
   });
 
   const showDeleted = false;
@@ -315,12 +316,6 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
       }
       else { reactData.dataRows[pOptions.rowsToUpdate[x]].history = [historyLine]; }
       updateRows.push(reactData.dataRows[pOptions.rowsToUpdate[x]]);
-      reactData.dataRows.splice(pOptions.rowsToUpdate[x], 1);
-      /*
-      reactData.dataRows[pOptions.rowsToUpdate[x]] = await buildRequestDetails(r);
-      reactData.dataRows[pOptions.rowsToUpdate[x]].workData.checked = false;
-      reactData.dataRows[pOptions.rowsToUpdate[x]].workData.updated = historyLine;
-      */
       let xSelected = rowsSelected.findIndex(i => { return i === x; });
       if (xSelected > -1) {
         rowsSelected.splice(xSelected, 1);
@@ -332,7 +327,6 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
       delete w.workData;
       return w;
     }));
-    // setDataRows(dataRows);
     rowsDisplayed = [];
     await buildDashboard();
   }
@@ -499,15 +493,13 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
   }
 
   function OKToDisplay(this_item, index) {
-    if ((rowsDisplayed.length > filters.rowLimit)
-      || (!this_item.workData)
+    if ((!this_item.workData)
       || (filters.request_filter && !filteredRequest(this_item, filters.request_filter))
       || (this_item.workData.delete_flag && !showDeleted)) {
       let foundAt = rowsSelected.findIndex(r => { return r === index; });
       if (foundAt > -1) {   // can't be selected if it is filtered out (and therefore not displayed)
         rowsSelected.splice(foundAt, 1);
         reactData.dataRows[index].workData.checked = false;
-        // setDataRows(dataRows);
         updateReactData({
           dataRows: reactData.dataRows
         }, false);
@@ -773,7 +765,10 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
   }
 
   const buildDashboard = async () => {
-    // setLoading(true);
+    let local_rowsSelected = [];
+    updateReactData({
+      rebuilding: true
+    }, false);
     let qList = [];
     if (filter.person || filter.person_id) {
       filter.person_id = filter.person || filter.person_id;
@@ -804,6 +799,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
       filtering = true;
     }
     let newFilters = Object.assign(
+      filter,
       filters,
       {
         statusFilterList,
@@ -821,50 +817,94 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
         order: 'desc'
     }
     qList = await getServiceRequests(filter);
-    let limit = Math.min(filter.limit, qList.length);
+    let maxTimeStamp = 0;
+    reactData.dataRows = [];
+    reactData.requestIDs = [];
+    for (let x = 0; (x < qList.length); x++) {
+      if (qList[x].request_date > maxTimeStamp) {
+        maxTimeStamp = qList[x].request_date;
+      }      
+      let addedRowNumber = reactData.dataRows.push(await buildRequestDetails(qList[x])) - 1;
+      if ((!filters.request_filter || filteredRequest(qList[x], filters.request_filter))
+        && (local_rowsSelected.length === 0)
+        && (options.updateMode)
+      ) { 
+        reactData.dataRows[addedRowNumber].workData.checked = true;
+        local_rowsSelected.push(addedRowNumber);
+      }
+      reactData.requestIDs.push(qList[x].request_id);
+    }
+    updateReactData({
+      lastTimeStamp: maxTimeStamp,
+      rowsSelected: local_rowsSelected,
+      dataRows: reactData.dataRows,
+      requestIDs: reactData.requestIDs,
+      rebuilding: false
+    }, true);
+    filter.limit = Math.min(filters.rowLimit, 5) * 40;
+    if (qList.length === 0) {
+      enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
+    }
+    if (dashboard_idleTimer && dashboard_idleTimer.current) {
+      dashboard_idleTimer.current.start();
+      cl(`Idle timer started in dashboard at ${new Date().toLocaleString()}.`);
+    }
+  };
+
+  const extendDashboard = async () => {
+    if (reactData.rebuilding) {
+      return;
+    }
+    let qQ = { TableName: 'ServiceRequestLog' };
+    qQ.KeyConditionExpression = 'client_id = :c and log_time > :lt';
+    qQ.ExpressionAttributeValues = { ':c': session.client_id, ':lt': reactData.lastTimeStamp };
+    let qR = await dbClient
+      .query(qQ)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          console.log(`Security Violation or no Internet Connection`);
+        }
+        console.log({ 'Error reading ServiceRequests': error, index: qQ.IndexName, qQ });
+      });
     let newRecordsFound = false;
+    let maxTimeStamp = reactData.lastTimeStamp;
     let playAlert = false;
-    let okRows = 0;
-    for (let x = 0; ((x < qList.length) && (okRows < limit)); x++) {
-      if (reactData.dataRows.every(dRow => { return (dRow.local_key !== qList[x].local_key); })) { 
-        let newRowNumber = reactData.dataRows.push(await buildRequestDetails(qList[x])) - 1;
-        newRecordsFound = true;
-        if (OKToDisplay(reactData.dataRows[newRowNumber], newRowNumber)) {
-          okRows++;
-          if (!playAlert && !loading) {
-            playAlert = true;
+    if (recordExists(qR)) {
+      for (let x = 0; (x < qR.Items.length); x++) {
+        let newKey = qR.Items[x].request_id;
+        if (!reactData.requestIDs.includes(newKey)
+          && filters.request_type && filters.request_type.includes(qR.Items[x].request_type)
+        ) {
+          let request_timestamp = Number(newKey.split('~').pop());
+          if (!isNaN(request_timestamp)) {
+            maxTimeStamp = Math.max(maxTimeStamp, request_timestamp);
+            reactData.requestIDs.push(newKey);
+            newRecordsFound = true;
+            let qList = await getServiceRequests({
+              client_id: session.client_id,
+              request_id: newKey
+            });
+            if (!filters.foreign_key || (filters.foreign_key === qList[0].foreign_key)) {
+              let newRowNumber = reactData.dataRows.push(await buildRequestDetails(qList[0])) - 1;
+              if (OKToDisplay(reactData.dataRows[newRowNumber], newRowNumber)) {
+                playAlert = true;
+              }
+            }
           }
         }
       }
     }
     if (newRecordsFound) {
       updateReactData({
+        lastTimeStamp: maxTimeStamp,
         dataRows: reactData.dataRows
       }, true);
-      if (!loading && playAlert) {
+      if (playAlert) {
         play();
       }
     }
     filter.limit = Math.min(filters.rowLimit, 5) * 40;
-    /*
-    getServiceRequests(filter)
-      .then(result => {
-        let finalLimit = result.length;
-        for (let x = limit; x < finalLimit; x++) {
-          buildRequestDetails(result[x])
-            .then(data => {
-              qList[x] = data;
-              updateReactData({
-                dataRows: qList
-              }, false);
-              // setDataRows(qList);
-            });
-        }
-      });
-    */
-    if (qList.length === 0) {
-      enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
-    }
     if (dashboard_idleTimer && dashboard_idleTimer.current) {
       dashboard_idleTimer.current.start();
       cl(`Idle timer restarted in dashboard at ${new Date().toLocaleString()}.`);
@@ -971,7 +1011,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
       }
       else { i.workData.search_data += ` ~ open`; }
     }
-    i.workData.checked = false;
+    i.workData.checked = false;    
     i.workData.open = false;
     return i;
   }
@@ -986,13 +1026,29 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
       returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
     }
     req.selections.forEach(s => {
-      let dLine = s;
-      let parts = dLine.split(/[()]/);
-      returnMessage.push(['detail', parts.shift().trim()]);
-      if (parts.length > 0) {
-        let q = parts.shift().split(/[;,]/);
-        q.forEach(qx => {
-          returnMessage.push(['qual', qx.trim()]);
+      let dLine = s.trim();
+      let [selection, ...opts] = dLine.split(/[();,]/);
+      let options = opts.map(o => { return o.trim(); })
+      if (req.hasOwnProperty('qualifiers')
+        && req.qualifiers.hasOwnProperty(selection.trim())
+      ) {
+        Object.values(req.qualifiers[selection.trim()]).forEach(choiceList => {
+          choiceList.forEach(c => {
+            let choice = c.trim();
+            if (!options.includes(choice)) {
+              options.push(choice);
+            }
+          });
+        });
+      }
+      returnMessage.push(['detail', selection.trim()]);
+      if (options.length > 0) {
+        // let q = parts.shift().split(/[;,]/);
+        options.forEach(qx => {
+          let outO = titleCase(qx.trim());
+          if (outO !== '') {
+            returnMessage.push(['qual', outO]);
+          }
         })
       }
       if (s in req.textInput) {
@@ -1000,22 +1056,6 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
         delete req.textInput[s];
       }
       returnSearch += ` ${dLine}`;
-      if (s in req.qualifiers) {
-        for (let q in req.qualifiers[s]) {
-          let qLast = req.qualifiers[s][q].length - 1;
-          if (qLast >= 0) {
-            let qLine = ``;  // `${q} -`;
-            // eslint-disable-next-line
-            req.qualifiers[s][q].forEach((qV, qX) => {
-              qLine += ` ${qV}`;
-              returnSearch += ` ${qV}`;
-              if ((qX < qLast) && (qLast > 1)) { qLine += ','; }  // array longer than 2
-              if (qX === (qLast - 1)) { qLine += ' and'; }  // next to last entry in array
-            });
-            returnMessage.push(['qual', qLine]);
-          }
-        }
-      }
     });   // done with all selections; is there any text left?
     for (let k in req.textInput) {
       if (['-stamped', '-date', '-ymd'].some(w => { return k.includes(w); })) { continue; }
@@ -1098,7 +1138,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
             }}
             onIdle={async () => {
               cl(`Idle fired in dashboard at ${new Date().toLocaleString()}.  Last active at ${new Date(dashboard_idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(dashboard_idleTimer.current.state.lastIdle).toLocaleString()}`);
-              await buildDashboard();
+              await extendDashboard();
             }}
             startOnMount={true}
             debounce={250}
@@ -1527,7 +1567,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
                     >
                       {'First'}
                     </Button>
-                    {(rowsSelected.length === rowsDisplayed.length) &&
+                    {(rowsSelected.length > 0) &&
                       <Button
                         className={AVAClass.AVAButton}
                         style={{ backgroundColor: 'pink', color: 'black' }}

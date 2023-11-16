@@ -185,7 +185,7 @@ export async function putServiceRequest(body) {
     serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; });
   }
   if (body.messaging) {
-    let preparedMessages = await prepareMessage(body);
+    let preparedMessages = await prepareMessage(body, serviceRequestRec);
     if (preparedMessages.length > 0) {
       preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
       let rTime = makeDate(new Date().getTime());
@@ -278,7 +278,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
     if (recordExists(remembered_customizationsRec)) {
       serviceRequestRec.activity_key = remembered_customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code;
     }
-    if (!remembered_activityRec.hasOwnProperty(serviceRequestRec.activity_key)) {
+    if (!remembered_activityRec.hasOwnProperty(serviceRequestRec.activity_key) || !remembered_activityRec[serviceRequestRec.activity_key]) {
       remembered_activityRec[serviceRequestRec.activity_key] = await getActivity(serviceRequestRec.client_id, serviceRequestRec.activity_key);
     }
     let activityRec = remembered_activityRec[serviceRequestRec.activity_key];
@@ -295,7 +295,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
   }
   if (requestList.length > 1) {
     requestList.forEach((r, x) => {
-      r.multiPrint = {
+      requestList[x].multiPrint = {
         firstDoc: (x === 0),
         lastDoc: (x === (requestList.length - 1))
       };
@@ -309,7 +309,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
       return {
         success,
         preparedMessages,
-        'message': `${preparedMessages.length} message${(preparedMessages.length > 1) ? 's' : ''}`
+        'message': `Job complete! (${requestList.length} request${(requestList.length > 1) ? 's' : ''} prepared to print.)`
       };
     };
   }

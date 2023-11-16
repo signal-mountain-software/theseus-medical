@@ -44,7 +44,7 @@ export async function getMessages(body) {
   else { return []; }
 }
 
-export async function prepareMessage(inBodyData) {
+export async function prepareMessage(inBodyData, requestRec = {}) {
   let bodyList = [];
   let messageList = [];
   let results;
@@ -99,7 +99,7 @@ export async function prepareMessage(inBodyData) {
           break;
         }
         case 'mealTicket': {
-          [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request);
+          [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request, requestRec);
           if (results.attachments) {
             requestInfo.attachments = results.attachments;
           }
@@ -128,14 +128,22 @@ export async function prepareMessage(inBodyData) {
 
       if (requestInfo.hasOwnProperty('attachments')) {
         results.htmlText += '<br>';
-        // eslint-disable-next-line
-        requestInfo.attachments.forEach((a, x) => {
-          let fNArr = a.split('/').pop().split('.');
-          fNArr.pop();
-          let fName = decodeURI(fNArr.join('.'));
-          results.messageText += `\r\n\nAttachment ${fName}: ${a}`;
-          results.htmlText += `<br><a href=${a}>Attachment: ${fName}</a>`;
-        });
+        if (!(Array.isArray(requestInfo.attachments))) {
+          if (requestInfo.attachments.hasOwnProperty('Location')) {
+            results.messageText += `\r\n\nAttachment ${requestInfo.attachments.Key}: ${requestInfo.attachments.Location}`;
+            results.htmlText += `<br><a href=${requestInfo.attachments.Location}>Attachment: ${requestInfo.attachments.Key}</a>`;
+          }
+        }
+        else {
+          // eslint-disable-next-line
+          requestInfo.attachments.forEach((a, x) => {
+            let fNArr = a.split('/').pop().split('.');
+            fNArr.pop();
+            let fName = decodeURI(fNArr.join('.'));
+            results.messageText += `\r\n\nAttachment ${fName}: ${a}`;
+            results.htmlText += `<br><a href=${a}>Attachment: ${fName}</a>`;
+          });
+        }
       }
 
       returnResults.push(results);
@@ -544,10 +552,7 @@ export async function formatRequestDetails(body, summaryType) {
   let s3Resp;
   if (!body.multiPrint || body.multiPrint.lastDoc) {
     pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
-    savePDF(doc, { local: true });
-    if (body.PDF) {
-      window.open(doc.output('bloburl'), '_blank');
-    }
+    await savePDF(doc, { local: !body.PDF, S3: !!body.PDF });
   }
   return [htmlMessage, rawMessage, s3Resp];
 }
@@ -557,7 +562,7 @@ export async function savePDF(doc, options = {}) {
   let s3Resp;
   let responseStatus = 400;
   let responseData = { message: [] };
-  let saveName = options.key || options.name || `AVAPDF.${new Date().getTime()}`;
+  let saveName = options.key || options.name || `AVA_${new Date().getTime()}`;
   if (options.S3) {
     let goodS3 = true;
     s3Resp = await s3
@@ -583,9 +588,10 @@ export async function savePDF(doc, options = {}) {
     }
   }
   if (options.local) {
-    doc.save(saveName);
+    doc.save(`${saveName}.PDF`);
     responseStatus++;
     responseData.message.push(`Locally saved as ${saveName}`);
+    responseData.saveName = `${saveName}.PDF`;
   }
   return {
     responseStatus,
@@ -594,7 +600,7 @@ export async function savePDF(doc, options = {}) {
 
 }
 
-export async function mealTicketFormat(body) {
+export async function mealTicketFormat(body, requestRec = {}) {
 
   // *********** GET ALL REQ THAT MATCH LOCAL_KEY IN THE BODY *********** //
   let seat_key = body.tableNumberKey || 'Seat Assignment';
@@ -610,7 +616,14 @@ export async function mealTicketFormat(body) {
     local_key: body.local_key,
     client_id: body.client || body.client_id
   });
-  if (requestList.length === 0) { return null; }
+  if (requestList.length === 0) {
+    if (Object.keys(requestRec).length > 0) {
+      requestList.push(requestRec);
+    }
+    else {
+      return null;
+    }
+  }
   //  Sort the requests
   requestList.sort((a, b) => {
     let aSort, bSort;
@@ -689,14 +702,14 @@ export async function mealTicketFormat(body) {
   // ********** HEADER ********** //
   // Pick-off the first request for Header info for the ticket
   let this_request = requestList[0];
-  let [server_id, order_timestamp] = this_request.request_id.split('~');
-  let server_name = await makeName(server_id);
+  let [author_id, order_timestamp] = this_request.request_id.split('~');
+  let author_name = await makeName(author_id);
   let table_key = body.tableNumberKey || 'Table Number';
   style = `"text-align:center; font-size: ${page.font.size.small};"`;
-  let outServer = titleCase(server_name);
-  pdfLineMealTicket(`Server: ${outServer}`, page.font.size.small, 'normal', 0, -0.2, 0, { align: 'center' });
-  htmlText.push(`<dt style=${style}>Server: ${outServer}</dt>`);
-  plainText.push(outServer);
+  let outAuthor = titleCase(author_name);
+  pdfLineMealTicket(`Created by: ${outAuthor}`, page.font.size.small, 'normal', 0, -0.2, 0, { align: 'center' });
+  htmlText.push(`<dt style=${style}>Created by: ${outAuthor}</dt>`);
+  plainText.push(outAuthor);
   let outTime = makeDate(order_timestamp).absolute;
   pdfLineMealTicket(`${outTime}`, page.font.size.small, 'normal', 0, 0, 0, { align: 'center' });
   htmlText.push(`<dt style=${style}>${outTime}</dt>`);
@@ -728,18 +741,30 @@ export async function mealTicketFormat(body) {
     // eslint-disable-next-line
     this_request.original_request.selections.forEach(s => {
       style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em; padding-left: 0;"`;
-      let [selection, options] = s.split(/[()]/);
+      let [selection, ...options] = s.split(/[();,]/);
+      if (this_request.original_request.hasOwnProperty('qualifiers')
+        && this_request.original_request.qualifiers.hasOwnProperty(selection.trim())
+      ) { 
+        Object.values(this_request.original_request.qualifiers[selection.trim()]).forEach(choiceList => { 
+          choiceList.forEach(choice => {
+            if (!options.includes(choice)) {
+              options.push(choice);
+            }
+          })
+        })
+    }
       pdfLineMealTicket(selection, page.font.size.medium, 'normal');
       htmlText.push(`<div style=${style}>${selection}</div>`);
       plainText.push(selection);
-      if (options) {
-        style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
-        let optionList = options.split(/[,;]/g);
-        optionList.forEach((o, i) => {
-          let outO = titleCase(o);
-          pdfLineMealTicket(outO, page.font.size.small, 'normal', 1, (i === 0 ? -0.2 : -0.1), ((i === (optionList.length - 1)) ? 0.2 : 0));
-          htmlText.push(`<div style=${style}><i>${outO}</i></div>`);
-          plainText.push(outO);
+      if (options.length > 0) {
+        style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;        
+        options.forEach((o, i) => {
+          let outO = titleCase(o.trim());
+          if (outO !== '') {
+            pdfLineMealTicket(outO, page.font.size.small, 'normal', 1, (i === 0 ? -0.2 : -0.1), ((i === (options.length - 1)) ? 0.2 : 0));
+            htmlText.push(`<div style=${style}><i>${outO}</i></div>`);
+            plainText.push(outO);
+          }
         });
       }
     });

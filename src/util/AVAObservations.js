@@ -58,15 +58,16 @@ export async function getObservations(pClient, pKey, options = {}) {
   }
   else {
     pKey = await resolveVariables(pKey, options.session);
+    let qQ = {
+      KeyConditionExpression: 'composite_key = :p',
+      ExpressionAttributeValues: { ':p': `${pClient}~${pKey}` },
+      TableName: "Observations",
+      IndexName: "sort_order-index"
+    }
     observations = await dbClient
-      .query({
-        KeyConditionExpression: 'composite_key = :p',
-        ExpressionAttributeValues: { ':p': `${pClient}~${pKey}` },
-        TableName: "Observations",
-        IndexName: "sort_order-index"
-      })
+      .query(qQ)
       .promise()
-      .catch(error => { cl(`***getAct 956- ERR reading Observations*** caught error is: ${error}`); });
+      .catch(error => { cl(`***getAct 956- ERR reading Observations*** caught error is: ${error}`, qQ); });
   }
   if (recordExists(observations)) {
     let oL = observations.Items.length;
@@ -228,13 +229,14 @@ export async function getObservationOptions(pObs) {
 }
 
 export async function getActivity(pClient, pCode) {
+  let qQ = {
+    Key: { client_id: pClient, activity_code: pCode },
+    TableName: "Activities"
+  }
   let activityRec = await dbClient
-    .get({
-      Key: { client_id: pClient, activity_code: pCode },
-      TableName: "Activities"
-    })
+    .get(qQ)
     .promise()
-    .catch(error => { cl(`***getAct 956- ERR reading Observations*** caught error is: ${error}`); });
+    .catch(error => { cl(`***ERR reading Activity*** caught error is: ${error}`, qQ); });
   if (recordExists(activityRec)) {
     return activityRec.Item;
   }
