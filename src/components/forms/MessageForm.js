@@ -3,6 +3,7 @@ import { useSnackbar } from 'notistack';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { messageHistory, getMessages } from '../../util/AVAMessages';
 import { extract, dbClient, lambda } from '../../util/AVAUtilities';
+import { AVATextStyle } from '../../util/AVAStyles';
 
 import List from '@material-ui/core/List';
 
@@ -602,7 +603,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
       p={2}
       fullScreen
     >
-      {messageList && messageList.length > 0 &&
+      {messageList &&
         <React.Fragment>
           <DialogContentText
             className={classes.title}
@@ -619,6 +620,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             variant={'standard'}
             autoComplete='off'
           />
+          {(messageList.length > 0) &&
           <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
             <List  >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -775,6 +777,14 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               ))}
             </List>
           </Paper>
+          }
+          {(messageList.length === 0) &&
+            <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
+              <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >
+                {`There are no messages to show`}
+              </Typography>
+            </Box>
+          }
           {
             promptForMessage &&
             <MakeMessage
@@ -876,7 +886,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
             </DialogActions>
           }
         </React.Fragment >
-      }
+      }      
     </Dialog >
   );
 };
