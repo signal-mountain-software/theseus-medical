@@ -332,7 +332,7 @@ export async function getGroupsResponsibleFor(person_id, options) {
       let this_group = everyGroup.Items[g];
       if (!(this_group.group_id in returnObject)) {
         if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
-          || (options && options.account_class && (['master', 'support'].includes(options.account_class)))) {
+          || (options && options.account_class && (['master', 'support', 'admin'].includes(options.account_class)))) {
           returnObject[this_group.group_id] = {
             group_name: this_group.name,
             group_id: this_group.group_id,
@@ -554,7 +554,6 @@ export async function getMemberList(pGroups, pClient_id, options) {
             }
             returnArray.push(i);
           }
-
         }
       };
     }

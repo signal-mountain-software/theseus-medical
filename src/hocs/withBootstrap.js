@@ -1,18 +1,16 @@
 import React from 'react';
 import { dbClient, lambda, makeArray, getCustomizations } from '../util/AVAUtilities';
-import { isMemberOf, accountAccess, getAllGroups } from '../util/AVAGroups';
+import { isMemberOf, accountAccess, getMemberList, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
 import { makeName } from '../util/AVAPeople';
 import { sendMessages } from '../util/AVAMessages';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
-import { AVADefaults } from '../util/AVAStyles';
+import { AVADefaults, AVATextStyle } from '../util/AVAStyles';
 import AVAConfirm from '../components/forms/AVAConfirm';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
-import Card from '@material-ui/core/Card';
-import CardMedia from '@material-ui/core/CardMedia';
 import Typography from '@material-ui/core/Typography';
 import Dialog from '@material-ui/core/Dialog';
 
@@ -52,7 +50,7 @@ export default Component => props => {
   // Constants and React state variables
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
-  const { dispatch } = useSession();
+  const { dispatch, state } = useSession();
 
   const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
 
@@ -70,6 +68,23 @@ export default Component => props => {
   const AVA_environment = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
   const [messageList, setMessageList] = React.useState([]);
+
+  const [reactData, setReactData] = React.useState({
+    currentClientLogo: 
+      ((state.session && state.session.client_logo)
+          ? state.session.client_logo
+          : process.env.REACT_APP_AVA_LOGO
+      )
+  });
+
+  const updateReactData = (newData, force = false) => {
+    for (let oKey in newData) {
+      setReactData((prevValues) => ({
+        ...prevValues,
+        [oKey]: newData[oKey],
+      }));
+    }    
+  };
 
   const allParams = useParams();
   function useParams() {
@@ -358,6 +373,8 @@ export default Component => props => {
   }
 
   if (!AVAReady && !localAVAReady) {
+    let rawSessionStorage = sessionStorage.getItem('AVASessionData');
+    let sessionObject = rawSessionStorage ? JSON.parse(rawSessionStorage) : {};
     return (
       <Dialog
         open={!AVAReady && !localAVAReady}
@@ -370,20 +387,37 @@ export default Component => props => {
             key={'loadingBox'}
             ml={2} mr={2} mt={20}
           >
-            <Card
-              className={classes.logoSmall}
-              raised={false}
-              variant='elevation' elevation={0}
+            <Box
+              display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+              key={'loadingBox'}
+              ml={2} mr={2} mb={2} mt={2}
+              minWidth={250}
+              maxWidth={250}
+              minHeight={250}
+              maxHeight={250}
+              style={{ borderRadius: '120px 120px 120px 120px', backgroundColor: 'white', textDecoration: 'none' }}
             >
-              <CardMedia
+              <Box
                 component="img"
-                image={process.env.REACT_APP_AVA_LOGO}
-                alt='AVA'
+                mb={2}
+                
+                minHeight={'40%'}
+                maxHeight={'40%'}
+                alt=''
+                src={reactData.currentClientLogo}
               />
-            </Card>
-            <Typography align='center'>
-              {`AVA version ${process.env.REACT_APP_AVA_VERSION}${AVA_environment}`}
-            </Typography>
+              <React.Fragment>
+                <Box
+                  display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                  flexWrap='wrap' textOverflow='ellipsis' width='100%' overflow={'hidden'}
+                  key={'loadingBox'}
+                  mb={2}
+                >
+                  <Typography style={AVATextStyle({ size: 1.5, color: 'black', align: 'center' })}  >{`Loading AVA`}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.8, color: 'black', align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                </Box>
+              </React.Fragment>
+            </Box>
           </Box>
         </React.Fragment>
         {testModeErrorTrap() &&
@@ -418,7 +452,7 @@ export default Component => props => {
         }
         {promptForUser() &&
           <AVATextInput
-          titleText={customizationData ? customizationData.client_name : 'AVA Sign-in'}
+            titleText={customizationData ? customizationData.client_name : 'AVA Sign-in'}
             promptText={"User ID"}
             options={{ 'save_on_enter': true }}
             buttonText='Sign In'
@@ -448,7 +482,7 @@ export default Component => props => {
         }
         {promptForPassword() &&
           <AVATextInput
-          titleText={customizationData ? customizationData.client_name : 'AVA Sign-in'}
+            titleText={customizationData ? customizationData.client_name : 'AVA Sign-in'}
             promptText={"Password"}
             options={{ 'save_on_enter': true }}
             buttonText='Continue'
@@ -902,6 +936,9 @@ export default Component => props => {
       });
     if (recordExists(logoRec)) {
       sessionRec.Item.client_icon = logoRec.Item.icon;
+      updateReactData({
+        currentClientLogo: sessionRec.Item.client_icon
+      })
     }
     setDoneTrying(true);
     return [true, sessionRec.Item];
@@ -1108,7 +1145,7 @@ export default Component => props => {
       currentPatient = currentProfile;
     }
     else {
-      if (!currentSession.patient_id && pLaunchUser) { 
+      if (!currentSession.patient_id && pLaunchUser) {
         currentSession.patient_id = pLaunchUser;
       }
       [goodUser, currentPatient] = await getPerson(currentSession.patient_id);
@@ -1190,15 +1227,13 @@ export default Component => props => {
       currentSession.adminAccount = await adminAccount(currentSession, currentPatient);
     }
 
-    enqueueSnackbar(`Welcome to AVA!`, { variant: 'success' });
-
     dispatch({ type: SET_SESSION, payload: currentSession });
     dispatch({ type: SET_PROFILE, payload: currentProfile });
     dispatch({ type: SET_USER, payload: currentProfile });
     dispatch({ type: SET_PATIENT, payload: currentPatient });
 
     // synchronous load other data
-    loadSyncInfo(currentSession)
+    loadSyncInfo(currentSession, currentProfile);
 
     let sessionInfo = await Auth
       .currentSession()
@@ -1220,12 +1255,37 @@ export default Component => props => {
     return true;
   }
 
-  function loadSyncInfo(pSession) { 
+  function loadSyncInfo(pSession) {
     console.log(`in loadSyncInfo with ${pSession}`);
+    let groupsObj = {};
+    let membersObj = {};
+    let belongsObj = {};
+    getMemberList(['*all'], pSession.client_id, { "sort": true, "exclude": false, "withSession": true })
+      .then(members => {
+        dispatch({ type: SET_GROUPS, payload: Object.assign(groupsObj, belongsObj, members) });
+        console.log(`done with loadSyncInfo Members. Got members as ${members}`);
+        membersObj = members;
+      })
+      .catch(error => {
+        console.log(`error in loadSyncInfo Members. Message is ${error.message}`);
+      });
     getAllGroups(pSession.user_id, pSession.client_id)
-      .then(groupsObj => {
-        dispatch({ type: SET_GROUPS, payload: groupsObj });
-        console.log(`done with loadSyncInfo. Got groupsObj as ${groupsObj}`);
+      .then(groups => {
+        dispatch({ type: SET_GROUPS, payload: Object.assign(belongsObj, membersObj, groups) });
+        console.log(`done with loadSyncInfo Groups. Got groups as ${groups}`);
+        groupsObj = groups;
+      })
+      .catch(error => {
+        console.log(`error in loadSyncInfo Groups. Message is ${error.message}`);
+      });
+    getGroupsBelongTo(pSession.user_id, { sort: true, account_class: pSession.adminAccount ? 'master' : 'local' })
+      .then(belongsTo => {
+        dispatch({ type: SET_GROUPS, payload: Object.assign(membersObj, groupsObj, { belongsTo }) });
+        console.log(`done with loadSyncInfo Belongs to. Got belongs to as ${belongsTo}`);
+        belongsObj = { belongsTo };
+      })
+      .catch(error => {
+        console.log(`error in loadSyncInfo Belongs to. Message is ${error.message}`);
       });
     return;
   }

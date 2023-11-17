@@ -512,11 +512,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return;
   };
 
-  const screenStatus = (statusMessage, progressPct, progressWidth) => {
+  const screenStatus = (statusMessage, progressPct, progressWidth, interimMenu) => {
     setLoading(statusMessage);
     setProgress(progressPct);
     setPWidth(progressWidth * 100);
     setForceRedisplay(!forceRedisplay);
+    setMainMenu(interimMenu);
   };
 
   const updateFavorites = async (pType, activityRowIndex) => {
@@ -927,7 +928,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     // if there are two or more "." in the value, use the value itself 
     if (a.length > 2) {
       return this_value;
-    }    
+    }
     let dValue = await resolveVariables(a.pop(), session, { ignoreArrayCheck: true });
     // if anything remains in array a (after the pop above), the value was in the form instruction=value
     // we'll act as per that instruction here
@@ -1034,7 +1035,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           break;
         }
         default: {
-          if (key && (typeof(dValue) === 'string') && (key !== 'default')) {
+          if (key && (typeof (dValue) === 'string') && (key !== 'default')) {
             dValue = `${key}.${dValue}`;
           }
         }
@@ -1216,8 +1217,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               }
               {(
                 state.hasOwnProperty('accessList') &&
-                  state.accessList.hasOwnProperty('subscription') &&
-                  state.accessList.subscription.subscription_active
+                state.accessList.hasOwnProperty('subscription') &&
+                state.accessList.subscription.subscription_active
               )
                 &&
                 <MenuItem onClick={() => {
@@ -1237,8 +1238,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   state.accessList.hasOwnProperty(session.client_id) &&
                   state.accessList[session.client_id].hasOwnProperty('count')
                   && (
-                  (state.accessList[session.client_id].count.proxy > 0) ||
-                  (state.accessList[session.client_id].count.full > 0)
+                    (state.accessList[session.client_id].count.proxy > 0) ||
+                    (state.accessList[session.client_id].count.full > 0)
                   )
                 )
                 ||
@@ -1352,52 +1353,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           </Menu>
         </Box>
 
-        {/* Loading spinner */}
-        {loading &&
-          <Box
-            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={2} mr={2} mb={2} mt={8}
-          >
-            <Box
-              component="img"
-              mb={2}
-              minWidth={150}
-              maxWidth={150}
-              alt=''
-              src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
-            />
-            <React.Fragment>
-              <Box
-                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                flexWrap='wrap' textOverflow='ellipsis' width='100%' overflow={'hidden'}
-                key={'loadingBox'}
-                mb={2}
-              >
-                <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
-                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                {loading.startsWith('Common activities') ?
-                  <Box
-                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                    key={'loadingWordBox'}
-                  >
-                    <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
-                    <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
-                  </Box>
-                  :
-                  <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
-                }
-              </Box>
-              <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
-              <CircularProgress />
-            </React.Fragment>
-          </Box>
-        }
-
         {/* AVA Menu */}
-        {mainMenu && mainMenu.length > 0 && !loading &&
-          <Paper component={Box} variant='outlined' overflow='auto'>
+        {mainMenu && mainMenu.length > 0 &&
+          <Paper component={Box} variant='outlined' overflow='auto' minHeight={'70%'}>
             <List >
               {currentMenu !== 'main' &&
                 <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
@@ -1609,6 +1567,43 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </List>
           </Paper>
         }
+        {mainMenu && mainMenu.length > 0 && loading &&
+          <Box
+            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+            key={'lowerloadingBoxWrapper'}
+            id={'lowerloadingBoxWrapper'}
+            ml={2} mr={2} mb={1} mt={1}
+          >
+            <React.Fragment>
+              <Box
+                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                flexWrap='wrap' textOverflow='ellipsis' width='100%' overflow={'hidden'}
+                key={'loadingBox'}
+                id={'loadingBox'}
+                mb={2}
+              >
+                <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
+                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                {loading.startsWith('Common activities') ?
+                  <Box
+                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                    key={'groupActivitiesBox'}
+                    id={'groupActivitiesBox'}
+                  >
+                    <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
+                  </Box>
+                  :
+                  <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
+                }
+              </Box>
+              <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
+              <CircularProgress />
+            </React.Fragment>
+          </Box>
+        }
+        
         {showPersonSelect &&
           <SwitchPatientDialog
             open={showPersonSelect}

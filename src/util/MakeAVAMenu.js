@@ -164,7 +164,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     if (requestor.hasOwnProperty('favorite_activities')) {
       aL = requestor.favorite_activities.length;
       for (let a = 0; a < aL; a++) {
-        screenStatus('Loading Favorites', ((a / aL) * 100), ((aL / 40) + .75));
+        screenStatus('Loading Favorites', ((a / aL) * 100), ((aL / 40) + .75), returnArray);
         let this_activity = requestor.favorite_activities[a];
         let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Favorite');
         if (this_row) { returnArray.push(this_row); }
@@ -182,7 +182,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-idea-sharing-64.png';
       let aL = requestor.priority_activities.length;
       for (let a = 0; a < aL; a++) {
-        screenStatus('Priority Items', ((a / aL) * 100), ((aL / 40) + .75));
+        screenStatus('Priority Items', ((a / aL) * 100), ((aL / 40) + .75), returnArray);
         let this_activity = requestor.priority_activities[a];
         let this_row = await addRow(this_activity, 'main', null, null, sectionSort, sectionName, sectionColor, sectionIcon, 'Priorities');
         if (this_row) { returnArray.push(this_row); }
@@ -219,7 +219,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       if (!this_group.hasOwnProperty('common_activities')) { continue; }
       for (let a = 0; a < this_group.common_activities.length; a++) {
         let aL = this_group.common_activities.length;
-        screenStatus(`Common activities for ${this_group.name}`, ((a / aL) * 100), ((aL / 40) + .75));
+        screenStatus(`Common activities for ${this_group.name}`, ((a / aL) * 100), ((aL / 40) + .75), returnArray);
         let this_activity = this_group.common_activities[a];
         let overrideColor = '';
         let overrideIcon = '';
