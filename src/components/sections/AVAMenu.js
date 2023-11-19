@@ -2,9 +2,8 @@ import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
 import { recordExists, isObject, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda, deepCopy } from '../../util/AVAUtilities';
-import { makeTime, addDays, daysDiff } from '../../util/AVADateTime';
+import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
-import { getAllOccurrences } from '../../util/AVACalendars';
 import { getMemberList, prepareTargets } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
@@ -517,7 +516,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     setProgress(progressPct);
     setPWidth(progressWidth * 100);
     setForceRedisplay(!forceRedisplay);
-    setMainMenu(interimMenu);
+    if (interimMenu) {
+      setMainMenu(interimMenu);
+    }
   };
 
   const updateFavorites = async (pType, activityRowIndex) => {
@@ -847,6 +848,24 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   };
 
   async function getActivityDetail(pActRec) {
+    if (pActRec.preLoad_code) {
+      let preLoaded = await dbClient
+        .get({
+          Key: {
+            client_id: session.client_id,
+            preLoad_key: pActRec.preLoad_code
+          },
+          TableName: "PreLoads",
+        })
+        .promise()
+        .catch(error => {
+          console.log({ 'Bad get on Customizations - caught error is': error });
+        });
+      if (recordExists(preLoaded)) {
+        setSelected(preLoaded.Item.preLoad_data.activityRec);
+        return preLoaded.Item.preLoad_data;
+      }
+    }
     let resolvedActivity = await makeObservationList(pActRec.activity_rec || pActRec.activity_code, session);
     resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
     [resolvedActivity.activityRec.default_value, resolvedActivity.activityRec.default_object] = await prepareDefaults(pActRec);
@@ -977,31 +996,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           break;
         }
         case 'events': {
-          setLoading('Loading');
-          setForceRedisplay(!forceRedisplay);
-          let date_offset = 7;
-          switch (dValue) {
-            case 'future': { date_offset = 7; break; }
-            case 'past':
-            case 'history': { date_offset = -7; break; }
-            default: {
-              let s = Number(dValue);
-              if (s) { date_offset = s; break; }
-            }
-          }
-          let rightNow = new Date();
-          let offset_date = addDays(rightNow, date_offset);
-          screenStatus('Retreiving the Calendar', 0, daysDiff(rightNow, offset_date));
-          let oList = await getAllOccurrences(
-            {
-              client_id: session.client_id,
-              start_date: ((date_offset < 0) ? offset_date : rightNow),
-              end_date: ((date_offset >= 0) ? offset_date : rightNow)
-            },
-            screenStatus
-          );
-          dValue = deepCopy(oList);
-          setLoading(false);
+          dValue = deepCopy(state.calendar);
           break;
         }
         case 'activities': {
@@ -1100,7 +1095,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }
           }}
           onIdle={async () => {
-            //            enqueueSnackbar(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`, { variant: 'warning' });
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
             await updateAVA(sectionOpen, mainMenu);
           }}
@@ -1355,7 +1349,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
         {/* AVA Menu */}
         {mainMenu && mainMenu.length > 0 &&
-          <Paper component={Box} variant='outlined' overflow='auto' minHeight={'70%'}>
+          <Paper component={Box} variant='outlined' overflow={'auto'} >
             <List >
               {currentMenu !== 'main' &&
                 <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
@@ -1567,7 +1561,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </List>
           </Paper>
         }
-        {mainMenu && mainMenu.length > 0 && loading &&
+
+        {/* Loading Box */}
+        {mainMenu && mainMenu.length > 0 &&
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'
             key={'lowerloadingBoxWrapper'}
@@ -1580,11 +1576,19 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 flexWrap='wrap' textOverflow='ellipsis' width='100%' overflow={'hidden'}
                 key={'loadingBox'}
                 id={'loadingBox'}
-                mb={2}
               >
-                <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
-                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                {loading.startsWith('Common activities') ?
+                {loading &&
+                  <React.Fragment>
+                    <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
+                      {`AVA version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+                    </Typography>
+                  </React.Fragment>
+                }
+                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
+                  {`AVA for ${state.session.client_name}`}
+                </Typography>
+                {loading && loading.startsWith('Common activities') &&
                   <Box
                     display='flex' flexDirection='column' justifyContent='center' alignItems='center'
                     flexWrap='wrap' textOverflow='ellipsis' width='100%'
@@ -1594,16 +1598,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
                     <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
                   </Box>
-                  :
+                }
+                {loading && !loading.startsWith('Common activities') &&
                   <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
                 }
               </Box>
-              <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
-              <CircularProgress />
+              {loading &&
+                <React.Fragment>
+                  <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
+                  <CircularProgress />
+                </React.Fragment>
+              }
             </React.Fragment>
           </Box>
         }
-        
+
         {showPersonSelect &&
           <SwitchPatientDialog
             open={showPersonSelect}
@@ -1613,6 +1622,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }}
           />
         }
+
         {showProfileEdit &&
           <PatientDialog
             patient={patient}
@@ -1626,6 +1636,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }}
           />
         }
+
         {showAddAccount &&
           <PatientDialog
             patient={{
@@ -1678,6 +1689,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             onSelected={() => { }}
           />
         }
+
         {/* Confirm Fact before saving */
           (needsConfirmation > -1) &&
           <AVAConfirm

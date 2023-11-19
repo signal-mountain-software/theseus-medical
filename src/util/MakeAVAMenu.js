@@ -1,10 +1,11 @@
 import {
-  resolveVariables, stringToColor, cl, clt, recordExists,
+  resolveVariables, stringToColor, cl, clt, recordExists, uuid,
   dbClient, makeArray, isObject, deepCopy, deepResolve, makeObject
 } from '../util/AVAUtilities';
 import { getPerson } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
-import { getGroup } from '../util/AVAGroups';
+import { getGroup, getMemberList, prepareTargets } from '../util/AVAGroups';
+import { makeObservationList } from '../util/AVAObservations';
 
 const AVAIcon = process.env.REACT_APP_AVA_LOGO;
 
@@ -127,7 +128,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           else { mRecs.Items[m].sort_order = ''; }
         }
         mRecs.Items[m].resolved = await resolveVariables(`%%${mRecs.Items[m].sort_order}%%`, { client_id: masterClient, patient_id: pPerson, user_id: pPerson });
-        mRecs.Items[m].resolved = mRecs.Items[m].resolved.replace(/%%/g,'');
+        mRecs.Items[m].resolved = mRecs.Items[m].resolved.replace(/%%/g, '');
       }
       mRecs.Items.sort((a, b) => {
         if (a.resolved > b.resolved) { return 1; }
@@ -155,7 +156,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     if (!requestor.hasOwnProperty('name') || !requestor.name.hasOwnProperty('first')) {
       requestor.name = {
         first: requestor.person_id
-      }
+      };
     }
     sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} favorites`;
     sectionColor = '#6bb44b';
@@ -228,7 +229,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         }
         if ((typeof (this_activity) === 'string') && this_activity.includes('~[auth=')) {
           let aPieces = this_activity.match(/~\[auth=.+|\]/g);
-          let foundAt = aPieces.findIndex(p => { return (p === '~[auth=view]'); })
+          let foundAt = aPieces.findIndex(p => { return (p === '~[auth=view]'); });
           if (foundAt > -1) {
             if ((state.accessList[masterClient].groups.hasOwnProperty(this_group.group_id))
               && (state.accessList[masterClient].groups[this_group.group_id] === 0)
@@ -238,7 +239,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           }
           this_activity = this_activity.replace('~[auth=view]', '');
         }
-        if ((typeof(this_activity) === 'string') && (this_activity.startsWith('~~'))) {
+        if ((typeof (this_activity) === 'string') && (this_activity.startsWith('~~'))) {
           if (this_activity.includes('~[adopt=')) {
             let [, oGroup,] = this_activity.split(/~\[adopt=|\]/g);
             let oClient;
@@ -258,7 +259,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           }
           else { allowDuplicates = false; }
           if (this_activity.includes('~[color=')) {
-            let [front, oColor, back] = this_activity.split(/~\[color=|\]/g); 
+            let [front, oColor, back] = this_activity.split(/~\[color=|\]/g);
             overrideColor = oColor;
             this_activity = front;
             if (back) { this_activity += back; };
@@ -278,7 +279,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
             sectionSort = sectionKeys[1];
             sectionName = sectionKeys[1];
           }
-          if (sectionName.startsWith('section=')) { 
+          if (sectionName.startsWith('section=')) {
             sectionName = sectionName.split(/=(.*)/)[1];
           }
           if (sectionName.startsWith('submenu=')) {
@@ -397,10 +398,10 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
 
     // Filter the result to remove sections or functions prohibited by People record
     if (requestor.hasOwnProperty('prohibited')) {
-      if (!requestor.prohibited.activity_code) { requestor.prohibited.activity_code = []; } 
+      if (!requestor.prohibited.activity_code) { requestor.prohibited.activity_code = []; }
       if (!requestor.prohibited.section) { requestor.prohibited.section = []; }
       returnArray = returnArray.filter(row => {
-        return !(requestor.prohibited.activity_code.includes(row.activity_code) || (requestor.prohibited.section.includes(row.section_name)))
+        return !(requestor.prohibited.activity_code.includes(row.activity_code) || (requestor.prohibited.section.includes(row.section_name)));
       });
     }
 
@@ -522,10 +523,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   async function addRow(pActivity, pMenu, pParent, pParentName, pSectionSort, pSectionName, pSectionColor, pSectionIcon, pReason) {
     let activityRec = await getActivity(pActivity);
     if (Object.keys(activityRec).length === 0) {
-      // (`rejecting ${pActivity} - not found in Activities table`);
       return false;
     };
-    // (`added ${pActivity} to ${pSectionName} `);
     let last_used = ((activityRec.activity_code in activityHistory) ?
       Math.max(...activityHistory[activityRec.activity_code]) :
       -1
@@ -538,7 +537,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     }
     let favorite = false;
     if (pReason === 'History') { favorite = true; }
-    else { 
+    else {
       if (requestor.hasOwnProperty('favorite_activities')) {
         favorite = makeArray(requestor.favorite_activities).some(r => {
           if (isObject(r)) {
@@ -549,7 +548,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           }
         });
       }
-    } 
+    }
     let pSort;
     if (activityRec.section_name && !favorite) {
       pSort = `#need-${numberOfRows}`;
@@ -558,7 +557,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       pSort = `${pSectionSort}-${numberOfRows}`;
     }
     activityRec.code = activityRec.activity_code;
-    return {
+    let returnRowObject = {
       activity_rec: activityRec,
       code: activityRec.activity_code,
       raw_data: pActivity,
@@ -588,11 +587,202 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         }
       )
     };
+    if (activityRec.preLoad) {
+      let preLoad_code = uuid(8);
+      returnRowObject.preLoad_code = preLoad_code;
+      makeObservationList(Object.assign({}, returnRowObject, returnRowObject.activity_rec), state.session)
+        .then(resolvedActivity => {
+          resolvedActivity.activityRec.name = returnRowObject.activity_name;
+          prepareDefaults(resolvedActivity.activityRec)
+            .then(response => {
+              [resolvedActivity.activityRec.default_value, resolvedActivity.activityRec.default_object] = response;
+              dbClient
+                .put({
+                  TableName: 'PreLoads',
+                  Item: {
+                    client_id: state.session.client_id,
+                    preLoad_key: preLoad_code,
+                    preLoad_data: resolvedActivity
+                  }
+                })
+                .promise()
+                .catch(error => {
+                  console.log('Error adding an pre-loaded activity', error.message);
+                });
+              console.log(`done with preload for ${resolvedActivity.activityRec.name} (${returnRowObject.code}) as preload_code ${preLoad_code}`);
+            })
+        });
+    };
+    return returnRowObject;
+  };
+
+  async function prepareDefaults(fact) {
+    let excludeList = ['reservation', 'play_video'];
+    let returnArray = [];
+    let returnObject = {};
+    if (!fact.default_value) { return [returnArray, returnObject]; }
+    if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
+    if (fact.activity_rec?.type === 'make_message') {
+
+    }
+
+    // check for default values in the person's record
+    if (state.patient.hasOwnProperty('defaultValues')) {
+      let pDefaults = state.patient.defaultValues;
+      for (let key in pDefaults) {
+        returnArray.push(`private~${key}=${pDefaults[key]}`);
+      }
+    }
+    // now pull in default values associated with this specific function call
+    let defaultValues = {};
+    if (isObject(fact.default_value)) {
+      defaultValues = Object.assign({}, fact.default_value);
+    }
+    else {
+      // old style is a string of key/value pairs (in the form key=value) separated by " ~ "
+      makeArray(fact.default_value, /\s~|~\s/g).forEach((d, x) => {
+        if (d.includes('=')) {
+          let dO = d.split('=');
+          defaultValues[dO[0]] = dO[1];
+        }
+        else {
+          // a value may not be in the form key=value; in this case, just use value
+          defaultValues[`_key_${x}`] = d;
+        }
+      });
+    }
+    for (let dField in defaultValues) {
+      let dValue = await resolveDefaults(fact, dField, defaultValues[dField]);
+      // we're returning an array and an object, they are duplicates of one another and consumed as needed by their targets
+      // each entry is a default value which could be:
+      //     a string alone (as in "myDefault")
+      //     a string with some field name (as in "requestType=myDefault")
+      //     an object (as in {requestType: myDefault, peopleList: [person1, person2, ...], ...})
+      let rKey;
+      let k = dField.match(/_key_(.*)/);
+      if (k) {          // if no field name was specified
+        rKey = `d${k[1]}`;
+      }
+      else {
+        rKey = (dField.split('.')).pop();
+      }
+      returnObject[rKey] = dValue;
+      if (typeof dValue !== 'string') {
+        returnArray.push({ [rKey]: dValue });
+      }
+      else {
+        returnArray.push(`${k ? '' : (rKey + '=')}${dValue}`);
+      }
+    }
+    return [returnArray, returnObject];
+  }
+
+
+  async function resolveDefaults(fact, this_key, this_value) {
+    if (typeof (this_value) !== 'string') {
+      let workObj = deepCopy(this_value);
+      for (let aKey in workObj) {
+        workObj[aKey] = await resolveDefaults(fact, aKey, workObj[aKey]);
+      }
+      workObj = await specialCases(this_key, workObj);
+      return workObj;
+    }
+    let a = this_value.split('.');
+    // if there are two or more "." in the value, use the value itself 
+    if (a.length > 2) {
+      return this_value;
+    }
+    let dValue = await resolveVariables(a.pop(), state.session, { ignoreArrayCheck: true });
+    // if anything remains in array a (after the pop above), the value was in the form instruction=value
+    // we'll act as per that instruction here
+    if (a.length > 0) {
+      dValue = await specialCases(a[0], dValue);
+    }
+    return dValue;
+
+    async function specialCases(key, dValue) {
+      switch (key) {
+        case 'people': {
+          let factClient;
+          if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
+          else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//')[0]; }
+          else { factClient = state.session.client_id; }
+          dValue = await getMemberList(makeArray(dValue, ','), factClient, { sort: true, shortList: true });
+          break;
+        }
+        case 'person': {
+          if (dValue === 'patientRec') {
+            dValue = state.patient;
+          }
+          else if (dValue === 'userRec') {
+            dValue = state.user;
+          }
+          else {
+            dValue = {
+              'peopleList': [state.patient]
+            };
+          }
+          break;
+        }
+        case 'select': {
+          if (dValue === 'accessList') {
+            dValue = {
+              'selectionList': state.accessList[state.session.client_id].shortList
+            };
+          }
+          else if (state.patients) {
+            dValue = state.patients;
+          }
+          else {
+            let targetObj = await prepareTargets(state.session.patient_id, state.session.client_id, { includeGroups: true });
+            dValue = targetObj.responsibleList.sort();
+          }
+          break;
+        }
+        case 'events': {
+          dValue = deepCopy(state.calendar);
+          break;
+        }
+        case 'activities': {
+          // activities dValue is an object with
+          //     global_defaults - pass to every column
+          //     column_list - an array with info about each column to return
+          //          response entries will be resolved activities (with observation records prepared as per the instructions in the array element)
+          //          each element is an object with
+          //              activity_id - optional; if missing use the activity_id that this is a part of
+          //              column_defaults - add these to the global defaults when resolving and handling the activity
+          let responseArray = [];
+          let global_defaults = dValue.global_defaults;
+          if (!dValue.hasOwnProperty('column_list') || (dValue.column_list.length === 0)) {
+            let column_defaults = Object.assign({}, global_defaults);
+            let column_object = deepCopy(await makeObservationList(fact.activity_code, state.session, column_defaults));
+            column_object.column_defaults = column_defaults;
+            responseArray.push(column_object);
+          }
+          else {
+            for (let m = 0; m < dValue.column_list.length; m++) {
+              let column_defaults = Object.assign({}, global_defaults, dValue.column_list[m].column_defaults);
+              let column_object = deepCopy(await makeObservationList(dValue.column_list[m].activity_id, state.session, column_defaults));
+              column_object.column_defaults = column_defaults;
+              responseArray.push(column_object);
+            }
+          }
+          dValue = responseArray;
+          break;
+        }
+        default: {
+          if (key && (typeof (dValue) === 'string') && (key !== 'default')) {
+            dValue = `${key}.${dValue}`;
+          }
+        }
+      }
+      return dValue;
+    }
   }
 
   async function getActivity(pActivityCode) {
     if (isObject(pActivityCode)) {
-      let aResolved = await getActivityFromObject(pActivityCode)
+      let aResolved = await getActivityFromObject(pActivityCode);
       activityObj[pActivityCode] = aResolved;
       return aResolved;
     }
@@ -685,7 +875,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let addClient = !(pClient === masterClient);
     let overrideDefault, overrideTitle;
     let pActivity = pActivityObj.activity_code || pActivityObj.activity;
-    
+
     for (let [iType, iData] of Object.entries(pActivityObj)) {
       iData = await deepResolve(iData, { client_id: pClient, patient_id: pPerson, user_id: pPerson });
       switch (iType) {

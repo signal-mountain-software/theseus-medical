@@ -1,9 +1,9 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 
-import { makeDate, addDays } from '../../util/AVADateTime';
-import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
-import { cl } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
+import { getCalendarEntries } from '../../util/AVACalendars';
+import { cl, isMobile } from '../../util/AVAUtilities';
 
 import Grid from '@material-ui/core/Grid';
 import GridList from '@material-ui/core/GridList';
@@ -13,9 +13,6 @@ import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
-
-import CircularProgress from '@material-ui/core/CircularProgress';
-import LinearProgress from '@material-ui/core/LinearProgress';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
 
@@ -148,7 +145,6 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
 
   let working_date = '';
 
-  const scrollValue = 15;
   var rowsWritten;
 
   const { enqueueSnackbar } = useSnackbar();
@@ -156,18 +152,21 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
+  const selectedDate = React.useRef(null);
+
   const [reactData, setReactData] = React.useState(
     {
       rowLimit: 50,
       priorTop: 0,
-      filterTextDisplayed: null,
       filterTextLower: null,
       selectDate: null,
+      needRef: false,
       loading: false,
       progress: 0,
       pWidth: 60
     }
   );
+  let local_needRef = false;
 
   const updateReactData = (newData, force = false) => {
     for (let oKey in newData) {
@@ -176,15 +175,17 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
         [oKey]: newData[oKey]
       }));
     }
-    // setReactData((prevValues) => (Object.assign(prevValues, newData)));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
-  const showFilterText = () => {
-    return reactData.filterTextDisplayed || ' ';
-  };
-
-  const lastRow = React.useRef(null);
+  React.useEffect(() => {
+    if (selectedDate && selectedDate.current) {
+      selectedDate.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }
+  }, [reactData.needRef]);
 
   const [detailEdit, setDetailEdit] = React.useState(false);
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
@@ -193,20 +194,21 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   const [anchorEl, setAnchorEl] = React.useState(null);
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
+  let filterTimeOut;
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
 
   function okToShow(this_event) {
-    if (reactData.selectDate) { return reactData.selectDate.numeric$ === this_event.date; }
-    else if (this_event.date === '29991231') { return false; }
+    if (this_event.date === '29991231') { return false; }
     else if (!reactData.filterTextLower) { return true; }
     else {
       return (`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower);
     }
   }
 
+  /*
   const screenStatus = (statusMessage, progressPct, progressWidth) => {
     updateReactData({
       loading: statusMessage,
@@ -215,6 +217,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
     }, true);
   };
 
+  
   const extendDates = async (factor, set_end = {}) => {
     let previousStart = reactData.firstDate || myCalendar[0].date;
     let previousEnd = reactData.lastDate || myCalendar[myCalendar.length - 1].date;
@@ -266,7 +269,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
       pWidth: 60
     }, true);
   };
-
+  
   let scrollTimeOut;
   async function handleScroll(e) {
     clearTimeout(scrollTimeOut);
@@ -286,39 +289,37 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
       }
     }, 500, [e.target.scrollHeight, e.target.scrollTop, e.target.clientHeight]);
   };
+  */
 
-  const handleChangeRequestFilter = (vCheck, filterTimeOut) => {
+  function checkDate(checkDate) {
+    if (reactData.selectDate && (reactData.selectDate.numeric$ <= checkDate) && (local_needRef)) {
+      updateReactData({
+        needRef: false
+      });
+      local_needRef = false;
+      return true;
+    }
+    else {
+      return false;
+    }
+  }
+
+  const handleChangePersonFilter = vCheck => {
     clearTimeout(filterTimeOut);
-    updateReactData({
-      filterTextDisplayed: vCheck.trimStart()
-    }, true);
-    let returnTimeOut = setTimeout(async () => {
-      cl(`timeout expired ${vCheck}`);
-      if (!vCheck) {
+    cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
+    filterTimeOut = setTimeout(() => {
+      cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
+      if (vCheck.length === 0) {
         updateReactData({
-          filterTextLower: null,
-          selectDate: null
-        }, true);
+          filterTextLower: ''
+        })
       }
       else {
-        let checkDate = makeDate(vCheck);
-        if (checkDate.error) {
-          updateReactData({
-            filterTextLower: ((vCheck.length === 1) ? null : vCheck.trim().toLowerCase()),
-            selectDate: null
-          }, true);
-        }
-        else {
-          await extendDates(0, checkDate);
-          updateReactData({
-            filterTextLower: null,
-            selectDate: checkDate
-          }, true);
-        }
+        updateReactData({
+          filterTextLower: vCheck.toLowerCase()
+        })
       }
-    }, 750);
-    cl(`set timeout ${returnTimeOut} with ${vCheck}`);
-    return returnTimeOut;
+    }, 500);
   };
 
   return (
@@ -442,65 +443,31 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
             marginLeft={2}
             marginRight={2}
             marginBottom={0.5}
-            border={showFilterText() ? 1 : 0}
+            border={reactData.filterDisplay ? 1 : 0}
             borderRadius={'16px'}
             key={'filterRow'}
           >
             <TextField
-              className={classes.freeInput}
               id='List Filter'
-              variant={'standard'}
-              key={'filtertext'}
-              helperText={'Filter/Search or Date'}
+              onChange={event => (handleChangePersonFilter(event.target.value))}
+              className={classes.freeInput}
+              helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
               inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
               FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-              multiline
-              onChange={(event) => {
-                let lastUsed = handleChangeRequestFilter(event.target.value, reactData.lastFilterTimeoutUsed);
-                updateReactData({ lastFilterTimeoutUsed: lastUsed }, true);
-              }}
+              variant={'standard'}
               autoComplete='off'
-              value={showFilterText()}
             />
           </Box>
-          {/* Loading spinner */}
-          {reactData.loading &&
-            <Box
-              display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-              key={'loadingBox'}
-              ml={2} mr={2} mb={2} mt={8}
+         {!reactData.loading &&
+            <DialogContent
+              dividers={true} classes={{ dividers: classes.dialogBox }}
+            //  onScroll={async (event) => (await handleScroll(event))}
             >
-              <Box
-                component="img"
-                mb={2}
-                minWidth={150}
-                maxWidth={150}
-                alt=''
-                src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
-              />
-              <React.Fragment>
-                <Box
-                  display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                  flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                  key={'loadingBox'}
-                  mb={2}
-                >
-                  <Typography style={AVATextStyle({ size: 1.5, align: 'center' })} className={classes.lastName} >{`Loading More Dates`}</Typography>
-                  <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                  <Typography style={AVATextStyle({ size: 0.8 })}>{reactData.loading}</Typography>
-                </Box>
-                <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: reactData.pWidth }} value={reactData.progress} />
-                <CircularProgress />
-              </React.Fragment>
-            </Box>
-          }
-          {!reactData.loading &&
-            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }} ref={lastRow} onScroll={async (event) => (await handleScroll(event))}>
               <Box >
                 <Grid item>
                   <GridList cellHeight='auto' cols={1} key='gridList' >
                     {myCalendar.map((this_event, index) => (
-                      okToShow(this_event) && (rowsWritten < reactData.rowLimit) &&
+                      okToShow(this_event) &&
                       <React-fragment key={this_event.id + 'frag' + index} >
                         <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                           {rowsWritten++}
@@ -508,10 +475,12 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                         {this_event.date !== working_date &&
                           <GridListTile
                             key={this_event.id + 'rhead' + index}
+                            ref={checkDate(this_event.date) ? selectedDate : null}
                             style={{ marginBottom: '0px', marginTop: (rowsWritten === 1 ? '0px' : '50px') }}
                             cols={1}
                           >
-                            <Box mb={0.5} py={1} px={0} borderBottom={2}>
+                            <Box
+                              mb={0.5} py={1} px={0} borderBottom={2}>
                               <Box flexGrow={1}>
                                 <Typography
                                   key={this_event.date + 'dhead' + index}
@@ -569,7 +538,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                                 enqueueSnackbar(`Event data=${JSON.stringify(this_event)}`, { variant: 'info', persist: true });
                               }}
                             >
-                                <Typography style={AVATextStyle({ })}>
+                              <Typography style={AVATextStyle({})}>
                                 {`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}
                               </Typography>
                             </Box>

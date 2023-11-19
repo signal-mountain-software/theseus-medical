@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getGroup, getRole, getGroupsBelongTo, getGroupsResponsibleFor } from '../../util/AVAGroups';
+import { getGroup, getRole, getGroupsResponsibleFor } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -91,11 +91,16 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   async function getGroupMemberList(pGroupArray) {
     reactData.progressMessage = 'Getting all accounts';
     let memberInfo;
+    if (!state.hasOwnProperty('groups')) {
+      enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+      onClose();
+      return [];
+    }
     if (pGroupArray.includes('*all')) {
-      memberInfo = {
-        groupList: state.groups.groupList,
-        peopleList: state.groups.peopleList
-      };
+        memberInfo = {
+          groupList: state.groups.groupList,
+          peopleList: state.groups.peopleList
+        };
     }
     else {
       memberInfo =
@@ -109,6 +114,11 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
       };
     }
 
+    if (!memberInfo.peopleList) {
+      enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+      onClose();
+      return [];
+    }
     if (memberInfo.peopleList.length === 0) {
       enqueueSnackbar(`AVA couldn't find any accounts.`, { variant: 'error' });
       onClose();

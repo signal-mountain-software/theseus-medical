@@ -1788,6 +1788,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               onCancel={() => {
                 delete dataRows.selectionList;
                 setDataRows(dataRows);
+                setForceRedisplay(forceRedisplay => !forceRedisplay);
               }}
               onSelect={async (selectedID) => {
                 delete dataRows.selectionList;

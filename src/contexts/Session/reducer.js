@@ -1,4 +1,4 @@
-import { SET_PATIENT, SET_PATIENTS, SET_MESSAGE_TARGETS, SET_PROFILE, SET_GROUPS, SET_ROLES, SET_SESSION, SET_ACCESSLIST, SET_USER } from './actions';
+import { SET_PATIENT, SET_PATIENTS, SET_MESSAGE_TARGETS, SET_PROFILE, SET_GROUPS, SET_PRELOADS, SET_CALENDAR, SET_ROLES, SET_SESSION, SET_ACCESSLIST, SET_USER } from './actions';
 
 export default (state, action) => {
   const { type, payload } = action;
@@ -15,6 +15,10 @@ export default (state, action) => {
       return { ...state, profile: payload };
     case SET_GROUPS:
       return { ...state, groups: payload };
+    case SET_PRELOADS:
+      return { ...state, preloads: payload };
+    case SET_CALENDAR:
+      return { ...state, calendar: payload };
     case SET_ROLES:
       return { ...state, roles: payload };
     case SET_SESSION:

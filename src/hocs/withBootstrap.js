@@ -2,7 +2,9 @@ import React from 'react';
 import { dbClient, lambda, makeArray, getCustomizations } from '../util/AVAUtilities';
 import { isMemberOf, accountAccess, getMemberList, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
 import { makeName } from '../util/AVAPeople';
+import { getAllOccurrences } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
+import { addDays } from '../util/AVADateTime';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
@@ -21,7 +23,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
-import { SET_PATIENT, SET_PROFILE, SET_GROUPS, SET_SESSION, SET_USER } from '../contexts/Session/actions';
+import { SET_PATIENT, SET_PROFILE, SET_GROUPS, SET_CALENDAR, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 import AVATextInput from '../components/forms/AVATextInput';
 
 const useStyles = makeStyles(theme => ({
@@ -65,7 +67,6 @@ export default Component => props => {
 
   const AVA_default_user = process.env.REACT_APP_AVA_PU;
   const AVA_default_password = process.env.REACT_APP_AVA_PP;
-  const AVA_environment = window.location.href.split('//')[1].slice(0, 1).toUpperCase();
 
   const [messageList, setMessageList] = React.useState([]);
 
@@ -373,8 +374,6 @@ export default Component => props => {
   }
 
   if (!AVAReady && !localAVAReady) {
-    let rawSessionStorage = sessionStorage.getItem('AVASessionData');
-    let sessionObject = rawSessionStorage ? JSON.parse(rawSessionStorage) : {};
     return (
       <Dialog
         open={!AVAReady && !localAVAReady}
@@ -395,6 +394,8 @@ export default Component => props => {
               maxWidth={250}
               minHeight={250}
               maxHeight={250}
+              borderColor={'black'}
+              border={2}
               style={{ borderRadius: '120px 120px 120px 120px', backgroundColor: 'white', textDecoration: 'none' }}
             >
               <Box
@@ -1227,6 +1228,10 @@ export default Component => props => {
       currentSession.adminAccount = await adminAccount(currentSession, currentPatient);
     }
 
+    if ((currentSession.adminAccount) && (currentProfile.account_class !== 'master') && (currentProfile.account_class !== 'support')) {
+      currentProfile.account_class = 'admin';
+    }
+
     dispatch({ type: SET_SESSION, payload: currentSession });
     dispatch({ type: SET_PROFILE, payload: currentProfile });
     dispatch({ type: SET_USER, payload: currentProfile });
@@ -1263,7 +1268,7 @@ export default Component => props => {
     getMemberList(['*all'], pSession.client_id, { "sort": true, "exclude": false, "withSession": true })
       .then(members => {
         dispatch({ type: SET_GROUPS, payload: Object.assign(groupsObj, belongsObj, members) });
-        console.log(`done with loadSyncInfo Members. Got members as ${members}`);
+        console.log(`done with loadSyncInfo Members. Retrieved members keys as ${Object.keys(members)}`);
         membersObj = members;
       })
       .catch(error => {
@@ -1272,7 +1277,7 @@ export default Component => props => {
     getAllGroups(pSession.user_id, pSession.client_id)
       .then(groups => {
         dispatch({ type: SET_GROUPS, payload: Object.assign(belongsObj, membersObj, groups) });
-        console.log(`done with loadSyncInfo Groups. Got groups as ${groups}`);
+        console.log(`done with loadSyncInfo Groups. Retrieved groups keys as ${Object.keys(groups)}`);
         groupsObj = groups;
       })
       .catch(error => {
@@ -1281,12 +1286,26 @@ export default Component => props => {
     getGroupsBelongTo(pSession.user_id, { sort: true, account_class: pSession.adminAccount ? 'master' : 'local' })
       .then(belongsTo => {
         dispatch({ type: SET_GROUPS, payload: Object.assign(membersObj, groupsObj, { belongsTo }) });
-        console.log(`done with loadSyncInfo Belongs to. Got belongs to as ${belongsTo}`);
+        console.log(`done with loadSyncInfo Belongs to. Retrieved belongsto keys as ${Object.keys(belongsTo)}`);
         belongsObj = { belongsTo };
       })
       .catch(error => {
         console.log(`error in loadSyncInfo Belongs to. Message is ${error.message}`);
       });
+    let rightNow = new Date();
+    getAllOccurrences(
+      {
+        client_id: pSession.client_id,
+        start_date: rightNow,
+        end_date: addDays(rightNow, 90)
+      },
+    ).then(occList => {
+      dispatch({ type: SET_CALENDAR, payload: occList });
+      console.log(`done with loadSyncInfo Calendar. Loaded ${occList.length} ocurrence`);
+    })
+      .catch(error => {
+        console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
+      });;
     return;
   }
 

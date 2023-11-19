@@ -1,13 +1,12 @@
 import React from 'react';
-import { sentenceCase, makeArray, cl, titleCase, listFromArray, dbClient, recordExists } from '../../util/AVAUtilities';
-import { addDays, daysDiff, makeDate, sameDate } from '../../util/AVADateTime';
+import { sentenceCase, makeArray, isMobile, cl, titleCase, dbClient, recordExists } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, messageHistory } from '../../util/AVAMessages';
 import MakeMessage from '../forms/MakeMessage';
-import AVATextInput from '../forms/AVATextInput';
 
-import AVA_AlertSound from '../../ava_alert.mp3'
+import AVA_AlertSound from '../../ava_alert.mp3';
 
 import IdleTimer from 'react-idle-timer';
 import useSound from 'use-sound';
@@ -28,9 +27,6 @@ import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContent from '@material-ui/core/DialogContent';
-import CircularProgress from '@material-ui/core/CircularProgress';
-import DynamicFeedIcon from '@material-ui/icons/DynamicFeed';
 
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
@@ -50,7 +46,7 @@ import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
-import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -194,7 +190,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ session, title, filter = {}, options = {}, onClose }) => {
+export default ({ session, title, filter = { 'person_id': session.patient_id }, options = {}, onClose }) => {
 
   /*
     filter: {
@@ -214,39 +210,32 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  const firstSelectedRow = React.useRef(null);
+  const firstSelectedRowRef = React.useRef(null);
 
   const { enqueueSnackbar } = useSnackbar();
 
-  const [loading, setLoading] = React.useState(false);
-  const [filters, setFilters] = React.useState({
-    rowLimit: 5,
-  });
-  const [targetDatesExist, setTargetDatesExist] = React.useState(false);
-  const [rowsSelected, setRowsSelected] = React.useState([]);
+  const [loading, setLoading] = React.useState('no_value');
+
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  const [statusDisplayed, setStatusDisplayed] = React.useState({});
+
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   const [reactData, setReactData] = React.useState({
     rebuilding: false,
-    firstSelectedRowIndex: null,
     selectedPersonName: null,
     displayVersion: 0,
     dataRows: [],
-    requestIDs: []
+    requestIDs: [],
+    selectionsChanged: false
   });
 
-  const showDeleted = false;
-
   const [promptForMessage, setPromptForMessage] = React.useState(false);
-  const [showFilter, setShowFilter] = React.useState(false);
 
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
   const [play] = useSound(AVA_AlertSound, { volume: 1 });
 
-  const scrollValue = 5;
   let rowsDisplayed = [];
 
   let dashboard_idleTimer = React.createRef();
@@ -258,7 +247,6 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
       setReactData((prevValues) => ({
         ...prevValues,
         [oKey]: newData[oKey],
-        displayVersion: reactData.displayVersion + (force ? 1 : 0)
       }));
     }
     if (force) {
@@ -276,13 +264,13 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
   };
 
   React.useEffect(() => {
-    if (firstSelectedRow && firstSelectedRow.current) {
-      firstSelectedRow.current.scrollIntoView({
+    if (firstSelectedRowRef && firstSelectedRowRef.current) {
+      firstSelectedRowRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       });
     }
-  }, [reactData.firstSelectedRowIndex]);
+  }, [reactData.selectionsChanged]);
 
   async function handleUpdates(pOptions) {
     let historyLine = '';
@@ -305,329 +293,96 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
     let AVAdate = makeDate(new Date());
     historyLine += ` on ${AVAdate.absolute}`;
     let updateRows = [];
-    for (let x = 0; x < pOptions.rowsToUpdate.length; x++) {
-      if ((pOptions.newStatus) && (reactData.dataRows[pOptions.rowsToUpdate[x]].last_status.toLowerCase() !== 'complete')) {
-        reactData.dataRows[pOptions.rowsToUpdate[x]].last_status = pOptions.newStatus;
+    reactData.dataRows.forEach((r, x) => {
+      if (r.workData.checked && OKToDisplay(r)) {
+        if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== 'complete')) {
+          reactData.dataRows[x].last_status = pOptions.newStatus;
+        }
+        reactData.dataRows[x].last_update = AVAdate.timestamp;
+        reactData.dataRows[x].workData.update_date = AVAdate.relative;
+        if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
+          reactData.dataRows[x].history.unshift(historyLine);
+        }
+        else { reactData.dataRows[x].history = [historyLine]; }
+        reactData.dataRows[x].workData.checked = false;
+        updateRows.push(reactData.dataRows[x]);
       }
-      reactData.dataRows[pOptions.rowsToUpdate[x]].last_update = AVAdate.timestamp;
-      reactData.dataRows[pOptions.rowsToUpdate[x]].workData.update_date = AVAdate.relative;
-      if (('history' in reactData.dataRows[pOptions.rowsToUpdate[x]]) && Array.isArray(reactData.dataRows[pOptions.rowsToUpdate[x]].history)) {
-        reactData.dataRows[pOptions.rowsToUpdate[x]].history.unshift(historyLine);
-      }
-      else { reactData.dataRows[pOptions.rowsToUpdate[x]].history = [historyLine]; }
-      updateRows.push(reactData.dataRows[pOptions.rowsToUpdate[x]]);
-      let xSelected = rowsSelected.findIndex(i => { return i === x; });
-      if (xSelected > -1) {
-        rowsSelected.splice(xSelected, 1);
-        setRowsSelected(rowsSelected);
-      }
-    };
+    });
     await updateServiceRequest(updateRows.map(u => {
       let w = Object.assign({}, u);
       delete w.workData;
       return w;
     }));
     rowsDisplayed = [];
-    await buildDashboard();
+    updateReactData({
+      dataRows: reactData.dataRows
+    }, true);
   }
 
-  function getSelectedDetails(rows) {
+  function getSelectedDetails() {
     let selectedIDs = [];
     let selectedName = [];
-    if (rows.length > 0) {
-      rows.forEach(row => {
-        if (!selectedIDs.includes(reactData.dataRows[row].workData.requestor_id)) {
-          selectedIDs.push(reactData.dataRows[row].requestor);
-          selectedName.push(reactData.dataRows[row].workData.requestor_name);
+      reactData.dataRows.forEach(row => {
+        if (row.workData.checked && !selectedIDs.includes(row.workData.requestor_id)) {
+          selectedIDs.push(row.requestor);
+          selectedName.push(row.workData.requestor_name);
         }
       });
-    }
     return { selectedIDs, selectedName };
   }
 
-  let scrollTimeOut;
-  function handleScroll() {
-    clearTimeout(scrollTimeOut);
-    scrollTimeOut = setTimeout(() => {
-      let updatedFilters = filters;
-      updatedFilters.rowLimit = filters.rowLimit + scrollValue;
-      setFilters(updatedFilters);
-      setForceRedisplay(forceRedisplay => !forceRedisplay);
+  let filterTimeOut;
+  const handleChangeFilter = vCheck => {
+    clearTimeout(filterTimeOut);
+    cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
+    filterTimeOut = setTimeout(() => {
+      cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
+      if (vCheck.length === 0) {
+        updateReactData({
+          filterTextLower: ''
+        });
+      }
+      else {
+        updateReactData({
+          filterTextLower: vCheck.toLowerCase()
+        });
+      }
     }, 500);
   };
 
-  let filterTimeOut;
-  const handleChangeRequestFilter = vCheck => {
-    clearTimeout(filterTimeOut);
-    filterTimeOut = setTimeout(() => {
-      if (vCheck.length < 2) {
-        setFilters(Object.assign(filters, {
-          request_filter: (
-            (filters.statusFilterList && (filters.statusFilterList.length > 0))
-              || (filters.statusFilterIgnore && (filters.statusFilterIgnore.length > 0))
-            || (filters.dateTime_filter && !filters.dateTime_filter.error)),
-          request_filter_lower: [],
-          singleFilterDigit: ((vCheck && (vCheck.length === 1)) ? true : false),
-          rowLimit: ((filters.rowLimit === 999) ? 5 : filters.rowLimit),
-        }));
-        setForceRedisplay(forceRedisplay => !forceRedisplay);
-      }
-      else {
-        let checkWords = makeArray(vCheck.trim().toLowerCase(), ' ');
-        setFilters(Object.assign(filters, {
-          request_filter: true,
-          request_filter_lower: checkWords,
-          singleFilterDigit: false,
-          rowLimit: 999,
-        }));
-        setForceRedisplay(forceRedisplay => !forceRedisplay);
-      }
-    }, 1000);
-  };
-
-  function checkDateFilter(vCheck) {
-    let dateFilterType = 0;
-    let dateFilterWords = '';
-    let dateTime_filter = makeDate(vCheck.trim());
-    if (!dateTime_filter.error) {
-      /* 
-        They entered a date.
-        
-        All Service Requests carry a "requested on" date in their request_date (this shows up here as a timestamp in the workData.request_date)
-        Some type of Service Requests carry a "requested for fulfillment" date in their foreign_key (a meal ordered in advance for next Sunday, for example)
-          If there are any "requested for fulfillment" type requests on this dashboard, the targetDatesExist variable will be true
-                    
-        There are four kinds of date searches available:
-           1. Search for requests "entered on" a date,
-           2. Search for requests "entered after" a date,
-           3. Search for requests "requested for fulfillment on" a date,
-           4. Search for requests "requested for fulfillment after" a date
-        Type 1 & 2 don't make sense for future dates.
-        Type 3 & 4 don't make sense if targetDatesExist is false
-        
-        We will determine the type by looking for keywords:
-           1. "on", or no keyWord and date is today or in the past
-           2. "after" (for dates in the past), or "since"
-           3. "for", or no keyWord and date is in the future
-           4. "after" (for today and dates in the future)
-
-        NOTE: In addition to date searching, AVA includes search by word (see quotedWords and elsewhere in this function)   
-      */
-      vCheck = dateTime_filter.textOut;
-      let keyWord = vCheck.toLowerCase().match(/\b(on|for|since|after)\b/gm);
-      const today = new Date();
-      if (!keyWord) {
-        if (dateTime_filter.date <= today) {
-          dateFilterType = 1;
-          dateFilterWords = `on ${dateTime_filter.absolute}`;
-        }
-        else {
-          dateFilterType = 3;
-          dateFilterWords = `for ${dateTime_filter.absolute}`;
-        }
-      }
-      else {
-        switch (keyWord[0]) {
-          case 'on': {
-            if (dateTime_filter.date <= today) {
-              dateFilterType = 1;
-              dateFilterWords = `on ${dateTime_filter.absolute}`;
-              break;
-            }
-            // "on" is invalid for future dates
-            else if (daysDiff(dateTime_filter.date, today) < 7) {
-              // if the date is within a week of today, coerce it back to a past date
-              dateTime_filter = makeDate(addDays(dateTime_filter.date, -7));
-              dateFilterType = 1;
-              dateFilterWords = `on ${dateTime_filter.absolute}`;
-              break;
-            }
-            else {
-              // if we can't fix it, make this filter "FOR <future_date>" (missing break is intentional)
-              keyWord[0] = 'for';
-            }
-          }
-          // eslint-disable-next-line
-          case 'for': {
-            //     if (targetDatesExist) {
-            dateFilterType = 3;
-            dateFilterWords = `for ${dateTime_filter.absolute}`;
-            //     }
-            break;
-          }
-          case 'since': {
-            if (dateTime_filter.date < today) {
-              dateFilterType = 2;
-              dateFilterWords = `on or after ${dateTime_filter.relative}`;
-            }
-            else if ((daysDiff(dateTime_filter.date, today) < 7)) {
-              dateTime_filter = makeDate(addDays(dateTime_filter.date, -7));
-              dateFilterType = 2;
-              dateFilterWords = `on or after ${dateTime_filter.relative}`;
-            }
-            else {    // future date that's more than 7 days in the future; it can't be "entered after <future date>"                  
-              dateFilterType = 4;
-              dateFilterWords = `for dates on or after ${dateTime_filter.relative}`;
-            }
-            break;
-          }
-          case 'after': {
-            if (dateTime_filter.date < today) {
-              dateFilterType = 2;
-              dateFilterWords = `on or after ${dateTime_filter.relative}`;
-            }
-            else if ((daysDiff(dateTime_filter.date, today) < 7) && (targetDatesExist)) {
-              dateFilterType = 4;
-              dateFilterWords = `for dates on or after ${dateTime_filter.relative}`;
-            }
-            break;
-          }
-          default: { }
-        }
-        if (dateFilterType > 0) {
-          vCheck = vCheck.split(/\s+/).filter(f => { return (f !== keyWord[0]); }).join(' ');
-        }
-      }
+  function OKToDisplay(this_item) {
+    if ((!this_item.workData) || (!reactData.filterTextLower)) {
+      return true;
     }
-    return { dateTime_filter, dateFilterType, dateFilterWords };
-  }
-
-  function OKToDisplay(this_item, index) {
-    if ((!this_item.workData)
-      || (filters.request_filter && !filteredRequest(this_item, filters.request_filter))
-      || (this_item.workData.delete_flag && !showDeleted)) {
-      let foundAt = rowsSelected.findIndex(r => { return r === index; });
-      if (foundAt > -1) {   // can't be selected if it is filtered out (and therefore not displayed)
-        rowsSelected.splice(foundAt, 1);
-        reactData.dataRows[index].workData.checked = false;
-        updateReactData({
-          dataRows: reactData.dataRows
-        }, false);
-      }
-      return false;
+    else {
+      return JSON.stringify(this_item).includes(reactData.filterTextLower);
     }
-    if ((rowsSelected.length === 0) && (options.updateMode)) {
-      rowsSelected.push(index);
-      reactData.dataRows[index].workData.checked = true;
-      // setDataRows(dataRows);
-      updateReactData({
-        dataRows: reactData.dataRows
-      }, false);
-    }
-    return true;
   }
 
   function toggleCheck(pI) {
-    if (reactData.dataRows[pI].workData.checked) {   // it was previously checked 
-      //    if (rowsSelected.length > 1) {  // you cant unselect everything
-      reactData.dataRows[pI].workData.checked = false;
-      let xSelected = rowsSelected.findIndex(i => { return i === pI; });  // remove it from rowsSelected array
-      if (xSelected > -1) {
-        rowsSelected.splice(xSelected, 1);
-      }
-      //    }
-    }
-    else {   // it was NOT previously checked
-      reactData.dataRows[pI].workData.checked = true;
-      if (!rowsSelected.includes(pI)) {
-        rowsSelected.push(pI);
-      }
-    }
-    setRowsSelected(rowsSelected);
+    reactData.dataRows[pI].workData.checked = !reactData.dataRows[pI].workData.checked;
     updateReactData({
-      firstSelectedRowIndex: Math.min(...rowsSelected),
       dataRows: reactData.dataRows
     }, true);
-    // setDataRows(dataRows);
-    // setForceRedisplay(forceRedisplay => !forceRedisplay);
   }
 
-  /*
-  function selectFirst() {
-    reactData.dataRows.forEach((this_row, this_rowNumber) => {
-      if (this_row.workData.checked) {
-        reactData.dataRows[this_rowNumber].workData.checked = false;
-      }
+  function anyRowsSelected() {
+    return reactData.dataRows.some(r => {
+      return r.workData.checked;
     });
-    let newSelection = null;
-    if (rowsDisplayed.length === 0) {
-      setRowsSelected([]);
-      // NO ROW SELECTED - DISPLAY MESSAGE?
-    }
-    else {
-      newSelection = rowsDisplayed[0];
-      reactData.dataRows[newSelection].workData.checked = true;
-      setRowsSelected([newSelection]);
-    }
-    updateReactData({
-      firstSelectedRowIndex: newSelection,
-      dataRows: reactData.dataRows
-    }, true);
-    // setDataRows(dataRows);
-    // setForceRedisplay(forceRedisplay => !forceRedisplay);
-  }
-  */
-  
-  function selectNext() {
-    let lastSelectedRow = -1;
-    reactData.dataRows.forEach((this_row, this_rowNumber) => {
-      if (this_row.workData.checked) {
-        if (rowsDisplayed.includes(this_rowNumber)) {
-          lastSelectedRow = this_rowNumber;
-        }
-        reactData.dataRows[this_rowNumber].workData.checked = false;
-      }
-    });
-    let newSelection = null;
-    if ((lastSelectedRow === (reactData.dataRows.length - 1)) || (lastSelectedRow === -1)) {
-      newSelection = reactData.dataRows.length - 1;
-    }
-    else {
-      newSelection = lastSelectedRow + 1;
-
-    }
-    reactData.dataRows[newSelection].workData.checked = true;
-    setRowsSelected([newSelection]);
-    updateReactData({
-      firstSelectedRowIndex: newSelection,
-      dataRows: reactData.dataRows
-    }, true);
-    // setDataRows(dataRows);
-    // setForceRedisplay(forceRedisplay => !forceRedisplay);
   }
 
-  function selectPrior() {
-    let firstSelectedRow = 999999;
-    reactData.dataRows.forEach((this_row, this_rowNumber) => {
-      if (this_row.workData.checked) {
-        if ((this_rowNumber < firstSelectedRow) && (rowsDisplayed.includes(this_rowNumber))) {
-          firstSelectedRow = this_rowNumber;
-        }
-        reactData.dataRows[this_rowNumber].workData.checked = false;
-      }
+  const firstSelectedRow = () => {
+    return reactData.dataRows.findIndex(this_row => {  // find first checked row
+      return this_row.workData.checked;
     });
-    let newSelection = null;
-    if ((firstSelectedRow === 999999) || (firstSelectedRow === 0)) {
-      newSelection = 0;
-    }
-    else {
-      let displayAt = rowsDisplayed.findIndex(r => { return r === firstSelectedRow; })
-      if (displayAt < 1) {
-        newSelection = 0;
-      }
-      else {
-        newSelection = rowsDisplayed[displayAt - 1];
-      }
-    }
-    reactData.dataRows[newSelection].workData.checked = true;
-    setRowsSelected([newSelection]);
-    updateReactData({
-      firstSelectedRowIndex: newSelection,
-      dataRows: reactData.dataRows
-    }, true);
-    // setDataRows(dataRows);
-    // setForceRedisplay(forceRedisplay => !forceRedisplay);
-  }
+  };
+
+  const lastSelectedRow = () => {
+    return reactData.dataRows.findLastIndex(this_row => {  // find last checked row
+      return this_row.workData.checked;
+    });
+  };
 
   async function toggleOpen(pI) {
     reactData.dataRows[pI].workData.open = !reactData.dataRows[pI].workData.open;
@@ -637,8 +392,6 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
     updateReactData({
       dataRows: reactData.dataRows
     }, true);
-    // setDataRows(dataRows);
-    // setForceRedisplay(forceRedisplay => !forceRedisplay);
   }
 
   async function prepareMessageHistory(thread) {
@@ -689,133 +442,16 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
     return mRow.map(r => { return r.body; });
   };
 
-  function filteredRequest(pRec) {
-    if (filters.singleFilterDigit) { return true; }
-    else if (filters.dateTime_filter && !filters.dateTime_filter.error) {
-      switch (filters.dateFilterType) {
-        case 1: {
-          // Search for requests "entered on" a date
-          if (!sameDate(pRec.workData.requestTime, filters.dateTime_filter.date)) {
-            return false;
-          }
-          break;
-        }
-        case 2: {
-          // Search for requests "entered after" a date
-          if (pRec.workData.requestTime < filters.dateTime_filter.timestamp) {
-            return false;
-          }
-          break;
-        }
-        case 3: {
-          // Search for requests "requested for fulfillment on" a date
-          if (pRec.workData.orderForDate.numeric !== filters.dateTime_filter.numeric) {
-            return false;
-          }
-          break;
-        }
-        case 4: {
-          // Search for requests "requested for fulfillment after" a date
-          if (pRec.workData.orderForDate.numeric < filters.dateTime_filter.numeric) {
-            return false;
-          }
-          break;
-        }
-        default: { }
-      }
-    }
-    if (filters.request_filter_lower && (filters.request_filter_lower.length > 0)) {
-      let searchString = `${pRec.workData.search_data} ${pRec.workData.formatted_type}`;
-      let allWordsFound = filters.request_filter_lower.every(w => {
-        return searchString.toLowerCase().includes(w);
-      });
-      if (!allWordsFound) { return false; }
-    }
-    if (filters.statusFilterList && (filters.statusFilterList.length > 0)) {
-      return (filters.statusFilterList.includes(pRec.last_status.toLowerCase().trim()));
-    }
-    else if (filters.statusFilterIgnore && (filters.statusFilterIgnore.length > 0)) {
-      return !(filters.statusFilterIgnore.includes(pRec.last_status.toLowerCase().trim()));
-    }
-    else { return true; }
-  }
-
-  function makeFilterHelper() {
-    let filter_helper = '';
-    if (filters.request_filter) {
-      filter_helper = '';
-      if (filters.dateFilterWords) {
-        filter_helper += filters.dateFilterWords;
-      }
-      if (filters.request_filter_lower && (filters.request_filter_lower.length > 0)) {
-        if (filters.dateFilterWords) { filter_helper += ' and'; }
-        filter_helper +=
-          ` containing the word${(filters.request_filter_lower.length > 1) ? 's' : ''} ${listFromArray(filters.request_filter_lower)}`;
-      }
-      if (filters.statusFilterList && (filters.statusFilterList.length > 0)) {
-        if (filter_helper.length > 0) { filter_helper += ' and'; }
-        filter_helper += ` with status ${listFromArray(filters.statusFilterList, { or: true, sentenceCase: true })}`;
-      }
-      if (filters.statusFilterIgnore && (filters.statusFilterIgnore.length > 0)) {
-        if (filter_helper.length > 0) { filter_helper += ' and'; }
-        filter_helper += ` status is not ${listFromArray(filters.statusFilterIgnore, { sentenceCase: true })}`;
-      }
-    }
-    return filter_helper.trim();
-  }
-
   const buildDashboard = async () => {
-    let local_rowsSelected = [];
-    updateReactData({
-      rebuilding: true
-    }, false);
     let qList = [];
-    if (filter.person || filter.person_id) {
-      filter.person_id = filter.person || filter.person_id;
-      let pName = await makeName(filter.person_id);
-      updateReactData({
-        selectedPersonName: pName
-      }, false);
+    let selectedPersonName = await makeName(filter.person_id);
+    if ((!filter.hasOwnProperty('client_id') || !filter.client_id)) {
+      filter.client_id = session.client_id;
     }
-    let filtering = false;
-    if (filter.selections || filter.words) {
-      handleChangeRequestFilter(filter.selections || filter.words);
-      filtering = true;
-    }
-    let dateFilterObj = {};
-    if (filter.dates) {
-      dateFilterObj = checkDateFilter(filter.dates);
-      dateFilterObj.dateAsEntered = filter.dates;
-      filtering = true;
-    }
-    let statusFilterList = [];
-    if (filter.status) {
-      statusFilterList = makeArray(filter.status);
-      filtering = true;
-    }
-    let statusFilterIgnore = [];
-    if (filter.statusNot) {
-      statusFilterIgnore = makeArray(filter.statusNot);
-      filtering = true;
-    }
-    let newFilters = Object.assign(
-      filter,
-      filters,
-      {
-        statusFilterList,
-        statusFilterIgnore
-      },
-      dateFilterObj,
-      { request_filter: filtering }
-    );
-    setFilters(newFilters);
-    if (filter) { filter.client_id = session.client_id; }
-    else { filter = { 'person': session.patient_id }; }
-    filter.limit = Math.min(filters.rowLimit, 5) * 3;
     filter.request_type = makeArray(filter.request_type, ',');
     filter.sort = {
-        order: 'desc'
-    }
+      order: 'desc'
+    };
     qList = await getServiceRequests(filter);
     let maxTimeStamp = 0;
     reactData.dataRows = [];
@@ -823,27 +459,24 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
     for (let x = 0; (x < qList.length); x++) {
       if (qList[x].request_date > maxTimeStamp) {
         maxTimeStamp = qList[x].request_date;
-      }      
-      let addedRowNumber = reactData.dataRows.push(await buildRequestDetails(qList[x])) - 1;
-      if ((!filters.request_filter || filteredRequest(qList[x], filters.request_filter))
-        && (local_rowsSelected.length === 0)
-        && (options.updateMode)
-      ) { 
-        reactData.dataRows[addedRowNumber].workData.checked = true;
-        local_rowsSelected.push(addedRowNumber);
       }
+      reactData.dataRows.push(await buildRequestDetails(qList[x]));
       reactData.requestIDs.push(qList[x].request_id);
+      if (loading !== 'rebuild') {
+        updateReactData({
+          lastTimeStamp: maxTimeStamp,
+          dataRows: reactData.dataRows,
+          requestIDs: reactData.requestIDs,
+          rebuilding: false,
+          selectedPersonName
+        }, true);
+      }
     }
-    updateReactData({
-      lastTimeStamp: maxTimeStamp,
-      rowsSelected: local_rowsSelected,
-      dataRows: reactData.dataRows,
-      requestIDs: reactData.requestIDs,
-      rebuilding: false
-    }, true);
-    filter.limit = Math.min(filters.rowLimit, 5) * 40;
     if (qList.length === 0) {
       enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
+    }
+    else {
+      reactData.dataRows[0].workData.checked = true;
     }
     if (dashboard_idleTimer && dashboard_idleTimer.current) {
       dashboard_idleTimer.current.start();
@@ -873,21 +506,21 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
     if (recordExists(qR)) {
       for (let x = 0; (x < qR.Items.length); x++) {
         let newKey = qR.Items[x].request_id;
-        if (!reactData.requestIDs.includes(newKey)
-          && filters.request_type && filters.request_type.includes(qR.Items[x].request_type)
-        ) {
+        if (!reactData.requestIDs.includes(newKey)) {
           let request_timestamp = Number(newKey.split('~').pop());
           if (!isNaN(request_timestamp)) {
             maxTimeStamp = Math.max(maxTimeStamp, request_timestamp);
             reactData.requestIDs.push(newKey);
-            newRecordsFound = true;
             let qList = await getServiceRequests({
               client_id: session.client_id,
               request_id: newKey
             });
-            if (!filters.foreign_key || (filters.foreign_key === qList[0].foreign_key)) {
-              let newRowNumber = reactData.dataRows.push(await buildRequestDetails(qList[0])) - 1;
-              if (OKToDisplay(reactData.dataRows[newRowNumber], newRowNumber)) {
+            if (filter.foreign_key && (filter.foreign_key === qList[0].foreign_key)) {
+              // NEED CODE HERE TO COMPARE FILTER OBJ KEY/VALUES TO QLIST ROW MATCHING KEY/VALUES
+              newRecordsFound = true;
+              let newRow = await buildRequestDetails(qList[0]);
+              reactData.dataRows.push(newRow);
+              if (OKToDisplay(newRow)) {
                 playAlert = true;
               }
             }
@@ -904,7 +537,6 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
         play();
       }
     }
-    filter.limit = Math.min(filters.rowLimit, 5) * 40;
     if (dashboard_idleTimer && dashboard_idleTimer.current) {
       dashboard_idleTimer.current.start();
       cl(`Idle timer restarted in dashboard at ${new Date().toLocaleString()}.`);
@@ -942,15 +574,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
     i.workData.update_date = AVAupdateDate.relative;
     i.workData.requestTime = AVArequestDate.timestamp;
     i.workData.orderForDate = makeDate(i.foreign_key);
-    if (!i.workData.orderForDate.error) { setTargetDatesExist(true); }
     i.workData.this_status = sentenceCase(i.last_status);
-    if (!statusDisplayed[i.workData.this_status]) {   // keep track of statuses that are in the display somewhere
-      statusDisplayed[i.workData.this_status] = 1;
-    }
-    else {
-      statusDisplayed[i.workData.this_status]++;
-    }
-    setStatusDisplayed(statusDisplayed);
     if (!options.shortForm) {
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
         i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
@@ -1011,7 +635,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
       }
       else { i.workData.search_data += ` ~ open`; }
     }
-    i.workData.checked = false;    
+    i.workData.checked = false;
     i.workData.open = false;
     return i;
   }
@@ -1028,7 +652,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
     req.selections.forEach(s => {
       let dLine = s.trim();
       let [selection, ...opts] = dLine.split(/[();,]/);
-      let options = opts.map(o => { return o.trim(); })
+      let options = opts.map(o => { return o.trim(); });
       if (req.hasOwnProperty('qualifiers')
         && req.qualifiers.hasOwnProperty(selection.trim())
       ) {
@@ -1049,7 +673,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
           if (outO !== '') {
             returnMessage.push(['qual', outO]);
           }
-        })
+        });
       }
       if (s in req.textInput) {
         returnMessage.push(['qual', req.textInput[s]]);
@@ -1077,9 +701,9 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
 
   React.useEffect(() => {
     async function initialize() {
-      setLoading(true);
+      setLoading('initial_load');
       await buildDashboard();
-      setLoading(false);
+      setLoading('load_complete');
     }
     initialize();
   }, [session]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -1093,40 +717,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
       p={2}
       fullScreen
     >
-      {loading &&
-        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-          <Box
-            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={2} mr={2} mb={2} mt={8}
-          >
-            <Box
-              component="img"
-              mb={2}
-              minWidth={150}
-              maxWidth={150}
-              alt=''
-              src={session.client_logo || process.env.REACT_APP_AVA_LOGO}
-            />
-            <React.Fragment>
-              <Box
-                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                key={'loadingBox'}
-                mb={2}
-              >
-                <Typography variant='h5' >{`Retrieving`}</Typography>
-                <Typography variant='h5' className={classes.lastName} sx={{ marginBottom: '15px' }}>
-                  {(filter.request_type && session.service_request_types[filter.request_type]) ? session.service_request_types[filter.request_type].description : 'Request'}s
-                </Typography>
-                <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-              </Box>
-              <CircularProgress />
-            </React.Fragment>
-          </Box>
-        </DialogContent>
-      }
-      {!loading && reactData.dataRows &&
+      {reactData.dataRows &&
         <React.Fragment>
           {/* Idle timer always running */}
           <IdleTimer
@@ -1181,18 +772,6 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
               <MenuList className={classes.popUpMenu}>
                 <MenuItem
                   onClick={() => {
-                    setShowFilter(true);
-                  }}>
-                  <Box
-                    display='flex' flexDirection='row' alignItems={'center'}
-                    key={'vRowHome'}
-                  >
-                    <DynamicFeedIcon />
-                    <Typography className={classes.popUpMenuRow} >{'Filters'}</Typography>
-                  </Box>
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
                     onClose();
                   }}>
                   <Box
@@ -1231,16 +810,15 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
           </Box>
           <TextField
             id='List Filter'
-            onChange={event => (handleChangeRequestFilter(event.target.value))}
+            onChange={event => (handleChangeFilter(event.target.value))}
             className={classes.freeInput}
-            label={'Search'}
-            helperText={makeFilterHelper()}
+            helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+            inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+            FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
             variant={'standard'}
             autoComplete='off'
           />
           <Paper
-            onScroll={() => (
-              handleScroll())}
             component={Box}
             variant='outlined'
             overflow='auto'
@@ -1255,16 +833,15 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
                   <Paper
                     component={Box}
                     variant='outlined'
-                    key={`paper_row_${index}_${reactData.displayVersion}`}
+                    key={`paper_row_${index}_${this_item.workData.checked}`}
                   >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsDisplayed.push(index)}
                     </Typography>
                     <Box display='flex'
                       flexDirection='column'
-                      bgcolor={((this_item.workData.checked === true) || ((options.updateMode) && (rowsSelected.length === 0) && (rowsDisplayed.length === 1))) ? 'antiqueWhite' : null}
-                      ref={(reactData.firstSelectedRowIndex === index) ? firstSelectedRow : null}
-                      // ref={(this_item.workData.checked) ? firstSelectedRow : null}
+                      bgcolor={(this_item.workData.checked) ? 'antiqueWhite' : null}
+                      ref={((firstSelectedRow() === index) || ((firstSelectedRow() === -1) && (rowsDisplayed.length === 1))) ? firstSelectedRowRef : null}
                       onContextMenu={async (e) => {
                         e.preventDefault();
                         enqueueSnackbar(<div>
@@ -1384,7 +961,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
                   </Paper>
                 )
               ))}
-              {(rowsDisplayed.length === 0) &&
+              {(rowsDisplayed.length === 0) && (loading === 'load_complete') &&
                 <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
                   <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >
                     {`No requests match your criteria`}
@@ -1413,57 +990,8 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
               allowCancel={true}
             />
           }
-          {showFilter &&
-            <AVATextInput
-              titleText={'Include only...'}
-              promptText={
-                ['[display]What request dates?', 'Request date(s)?', '[display]~~~', '[display]Include which status(es)?']
-                  .concat(Object.keys(statusDisplayed).map(k => {
-                    return `[checkbox]${k}`;
-                  }))
-              }
-              valueText={
-                ['', ((filters.dateTime_filter && !filters.dateTime_filter.error) ? filters.dateAsEntered : ''),
-                  '', '']
-                  .concat(Object.keys(statusDisplayed).map(k => {
-                    return ((filters.statusFilterList && filters.statusFilterList.includes(k.toLowerCase())) ? 'checked' : '');
-                  }))}
-              buttonText='Filter'
-              onCancel={() => { setShowFilter(false); }}
-              onSave={async (requestUpdates) => {
-                setShowFilter(false);
-                let filtering = !!filters.request_filter_lower;
-                let dateFilterObj = {};
-                if (requestUpdates[1]) {
-                  dateFilterObj = checkDateFilter(requestUpdates[1]);
-                  dateFilterObj.dateAsEntered = requestUpdates[1];
-                  filtering = true;
-                }
-                else {
-                  delete filters.dateFilterType;
-                  delete filters.dateFilterWords;
-                  delete filters.dateTime_filter;
-                  delete filters.dateAsEntered;
-                }
-                let statusFilterList = [];
-                Object.keys(statusDisplayed).forEach((k, x) => {
-                  if (requestUpdates[4 + x] === 'checked') {
-                    statusFilterList.push(k.toLowerCase());
-                    filtering = true;
-                  }
-                });
-                let newFilters = Object.assign(
-                  filters,
-                  { statusFilterList },
-                  dateFilterObj,
-                  { request_filter: filtering }
-                );
-                setFilters(newFilters);
-                setForceRedisplay(forceRedisplay => !forceRedisplay);
-              }}
-            />
-          }
-          { // Command Area
+          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
@@ -1478,21 +1006,21 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
                   </Button>
                 </Box>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                  {(rowsSelected.length > 0) && (!filter.person_id || (filter.person_id !== session.person_id))
-                    &&
+                  {anyRowsSelected() &&
+                    (!filter.person_id) &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'orange', color: 'black' }}
                       size='small'
                       onClick={() => {
-                        setPromptForMessage(getSelectedDetails(rowsSelected));
+                        setPromptForMessage(getSelectedDetails());
                       }}
                       startIcon={<SendIcon size="small" />}
                     >
                       {'Message'}
                     </Button>
                   }
-                  {(rowsSelected.length > 0)
+                  {anyRowsSelected()
                     &&
                     <Button
                       className={AVAClass.AVAButton}
@@ -1500,20 +1028,22 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
                       size='small'
                       onClick={async () => {
                         let printList = [];
-                        rowsSelected.forEach(r => { printList.push(reactData.dataRows[r]); });
+                        reactData.dataRows.forEach(r => {
+                          if (r.workData.checked) { printList.push(reactData.dataRows[r]); }
+                          return;
+                        });
                         let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
                         enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
                         await handleUpdates({
                           newStatus: 'Printed',
-                          rowsToUpdate: rowsSelected
-                        });                       
+                        });
                       }}
                       startIcon={<PrintIcon size="small" />}
                     >
                       {'Print'}
                     </Button>
                   }
-                  {(rowsSelected.length > 0)
+                  {anyRowsSelected()
                     &&
                     <Button
                       className={AVAClass.AVAButton}
@@ -1522,9 +1052,7 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
                       onClick={async () => {
                         await handleUpdates({
                           newStatus: 'Complete',
-                          rowsToUpdate: rowsSelected
                         });
-                        // selectFirst(); //setRowsSelected([]);
                       }}
                       startIcon={<CheckIcon size="small" />}
                     >
@@ -1536,11 +1064,18 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                     <Button
                       className={AVAClass.AVAButton}
-                      disabled={(Math.min(...rowsSelected) === rowsDisplayed[0])}
-                      style={{ backgroundColor: ((Math.min(...rowsSelected) === rowsDisplayed[0]) ? 'white' : 'orange'), color: 'black' }}
+                      disabled={(firstSelectedRow() === rowsDisplayed[0]) || (firstSelectedRow() === -1)}
+                      style={{ backgroundColor: ((firstSelectedRow() === rowsDisplayed[0] || (firstSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
                       size='small'
                       onClick={() => {
-                        selectPrior();
+                        let firstRow = firstSelectedRow();
+                        reactData.dataRows[firstRow].workData.checked = false;
+                        let newSelectedRow = rowsDisplayed.findIndex(d => { return d === firstRow; }) - 1;
+                        reactData.dataRows[newSelectedRow].workData.checked = true;
+                        updateReactData({
+                          dataRows: reactData.dataRows,
+                          selectionsChanged: !reactData.selectionsChanged
+                        }, true);
                       }}
                       startIcon={<ArrowBackIcon size="small" />}
                     >
@@ -1554,68 +1089,66 @@ export default ({ session, title, filter = {}, options = {}, onClose }) => {
                         rowsDisplayed.forEach((r, x) => {
                           reactData.dataRows[r].workData.checked = (x === 0);
                         });
-                        setRowsSelected([rowsDisplayed[0]]);
-                        // setDataRows(dataRows);
                         updateReactData({
-                          firstSelectedRowIndex: rowsDisplayed[0],
-                          dataRows: reactData.dataRows
+                          dataRows: reactData.dataRows,
+                          selectionsChanged: !reactData.selectionsChanged
                         }, true);
-                        // setForceRedisplay(forceRedisplay => !forceRedisplay);
                       }}
                       startIcon={
                         <FirstPageIcon size="small" />}
                     >
                       {'First'}
                     </Button>
-                    {(rowsSelected.length > 0) &&
+                    {anyRowsSelected() &&
                       <Button
                         className={AVAClass.AVAButton}
                         style={{ backgroundColor: 'pink', color: 'black' }}
                         size='small'
                         onClick={() => {
-                          rowsDisplayed.forEach((r, x) => {
+                          rowsDisplayed.forEach((r) => {
                             reactData.dataRows[r].workData.checked = false;
                           });
-                          setRowsSelected([]);
                           updateReactData({
-                            dataRows: reactData.dataRows
+                            dataRows: reactData.dataRows,
+                            selectionsChanged: !reactData.selectionsChanged
                           }, true);
-                          // setDataRows(dataRows);
-                          // setForceRedisplay(forceRedisplay => !forceRedisplay);
                         }}
                         startIcon={<ClearAllIcon size="small" />}
                       >
                         {'Unselect all'}
                       </Button>
                     }
-                    {(rowsSelected.length !== rowsDisplayed.length) &&
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'green', color: 'white' }}
-                        size='small'
-                        onClick={() => {
-                          rowsDisplayed.forEach((r, x) => {
-                            reactData.dataRows[r].workData.checked = true;
-                          });
-                          setRowsSelected(rowsDisplayed);
-                          updateReactData({
-                            dataRows: reactData.dataRows
-                          }, true);
-                          // setDataRows(dataRows);
-                          // setForceRedisplay(forceRedisplay => !forceRedisplay);
-                        }}
-                        startIcon={<DoneAllIcon size="small" />}
-                      >
-                        {'All'}
-                      </Button>
-                    }
                     <Button
                       className={AVAClass.AVAButton}
-                      disabled={(Math.max(...rowsSelected) === Math.max(...rowsDisplayed))}
-                      style={{ backgroundColor: ((Math.max(...rowsSelected) === Math.max(...rowsDisplayed)) ? 'white' : 'orange'), color: 'black' }}
+                      style={{ backgroundColor: 'green', color: 'white' }}
                       size='small'
                       onClick={() => {
-                        selectNext();
+                        rowsDisplayed.forEach((r, x) => {
+                          reactData.dataRows[r].workData.checked = true;
+                        });
+                        updateReactData({
+                          dataRows: reactData.dataRows,
+                          selectionsChanged: !reactData.selectionsChanged
+                        }, true);
+                      }}
+                      startIcon={<DoneAllIcon size="small" />}
+                    >
+                      {'All'}
+                    </Button>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      disabled={(lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1))}
+                      style={{ backgroundColor: ((lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
+                      size='small'
+                      onClick={() => {
+                        let lastRow = lastSelectedRow();
+                        reactData.dataRows[lastRow].workData.checked = false;
+                        let newSelectedRow = rowsDisplayed.findLastIndex(d => { return d === lastRow; }) + 1;
+                        reactData.dataRows[newSelectedRow].workData.checked = true;
+                        updateReactData({
+                          dataRows: reactData.dataRows,
+                          selectionsChanged: !reactData.selectionsChanged
+                        }, true);
                       }}
                       endIcon={<ArrowForwardIcon size="small" />}
                     >

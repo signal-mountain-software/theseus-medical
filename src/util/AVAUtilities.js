@@ -573,6 +573,10 @@ export function parseSpreadsheet(pWorkbook) {
   return returnObj;
 }
 
+export const isMobile = () => {
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+}
+
 export async function switchActiveAccount(session, newClient, newPatient) {
   await dbClient
       .update({
