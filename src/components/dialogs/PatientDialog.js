@@ -477,7 +477,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       sms_private: (localData.sms_private && 'true'),
       voice_private: (localData.voice_private && 'true'),
       office_private: (localData.office_private && 'true'),
-      surrogate: localData.surrogate,
+      surrogate: localData.surrogate || '',
       local_data: localData.local_data,
       search_data: makeSearchData([localData]),
       preferred_method: localData.preferred_method || 'AVA',
@@ -987,7 +987,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
               <Box display='flex' alignItems='center'
                 justifyContent='flex-start' flexDirection='row'>
                 <TextField classes={{ root: classes.idText }}
-                  id='surrogate' value={localData.surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
+                  id='surrogate' value={localData.surrogate || ''} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
               </Box>
               {state.session.local_data &&
                 (Object.keys(state.session.local_data).length > 0) &&
