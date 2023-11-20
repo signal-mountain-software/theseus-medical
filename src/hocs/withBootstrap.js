@@ -1274,7 +1274,7 @@ export default Component => props => {
       .catch(error => {
         console.log(`error in loadSyncInfo Members. Message is ${error.message}`);
       });
-    getAllGroups(pSession.user_id, pSession.client_id)
+    getAllGroups(pSession.patient_id, pSession.client_id)
       .then(groups => {
         dispatch({ type: SET_GROUPS, payload: Object.assign(belongsObj, membersObj, groups) });
         console.log(`done with loadSyncInfo Groups. Retrieved groups keys as ${Object.keys(groups)}`);

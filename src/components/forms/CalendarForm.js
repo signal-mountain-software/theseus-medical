@@ -32,6 +32,7 @@ import Dialog from '@material-ui/core/Dialog';
 import Button from '@material-ui/core/Button';
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import useSession from '../../hooks/useSession';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -141,7 +142,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, session, handleMore, onClose }) => {
+export default ({ myCalendar, person_id, peopleList, onClose }) => {
 
   let working_date = '';
 
@@ -151,6 +152,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
+  const { state } = useSession();
 
   const selectedDate = React.useRef(null);
 
@@ -201,96 +203,23 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
   };
 
   function okToShow(this_event) {
-    if (this_event.date === '29991231') { return false; }
-    else if (!reactData.filterTextLower) { return true; }
+    if (this_event.date === '29991231') { return false; }   // event was soft-deleted
+    else if (this_event.groups[0] !== '*all') {
+      let belongsToASelectedGroup = this_event.groups.some(g => {
+        return (state.groups.belongsTo.hasOwnProperty(g));
+      })
+      if (!belongsToASelectedGroup) {
+        return false;
+      }
+    }
+    if (!reactData.filterTextLower) {
+      return true;
+    }
     else {
       return (`${this_event.description} ${this_event.location}`).toLowerCase().includes(reactData.filterTextLower);
     }
   }
-
-  /*
-  const screenStatus = (statusMessage, progressPct, progressWidth) => {
-    updateReactData({
-      loading: statusMessage,
-      progress: progressPct,
-      pWidth: progressWidth * 100
-    }, true);
-  };
-
   
-  const extendDates = async (factor, set_end = {}) => {
-    let previousStart = reactData.firstDate || myCalendar[0].date;
-    let previousEnd = reactData.lastDate || myCalendar[myCalendar.length - 1].date;
-    let start_date, end_date, update_start, update_end;
-    if (set_end.hasOwnProperty('numeric$')) {       // moving forward from 1 past end to a specific date
-      if (set_end.numeric$ <= previousEnd) { return; }
-      start_date = addDays(previousEnd, 1);  
-      end_date = set_end.date;
-      update_start = previousStart;
-      update_end = set_end.numeric$;
-    }
-    else if (factor >= 0) {          // moving forward from 1 past end by <factor> days
-      start_date = addDays(previousEnd, 1);
-      end_date = addDays(previousEnd, factor);
-      update_start = previousStart;
-      update_end = makeDate(end_date).numeric$;
-    }
-    else {            // moving backward from 1 before start by <factor> days
-      start_date = addDays(previousStart, factor);
-      end_date = addDays(previousStart, -1);
-      update_start = makeDate(start_date).numeric$;
-      update_end = previousEnd;
-    }
-    let newEntries = await getAllOccurrences(
-      {
-        client_id: myCalendar[0].client,
-        start_date,
-        end_date
-      },
-      screenStatus
-    );
-    if (factor >= 0) {
-      myCalendar.push(...newEntries);
-    }
-    else {
-      myCalendar.unshift(...newEntries);
-    }
-    myCalendar.sort((a, b) => {
-      if (a.date < b.date) { return -1; }
-      else if (a.date > b.date) { return 1; }
-      else if (a.time24 < b.time24) { return -1; }
-      else { return 1; }
-    });
-    updateReactData({
-      firstDate: update_start,
-      lastDate: update_end,
-      loading: false,
-      progress: 100,
-      pWidth: 60
-    }, true);
-  };
-  
-  let scrollTimeOut;
-  async function handleScroll(e) {
-    clearTimeout(scrollTimeOut);
-    scrollTimeOut = setTimeout(async ([scrollHeight, visibleTop, visibleHeight]) => {
-      cl({ scrollHeight, visibleTop, priorTop: reactData.priorTop, visibleHeight });
-      if ((visibleTop >= reactData.priorTop)    // scroll down
-        && ((scrollHeight - visibleTop) <= (visibleHeight * 1.05))) {       // on the last visible page
-        let newLimit = reactData.rowLimit + scrollValue;
-        if (newLimit > myCalendar.length) { await extendDates(30); }
-        updateReactData({ rowLimit: newLimit, priorTop: visibleTop }, true);
-        if (lastRow && lastRow.current) {
-          lastRow.current.scrollTo({
-            behavior: 'instant',
-            top: (visibleTop + visibleHeight),
-          });
-        }
-      }
-    }, 500, [e.target.scrollHeight, e.target.scrollTop, e.target.clientHeight]);
-  };
-  */
-
   function checkDate(checkDate) {
     if (reactData.selectDate && (reactData.selectDate.numeric$ <= checkDate) && (local_needRef)) {
       updateReactData({
@@ -350,7 +279,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
               <Typography
                 className={classes.title} style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
               >
-                {!session.patient_display_name ? `Calendar of Events` : `${session.patient_display_name.split(',').pop()}'s Calendar`}
+                {`${state.patient.name.first}${state.patient.name.first.slice(-1) === 's' ? "'" : "'s"} Calendar`}
               </Typography>
 
               <Box
@@ -431,7 +360,7 @@ export default ({ myCalendar, person_id, kiosk_mode, display_name, peopleList, s
                     key={'vRowRefresh'}
                   >
                     <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                    <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
+                    <Typography className={classes.popUpFooter} >{`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}</Typography>
                     <Typography className={classes.popUpFooter} >{`Function: Calendar`}</Typography>
                   </Box>
                 </MenuItem>

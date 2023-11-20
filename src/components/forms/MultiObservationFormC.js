@@ -2,7 +2,7 @@ import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
 import { getMemberList } from '../../util/AVAGroups';
-import { deepCopy, makeObj, titleCase, sentenceCase } from '../../util/AVAUtilities';
+import { deepCopy, makeObj, titleCase, sentenceCase, makeArray } from '../../util/AVAUtilities';
 import { getObservationOptions, getObservationItems, getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { putServiceRequest, getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
@@ -128,7 +128,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     initialLoadComplete: null,
     defaultPerson: null,
     defaultQualSelections: {},
-    defaultRequestType: null
+    defaultRequestType: null,
   });
 
   const [foreign_key, setForeignKey] = React.useState('');
@@ -285,6 +285,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         dName: [' ', ' ', ' '].concat(a)
                       });
                     });
+                    updateReactData({
+                      defaultColumns: deepCopy(columnList)
+                    }, false);
                   }
                   break;
                 }
@@ -327,6 +330,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             }
             setAllowRemovePeople(false);
             setAllowAddPeople(false);
+            updateReactData({
+              defaultColumns: deepCopy(columnList)
+            }, false);
             break;
           }
           default: {
@@ -432,6 +438,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     });
     updateReactData({
       initialLoadComplete: true,
+      defaultColumns: deepCopy(columnList),
       defaultQualSelections
     }, true);
 
@@ -900,54 +907,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       }
       else {
-        dataRows.radioOn[this_id] = {};
-        existingOrder.requestToUse.original_request.selections.forEach(s => {
-          let selection = s.split('(').shift().trim();
-          dataRows.radioOn[this_id][selection] = true;
-        });
-        if (existingOrder.requestToUse.original_request.hasOwnProperty('qualifiers')) {
-          /*
-             original_request.qualifiers come in as qualifiers.[<Menu choice>][<Qualifier Option>][<array of selections>]
-             example 
-               [Coffee][How do you like your coffee?][cream, sugar]
-            
-             and are stored in qualSelections as [<Menu choice>][<Person>][<Qualifier Option>][pSelection]
-             example 
-               [Coffee][rsteele][How do you like your coffee?][cream] = true
-               [Coffee][rsteele][How do you like your coffee?][sugar] = true
-          */
-          for (let selection in existingOrder.requestToUse.original_request.qualifiers) {
-            // add qualData if necessary - qualData describes the options available for anyone that selects this menu item
-            if (!dataRows.qualData) { dataRows.qualData = {}; }
-            let selection_key = getKey(selection);
-            if (!selection_key) {     // you are importing a qualifier that is not part of this request; ignore it
-              continue;
-            }
-            if (!dataRows.qualData[selection]) {
-              dataRows.qualData[selection] = await getObservationOptions(getKey(selection));
-            }
-            // add qualSelections - records the specific choices for this id
-            if (!dataRows.qualSelections.hasOwnProperty(selection)) {
-              dataRows.qualSelections[selection] = {};   // Menu choice
-            }
-            if (!dataRows.qualSelections[selection].hasOwnProperty(this_id)) {    // MenuChoice.Person
-              dataRows.qualSelections[selection][this_id] = {};
-            }
-            for (let option in existingOrder.requestToUse.original_request.qualifiers[selection]) {
-              if (!dataRows.qualSelections[selection][this_id].hasOwnProperty(option)) {
-                dataRows.qualSelections[selection][this_id][option] = {};
-              }
-              if (Array.isArray(existingOrder.requestToUse.original_request.qualifiers[selection][option])) {
-                existingOrder.requestToUse.original_request.qualifiers[selection][option].forEach(choice => {
-                  dataRows.qualSelections[selection][this_id][option][choice] = true;
-                });
-              }
-            }
-          }
-        }
-        if (existingOrder.requestToUse.original_request.hasOwnProperty('textInput')) {
-          dataRows.textValue[this_id] = deepCopy(existingOrder.requestToUse.original_request.textInput);
-        }
+        await applyExistingOrder(this_id, existingOrder);
       }
       maxLength = Math.max(nameWords.length, maxLength);
       return;
@@ -971,14 +931,81 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
   };
 
-  async function checkExistingOrders(pPerson, pName) {
-    // Does this person already have a request for this requestype and foreignkey?
-    let existingRequest = await getServiceRequests({
-      client_id: pClient,
-      foreign_key,
-      request_type: importTypes || reactData.defaultRequestType,
-      requestor: pPerson
+  async function applyExistingOrder(this_id, existingOrder, this_column = null) {
+    dataRows.radioOn[this_id] = {};
+    existingOrder.requestToUse.original_request.selections.forEach(s => {
+      let selection = s.split('(').shift().trim();
+      if (this_column) {
+        let rowNumber = this_column.rowDetails.findIndex(r => {
+          return (r.text === selection);
+        })
+        this_column.rowDetails[rowNumber].isChecked = true;
+      }
+      else {
+        dataRows.radioOn[this_id][selection] = true;
+      }
     });
+    if (existingOrder.requestToUse.original_request.hasOwnProperty('qualifiers')) {
+      /*
+         original_request.qualifiers come in as qualifiers.[<Menu choice>][<Qualifier Option>][<array of selections>]
+         example 
+           [Coffee][How do you like your coffee?][cream, sugar]
+        
+         and are stored in qualSelections as [<Menu choice>][<Person>][<Qualifier Option>][pSelection]
+         example 
+           [Coffee][rsteele][How do you like your coffee?][cream] = true
+           [Coffee][rsteele][How do you like your coffee?][sugar] = true
+      */
+      for (let selection in existingOrder.requestToUse.original_request.qualifiers) {
+        // add qualData if necessary - qualData describes the options available for anyone that selects this menu item
+        if (!dataRows.qualData) {
+          dataRows.qualData = {};
+        }
+        let selection_key = getKey(selection);
+        if (!selection_key) {     // you are importing a qualifier that is not part of this request; ignore it
+          continue;
+        }
+        if (!dataRows.qualData[selection]) {
+          dataRows.qualData[selection] = await getObservationOptions(getKey(selection));
+        }
+        // add qualSelections - records the specific choices for this id
+        if (!dataRows.qualSelections) {
+          dataRows.qualSelections = {};
+        }
+        if (!dataRows.qualSelections.hasOwnProperty(selection)) {
+          dataRows.qualSelections[selection] = {};   // Menu choice
+        }
+        if (!dataRows.qualSelections[selection].hasOwnProperty(this_id)) {    // MenuChoice.Person
+          dataRows.qualSelections[selection][this_id] = {};
+        }
+        for (let option in existingOrder.requestToUse.original_request.qualifiers[selection]) {
+          if (!dataRows.qualSelections[selection][this_id].hasOwnProperty(option)) {
+            dataRows.qualSelections[selection][this_id][option] = {};
+          }
+          if (Array.isArray(existingOrder.requestToUse.original_request.qualifiers[selection][option])) {
+            existingOrder.requestToUse.original_request.qualifiers[selection][option].forEach(choice => {
+              dataRows.qualSelections[selection][this_id][option][choice] = true;
+            });
+          }
+        }
+      }
+    }
+    if (existingOrder.requestToUse.original_request.hasOwnProperty('textInput')) {
+      dataRows.textValue[this_id] = deepCopy(existingOrder.requestToUse.original_request.textInput);
+    }
+  }
+
+  async function checkExistingOrders(pPerson, pName, request_key = null) {
+    // Does this person already have a request for this requestype and foreignkey?
+    if (!request_key) {
+      request_key = {
+        client_id: pClient,
+        foreign_key,
+        request_type: importTypes || reactData.defaultRequestType,
+        requestor: pPerson
+      };
+    }
+    let existingRequest = await getServiceRequests(request_key);
     if (existingRequest.length > 0) {
       let requestAction = await orderWarning(pName);
       let rTime = makeDate(new Date().getTime());
@@ -1600,8 +1627,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   >
                     {this_item.checkbox &&
                       <Radio
-                      key={`checkbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                      id={`checkbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                        key={`checkbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                        id={`checkbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
                         checked={this_item.isChecked}
                         value={this_item.isChecked}
                         disableRipple
@@ -1640,9 +1667,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     {this_item.input &&
                       <TextField
                         className={classes.freeInput}
-                      variant={'standard'}
-                      key={`inputtextprompt_${selectedColumn}.${this_index}`}
-                      id={`inputtextprompt_${selectedColumn}.${this_index}`}
+                        variant={'standard'}
+                        key={`inputtextprompt_${selectedColumn}.${this_index}`}
+                        id={`inputtextprompt_${selectedColumn}.${this_index}`}
                         helperText={this_item.text}
                         multiline
                         inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
@@ -1706,7 +1733,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                               <Box display='flex' flexDirection='row' justifyContent='flex-start'
                                 key={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                 id={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                            alignItems='center'
+                                alignItems='center'
                               >
                                 {(!opt.type || (opt.type === 'checkbox')) &&
                                   <React.Fragment>
@@ -1786,23 +1813,50 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               prompt={'Select from this list'}
               peopleList={dataRows.selectionList}
               onCancel={() => {
+                onClose();
+                /*  
                 delete dataRows.selectionList;
-                setDataRows(dataRows);
-                setForceRedisplay(forceRedisplay => !forceRedisplay);
+                  setDataRows(dataRows);
+                  setForceRedisplay(forceRedisplay => !forceRedisplay);
+                  */
               }}
               onSelect={async (selectedID) => {
                 delete dataRows.selectionList;
-                let selectedPerson = await getPerson(selectedID);
-                dataRows.columnList.forEach((column, c) => {
-                  dataRows.columnList[c].person_id = selectedID;
-                });
+                let sIDs = makeArray(selectedID);
+                // let defaultColumns = deepCopy(dataRows.columnList);
+                dataRows.columnList = [];
+                for (let p = 0; p < sIDs.length; p++) {             // for each person you selected
+                  let this_id = sIDs[p];
+                  let this_person = await getPerson(this_id);
+                  // let myColumns = deepCopy(defaultColumns);
+                  let myColumns = deepCopy(reactData.defaultColumns);
+                  for (let c = 0; c < myColumns.length; c++) {              // for each column
+                    let column = myColumns[c];
+                    myColumns[c].person_id = this_id;
+                    myColumns[c].column_id = `${column.column_id}_${this_id}`;
+                    myColumns[c].dName.push(this_person.name.first, this_person.name.last);
+                    let existingOrder = await checkExistingOrders(this_id, `${this_person.name.first} ${this_person.name.last}`, {
+                      client_id: state.session.client_id,
+                      foreign_key: myColumns[c].foreign_key || myColumns[c].foreignKey,
+                      request_type: importTypes || myColumns[c].request_type || myColumns[c].requestType,
+                      requestor: this_id
+                    });
+                    if (existingOrder.status === 'use existing') {
+                      await applyExistingOrder(this_id, existingOrder, myColumns[c]);
+                    }
+                  };
+                  dataRows.columnList.push(...myColumns);
+                }
                 setDataRows(dataRows);
-                updateReactData({
-                  defaultPerson: selectedPerson
-                }, true);
+                if (sIDs.length === 1) {
+                  updateReactData({
+                    defaultPerson: await getPerson(sIDs[0])
+                  }, false);
+                }
+                setForceRedisplay(forceRedisplay => !forceRedisplay);
               }}
               allowRandom={true}
-              multiSelect={false}
+              multiSelect={true}
               returnValue={'id'}
             />
           }

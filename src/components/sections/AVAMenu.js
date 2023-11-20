@@ -280,6 +280,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   let nowTime = new Date().getTime();
 
+  let loadError;
+
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});
 
@@ -996,7 +998,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           break;
         }
         case 'events': {
-          dValue = deepCopy(state.calendar);
+          if (!state.hasOwnProperty('calendar')) {
+            loadError = true;
+          }
+          else {
+            dValue = deepCopy(state.calendar);
+          }
           break;
         }
         case 'activities': {
@@ -1114,9 +1121,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             className={classes.profileArea}
             key={'personBox'}
             onClick={async () => {
-              setPopupMenuOpen(false);
-              setGroupData(state.groups);
-              setShowProfileEdit(true);
+              if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy')) {
+                enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+              }
+              else {
+                setPopupMenuOpen(false);
+                setGroupData(state.groups);
+                setShowProfileEdit(true);
+              }
             }}
           >
             <Tooltip
@@ -1193,9 +1205,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               )}
               {!session?.kiosk_mode && (
                 <MenuItem onClick={async () => {
-                  setPopupMenuOpen(false);
-                  setGroupData(state.groups);
-                  setShowProfileEdit(true);
+                  if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy')) {
+                    enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+                  }
+                  else {
+                    setPopupMenuOpen(false);
+                    setGroupData(state.groups);
+                    setShowProfileEdit(true);
+                  }
                 }}>
                   <Box
                     display='flex' flexDirection='row' alignItems={'center'}
@@ -1493,8 +1510,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                       setForceRedisplay(!forceRedisplay);
                                     }
                                     else {
+                                      loadError = false;
                                       await getActivityDetail(this_row);
-                                      setShowNewFactDialog(index);
+                                      if (loadError) {
+                                        enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+                                      }
+                                      else {
+                                        setShowNewFactDialog(index);
+                                      }
                                     }
                                   }
                                   setToggleClick(false);

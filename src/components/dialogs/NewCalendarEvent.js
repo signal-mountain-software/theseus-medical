@@ -1068,12 +1068,13 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                   <ClientsSection
                     person={patient}
                     groupData={state.groups}
+                    multiple={true}
                     updateGroups={(selections) => {
-                      let selected = makeArray(selections, ',').filter(g => {
-                        return ((g !== 'ALL') && (g !== '__TOP__'));
-                      });
+                      if (selections.length === 0) {
+                        selections = ['*all'];
+                      }
                       updateReactData({
-                        restrictToGroups: selected
+                        restrictToGroups: selections
                       }, false);
                     }}
                   />

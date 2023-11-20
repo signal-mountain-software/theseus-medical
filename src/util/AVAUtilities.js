@@ -73,20 +73,25 @@ export function recordExists(recordId) {
 }
 
 export function deepCopy(pValue) {
-  if (Array.isArray(pValue)) {
+  if (!pValue) {
+    return pValue;
+  }
+  else if (Array.isArray(pValue)) {
     var count = pValue.length;
     var arr = new Array(count);
     for (var i = 0; i < count; i++) {
       arr[i] = deepCopy(pValue[i]);
     }
     return arr;
-  } else if (typeof pValue === 'object') {
+  }
+  else if (typeof pValue === 'object') {
     var obj = {};
     for (var prop in pValue) {
       obj[prop] = deepCopy(pValue[prop]);
     }
     return obj;
-  } else { 
+  }
+  else { 
     return pValue;
   }
 }

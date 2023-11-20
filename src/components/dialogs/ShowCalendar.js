@@ -2,8 +2,8 @@ import React from 'react';
 
 import { useSnackbar } from 'notistack';
 
-import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
-import { makeTime, addDays } from '../../util/AVADateTime';
+import { getCalendarEntries } from '../../util/AVACalendars';
+import { makeTime } from '../../util/AVADateTime';
 import { isEmpty, isObject } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 
@@ -247,41 +247,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     return theCalendar;
   };
 
-  const extendDates = async (factor) => {
-    let previousReactData = Object.assign({}, reactData );
-    if (factor > 0) {
-      reactData.start_date = addDays(new Date(reactData.end_date), 1);
-      let myDate = new Date(reactData.end_date);
-      myDate.setDate(myDate.getDate() + factor);
-      reactData.end_date = myDate;
-    }
-    else {
-      reactData.end_date = addDays(new Date(reactData.start_date), -1);
-      let myDate = new Date(reactData.start_date);
-      myDate.setDate(myDate.getDate() + factor);
-      reactData.start_date = myDate;
-    }
-    reactData.loading = true;
-    setReactData({ ...reactData });
-    let newEntries = await getAllOccurrences(
-      {
-        client_id: eventClient || (patient.adopted_client || patient.client_id),
-        start_date: reactData.start_date,
-        end_date: reactData.end_date
-      }
-    );
-    reactData.loading = false;
-    if (factor > 0) {
-      reactData.start_date = previousReactData.start_date;
-      reactData.myCalendar.push(...newEntries);
-    }
-    else {
-      reactData.end_date = previousReactData.end_date;
-      reactData.myCalendar.unshift(...newEntries);
-    }
-    setReactData({ ...reactData });
-  };
-
   const choosePerson = () => {
     setShowPersonSelect(true);
   };
@@ -387,12 +352,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
             <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
               <CalendarForm
                 myCalendar={reactData.myCalendar}
-                person_id={patient.patient_id}
-                kiosk_mode={patient.kiosk_mode}
-                display_name={patient.patient_display_name}
-                peopleList={peopleList}
-                handleMore={async (factor) => {await extendDates(factor)}}
-                session={patient}
+                person_id={patient.patient_id}             
+                peopleList={peopleList}              
                 onClose={onClose}
               />
             </DialogContent>
