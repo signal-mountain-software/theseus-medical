@@ -727,7 +727,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   borderRadius={(isChecked(this_item) || textIsPresent(this_item.text)) ? '16px' : null}
                   minHeight={`${user_fontSize * 2}rem`}
                   justifyContent='center'
-                  key={'fullRow' + this_index + ((isChecked(this_item) || textIsPresent(this_item.text)) ? 'with_border' : 'clean')}
+                  key={'fullRow' + this_index}
                 >
                   <Box
                     display='flex'
