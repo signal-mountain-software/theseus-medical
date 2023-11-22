@@ -1,7 +1,6 @@
 import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { getMemberList } from '../../util/AVAGroups';
 import { deepCopy, makeObj, titleCase, sentenceCase, makeArray } from '../../util/AVAUtilities';
 import { getObservationOptions, getObservationItems, getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
@@ -125,24 +124,24 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const [morePeople, setMorePeople] = React.useState(false);
 
   const [reactData, setReactData] = React.useState({
-    initialLoadComplete: null,
+    initialLoadComplete: false,
     defaultPerson: null,
     defaultQualSelections: {},
     defaultRequestType: null,
+    titleName: {
+      display: null,
+      remembered: []
+    },
+    columnList: []
   });
 
-  const [foreign_key, setForeignKey] = React.useState('');
   const [records2Update, setRecords2Update] = React.useState([]);
-  const [importTypes, setImportTypes] = React.useState('');
   const [allowAddPeople, setAllowAddPeople] = React.useState(false);
   const [allowRemovePeople, setAllowRemovePeople] = React.useState(true);
-
-  const [dataRows, setDataRows] = React.useState();
 
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
-  const [maxName, setMaxName] = React.useState(1);
   const [selectedColumn, setSelectedColumn] = React.useState(0);
 
   const factType = fact.activity_key.split('.')[0];
@@ -176,7 +175,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   /* special cases...
   /* ~+<key>~<value>             | use value only when <key> is selected    | ~+Filet Mignon~~!How would you like your filet cooked?      */
 
-  let selectionList = [];
   let checkbox = true;
   let ignore = false;
   let required = false;
@@ -187,260 +185,157 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   let doneWithTopBox = false;
   const defaultCheckedWords = ['checked', 'on', 'selected', 'true'];
 
+  /*
   const updateReactData = (newData, force = false) => {
-    for (let oKey in newData) {
+    for (let rKey in newData) {
       setReactData((prevValues) => ({
         ...prevValues,
-        [oKey]: newData[oKey]
+        [rKey]: newData[rKey]
       }));
     }
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
+  */
+
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+
+  async function extractRequestType(aKey) {
+    let activityParts = aKey.split('//').pop();
+    let activityCode = activityParts.pop();
+    let activityClient = ((activityParts.length > 0) ? activityParts[0] : state.session.client_id);
+    let activityRec = await getActivity(activityClient, activityCode);
+    return activityRec.request_type;
+  }
 
   async function initialLoad() {
-    // if (!initialLoadComplete) {
-    let columnList = [];
-    let maxLength = 1;
-    let foreignKey = '*tbd';
-    let defaultObj = {};
-    updateReactData({
-      defaultPerson: state.patient
-    }, false);
-    let defaultChecked = { AVA: false };
-    let defaultQualSelections = {};
-    let defaultQualData = [];
-    // set defaults and build columnList (if appropriate)
-    if (defaultValue) {
-      for (let dKey in defaultValue) {
-        switch (dKey) {
-          case ('foreignKey'): {
-            foreignKey = defaultValue.foreignKey;
-            break;
-          }
-          case ('requestType'): {
-            updateReactData({
-              defaultRequestType: defaultValue.requestType
-            }, false);
-            break;
-          }
-          case ('importTypes'): {
-            setImportTypes(defaultValue.importTypes);
-            break;
-          }
-          case ('allowAddPeople'): {
-            setAllowAddPeople(defaultValue.allowAddPeople);
-            break;
-          }
-          case ('allowRemovePeople'): {
-            setAllowRemovePeople(defaultValue.allowRemovePeople);
-            break;
-          }
-          case ('selectList'): {
-            let allowAdd = true;
-            for (let subKey in defaultValue.selectList) {
-              switch (subKey) {
-                case 'selectionList': {
-                  selectionList = defaultValue.selectList.selectionList;
-                  break;
-                }
-                case 'shortList': {
-                  selectionList = defaultValue.selectList.shortList;
-                  break;
-                }
-                case 'addPeople': {
-                  allowAdd = defaultValue.selectList.addPeople;
-                  break;
-                }
-                default: { }
-              }
-            }
-            setAllowAddPeople(allowAdd);
-            break;
-          }
-          case ('peopleList'): {
-            let allowAdd = false;
-            for (let subKey in defaultValue.peopleList) {
-              switch (subKey) {
-                case 'peopleList': {
-                  let defaultDisplayRows = await buildDisplayRows(listValues, defaultObj);
-                  if (defaultValue.hasOwnProperty('activities')) {
-                    updateReactData({
-                      defaultPerson: defaultValue.peopleList.peopleList[0]
-                    }, false);
-                  }
-                  else {
-                    // eslint-disable-next-line
-                    columnList = defaultValue.peopleList.peopleList.map(pRec => {
-                      if (!pRec.display_name && pRec.name) {
-                        pRec.display_name = `${pRec.name.first} ${pRec.name.last}`;
-                      }
-                      let a = pRec.display_name.trim().split(' ');
-                      maxLength = Math.max(a.length, maxLength);
-                      return Object.assign({}, pRec, {   // return to the map function... adds an entry to the columnList
-                        rowDetails: deepCopy(defaultDisplayRows),
-                        foreignKey: defaultValue.foreignKey || foreignKey,
-                        requestType: defaultValue.requestType,
-                        defaultValues: defaultObj,
-                        column_id: pRec.person_id,
-                        dName: [' ', ' ', ' '].concat(a)
-                      });
-                    });
-                    updateReactData({
-                      defaultColumns: deepCopy(columnList)
-                    }, false);
-                  }
-                  break;
-                }
-                case 'addPeople': {
-                  allowAdd = defaultValue.peopleList.addPeople;
-                  break;
-                }
-                default: { }
-              }
-            }
-            setAllowAddPeople(allowAdd);
-            break;
-          }
-          case ('activities'): {
-            for (let a = 0; a < defaultValue.activities.length; a++) {
-              let this_requestType, this_requestName;
-              if (!defaultValue.activities[a].hasOwnProperty('column_defaults')) {
-                defaultValue.activities[a].column_defaults = {};
-              }
-              if (defaultValue.activities[a].column_defaults.requestType) {
-                this_requestType = defaultValue.activities[a].column_defaults.requestType;
-                if (state.session.service_request_types.hasOwnProperty(this_requestType)) {
-                  this_requestName = state.session.service_request_types[this_requestType].description || titleCase(this_requestType);
-                }
-                else {
-                  this_requestName = titleCase(this_requestType);
-                }
-              }
-              let words = this_requestName.split(' ');
-              maxLength = Math.max(words.length, maxLength);
-              let defaultsToUse = deepCopy(Object.assign({}, defaultObj, defaultValue.activities[a].column_defaults));
-              columnList.push({
-                rowDetails: await buildDisplayRows(defaultValue.activities[a].activityRec.valid_values_list, defaultsToUse),
-                activity_key: defaultValue.activities[a].column_defaults.activity_code || defaultValue.activities[a].activityRec.activity_code,
-                foreignKey: defaultValue.activities[a].column_defaults.foreignKey,
-                requestType: defaultValue.activities[a].column_defaults.requestType,
-                requestName: this_requestName,
-                defaultValues: defaultsToUse
-              });
-            }
-            setAllowRemovePeople(false);
-            setAllowAddPeople(false);
-            updateReactData({
-              defaultColumns: deepCopy(columnList)
-            }, false);
-            break;
-          }
-          default: {
-            if (typeof defaultValue[dKey] === 'string') {
-              defaultObj[dKey] = defaultValue[dKey];
-            }
-          }
-        };
+    let defaultObj = buildDefaults(defaultValue);
+    let defaultColumnList = [];
+    let localData_maxDName = 0;
+    // eslint-disable-next-line
+    {  // build defaultColumns object from passed in activities for this request
+      if (!defaultValue || !defaultValue.hasOwnProperty('activities')) {
+        let this_requestType = defaultValue.requestType || defaultValue.request_type || await extractRequestType(fact.activity_code) || 'noRType';
+        let this_requestName = state.session.service_request_types[this_requestType].description || titleCase(this_requestType);
+        let this_foreignKey = defaultValue.foreignKey || defaultValue.foreign_key || 'noFKey';
+        let fDate = makeDate(this_foreignKey);
+        let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(','))));
+        localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
+        defaultColumnList.push({
+          rowDetails: await buildDisplayRows(listValues, defaultObj),
+          activity_key: fact.activity_code,
+          foreignKey: this_foreignKey,
+          requestType: this_requestType,
+          requestName: this_requestName,
+          defaultValues: defaultObj,
+          column_id: `${this_requestType}_${this_foreignKey}`,
+          dName: dName
+        });
       }
-    }
-    setForeignKey(foreignKey);
-    if (!defaultValue.requestType) {
-      let activityParts = fact.activity_key.split('//');
-      let activityCode = activityParts.pop();
-      let activityClient = state.session.client_id;
-      if (activityParts.length > 0) {
-        activityClient = activityParts[0];
-      }
-      let activityRec = await getActivity(activityClient, activityCode);
-      updateReactData({
-        defaultRequestType: activityRec.request_type
-      }, false);
-    }
-    let displayRowList = await buildDisplayRows(listValues, defaultObj);
+      else {
+        for (let a = 0; a < defaultValue.activities.length; a++) {
+          // merge global defaults and column_defaults into a single object; column_defaults will override globals
+          let defaultsToUse = deepCopy(Object.assign({}, defaultObj, defaultValue.activities[a].column_defaults || {}));
+          let this_activityKey = defaultValue.activities[a].column_defaults.activity_code || defaultValue.activities[a].activityRec.activity_code || fact.activity_code;
+          let this_requestType = defaultValue.activities[a].column_defaults.requestType || defaultValue.requestType || defaultValue.request_type || await extractRequestType(this_activityKey) || 'noRType';
+          let this_requestName = state.session.service_request_types[this_requestType].description || titleCase(this_requestType);
+          let this_foreignKey = defaultValue.activities[a].column_defaults.foreignKey || defaultValue.foreignKey || defaultValue.foreign_key || 'noFKey';
+          let fDate = makeDate(this_foreignKey);
+          let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(','))));
+          localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
+          defaultColumnList.push({
+            rowDetails: await buildDisplayRows(defaultValue.activities[a].activityRec.valid_values_list, defaultsToUse),
+            activity_key: this_activityKey,
+            foreignKey: this_foreignKey,
+            requestType: this_requestType,
+            requestName: this_requestName,
+            defaultValues: defaultsToUse,
+            column_id: `${this_requestType}_${this_foreignKey}`,
+            dName: dName
 
-    // We'll pre-load the radio checkboxes and do a little manipulation on the names for display purposes
-    let radioOn = {};
-    let textValue = {};
-    columnList.forEach((this_column, x) => {         // for every column
-      radioOn[this_column.column_id] = {};
-      displayRowList.forEach((r, rx) => {
-        if (this_column.rowDetails[x].isChecked) {
-          radioOn[this_column.column_id][r.text] = true;
-        }
-        if (defaultObj.hasOwnProperty(r.text) || defaultValue.activities[x].column_defaults.hasOwnProperty(r.text)) {
-          let textValueToUse = defaultValue.activities[x].column_defaults[r.text] || defaultObj[r.text];
-          if (!this_column.rowDetails[x].isChecked || !defaultCheckedWords.includes(textValueToUse.toLowerCase())) {
-            if (!textValue.hasOwnProperty(this_column.column_id)) {
-              textValue[this_column.column_id] = {};
-            }
-            textValue[this_column.column_id][r.text] = textValueToUse;
-          }
-        }
-      });
-      for (let dQ in defaultQualSelections) {
-        defaultQualSelections[dQ][this_column.column_id] = deepCopy(defaultQualSelections[dQ]['_default_']);
-      }
-      if (!this_column.requestType) {
-        this_column.requestType = reactData.defaultRequestType;
-        if (state.session.service_request_types.hasOwnProperty(this_column.requestType)) {
-          this_column.requestName = state.session.service_request_types[this_column.requestType].description || titleCase(this_column.requestType);
-        }
-        else {
-          this_column.requestName = titleCase(this_column.requestType);
-        }
-      }
-      if (!this_column.foreignKey) {
-        this_column.foreignKey = reactData.defaultForeignKey;
-      }
-      if (!this_column.dName) {
-        let fDate = makeDate(this_column.foreignKey);
-        let words = this_column.requestName.split(' ').slice(-3);
-        if (!fDate.error) {
-          this_column.dName = [' ', ' ', ' '].concat(words).concat((fDate.absolute).split(','));
-        }
-        else {
-          this_column.dName = [' ', ' ', ' '].concat(words).concat((fDate.absolute).split(','));
-        }
-      }
-      if (!this_column.column_id) {
-        this_column.column_id = `${this_column.requestType}_${this_column.foreignKey}`;
-      }
-      if (this_column.hasOwnProperty('person_id')) {
-        if (this_column.hasOwnProperty('defaultValues')) {  // if this person carried global default values
-          displayRowList.forEach((r, rx) => {
-            if (this_column.defaultValues.hasOwnProperty(r.text)) {
-              if (!textValue.hasOwnProperty(this_column.column_id)) { textValue[this_column.column_id] = {}; }
-              textValue[this_column.column_id][r.text] = this_column.defaultValues[r.text];
-            }
           });
         }
-        if (!this_column.display_name) {
-          this_column.display_name = `${this_column.name.first} ${this_column.name.last}`;
-        }
-        if (!columnList[x].dName) {
-          let a = this_column.display_name.split(' ');
-          maxLength = Math.max(a.length, maxLength);
-          columnList[x].dName = [' ', ' ', ' '].concat(a);
-        }
       }
-    });
-    setMaxName(maxLength);
+    }
 
-    setDataRows({
-      displayRows: displayRowList,
-      dataRows: {},
-      textValue,
-      radioOn,
-      defaultChecked,
-      qualData: defaultQualData,
-      columnList: columnList,
-      selectionList: selectionList
-    });
+    updateReactData({
+      defaultColumns: defaultColumnList,
+      maxDName: localData_maxDName,
+      columnList: []
+    }, false);
+
+    // columns are created for each person_id, foreignKey, requestType combination
+    // The person is assigned in one of three ways: 
+    //    1. selected - a selectList will be passed in the defaultValue.selectList
+    //    2. pre-assigned - a peopleList will be passed in the defaultValue.peopleList
+    //    3. default - if neither of the above, use the current session.patient_id
+
+    if (defaultValue.peopleList && defaultValue.peopleList.peopleList && (defaultValue.peopleList.peopleList.length > 0)) {
+      for (let p = 0; p < defaultValue.peopleList.peopleList.length; p++) {
+        await addColumns(defaultValue.peopleList.peopleList[p].person_id);
+      }
+    }
+    else if (defaultValue.selectList) {
+      updateReactData({
+        selectionList: defaultValue.selectList.selectionList || defaultValue.selectList.shortList
+      }, false);
+    }
+    else {
+      await addColumns(state.session.patient_id);
+    }
+
     updateReactData({
       initialLoadComplete: true,
-      defaultColumns: deepCopy(columnList),
-      defaultQualSelections
+      columnList: reactData.columnList,
+      titleName: reactData.titleName
     }, true);
+
+    function buildDefaults(defaultValue) {
+      let returnObj = {};
+      if (defaultValue) {
+        for (let dKey in defaultValue) {
+          switch (dKey) {
+            case ('importTypes'): {
+              break;
+            }
+            case ('allowAddPeople'): {
+              setAllowAddPeople(defaultValue.allowAddPeople);
+              break;
+            }
+            case ('allowRemovePeople'): {
+              setAllowRemovePeople(defaultValue.allowRemovePeople);
+              break;
+            }
+            case ('selectList'): {
+              if (defaultValue.selectList.addPeople) {
+                setAllowAddPeople(defaultValue.selectList.addPeople);
+              }
+              break;
+            }
+            case ('peopleList'): {
+              if (defaultValue.peopleList.addPeople) {
+                setAllowAddPeople(defaultValue.peopleList.addPeople);
+              }
+              break;
+            }
+            case ('activities'): {
+              break;
+            }
+            default: {
+              if (typeof defaultValue[dKey] === 'string') {
+                returnObj[dKey] = defaultValue[dKey];
+              }
+            }
+          };
+        }
+      }
+      return returnObj;
+    }
 
     async function buildDisplayRows(listValues, defaults) {
       let displayRowList = [];
@@ -457,7 +352,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         // console.log(instruction);
 
         // This checks for rows that contain "~[<oControl>=<oValue on/off>]"
-        let dValue = '';
+        let observationDefaultValue = '';
         let last_instruction = instruction[instruction.length - 1];
         if (last_instruction.charAt(0) === '[') {
           let [, oControl, oValue] = last_instruction.split(/[=[\]]+/);
@@ -500,7 +395,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               break;
             }
             case 'default': {
-              dValue = oValue;
+              observationDefaultValue = oValue;
               break;
             }
             default: { }
@@ -525,7 +420,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             required,
             multiColumn,
             text: instruction[0],
-            oKey: getKey(instruction[0]),
+            observationKey: getKey(instruction[0]),
             desc: getDescription(instruction[0]),
             input: false,
             bold: displayBold,
@@ -538,35 +433,28 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             // default the checkbox to checked if either:
             //   a previous instruction set the default for all checkboxes to ON (~[default=checked]), OR
             //   a passed in default for this item instructs AVA to set the checkbox ON
-            if (defaultCheckedWords.includes(dValue)
-              || (defaults.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaults[instruction[0]]))) {
-              delete defaults[instruction[0]];
-              if (defaultObj.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaultObj[instruction[0]])) {
-                defaultChecked[instruction[0]] = true;    // this handles GLOBAL default "set for all columns" and is used if we add another column later
-              }
+            if ((defaults.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaults[instruction[0]])) // this item is checked off by default
+              || (defaultCheckedWords.includes(observationDefaultValue))) {  // this item is checked off because this instruction had a modifier such as [default=checked]
               rObj.isChecked = true;
-              rObj.qualSelections = {};
-              let oItem = await getObservationItems(rObj.oKey);
+            }
+            // see if there any any qualifiers for this item
+            rObj.qualSelections = {};
+            if (rObj.observationKey) {
+              let oItem = await getObservationItems(rObj.observationKey);
               if (oItem && oItem.hasOwnProperty('options')) {
-                defaultQualData[instruction[0]] = await getObservationOptions(oItem.options.observation_key);
-                rObj.qualSelections[instruction[0]] = {};
+                rObj.qualData = await getObservationOptions(oItem.options.observation_key);
+                rObj.qualSelections = {};
                 oItem.options.display_value.forEach(v => {
                   if (v.default) {
-                    rObj.qualSelections[instruction[0]][v.title] = {};
-                    if (Array.isArray(v.default)) {
-                      v.default.forEach(dVal => {
-                        rObj.qualSelections[instruction[0]][v.title][dVal] = true;
-                      });
-                    }
-                    else {
-                      rObj.qualSelections[instruction[0]][v.title][v.default] = true;
-                    }
+                    rObj.qualSelections[v.title] = {};
+                    makeArray(v.default).forEach(dVal => {
+                      rObj.qualSelections[v.title][dVal] = true;
+                    });
                   }
                 });
               }
             }
           }
-
           displayRowList.push(rObj);
           continue;
         }
@@ -578,18 +466,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         //     "~prompt:Who is this order for?"
         //     "~promptAll:Table Number"
         if (instruction[2]) {
+          let this_instruction = instruction[2].trim();
           displayRowList.push({
             checkbox: false,
             required: false,
             multiColumn: false,
-            text: instruction[2].trim(),
-            textValue: defaults[instruction[2]],
-            oKey: instruction[3] || getKey(instruction[2].trim()),
-            desc: getDescription(instruction[2]),
+            text: this_instruction,
+            textValue: defaults[this_instruction],
+            observationKey: instruction[3] || getKey(this_instruction),
+            desc: getDescription(this_instruction),
             input: instruction[1].trim().toLowerCase(),
             header: false
           });
-          if (dValue) { defaults[instruction[2].trim()] = dValue; }
+          if (observationDefaultValue) {
+            defaults[this_instruction] = observationDefaultValue;
+          }
           continue;
         }
 
@@ -601,16 +492,18 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           required: false,
           multiColumn: false,
           text: instruction[1],
-          oKey: getKey(instruction[1]),
+          observationKey: getKey(instruction[1]),
           desc: getDescription(instruction[1]),
           input: false,
           header: true
         });
-        if (dValue) { defaults[instruction[1]] = dValue; }
+        if (observationDefaultValue) {
+          defaults[instruction[1]] = observationDefaultValue;
+        }
       };
       return displayRowList;
     }
-  }
+  };
 
   React.useEffect(() => {
     async function initialize() {
@@ -638,12 +531,46 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
   }
 
+  function columnUniqueName(my_column) {
+    let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(reactData.columnList[0].dName)).slice(-5);
+    reactData.columnList.forEach(this_column => {
+      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-5);
+      testName.forEach((dN, dX) => {
+        if (dN !== commonRows[dX]) {
+          commonRows[dX] = false;
+        }
+      });
+    });
+    let testName = ([' ', ' ', ' ', ' ', ' '].concat(my_column.dName)).slice(-5);
+    let showName = testName.filter((n, x) => {
+      return !commonRows[x];
+    });
+    return showName.slice(-5).join(' ').trim();
+  }
+
+  function columnCommonName() {
+    let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(reactData.columnList[0].dName)).slice(-7);
+    reactData.columnList.forEach(this_column => {
+      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-7);
+      testName.forEach((dN, dX) => {
+        if (dN !== commonRows[dX]) {
+          commonRows[dX] = false;
+        }
+      });
+    });
+    let commonText = '';
+    commonRows.forEach(c => {
+      if (c && !reactData.columnList[0].display_name.includes(c)) { commonText += (c + ' '); };
+    });    
+    return commonText.trim();
+  }
+
   const onCheckEnter = (event, columnNumber, rowNumber) => {
     if (event.key === 'Enter' || event.type === 'blur') {
-      if (dataRows.columnList[columnNumber].rowDetails[rowNumber].input === 'date') { handleDateExit(event.target.value, columnNumber, rowNumber); }
-      else if (dataRows.columnList[columnNumber].rowDetails[rowNumber].input === 'time') { handleTimeExit(event.target.value, columnNumber, rowNumber); }
-      else if (dataRows.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
-        handleTextAll(event.target.value, dataRows.columnList[columnNumber].rowDetails[rowNumber].text);
+      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') { handleDateExit(event.target.value, columnNumber, rowNumber); }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') { handleTimeExit(event.target.value, columnNumber, rowNumber); }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
+        handleTextAll(event.target.value, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
       else { handleTextExit(event.target.value, columnNumber, rowNumber); }
     }
@@ -651,18 +578,18 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   const handleChangeTextField = (vText, columnNumber, rowNumber) => {
-    // dataRows.columnList[columnNumber].rowDetails[rowNumber].textValue
-    if (!dataRows.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('textValue')) {
-      dataRows.columnList[columnNumber].rowDetails[rowNumber].textValue = {};
+    // reactData.columnList[columnNumber].rowDetails[rowNumber].textValue
+    if (!reactData.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('textValue')) {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = {};
     }
     if (!vText || (vText === '')) {
       handleTextExit(vText, columnNumber, rowNumber);
     }
     else {
-      if (dataRows.columnList[columnNumber].rowDetails[rowNumber].input === 'date') { handleDateExit(vText, columnNumber, rowNumber); }
-      else if (dataRows.columnList[columnNumber].rowDetails[rowNumber].input === 'time') { handleTimeExit(vText, columnNumber, rowNumber); }
-      else if (dataRows.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
-        handleTextAll(vText, dataRows.columnList[columnNumber].rowDetails[rowNumber].text);
+      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') { handleDateExit(vText, columnNumber, rowNumber); }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') { handleTimeExit(vText, columnNumber, rowNumber); }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
+        handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
       else { handleTextExit(vText, columnNumber, rowNumber); }
     }
@@ -672,9 +599,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   function handleDateExit(vText, columnNumber, rowNumber) {
     let AVAdate = makeDate(vText);
-    dataRows.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
+    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
+    updateReactData({ columnList: reactData.columnList }, true);
   };
 
   function handleTimeExit(vText, columnNumber, rowNumber) {
@@ -706,106 +632,116 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       ampm = 'pm';
     }
     if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
-    dataRows.columnList[columnNumber].rowDetails[rowNumber].textValue = `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
+    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = `${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`;
+    updateReactData({ columnList: reactData.columnList }, true);
   };
 
   function handleTextExit(vText, columnNumber, rowNumber) {
-    dataRows.columnList[columnNumber].rowDetails[rowNumber].textValue = vText;
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
+    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = vText;
+    updateReactData({ columnList: reactData.columnList }, true);
   };
 
   function handleTextAll(vText, this_item) {
-    dataRows.columnList.forEach(this_column => {
+    reactData.columnList.forEach((this_column, columnNumber) => {
       let rowNumber = this_column.rowDetails.findIndex(r => {
         return (r.text === this_item);
       });
       if (rowNumber >= 0) {
-        this_column.rowDetails[rowNumber].textValue = vText;
+        reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = vText;
       }
     });
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
+    updateReactData({ columnList: reactData.columnList }, true);
   };
 
-  function isQualChecked(pText, columnNumber, rowNumber, pOption, pSelection) {
-    let objRef = dataRows.columnList[columnNumber].rowDetails[rowNumber];
-    if (!objRef.qualSelections) { return false; }
-    if (!objRef.qualSelections.hasOwnProperty(pText)) { return false; }
-    if (!objRef.qualSelections[pText].hasOwnProperty(pOption)) { return false; }
-    return !!objRef.qualSelections[pText][pOption][pSelection];
+  function isQualChecked(rowData, pOption, pSelection) {
+    if (!rowData.qualSelections) { return false; }
+    if (!rowData.qualSelections.hasOwnProperty(pOption)) { return false; }
+    return !!rowData.qualSelections[pOption][pSelection];
   }
 
   async function itemSelected(columnNumber, rowNumber) {
-    if (dataRows.columnList[columnNumber].rowDetails[rowNumber].isChecked) {
-      dataRows.columnList[columnNumber].rowDetails[rowNumber].isChecked = false;
+    if (reactData.columnList[columnNumber].rowDetails[rowNumber].isChecked) {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].isChecked = false;
     }
     else {
-      dataRows.columnList[columnNumber].rowDetails[rowNumber].isChecked = true;
-      let keyText = dataRows.columnList[columnNumber].rowDetails[rowNumber].text;
-      let oKey = dataRows.columnList[columnNumber].rowDetails[rowNumber].oKey;
-      if (!dataRows.qualData) { dataRows.qualData = {}; }
-      if (!dataRows.qualData[keyText]) {
-        // first time we've seen anybody check off this text in this session
-        if (oKey) { dataRows.qualData[keyText] = await getObservationOptions(oKey); }
-        else { dataRows.qualData[keyText] = []; }
-      }
-      if (dataRows.qualData[keyText].length > 0) {
-        if (!dataRows.columnList[columnNumber].rowDetails[rowNumber].qualSelections) {
-          dataRows.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
-          if (reactData.defaultQualSelections[keyText]) {
-            dataRows.columnList[columnNumber].rowDetails[rowNumber].qualSelections = deepCopy(reactData.defaultQualSelections[keyText]);
-          }
-          else {
-            dataRows.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
-          }
+      reactData.columnList[columnNumber].rowDetails[rowNumber].isChecked = true;
+      await getQualifierSelections(columnNumber, rowNumber);
+    }
+    updateReactData({ columnList: reactData.columnList }, true);
+  }
+
+  async function getQualifierData(observationKey) {
+    // first time we've seen anybody check off this text in this session
+    if (observationKey) {
+      return (await getObservationOptions(observationKey));
+    }
+    else {
+      return [];
+    }
+  }
+
+  async function getQualifierSelections(columnNumber, rowNumber) {
+    let keyText = reactData.columnList[columnNumber].rowDetails[rowNumber].text;
+    if (((reactData.qualData ? reactData.qualData[keyText] : null) || await getQualifierData(reactData.columnList[columnNumber].rowDetails[rowNumber].observationKey)).length > 0) {
+      if (!reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections) {     // no previous selections made
+        reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
+        if (reactData.defaultQualSelections[keyText]) {
+          reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = deepCopy(reactData.defaultQualSelections[keyText]);
+        }
+        else {
+          reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
         }
       }
     }
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
   }
 
-  function getQualTextValue(columnNumber, rowNumber, pText, qOpt, qChoice) {
-    let objRef = dataRows.columnList[columnNumber].rowDetails[rowNumber];
-    if (objRef.qualSelections
-      && objRef.qualSelections[pText]
-      && objRef.qualSelections[pText][qOpt]) {
-      return objRef.qualSelections[pText][qOpt][qChoice] || '';
+  function getQualTextValue(rowData, qOpt, qChoice) {
+    if (rowData.qualSelections && rowData.qualSelections[qOpt]) {
+      return rowData.qualSelections[qOpt][qChoice] || '';
+    }
+    else {
+      return '';
     }
   }
 
-  function optSelected(columnNumber, rowNumber, pText, qOpt, qChoice, qValueText) {
-    // dataRows.columnList[columnNumber].rowDetails[rowNumber].qualSelections[pText][pOption][pSelection]
-    let qualRules = dataRows.qualData[pText].find(r => { return r.title === qOpt; });
-    let objRef = dataRows.columnList[columnNumber].rowDetails[rowNumber];
-    if (!objRef.hasOwnProperty('qualSelections')) {
-      objRef.qualSelections = {
-        [pText]: {}
+  function optSelected(rowData, qOpt, qChoice, qValueText) {
+    // reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections[pText][pOption][pSelection]
+    if (!rowData.hasOwnProperty('qualData')) {
+      return;
+    }
+    // which entry in qualData contains the qOpt information?
+    let optionAt = rowData.qualData.findIndex(opt => {
+      return (opt.title === qOpt);
+    });
+    if (optionAt < 0) {
+      return;
+    }
+    let qualRules = rowData.qualData[optionAt];
+    // which option in rowData.qualData[optionAt] contains the qChoice information?
+
+    //    reactData.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('qualSelections').qualSelections[pText][pOption][pSelection]
+    if (!rowData.hasOwnProperty('qualSelections')) {
+      rowData.qualSelections = {
       };
     }
-    else if (!objRef.qualSelections.hasOwnProperty(pText)) {
-      objRef.qualSelections[pText] = {};
-    }
-    if (!objRef.qualSelections[pText].hasOwnProperty(qOpt)) {
-      objRef.qualSelections[pText][qOpt] = {
+    if (!rowData.qualSelections.hasOwnProperty(qOpt)) {
+      rowData.qualSelections[qOpt] = {
         [qChoice]: (qValueText || true)
       };
     }
     else {
-      if (objRef.qualSelections[pText][qOpt].hasOwnProperty(qChoice)) {
-        if (typeof (objRef.qualSelections[pText][qOpt][qChoice]) === 'boolean') {
-          objRef.qualSelections[pText][qOpt][qChoice] = !objRef.qualSelections[pText][qOpt][qChoice];
+      if (rowData.qualSelections[qOpt].hasOwnProperty(qChoice)) {
+        if (typeof (rowData.qualSelections[qOpt][qChoice]) === 'boolean') {
+          rowData.qualSelections[qOpt][qChoice] = !rowData.qualSelections[qOpt][qChoice];
         }
-        else { objRef.qualSelections[pText][qOpt][qChoice] = qValueText; }
+        else { rowData.qualSelections[qOpt][qChoice] = qValueText; }
       }
-      else { objRef.qualSelections[pText][qOpt][qChoice] = (qValueText || true); }
+      else { rowData.qualSelections[qOpt][qChoice] = (qValueText || true); }
     }
+
     let optionsSelected = [];
-    for (let choice in objRef.qualSelections[pText][qOpt]) {
-      if (objRef.qualSelections[pText][qOpt][choice]) {
+    for (let choice in rowData.qualSelections[qOpt]) {
+      if (rowData.qualSelections[qOpt][choice]) {
         optionsSelected.push(choice);
       }
     }
@@ -814,138 +750,98 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       for (let o = 0; ((o < optionsSelected.length) && (numberOfSelections > qualRules.max_allowed)); o++) {
         // too many selections?  turn off the first one we find that isn't the one requested in the function call
         if (optionsSelected[o] !== qChoice) {
-          objRef.qualSelections[pText][qOpt][optionsSelected[o]] = false;
+          rowData.qualSelections[qOpt][optionsSelected[o]] = false;
           numberOfSelections--;
         }
       }
     }
     if (qualRules.min_required && (numberOfSelections < qualRules.min_required)) {   // not enough selections
-      if (qualRules.default && !objRef.qualSelections[pText][qOpt][qualRules.default]) {   // and the default is not selected 
-        objRef.qualSelections[pText][qOpt][qualRules.default] = true;
+      if (qualRules.default && !rowData.qualSelections[qOpt][qualRules.default]) {   // and the default is not selected 
+        rowData.qualSelections[qOpt][qualRules.default] = true;
         numberOfSelections++;
       }
       for (let o = 0; ((o < qualRules.option.length) && (numberOfSelections < qualRules.min_required)); o++) {
         // start turning things on until we have enough; but don't touch the one requested in the function call
-        if ((!objRef.qualSelections[pText][qOpt][qualRules.option[o].display])
+        if ((!rowData.qualSelections[qOpt][qualRules.option[o].display])
           && (qualRules.option[o].display !== qOpt)
           && (qualRules.option[o].type === 'checkbox')
         ) {
-          objRef.qualSelections[pText][qOpt][qualRules.option[o].display] = true;
+          rowData.qualSelections[qOpt][qualRules.option[o].display] = true;
           numberOfSelections++;
         }
       }
     }
-    setDataRows(dataRows);
-    setForceRedisplay(!forceRedisplay);
+    return rowData;
   }
 
-  const handleAddPersonToList = async (pPeople) => {
-    let defaultChecked = dataRows.defaultChecked || { AVA: false };
-    let resetSelectedTo;
-    let maxLength = maxName;
-    for (let pID in pPeople) {
-      if (pID.startsWith('GRP//')) {
-        let groupParts = pID.split('/');    // this allows for capture of optional client in pID as [client]/group_id
-        let gID = groupParts.pop();
-        let gClient = groupParts.pop() || state.session.client_id;
-        let gObj = await getMemberList(gID, gClient, { 'sort': true });
-        gObj.peopleList.forEach(async (person) => {
-          await columnAdd(person.name.first.trim() + ' ' + person.name.last.trim(), person.person_id);
-        });
-      }
-      else {
-        let nameParts = pPeople[pID].split(',');  // this will produce "first last" regardless of whether it comes in "last, first"
-        let fName = nameParts.pop();
-        let lName = nameParts.join(' ');
-        await columnAdd(fName.trim() + ' ' + lName.trim(), pID);
+  async function addColumns(this_id) {
+    let this_person = await getPerson(this_id);
+    let this_name = (`${this_person.name.first} ${this_person.name.last}`).trim();
+    if (!reactData.titleName || !reactData.titleName.remembered || (reactData.titleName.remembered.length === 0)) {
+      reactData.titleName = {
+        first: this_person.name.first.trim(),
+        last: this_person.name.last.trim(),
+        display: this_name,
+        remembered: [this_name]
       }
     }
-    setMaxName(maxLength);
-    setMorePeople(false);
-    setSelectedColumn(resetSelectedTo);
-    setDataRows({
-      displayRows: dataRows.displayRows,
-      dataRows: dataRows.dataRows,
-      textValue: dataRows.textValue,
-      radioOn: dataRows.radioOn,
-      checked: dataRows.checked,
-      defaultChecked: dataRows.defaultChecked,
-      columnList: dataRows.columnList,
-      qualSelections: dataRows.qualSelections,
-      qualData: dataRows.qualData,
-      selectionList: dataRows.selectionList
-    });
-
-    return;
-
-    async function columnAdd(display_name, person_id) {
-      let nameWords = display_name.split(/\s+/);
-      let [this_id, spliceAfter] = checkDuplicate(person_id);
-      let newColumn = {
-        person_id: this_id,
-        account_id: person_id,
-        display_name,
-        dName: [' ', ' ', ' '].concat(nameWords)
-      };
-      if (spliceAfter === 0) {
-        dataRows.columnList.push(newColumn);
-        if (!resetSelectedTo) {
-          resetSelectedTo = dataRows.columnList.length - 1;
-        }
+    else if (reactData.titleName.last.toLowerCase() !== this_person.name.last.trim().toLowerCase()) {
+      if (!reactData.titleName.remembered.includes(this_name)) {
+        reactData.titleName.display = `${reactData.titleName.remembered.push(this_name)} people`;
       }
-      else {
-        dataRows.columnList.splice(spliceAfter + 1, 0, newColumn);
-        if (!resetSelectedTo) {
-          resetSelectedTo = spliceAfter + 1;
-        }
-      }
-      let existingOrder = await checkExistingOrders(this_id, display_name);
-      if (existingOrder.status !== 'use existing') {
-        dataRows.radioOn[this_id] = deepCopy(defaultChecked);
-        for (let dQ in dataRows.qualSelections) {
-          dataRows.qualSelections[dQ][person_id] = deepCopy(dataRows.qualSelections[dQ]['_default_']);
-        }
-      }
-      else {
-        await applyExistingOrder(this_id, existingOrder);
-      }
-      maxLength = Math.max(nameWords.length, maxLength);
-      return;
-
-      function checkDuplicate(checkID) {
-        let counter = 1;
-        let spliceAfter = 0;
-        dataRows.columnList.forEach((c, x) => {
-          if (c.account_id === checkID) {
-            counter++;
-            spliceAfter = x;
-          }
-        });
-        if (counter === 1) {
-          return [checkID, 0];
-        }
-        else {
-          return [`${checkID}+++${counter}`, spliceAfter];
-        }
+      reactData.titleName.first = '_multi_';
+      reactData.titleName.last = '_multi_';
+    }
+    else {         // same last name as all others so far
+      if (!reactData.titleName.remembered.includes(this_name)) {
+        reactData.titleName.remembered.push(this_name);
+        reactData.titleName.display = `${reactData.titleName.first} and ${this_name}`;
+        reactData.titleName.first = `${reactData.titleName.first}, ${this_person.name.first.trim()}`;
       }
     }
+    let myDefaultColumns = deepCopy(reactData.defaultColumns);
+    for (let c = 0; c < myDefaultColumns.length; c++) {              // for each column
+      let column = myDefaultColumns[c];
+      myDefaultColumns[c].person_id = this_id;
+      myDefaultColumns[c].column_id = `${column.column_id}_${this_id}`;
+      myDefaultColumns[c].display_name = this_name;
+      myDefaultColumns[c].dName.push(...(`${this_person.name.first} ${this_person.name.last}`).trim().split(' ').slice(-2));
+      if (myDefaultColumns[c].dName.length > reactData.maxDName) {
+        updateReactData({
+          maxDName: myDefaultColumns[c].dName.length
+        }, false);
+      }
+      let existingRequest = await checkExistingRequests({
+        client_id: state.session.client_id,
+        foreign_key: myDefaultColumns[c].foreign_key || myDefaultColumns[c].foreignKey,
+        request_type: defaultValue.importTypes || myDefaultColumns[c].request_type || myDefaultColumns[c].requestType,
+        requestor: this_id,
+        requestor_name: `${this_person.name.first} ${this_person.name.last}`
+      });
+      if (existingRequest.status === 'use existing') {
+        await applyExistingRequest(existingRequest, myDefaultColumns[c]);
+      }
+    };
+    reactData.columnList.push(...myDefaultColumns);
   };
 
-  async function applyExistingOrder(this_id, existingOrder, this_column = null) {
-    dataRows.radioOn[this_id] = {};
-    existingOrder.requestToUse.original_request.selections.forEach(s => {
+  async function applyExistingRequest(existingRequest, this_column) {
+    existingRequest.requestToUse.original_request.selections.forEach(s => {
       let selection = s.split('(').shift().trim();
-      if (this_column) {
-        let rowNumber = this_column.rowDetails.findIndex(r => {
-          return (r.text === selection);
-        })
-        this_column.rowDetails[rowNumber].isChecked = true;
+      let rowNumber = this_column.rowDetails.findIndex(r => {
+        return (r.text === selection);
+      });
+      this_column.rowDetails[rowNumber].isChecked = true;
+      if ((existingRequest.requestToUse.original_request.hasOwnProperty('options'))
+        && (existingRequest.requestToUse.original_request.options.hasOwnProperty(selection))) {
+        this_column.rowDetails[rowNumber].qualSelections = deepCopy(existingRequest.requestToUse.original_request.options[selection]);
       }
-      else {
-        dataRows.radioOn[this_id][selection] = true;
+      if ((existingRequest.requestToUse.original_request.hasOwnProperty('textInput'))
+        && (existingRequest.requestToUse.original_request.options.hasOwnProperty(selection))) {
+        this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
       }
     });
-    if (existingOrder.requestToUse.original_request.hasOwnProperty('qualifiers')) {
+    if (existingRequest.requestToUse.original_request.hasOwnProperty('qualifiers')) {
       /*
          original_request.qualifiers come in as qualifiers.[<Menu choice>][<Qualifier Option>][<array of selections>]
          example 
@@ -956,58 +852,32 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
            [Coffee][rsteele][How do you like your coffee?][cream] = true
            [Coffee][rsteele][How do you like your coffee?][sugar] = true
       */
-      for (let selection in existingOrder.requestToUse.original_request.qualifiers) {
-        // add qualData if necessary - qualData describes the options available for anyone that selects this menu item
-        if (!dataRows.qualData) {
-          dataRows.qualData = {};
-        }
-        let selection_key = getKey(selection);
-        if (!selection_key) {     // you are importing a qualifier that is not part of this request; ignore it
+      for (let selection in existingRequest.requestToUse.original_request.qualifiers) {
+        let rowNumber = this_column.rowDetails.findIndex(r => {
+          return (r.qualData && r.qualData.qualSelections && r.qualData.qualSelections.hasOwnProperty(selection));
+        });
+        if (rowNumber < 0) {
           continue;
-        }
-        if (!dataRows.qualData[selection]) {
-          dataRows.qualData[selection] = await getObservationOptions(getKey(selection));
-        }
-        // add qualSelections - records the specific choices for this id
-        if (!dataRows.qualSelections) {
-          dataRows.qualSelections = {};
-        }
-        if (!dataRows.qualSelections.hasOwnProperty(selection)) {
-          dataRows.qualSelections[selection] = {};   // Menu choice
-        }
-        if (!dataRows.qualSelections[selection].hasOwnProperty(this_id)) {    // MenuChoice.Person
-          dataRows.qualSelections[selection][this_id] = {};
-        }
-        for (let option in existingOrder.requestToUse.original_request.qualifiers[selection]) {
-          if (!dataRows.qualSelections[selection][this_id].hasOwnProperty(option)) {
-            dataRows.qualSelections[selection][this_id][option] = {};
+        };
+        for (let option in existingRequest.requestToUse.original_request.qualifiers[selection]) {
+          if (!this_column.rowDetails.qualData.qualSelections[selection].hasOwnProperty(option)) {
+            this_column.rowDetails.qualData.qualSelections[selection][option] = {};
           }
-          if (Array.isArray(existingOrder.requestToUse.original_request.qualifiers[selection][option])) {
-            existingOrder.requestToUse.original_request.qualifiers[selection][option].forEach(choice => {
-              dataRows.qualSelections[selection][this_id][option][choice] = true;
+          if (Array.isArray(existingRequest.requestToUse.original_request.qualifiers[selection][option])) {
+            existingRequest.requestToUse.original_request.qualifiers[selection][option].forEach(choice => {
+              this_column.rowDetails.qualData.qualSelections[selection][option][choice] = true;
             });
           }
         }
       }
     }
-    if (existingOrder.requestToUse.original_request.hasOwnProperty('textInput')) {
-      dataRows.textValue[this_id] = deepCopy(existingOrder.requestToUse.original_request.textInput);
-    }
   }
 
-  async function checkExistingOrders(pPerson, pName, request_key = null) {
+  async function checkExistingRequests(request_key) {
     // Does this person already have a request for this requestype and foreignkey?
-    if (!request_key) {
-      request_key = {
-        client_id: pClient,
-        foreign_key,
-        request_type: importTypes || reactData.defaultRequestType,
-        requestor: pPerson
-      };
-    }
     let existingRequest = await getServiceRequests(request_key);
     if (existingRequest.length > 0) {
-      let requestAction = await orderWarning(pName);
+      let requestAction = await orderWarning(request_key);
       let rTime = makeDate(new Date().getTime());
       switch (requestAction) {
         case 'use': {
@@ -1037,7 +907,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       'status': 'make new'
     };
 
-    async function orderWarning(pPerson) {
+    async function orderWarning(pKey) {
       const showWarning = new Promise((resolve, reject) => {
         let response = '';
         const snackAction = (
@@ -1065,8 +935,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             </Button>
           </React-Fragment>
         );
+        let phrase = `AVA found an existing order for ${pKey.requestor_name}`;
+        if (pKey.foreign_key) {
+          let fKdate = makeDate(pKey.foreign_key);
+          if (!fKdate.error) {
+            phrase += ` dated for ${fKdate.relative}`;
+          }
+        }
         enqueueSnackbar(
-          `AVA found an existing order for ${pPerson}.  What would you like to do?`,
+          `${phrase}.  What would you like to do?`,
           { variant: 'warning', persist: true, action: snackAction }
         );
       });
@@ -1087,12 +964,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let local_key = null;
     let message_body;
 
-    for (let columnNumber = 0; columnNumber < pData.columnList.length; columnNumber++) {
+    for (let columnNumber = 0; columnNumber < pData.length; columnNumber++) {
       let selections = [];
       let options = {};
       let textInput = {};
       let oBo;
-      let this_column = pData.columnList[columnNumber];
+      let this_column = pData[columnNumber];
       if (this_column.person_id) {
         oBo = await makeName(this_column.person_id);
       }
@@ -1103,22 +980,22 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         let this_row = this_column.rowDetails[rowNumber];
         if (this_row.isChecked) {
           let choices_list = [];
-          for (let this_key in this_row.qualSelections) {
-            for (let this_option in this_row.qualSelections[this_key]) {
-              for (let this_choice in this_row.qualSelections[this_key][this_option]) {
-                if (!options.hasOwnProperty(this_row.text)) {
-                  options[this_row.text] = {};
-                }
-                if (!options[this_row.text].hasOwnProperty(this_key)) {
-                  options[this_row.text][this_key] = {};
-                }
-                options[this_row.text][this_key][this_option] = this_choice;
-                if (typeof (this_row.qualSelections[this_key][this_option][this_choice]) === 'boolean') {
+          for (let this_option in this_row.qualSelections) {
+            for (let this_choice in this_row.qualSelections[this_option]) {
+              if (!options.hasOwnProperty(this_row.text)) {
+                options[this_row.text] = {};
+              }
+              if (!options[this_row.text].hasOwnProperty(this_option)) {
+                options[this_row.text][this_option] = {};
+              }
+              options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
+              if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
+                if (this_row.qualSelections[this_option][this_choice]) {
                   choices_list.push(this_choice);
                 }
-                else {
-                  choices_list.push(this_row.qualSelections[this_key][this_option][this_choice]);
-                }
+              }
+              else {
+                choices_list.push(this_row.qualSelections[this_option][this_choice]);
               }
             }
           }
@@ -1139,6 +1016,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       }
       if ((selections.length > 0) || (Object.keys(textInput).length > 0)) {
+        let svc_messaging = null;
+        if (Array.isArray(fact.messaging) || ((fact.messaging.hasOwnProperty('format')) && (fact.messaging.format.type !== 'mealTicket'))) {
+          svc_messaging = fact.messaging;
+        }
         let result = await putServiceRequest(
           {
             client: state.session.client_id,
@@ -1153,7 +1034,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               options,
               textInput
             },
-            messaging: (fact.messaging.format.type !== 'mealTicket' ? fact.messaging : null),
+            messaging: svc_messaging,
             local_key
           });
         local_key = result.requestRec.local_key;
@@ -1250,13 +1131,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let dataExists = false;
     let warningSection = [`[bold][italic]There are no selections for:`, ' '];
     let responseArray = [`[bold][italic]AVA will send the following:`];
-    let everyoneText = [];
-    if (pData.textValue && pData.textValue.hasOwnProperty('*all*')) {
-      Object.keys(pData.textValue['*all*']).forEach(prompt => {
-        everyoneText.push(`[indent=1]${prompt}: ${pData.textValue['*all*'][prompt]}`);
+    // figure out column Names
+    let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(pData[0].dName)).slice(-5);
+    pData.forEach(this_column => {
+      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-5);
+      testName.forEach((dN, dX) => {
+        if (dN !== commonRows[dX]) {
+          commonRows[dX] = false;
+        }
       });
-    }
-    pData.columnList.forEach(this_column => {
+    });
+    let commonText = '';
+    commonRows.forEach(c => {
+      if (c) { commonText += (c + ' '); };
+    });
+    pData.forEach(this_column => {
       // what is checked off in this column?
       // columnList[columnNumber].rowDetails[rowNumber].isChecked
       let selectionText = [];
@@ -1264,22 +1153,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       this_column.rowDetails.forEach(this_row => {
         if (this_row.isChecked) {
           selectionText.push(`[style={size:1}]${titleCase(this_row.text)}`);
-          for (let this_key in this_row.qualSelections) {
-            if (this_key !== this_row.text) {
-              selectionText.push(titleCase(this_key));
-            }
-            for (let this_option in this_row.qualSelections[this_key]) {
-              for (let this_choice in this_row.qualSelections[this_key][this_option]) {
-                let choices_list = [];
-                if (typeof (this_row.qualSelections[this_key][this_option][this_choice]) === 'boolean') {
-                  choices_list.push(this_choice);
+          for (let this_option in this_row.qualSelections) {
+            for (let this_choice in this_row.qualSelections[this_option]) {
+              if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
+                if (this_row.qualSelections[this_option][this_choice]) {
+                  selectionText.push(`[indent=1][italic][style={size:0.4}]${this_choice}`);
                 }
-                else {
-                  choices_list.push(this_row.qualSelections[this_key][this_option][this_choice]);
-                }
-                if (choices_list.length > 0) {
-                  selectionText.push(`[indent=1][italic][style={size:0.4}]${choices_list.join('; ')}`);
-                }
+              }
+              else {
+                selectionText.push(`[indent=1][italic][style={size:0.4}]${this_row.qualSelections[this_option][this_choice]}`);
               }
             }
           }
@@ -1295,7 +1177,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       });
       // that's all the rows for this column
-      let columnName = this_column.dName.slice(-3).join(' ');
+      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-5);
+      let showName = testName.filter((n, x) => {
+        return !commonRows[x];
+      });
+      let columnName = showName.slice(-3).join(' ');
       if (selectionText.length === 0) {
         warningSection.push(`[bold]${columnName}`);
         warningsExist = true;
@@ -1309,6 +1195,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     });
     let returnArray = ['Selection summary'];
+    if (commonText) {
+      returnArray = [titleCase(commonText)];
+    }
     if (warningsExist) { returnArray.push(...warningSection); }
     if (dataExists) { returnArray.push(...responseArray); }
     return ['confirm', returnArray];
@@ -1316,13 +1205,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   return (
     <Dialog
-      open={true || forceRedisplay}
+      open={(true || forceRedisplay) && reactData.initialLoadComplete}
       p={2}
       fullScreen
     >
-      {!!dataRows && dataRows.hasOwnProperty('displayRows') && dataRows.displayRows.length > 0 &&
+      {/* Header with Avatar, Message, and VertMenu */}
+      {(reactData.columnList && reactData.columnList.length > 0)
+        &&
         <React.Fragment>
-          {/* Header with Avatar, Message, and VertMenu */}
           <Box
             display='flex' flexDirection='row'
             className={classes.messageArea}
@@ -1337,7 +1227,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               overflow: 'visible'
             })}
             key={'topBox'}
-            borderBottom={(dataRows.columnList.length <= 1) ? 2 : 0}
+            borderBottom={(reactData.columnList.length <= 1) ? 2 : 0}
           >
             <Box
               display='flex'
@@ -1353,14 +1243,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     left: 1,
                     bottom: 0
                   },
-                  size: ((dataRows.columnList && (!dataRows.columnList[selectedColumn].person_id || (dataRows.columnList.length === 1))) ? 1 : 1.3),
+                  size: ((reactData.titleName.display) ? 1 : 1.3),
                   bold: true
                 })}
               >
-                {`${factName}`}
+                {`${titleCase(columnCommonName()) || factName}`}
               </Typography>
-              {dataRows.columnList &&
-                ((!dataRows.columnList[selectedColumn].person_id) ?
+              {reactData.titleName.display &&
                   <Typography
                     style={AVATextStyle({
                       margin: {
@@ -1373,26 +1262,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       bold: true
                     })}
                   >
-                    {`for ${(reactData.defaultPerson ? reactData.defaultPerson.name.first : state.patient.name.first)} ${(reactData.defaultPerson ? reactData.defaultPerson.name.last : state.patient.name.last)}`}
+                    {`for ${reactData.titleName.display}`}
                   </Typography>
-                  : ((dataRows.columnList.length === 1) ?
-                    <Typography
-                      style={AVATextStyle({
-                        margin: {
-                          top: 0,
-                          right: 1,
-                          left: 1,
-                          bottom: 0
-                        },
-                        size: 1.3,
-                        bold: true
-                      })}
-                    >
-                      {`for ${dataRows.columnList[selectedColumn].display_name}`}
-                    </Typography>
-                    : null
-                  )
-                )
               }
             </Box>
             <Box
@@ -1475,7 +1346,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           { /* MAIN */}
 
           { /* Selection Row */}
-          {(dataRows.columnList.length > 1) &&
+          {(reactData.columnList.length > 1) &&
             <Box display='flex'
               flexDirection='row'
               marginRight={0}
@@ -1518,7 +1389,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   >
                     <Typography key={`selectWord`} className={classes.smallTextLine}>{'Select'}</Typography>
                   </Box>
-                  {dataRows.columnList.map((this_column, this_columnNumber) => (
+                  {reactData.columnList.map((this_column, this_columnNumber) => (
                     <Box
                       display='flex'
                       flexDirection='column'
@@ -1529,48 +1400,19 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       justifyContent='flex-end'
                       alignItems='center'
                     >
-                      {(dataRows.hasOwnProperty('textValue')
-                        && dataRows.textValue.hasOwnProperty(this_column.column_id)
-                        && dataRows.textValue[this_column.column_id].hasOwnProperty('Seat Assignment')
-                        && (dataRows.textValue[this_column.column_id]['Seat Assignment'])
-                        && (dataRows.textValue[this_column.column_id]['Seat Assignment'] !== ''))
-                        ?
-                        <Box
-                          mt={0}
-                          mb={1}
-                          minWidth={50}
-                          maxWidth={50}
-                          minHeight={50}
-                          maxHeight={50}
-                          display='flex'
-                          flexDirection='row'
-                          justifyContent='center'
-                          alignItems='center'
-                        >
-                          <Typography key={`number-${this_columnNumber}`} style={AVATextStyle({ size: 2, bold: true })}>
-                            {dataRows.textValue[this_column.column_id]['Seat Assignment'].slice(0, 2)}
-                          </Typography>
-                        </Box>
-                        :
-                        (this_column.person_id
-                          ?
-                          <Box
-                            component="img"
-                            mt={0}
-                            mb={1}
-                            border={1}
-                            minWidth={50}
-                            maxWidth={50}
-                            minHeight={50}
-                            maxHeight={50}
-                            alt=''
-                            src={getImage(this_column.person_id)}
-                          />
-                          :
-                          null
-                        )
-                      }
-                      {this_column.dName.slice(-1 * Math.min(maxName, 3)).map((n, nx) => (
+                      <Box
+                        component="img"
+                        mt={0}
+                        mb={1}
+                        border={1}
+                        minWidth={50}
+                        maxWidth={50}
+                        minHeight={50}
+                        maxHeight={50}
+                        alt=''
+                        src={getImage(this_column.person_id)}
+                      />
+                      {columnUniqueName(this_column).split(/\s+/).slice(-1 * Math.min(reactData.maxDName, 3)).map((n, nx) => (
                         <Typography key={`name-${nx}-${this_columnNumber}`} className={classes.smallTextLine}>{n.slice(0, 10)}</Typography>
                       ))}
                       <Radio
@@ -1594,8 +1436,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
           { /* Data rows */}
           <Paper component={Box} className={classes.page} overflow='auto' square>
-            {(dataRows.columnList.length > 0) &&
-              (dataRows.columnList[selectedColumn].rowDetails).map((this_item, this_index) => (
+            {(reactData.columnList.length > 0) &&
+              (reactData.columnList[selectedColumn].rowDetails).map((this_item, this_index) => (
                 <Box display='flex'
                   flexDirection='column'
                   borderRadius={'16px'}
@@ -1696,8 +1538,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     </Typography>
                   }
                   {this_item.isChecked
-                    && dataRows.qualData.hasOwnProperty(this_item.text)
-                    && dataRows.qualData[this_item.text].map((qR, qRndx) => (
+                    && this_item.qualData
+                    && this_item.qualData.map((qR, qRndx) => (
                       <Box
                         key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
                         id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
@@ -1743,9 +1585,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       className={classes.radioButton}
                                       size="small"
                                       onClick={() => {
-                                        optSelected(selectedColumn, this_index, this_item.text, qR.title, opt.display);
+                                        optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
+                                        updateReactData({
+                                          columnList: reactData.columnList
+                                        }, true);
                                       }}
-                                      checked={isQualChecked(this_item.text, selectedColumn, this_index, qR.title, opt.display)}
+                                      checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
                                     />
                                     <Typography
                                       key={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
@@ -1760,18 +1605,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       key={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                       id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                       size="small"
-                                      checked={isQualChecked(this_item.text, selectedColumn, this_index, qR.title, opt.display)}
+                                      checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
                                     />
                                     <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>{opt.display}</Typography>
                                     <TextField
                                       key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                       id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                       style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
-                                      defaultValue={getQualTextValue(selectedColumn, this_index, this_item.text, qR.title, opt.display)}
+                                      defaultValue={getQualTextValue(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
                                       variant={'standard'}
                                       multiline
                                       onChange={(event) => {
-                                        optSelected(selectedColumn, this_index, this_item.text, qR.title, opt.display, event.target.value);
+                                        optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display, event.target.value);
+                                        updateReactData({
+                                          columnList: reactData.columnList
+                                        }, true);
                                       }}
                                       autoComplete='off'
                                     />
@@ -1788,221 +1636,165 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               ))
             }
           </Paper>
+        </React.Fragment>
+      }
 
-          { /* Prompt for People */}
-          {(dataRows.columnList.length < 1) &&
-            <PersonFilter
-              prompt={'Select from this list'}
-              peopleList={dataRows.selectionList}
-              onCancel={() => {
-                onClose();
-              }}
-              onSelect={async (selectedPeople) => {
-                await handleAddPersonToList(selectedPeople);
-              }}
-              allowRandom={true}
-              multiSelect={true}
-              returnValue={'object'}
-            />
-          }
-          {(dataRows.columnList.length > 0)
-            && dataRows.selectionList
-            && (dataRows.selectionList.length > 0)
-            &&
-            <PersonFilter
-              prompt={'Select from this list'}
-              peopleList={dataRows.selectionList}
-              onCancel={() => {
-                onClose();
-                /*  
-                delete dataRows.selectionList;
-                  setDataRows(dataRows);
-                  setForceRedisplay(forceRedisplay => !forceRedisplay);
-                  */
-              }}
-              onSelect={async (selectedID) => {
-                delete dataRows.selectionList;
-                let sIDs = makeArray(selectedID);
-                // let defaultColumns = deepCopy(dataRows.columnList);
-                dataRows.columnList = [];
-                for (let p = 0; p < sIDs.length; p++) {             // for each person you selected
-                  let this_id = sIDs[p];
-                  let this_person = await getPerson(this_id);
-                  // let myColumns = deepCopy(defaultColumns);
-                  let myColumns = deepCopy(reactData.defaultColumns);
-                  for (let c = 0; c < myColumns.length; c++) {              // for each column
-                    let column = myColumns[c];
-                    myColumns[c].person_id = this_id;
-                    myColumns[c].column_id = `${column.column_id}_${this_id}`;
-                    myColumns[c].dName.push(this_person.name.first, this_person.name.last);
-                    let existingOrder = await checkExistingOrders(this_id, `${this_person.name.first} ${this_person.name.last}`, {
-                      client_id: state.session.client_id,
-                      foreign_key: myColumns[c].foreign_key || myColumns[c].foreignKey,
-                      request_type: importTypes || myColumns[c].request_type || myColumns[c].requestType,
-                      requestor: this_id
-                    });
-                    if (existingOrder.status === 'use existing') {
-                      await applyExistingOrder(this_id, existingOrder, myColumns[c]);
-                    }
-                  };
-                  dataRows.columnList.push(...myColumns);
-                }
-                setDataRows(dataRows);
-                if (sIDs.length === 1) {
-                  updateReactData({
-                    defaultPerson: await getPerson(sIDs[0])
-                  }, false);
-                }
-                setForceRedisplay(forceRedisplay => !forceRedisplay);
-              }}
-              allowRandom={true}
-              multiSelect={true}
-              returnValue={'id'}
-            />
-          }
+      { /* Prompt for People */}
+      {((reactData.columnList && (reactData.columnList.length < 1)) || (morePeople))
+        &&
+        <PersonFilter
+          prompt={'Select from this list'}
+          peopleList={reactData.selectionList}
+          onCancel={() => {
+            if (reactData.columnList.length < 1) {
+              onClose();
+            }
+            setMorePeople(false);
+          }}
+          onSelect={async (selectedID) => {
+            let sIDs = makeArray(selectedID);
+            reactData.columnList = [];
+            for (let p = 0; p < sIDs.length; p++) {             // for each person you selected
+              await addColumns(sIDs[p]);
+            }
+            if (sIDs.length > 0) {
+              updateReactData({
+                columnList: reactData.columnList,
+                titleName: reactData.titleName
+              }, true);
+            }
+            setMorePeople(false);
+          }}
+          allowRandom={false}
+          multiSelect={true}
+          returnValue={'id'}
+        />
+      }
 
-          { /* Prompt for People */}
-          {morePeople &&
-            <PersonFilter
-              prompt={'Select diners'}
-              peopleList={state.accessList[state.session.client_id].shortList}
-              onCancel={() => {
-                setMorePeople(false);
-              }}
-              onSelect={async (selectedPeople) => {
-                await handleAddPersonToList(selectedPeople);
-              }}
-              allowRandom={true}
-              multiSelect={true}
-              returnValue={'object'}
-            />
-          }
+      { /* Prompts */}
+      {cancelPending
+        &&
+        <AVAConfirm
+          promptText={`Are you sure you'd like to exit?`}
+          cancelText={'No, go back'}
+          confirmText={'Yes, exit'}
+          onCancel={() => {
+            setCancelPending(false);
+          }}
+          onConfirm={() => {
+            onClose();
+          }}
+        >
+        </AVAConfirm>
+      }
+      {confirmDelete
+        &&
+        <AVAConfirm
+          promptText={`Please confirm removing ${columnUniqueName(reactData.columnList[selectedColumn])}`}
+          cancelText={'No, go back'}
+          confirmText={`Yes, remove ${columnUniqueName(reactData.columnList[selectedColumn])}`}
+          onCancel={() => {
+            setConfirmDelete(false);
+          }}
+          onConfirm={() => {
+            reactData.columnList.splice(selectedColumn, 1);
+            if (selectedColumn > 0) { setSelectedColumn(selectedColumn - 1); }
+            setConfirmDelete(false);
+            updateReactData({
+              columnList: reactData.columnList
+            }, true);
+          }}
+        >
+        </AVAConfirm>
+      }
+      {(confirmStatus === 'confirm')
+        &&
+        <AVAConfirm
+          promptText={confirmPrompt}
+          cancelText={'Go back'}
+          confirmText={'Save/Send'}
+          onCancel={() => { setConfirmStatus(''); }}
+          onConfirm={async () => {
+            await sendRequests(reactData.columnList);
+            onSave();
+          }}
+        />
+      }
+      {(confirmStatus === 'error')
+        &&
+        <AVAConfirm
+          promptText={confirmPrompt}
+          cancelText={'Go back'}
+          confirmText={'*none*'}
+          onCancel={() => { setConfirmStatus(''); }}
+          onConfirm={() => { }}
+        >
+        </AVAConfirm>
+      }
 
-          { /* Prompts */}
-          {
-            cancelPending &&
-            <AVAConfirm
-              promptText={`Are you sure you'd like to exit?`}
-              cancelText={'No, go back'}
-              confirmText={'Yes, exit'}
-              onCancel={() => {
-                setCancelPending(false);
+      { /* Command Area */}
+      <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+        <Box display='flex' flexDirection='column'>
+          <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
+              size='small'
+              onClick={() => {
+                ((factType === 'list') ? onClose() : setCancelPending(true));
               }}
-              onConfirm={() => {
-                onClose();
-              }}
+              startIcon={<CloseIcon size="small" />}
             >
-            </AVAConfirm>
-          }
-          {
-            confirmDelete &&
-            <AVAConfirm
-              promptText={`Please confirm removing ${dataRows.columnList[selectedColumn].display_name}`}
-              cancelText={'No, go back'}
-              confirmText={`Yes, remove ${dataRows.columnList[selectedColumn].display_name}`}
-              onCancel={() => {
-                setConfirmDelete(false);
-              }}
-              onConfirm={() => {
-                dataRows.columnList.splice(selectedColumn, 1);
-                if (selectedColumn > 0) { setSelectedColumn(selectedColumn - 1); }
-                setDataRows(dataRows);
-                setConfirmDelete(false);
-                setForceRedisplay(forceRedisplay => !forceRedisplay);
-              }}
-            >
-            </AVAConfirm>
-          }
-          {
-            (confirmStatus === 'confirm') &&
-            <AVAConfirm
-              promptText={confirmPrompt}
-              cancelText={'Go back'}
-              confirmText={'Save/Send'}
-              onCancel={() => { setConfirmStatus(''); }}
-              onConfirm={async () => {
-                await sendRequests(dataRows);
-                onSave();
-              }}
-            />
-          }
-          {
-            (confirmStatus === 'error') &&
-            <AVAConfirm
-              promptText={confirmPrompt}
-              cancelText={'Go back'}
-              confirmText={'*none*'}
-              onCancel={() => { setConfirmStatus(''); }}
-              onConfirm={() => { }}
-            >
-            </AVAConfirm>
-          }
-
-          { /* Command Area */}
-          <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-            <Box display='flex' flexDirection='column'>
-              <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+              {'Exit'}
+            </Button>
+            {(!factType || (factType !== 'list')) &&
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'green', color: 'white' }}
+                size='small'
+                onClick={() => {
+                  let [cStatus, response] = makeConfirm(reactData.columnList);
+                  setConfirmPrompt(response);
+                  setConfirmStatus(cStatus);
+                }}
+                startIcon={<CheckIcon size="small" />}
+              >
+                {'Confirm/Send'}
+              </Button>
+            }
+          </Box>
+          {(allowAddPeople || (allowRemovePeople && (reactData.columnList.length > 1))) &&
+            <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+              {allowAddPeople &&
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'blue', color: 'white' }}
+                  size='small'
+                  onClick={() => {
+                    setMorePeople(true);
+                  }}
+                  startIcon={<GroupAddIcon size="small" />}
+                >
+                  {'Add People'}
+                </Button>
+              }
+              {allowRemovePeople && (reactData.columnList.length > 1) &&
                 <Button
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'red', color: 'white' }}
                   size='small'
                   onClick={() => {
-                    ((factType === 'list') ? onClose() : setCancelPending(true));
+                    setConfirmDelete(true);
                   }}
-                  startIcon={<CloseIcon size="small" />}
+                  startIcon={<DeleteIcon size="small" />}
                 >
-                  {'Exit'}
+                  {`Remove ${columnUniqueName(reactData.columnList[selectedColumn])}`}
                 </Button>
-                {(!factType || (factType !== 'list')) &&
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'green', color: 'white' }}
-                    size='small'
-                    onClick={() => {
-                      let [cStatus, response] = makeConfirm(dataRows);
-                      setConfirmPrompt(response);
-                      setConfirmStatus(cStatus);
-                    }}
-                    startIcon={<CheckIcon size="small" />}
-                  >
-                    {'Confirm/Send'}
-                  </Button>
-                }
-              </Box>
-              {(allowAddPeople || (allowRemovePeople && (dataRows.columnList.length > 1))) &&
-                <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                  {allowAddPeople &&
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'blue', color: 'white' }}
-                      size='small'
-                      onClick={() => {
-                        setMorePeople(true);
-                      }}
-                      startIcon={<GroupAddIcon size="small" />}
-                    >
-                      {'Add People'}
-                    </Button>
-                  }
-                  {allowRemovePeople && (dataRows.columnList.length > 1) &&
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'red', color: 'white' }}
-                      size='small'
-                      onClick={() => {
-                        setConfirmDelete(true);
-                      }}
-                      startIcon={<DeleteIcon size="small" />}
-                    >
-                      {`Remove ${dataRows.columnList[selectedColumn].display_name}`}
-                    </Button>
-                  }
-                </Box>
               }
             </Box>
-          </DialogActions>
-        </React.Fragment>
-      }
+          }
+        </Box>
+      </DialogActions>
     </Dialog >
   );
 

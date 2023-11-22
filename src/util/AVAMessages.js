@@ -492,7 +492,11 @@ export async function formatRequestDetails(body, summaryType) {
   let lineSpacing = '0px';
   if (!textInput) { textInput = {}; }
   body.selections.forEach((aVal) => {
+    let aVal_raw = aVal.split(' (').shift();
     let sVal = sentenceCase(aVal.trim());
+    if ((body.options) && (body.options.hasOwnProperty(aVal_raw))) {
+      sVal = sentenceCase(aVal_raw);
+    }
     htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[aVal] || ''}</dt>`;
     rawMessage += `\n${sVal}\n`;
     pdfStyle('reset');
@@ -509,6 +513,25 @@ export async function formatRequestDetails(body, summaryType) {
         htmlMessage += `<dd>${sentenceCase(qual)}: ${tOut}</dd>`;
         rawMessage += `${sentenceCase(qual)}: ${tOut}\n`;
         pdfLine(`${sentenceCase(qual)}: ${tOut}`, { noNewLine: true, before: 1, indent: 15, size: 'small' });
+      }
+    }
+    /* Check for options */
+    if ((body.options) && (body.options.hasOwnProperty(aVal_raw))) {
+      for (let this_option in body.options[aVal_raw]) {
+        for (let this_choice in body.options[aVal_raw][this_option]) {
+          if (typeof (body.options[aVal_raw][this_option][this_choice]) === 'boolean') {
+            if (body.options[aVal_raw][this_option][this_choice]) {
+              htmlMessage += `<dd>${titleCase(this_choice)}</dd>`;
+              rawMessage += `${titleCase(this_choice)}\n`;
+              pdfLine(`${titleCase(this_choice)}`, { noNewLine: true, italic: true, before: 1, indent: 15, size: 'small' });
+            }
+          }
+          else {
+            htmlMessage += `<dd>${body.options[aVal_raw][this_option][this_choice]}</dd>`;
+            rawMessage += `${body.options[aVal_raw][this_option][this_choice]}\n`;
+            pdfLine(`${body.options[aVal_raw][this_option][this_choice]}`, { noNewLine: true, italic: true, before: 1, indent: 15, size: 'small' });
+          }
+        }
       }
     }
     lineSpacing = `${spaceBetweenLines}px`;
@@ -581,7 +604,7 @@ export async function savePDF(doc, options = {}) {
         responseData.message = err.message;
       });
     if (goodS3) {
-      window.open(s3Resp.Location)
+      window.open(s3Resp.Location);
       responseStatus = 200;
       responseData.message.push(`S3 saved at ${s3Resp.Location}`);
       responseData.s3Resp = s3Resp;
@@ -744,20 +767,20 @@ export async function mealTicketFormat(body, requestRec = {}) {
       let [selection, ...options] = s.split(/[();,]/);
       if (this_request.original_request.hasOwnProperty('qualifiers')
         && this_request.original_request.qualifiers.hasOwnProperty(selection.trim())
-      ) { 
-        Object.values(this_request.original_request.qualifiers[selection.trim()]).forEach(choiceList => { 
+      ) {
+        Object.values(this_request.original_request.qualifiers[selection.trim()]).forEach(choiceList => {
           choiceList.forEach(choice => {
             if (!options.includes(choice)) {
               options.push(choice);
             }
-          })
-        })
-    }
+          });
+        });
+      }
       pdfLineMealTicket(selection, page.font.size.medium, 'normal');
       htmlText.push(`<div style=${style}>${selection}</div>`);
       plainText.push(selection);
       if (options.length > 0) {
-        style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;        
+        style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
         options.forEach((o, i) => {
           let outO = titleCase(o.trim());
           if (outO !== '') {
@@ -890,7 +913,7 @@ async function pdfLaunch(body) {
     doc.addPage({
       orientation: "portrait",
       format: ((body.pdf.pageWidth) ? [body.pdf.pageWidth, (body.pdf.pageHeight || 9999)] : [563, 750])
-    })
+    });
   }
   doc.autoPrint();
   page = {
