@@ -45,8 +45,6 @@ import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
-import { getPrinters } from "pdf-to-printer";
-
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
@@ -220,9 +218,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
-
-  console.log(process.platform);
-  getPrinters().then(response => { console.log(response); });
 
   const [reactData, setReactData] = React.useState({
     rebuilding: false,
