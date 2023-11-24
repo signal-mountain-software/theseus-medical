@@ -149,7 +149,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   };
 
   const getGroupsManagedObject = async (pPatient) => {
-    let gList = await getGroupsResponsibleFor(pPatient);
+    let [gList, ] = await getGroupsResponsibleFor(pPatient);
     // sort by group name
     let gSort = [];
     let gObj = {};

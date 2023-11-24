@@ -12,7 +12,6 @@ import IdleTimer from 'react-idle-timer';
 import useSound from 'use-sound';
 
 import { useSnackbar } from 'notistack';
-// import { print } from "pdf-to-printer";
 
 import List from '@material-ui/core/List';
 
@@ -45,6 +44,8 @@ import Avatar from '@material-ui/core/Avatar';
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
+
+import { getPrinters } from "pdf-to-printer";
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
@@ -219,6 +220,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
+
+  console.log(process.platform);
+  getPrinters().then(response => { console.log(response); });
 
   const [reactData, setReactData] = React.useState({
     rebuilding: false,
@@ -1029,7 +1033,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       onClick={async () => {
                         let printList = [];
                         reactData.dataRows.forEach(r => {
-                          if (r.workData.checked) { printList.push(reactData.dataRows[r]); }
+                          if (r.workData.checked) { printList.push(r); }
                           return;
                         });
                         let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });

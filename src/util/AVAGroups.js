@@ -1,10 +1,9 @@
-import { cl, clt, recordExists, makeArray, getCustomizations, dbClient } from './AVAUtilities';
+import { cl, clt, recordExists, makeArray, getCustomizations, dbClient, deepCopy } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
 import { SET_ACCESSLIST } from '../contexts/Session/actions';
 
 let profile, session;
 let groupRecs = {};
-let groupObj = {};
 let targetObj = {};
 let targetArray = [];
 let targetPerson = null;
@@ -62,8 +61,8 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
     }
     else {
       let clientGroupAssignments = await getCustomizations('group_assignments', pClient_id);
-      if (clientGroupAssignments && clientGroupAssignments.customization_value) { 
-        for (let accountClass in clientGroupAssignments.customization_value) { 
+      if (clientGroupAssignments && clientGroupAssignments.customization_value) {
+        for (let accountClass in clientGroupAssignments.customization_value) {
           if (makeArray(clientGroupAssignments.customization_value[accountClass]).includes(myAdminGroup.group_id)) {
             myClass = accountClass;
             break;
@@ -270,49 +269,9 @@ export async function isMemberOf(person_id, pGroup_id) {
 };
 
 export async function getGroupsResponsibleFor(person_id, options) {
-  if (!session || (session.session_id !== person_id)) {
-    session = await getSession(person_id);
-  }
   var returnObject = {};
-  // First, get Groups that this person explicitly manages (as per the SessionsV2 table)
-  if ('groups_managed' in session) {
-    for (let g = 0; g < session.groups_managed.length; g++) {
-      let gID = session.groups_managed[g].split('~')[0].trim();
-      let gRec = await getGroup(gID, session.client_id);
-      if (gRec.name) {
-        returnObject[gID] = {
-          group_name: gRec.name,
-          group_id: gID,
-          role: 'responsible'
-        };
-      };
-    }
-  }
-  // If there are groups in the "responsible for" array, include those
-  let respArray = [];
-  if ('responsible_for' in session) {
-    if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
-    else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-    else { respArray.push(session.responsible_for); }
-  }
-  for (let g = 0; g < respArray.length; g++) {
-    let group = respArray[g].trim();
-    if (!(group in returnObject)) {
-      let gName;
-      if (groupObj[group]) { gName = groupObj[group].name; }
-      else {
-        let gRec = await getGroup(group, session.client_id);
-        if (gRec.name) { gName = gRec.name; }
-      }
-      if (gName) {
-        returnObject[group] = {
-          group_name: gName,
-          group_id: group,
-          role: 'responsible'
-        };
-      }
-    };
-  }
+  var rejectObject = {};
+  // first, get a list of every group in this client
   let qParm = {
     KeyConditionExpression: 'client_id = :c',
     ExpressionAttributeValues: { ':c': session.client_id },
@@ -327,23 +286,50 @@ export async function getGroupsResponsibleFor(person_id, options) {
         client_id: `<${session.client_id}>`
       });
     });
-  if (recordExists(everyGroup)) {
-    for (let g = 0; g < everyGroup.Items.length; g++) {
-      let this_group = everyGroup.Items[g];
-      if (!(this_group.group_id in returnObject)) {
-        if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
-          || (options && options.account_class && (['master', 'support', 'admin'].includes(options.account_class)))) {
-          returnObject[this_group.group_id] = {
-            group_name: this_group.name,
-            group_id: this_group.group_id,
-            role: 'responsible'
-          };
-        }
-      };
+  if (!recordExists(everyGroup)) {
+    return returnObject;
+  }
+  // one at a time, determine if you are responsible for this group or not
+  // to do this, we'll need the session record for this person
+  let my_session = ((!!session && (session.session_id === person_id)) ? session : await getSession(person_id));
+  let my_session_groups_managed = [];
+  if (my_session.hasOwnProperty('groups_managed')) {
+    my_session_groups_managed = makeArray(my_session.groups_managed).map(g => {
+      return g.split('~').shift().trim();
+    });
+  }
+  let my_session_responsibleList = [];
+  if (my_session.hasOwnProperty('responsible_for')) {
+    if (Array.isArray(my_session.responsible_for)) {
+      my_session_responsibleList = deepCopy(my_session.responsible_for);
+    }
+    else if (my_session.responsible_for.startsWith('[')) {
+      my_session_responsibleList = session.responsible_for.replace(/[[\s\]]/g, '').split(',');
+    }
+    else {
+      my_session_responsibleList = makeArray(my_session.responsible_for);
     }
   }
+  everyGroup.Items.forEach(this_group => {
+    if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
+      || (options && options.account_class && (['master', 'support', 'admin'].includes(options.account_class)))
+      || (my_session_groups_managed.includes(this_group))
+      || (my_session_responsibleList.includes(this_group))) {
+      returnObject[this_group.group_id] = {
+        group_name: this_group.name,
+        group_id: this_group.group_id,
+        role: 'responsible'
+      };
+    }
+    else {
+      rejectObject[this_group.group_id] = {
+        group_name: this_group.name,
+        group_id: this_group.group_id
+      };
+    }
+  });
   loadedPerson = person_id;
-  return returnObject;
+  return [returnObject, rejectObject];
 }
 
 export async function getPeopleResponsibleFor(person_id) {
@@ -373,32 +359,26 @@ export async function getPeopleResponsibleFor(person_id) {
   });
 }
 
-export async function getGroupsBelongTo(person_id, options) {
+export async function getGroupsBelongTo(person_id, options = {}) {
+  if (options.hasOwnProperty('groups')) {
+
+  }
   // You belong to all groups that you are responsible for
-  var returnObject = await getGroupsResponsibleFor(person_id, options);
+  var [returnObject, rejectObject] = await getGroupsResponsibleFor(person_id, options);
   // Next, get any other Groups that this person belongs to (but aren't responsible for)
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);
   }
   if (profile && profile.groups) {
-    for (let g = 0; g < profile.groups.length; g++) {
-      let group = profile.groups[g];
-      if (!(group in returnObject)) {
-        let gName;
-        if (groupObj[group]) { gName = groupObj[group].name; }
-        else {
-          let gRec = await getGroup(group, session.client_id);
-          if (gRec.name) { gName = gRec.name; }
-        }
-        if (gName) {
-          returnObject[group] = {
-            group_name: gName,
-            group_id: group,
-            role: 'member'
-          };
-        }
+    for (let rejectGroup in rejectObject) {
+      if (profile.groups.includes(rejectGroup)) {
+        returnObject[rejectGroup] = {
+          group_name: rejectGroup.group_name,
+          group_id: rejectGroup.group_id,
+          role: 'member'
+        };
       }
-    };
+    }
   }
   loadedPerson = person_id;
   loadedGroupObj = returnObject;
@@ -420,7 +400,9 @@ export async function getGroupsBelongTo(person_id, options) {
 export async function getGroup(pGroup_id, pClient_id) {
   if (!pClient_id) {
     if (pGroup_id && pGroup_id.includes('//')) { [pClient_id, pGroup_id] = pGroup_id.split('//'); }
-    else if (session) { pClient_id = session.client_id; }
+    else if (session) {
+      pClient_id = session.client_id;
+    }
     else return {};
   }
   let cKey = `${pClient_id}//${pGroup_id}`;

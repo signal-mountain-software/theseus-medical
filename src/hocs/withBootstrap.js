@@ -1,5 +1,5 @@
 import React from 'react';
-import { dbClient, lambda, makeArray, getCustomizations } from '../util/AVAUtilities';
+import { dbClient, lambda, makeArray, getCustomizations, deepCopy } from '../util/AVAUtilities';
 import { isMemberOf, accountAccess, getMemberList, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
 import { makeName } from '../util/AVAPeople';
 import { getAllOccurrences } from '../util/AVACalendars';
@@ -1237,9 +1237,6 @@ export default Component => props => {
     dispatch({ type: SET_USER, payload: currentProfile });
     dispatch({ type: SET_PATIENT, payload: currentPatient });
 
-    // synchronous load other data
-    loadSyncInfo(currentSession, currentProfile);
-
     let sessionInfo = await Auth
       .currentSession()
       .catch(e => {
@@ -1253,6 +1250,9 @@ export default Component => props => {
     currentSession.url_parameters = getParamsFromURL();
     updateSession(currentSession.session_id, currentSession, currentPatient, currentProfile, currentSession.last_login, currentSession.url_parameters, 'AVA Launch', sessionInfo);
 
+    // synchronous load other data
+    loadSyncInfo(currentSession);
+
     putValidationCookie();
     setAVAReady(true);
     localAVAReady = true;
@@ -1260,8 +1260,9 @@ export default Component => props => {
     return true;
   }
 
-  function loadSyncInfo(pSession) {
-    console.log(`in loadSyncInfo with ${pSession}`);
+  function loadSyncInfo(workSession) {
+    console.log(`in loadSyncInfo`);
+    let pSession = deepCopy(workSession);
     let groupsObj = {};
     let membersObj = {};
     let belongsObj = {};
@@ -1277,21 +1278,22 @@ export default Component => props => {
     getAllGroups(pSession.patient_id, pSession.client_id)
       .then(groups => {
         dispatch({ type: SET_GROUPS, payload: Object.assign(belongsObj, membersObj, groups) });
+        getGroupsBelongTo(pSession.user_id, { allGroups: groups, sort: true, account_class: pSession.adminAccount ? 'master' : 'local' })
+          .then(belongsTo => {
+            dispatch({ type: SET_GROUPS, payload: Object.assign(membersObj, groupsObj, { belongsTo }) });
+            console.log(`done with loadSyncInfo Belongs to. Retrieved belongsto keys as ${Object.keys(belongsTo)}`);
+            belongsObj = { belongsTo };
+          })
+ //         .catch(error => {
+ //           console.log(`error in loadSyncInfo Belongs to. Message is ${error.message}`);
+ //         });
         console.log(`done with loadSyncInfo Groups. Retrieved groups keys as ${Object.keys(groups)}`);
         groupsObj = groups;
       })
-      .catch(error => {
-        console.log(`error in loadSyncInfo Groups. Message is ${error.message}`);
-      });
-    getGroupsBelongTo(pSession.user_id, { sort: true, account_class: pSession.adminAccount ? 'master' : 'local' })
-      .then(belongsTo => {
-        dispatch({ type: SET_GROUPS, payload: Object.assign(membersObj, groupsObj, { belongsTo }) });
-        console.log(`done with loadSyncInfo Belongs to. Retrieved belongsto keys as ${Object.keys(belongsTo)}`);
-        belongsObj = { belongsTo };
-      })
-      .catch(error => {
-        console.log(`error in loadSyncInfo Belongs to. Message is ${error.message}`);
-      });
+ //     .catch(error => {
+ //       console.log(`error in loadSyncInfo Groups. Message is ${error.message}`);
+ //     });
+    
     let rightNow = new Date();
     getAllOccurrences(
       {
