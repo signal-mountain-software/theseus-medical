@@ -144,7 +144,7 @@ export async function makeObservationList(pObs, pSession, variables = {}) {
           case (oType.startsWith('includeIfGroup=')): {
             // ~includeIfGroup=AVT_soft_entree:~includeObservations.soft_entree_[wednesday]"
             let [, checkGroup] = oType.split(/[=|:]/g);
-            if (await isMemberOf(pSession.patient_id, checkGroup) && oKey) {
+            if (await isMemberOf(pSession.client_id, pSession.patient_id, checkGroup) && oKey) {
               activityRec.validation.values[v] = oKey;
               v--;
             }

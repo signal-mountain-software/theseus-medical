@@ -297,7 +297,7 @@ export async function resolveMessageVariables(inString, body) {
         break;
       }
       case 'memberOf': {
-        let gList = await getGroupsBelongTo(body.author);
+        let gList = await getGroupsBelongTo(body.client, body.author);
         workString = `${front}${Object.keys(gList).join(' ~ ')}${back}`;
         break;
       }

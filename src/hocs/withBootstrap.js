@@ -1278,7 +1278,7 @@ export default Component => props => {
     getAllGroups(pSession.patient_id, pSession.client_id)
       .then(groups => {
         dispatch({ type: SET_GROUPS, payload: Object.assign(belongsObj, membersObj, groups) });
-        getGroupsBelongTo(pSession.user_id, { allGroups: groups, sort: true, account_class: pSession.adminAccount ? 'master' : 'local' })
+        getGroupsBelongTo(pSession.client_id, pSession.user_id, { allGroups: groups, sort: true, account_class: pSession.adminAccount ? 'master' : 'local' })
           .then(belongsTo => {
             dispatch({ type: SET_GROUPS, payload: Object.assign(membersObj, groupsObj, { belongsTo }) });
             console.log(`done with loadSyncInfo Belongs to. Retrieved belongsto keys as ${Object.keys(belongsTo)}`);
@@ -1319,7 +1319,7 @@ export default Component => props => {
     if (groupObject.hasOwnProperty('staff')) { adminArray.push(...(makeArray(groupObject.staff))); }
     if (adminArray.length === 0) { return true; }
     for (let x = 0; x < adminArray.length; x++) {
-      if (await isMemberOf(currentSession.user_id, adminArray[x])) { return true; }
+      if (await isMemberOf(currentSession.client_id, currentSession.user_id, adminArray[x])) { return true; }
     }
     return false;
   }

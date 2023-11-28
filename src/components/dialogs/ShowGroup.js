@@ -148,8 +148,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     return memberInfo.peopleList;
   };
 
-  const getGroupsManagedObject = async (pPatient) => {
-    let [gList, ] = await getGroupsResponsibleFor(pPatient);
+  const getGroupsManagedObject = async (pClient, pPatient) => {
+    let [gList, ] = await getGroupsResponsibleFor(pClient, pPatient);
     // sort by group name
     let gSort = [];
     let gObj = {};
@@ -289,7 +289,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             }}
             onRefresh={async () => {
               reactData.showGroupSelect = true;
-              await getGroupsManagedObject(pSession.patient_id);
+              await getGroupsManagedObject(pSession.client_id, pSession.patient_id);
               setForceRedisplay(!forceRedisplay);
             }}
           >

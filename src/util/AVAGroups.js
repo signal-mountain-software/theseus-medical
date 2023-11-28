@@ -261,20 +261,23 @@ export async function getAllClients() {
   return returnArray;
 }
 
-export async function isMemberOf(person_id, pGroup_id) {
+export async function isMemberOf(client_id, person_id, pGroup_id) {
   if (!loadedPerson || (loadedPerson !== person_id)) {
-    loadedGroupObj = await getGroupsBelongTo(person_id);
+    loadedGroupObj = await getGroupsBelongTo(client_id, person_id);
   }
   return (Object.keys(loadedGroupObj).includes(pGroup_id));
 };
 
-export async function getGroupsResponsibleFor(person_id, options) {
+export async function getGroupsResponsibleFor(client_id, person_id, options) {
   var returnObject = {};
   var rejectObject = {};
   // first, get a list of every group in this client
+  if (!client_id && session) {
+    client_id = session.client_id;
+  }
   let qParm = {
     KeyConditionExpression: 'client_id = :c',
-    ExpressionAttributeValues: { ':c': session.client_id },
+    ExpressionAttributeValues: { ':c': client_id },
     TableName: "Groups"
   };
   let everyGroup = await dbClient
@@ -283,7 +286,7 @@ export async function getGroupsResponsibleFor(person_id, options) {
     .catch(error => {
       cl({
         'Error reading Groups': error,
-        client_id: `<${session.client_id}>`
+        client_id: `<${client_id}>`
       });
     });
   if (!recordExists(everyGroup)) {
@@ -359,12 +362,12 @@ export async function getPeopleResponsibleFor(person_id) {
   });
 }
 
-export async function getGroupsBelongTo(person_id, options = {}) {
+export async function getGroupsBelongTo(client_id, person_id, options = {}) {
   if (options.hasOwnProperty('groups')) {
 
   }
   // You belong to all groups that you are responsible for
-  var [returnObject, rejectObject] = await getGroupsResponsibleFor(person_id, options);
+  var [returnObject, rejectObject] = await getGroupsResponsibleFor(client_id, person_id, options);
   // Next, get any other Groups that this person belongs to (but aren't responsible for)
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);
@@ -438,7 +441,7 @@ export async function getRole(pGroup, pPerson) {
     let gRec = await getGroup(pGroup, pSession.client_id);
     if (gRec.admin_list && gRec.admin_list.includes(pPerson)) { return 'responsible'; }
   }
-  if (await isMemberOf(pPerson, pGroup)) { return 'member'; }
+  if (await isMemberOf(pSession.client_id, pPerson, pGroup)) { return 'member'; }
   else { return 'non-member'; }
 }
 
@@ -676,7 +679,7 @@ export async function prepareTargets(pPerson, pClient_id, options) {
   }
   let responsibleList = [];   // legacy format
   let responsibleObj = {};
-  let groupObj = await getGroupsBelongTo(pPerson);
+  let groupObj = await getGroupsBelongTo(pClient_id, pPerson);
   let allGroupArr = Object.keys(groupObj);
   if (allGroupArr.length === 0) { return []; }
   if (includeGroups) {   // first, add a list of groups that you are responsible for (if requested)
@@ -902,7 +905,7 @@ export async function getAllGroups(person_id, client_id) {
     }
   });
   responseData.publicGroups = await getPublicGroupList(client_id, person_id);
-  responseData.privateGroups = await getGroupsBelongTo(person_id, { sort: true });
+  responseData.privateGroups = await getGroupsBelongTo(client_id, person_id, { sort: true });
   responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
   for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
   return responseData;
