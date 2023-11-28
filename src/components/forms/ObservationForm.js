@@ -159,7 +159,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
-  const { enqueueSnackbar } = useSnackbar();
+  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [reactData, setReactData] = React.useState({
@@ -627,6 +627,123 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     setForceRedisplay(!forceRedisplay);
     return s3Resp;
   };
+  
+  async function handleSaveFileNew(pTarget) {
+    let pType = pTarget.type;
+    let pMediaData = {
+      Bucket: 'theseus-medical-storage',
+      Key: pTarget.name,
+      Body: pTarget,
+      ACL: 'public-read-write',
+      ContentType: pTarget.type,
+      Metadata: { 'Content-Type': pTarget.type }
+    }
+    let buff, buffer;
+    let fileSize = 1;
+    let forceSingle = false;
+    try {
+      buff = await pMediaData.Body.arrayBuffer();
+      buffer = new Float32Array(buff, 4);
+      fileSize = buffer.length;
+    }
+    catch {
+      enqueueSnackbar(`${pMediaData.Key} is really big.  This may take a few minutes...`, { variant: 'error', persist: false });
+      forceSingle = true;
+    }
+
+    let uploadId;
+    try {
+      // Multipart upload will pass chunks of 10Mb
+      let partSize = 10000000;
+      let numberOfParts = 100;
+      if (fileSize > (partSize * numberOfParts)) {
+        partSize = Math.ceil(fileSize / 10);
+      }
+      else {
+        numberOfParts = Math.ceil(fileSize / partSize);
+      }
+
+      if ((numberOfParts === 1) || forceSingle) {
+        enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: false });
+        let uploadOK = true;
+        let s3Resp = await s3
+          .putObject(pMediaData)
+          .promise()
+          .catch(err => {
+            uploadOK = false;
+            enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
+              { variant: 'error', persist: true });
+          });
+        if (uploadOK) {
+          closeSnackbar();
+          enqueueSnackbar(`${pMediaData.Key} attached`, { variant: 'success', persist: true });
+          reactData.attachmentList.push(s3Resp);
+          if (!reactData.textInput) { reactData.textInput = { 's3file': s3Resp.Location }; }
+          else { reactData.textInput.s3file = s3Resp.Location; }
+          setReactData(reactData);
+          setForceRedisplay(!forceRedisplay);
+          return s3Resp;
+        };
+        return null;
+      }
+
+      // this is a multi-part load
+      enqueueSnackbar(`AVA broke your ${pType.toLowerCase()} with the name ${pMediaData.Key} into ${numberOfParts} pieces and is uploading them now`, { variant: 'info', persist: false });
+      let upParms = {
+        Bucket: pMediaData.Bucket,
+        Key: pMediaData.Key,
+        ACL: pMediaData.ACL,
+        ContentType: pMediaData.ContentType,
+        Metadata: pMediaData.Metadata
+      };
+      let mpUp = await s3.createMultipartUpload(upParms).promise();
+      uploadId = mpUp.UploadId;
+
+      const uploadPromises = [];
+      // Upload each part.
+      for (let i = 0; i < numberOfParts; i++) {
+        const start = i * partSize;
+        const end = start + partSize;
+        let uPartParm = {
+          Bucket: pMediaData.Bucket,
+          Key: pMediaData.Key,
+          UploadId: uploadId,
+          Body: buffer.subarray(start, end),
+          PartNumber: i + 1,
+        };
+        uploadPromises.push(s3.uploadPart(uPartParm).promise());
+      }
+
+      const uploadResults = await Promise.all(uploadPromises);
+      let upDone = {
+        Bucket: pMediaData.Bucket,
+        Key: pMediaData.Key,
+        UploadId: uploadId,
+        MultipartUpload: {
+          Parts: uploadResults.map(({ ETag }, i) => ({
+            ETag,
+            PartNumber: i + 1,
+          })),
+        }
+      };
+      let s3Resp = await s3.completeMultipartUpload(upDone).promise();
+      enqueueSnackbar(`All parts of ${s3Resp.Key} were saved successfully to ${s3Resp.Location}`, { variant: 'success', persist: true });
+      return pMediaData.Key;
+    } catch (err) {
+      console.error(err);
+      enqueueSnackbar(`That didn't work.  ${err}`, { variant: 'error', persist: true });
+      if (uploadId) {
+        let s3Bad = await s3.abortMultipartUpload({
+          Bucket: pMediaData.Bucket,
+          Key: pMediaData.Key,
+          UploadId: uploadId,
+        }).promise();
+        console.log(s3Bad);
+      }
+      return null;
+    }
+  };
+
 
   return (
     <Dialog open={forceRedisplay || true} fullScreen className={classes.containerBox}>

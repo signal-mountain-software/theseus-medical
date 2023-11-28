@@ -1,5 +1,5 @@
 import React from 'react';
-import { sentenceCase, makeArray, isMobile, cl, titleCase, dbClient, recordExists } from '../../util/AVAUtilities';
+import { sentenceCase, makeArray, isMobile, cl, titleCase, dbClient, recordExists, listFromArray } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
@@ -292,10 +292,13 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     let AVAdate = makeDate(new Date());
     historyLine += ` on ${AVAdate.absolute}`;
     let updateRows = [];
+    let rowChanged = [];
     reactData.dataRows.forEach((r, x) => {
+      rowChanged[x] = false;
       if (r.workData.checked && OKToDisplay(r)) {
         if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== 'complete')) {
           reactData.dataRows[x].last_status = pOptions.newStatus;
+          rowChanged[x] = true;
         }
         reactData.dataRows[x].last_update = AVAdate.timestamp;
         reactData.dataRows[x].workData.update_date = AVAdate.relative;
@@ -313,9 +316,24 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       return w;
     }));
     rowsDisplayed = [];
-    updateReactData({
-      dataRows: reactData.dataRows
-    }, true);
+    // have these rows now been disqualified based on the passed-in filter?
+    if ((filter.hasOwnProperty('statusNot') && filter.statusNot.includes(pOptions.newStatus.toLowerCase()))
+      || (filter.hasOwnProperty('status') && !(filter.status.includes(pOptions.newStatus.toLowerCase())))) {
+      let revisedDataRows = reactData.dataRows.filter((r, x) => {
+        return !rowChanged[x];
+      });
+      if (revisedDataRows.length > 0) {
+        revisedDataRows[0].workData.checked = true;
+      }
+      updateReactData({
+        dataRows: revisedDataRows
+      }, true);
+    }
+    else {
+      updateReactData({
+        dataRows: reactData.dataRows
+      }, true);
+    }
   }
 
   function getSelectedDetails() {
@@ -459,19 +477,25 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (qList[x].request_date > maxTimeStamp) {
         maxTimeStamp = qList[x].request_date;
       }
+      if (filter.hasOwnProperty('statusNot') && filter.statusNot.includes(qList[x].last_status.toLowerCase())) {
+        continue;
+      }
+      else if (filter.hasOwnProperty('status') && !(filter.status.includes(qList[x].last_status.toLowerCase()))) { 
+        continue;
+      }
       reactData.dataRows.push(await buildRequestDetails(qList[x]));
       reactData.requestIDs.push(qList[x].request_id);
-      if (loading !== 'rebuild') {
-        updateReactData({
-          lastTimeStamp: maxTimeStamp,
-          dataRows: reactData.dataRows,
-          requestIDs: reactData.requestIDs,
-          rebuilding: false,
-          selectedPersonName
-        }, true);
-      }
     }
-    if (qList.length === 0) {
+    if (loading !== 'rebuild') {
+      updateReactData({
+        lastTimeStamp: maxTimeStamp,
+        dataRows: reactData.dataRows,
+        requestIDs: reactData.requestIDs,
+        rebuilding: false,
+        selectedPersonName
+      }, true);
+    }
+    if ((qList.length === 0) || (reactData.dataRows.length === 0)) {
       enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
     }
     else {
@@ -515,12 +539,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               request_id: newKey
             });
             if (filter.foreign_key && (filter.foreign_key === qList[0].foreign_key)) {
-              // NEED CODE HERE TO COMPARE FILTER OBJ KEY/VALUES TO QLIST ROW MATCHING KEY/VALUES
-              newRecordsFound = true;
-              let newRow = await buildRequestDetails(qList[0]);
-              reactData.dataRows.push(newRow);
-              if (OKToDisplay(newRow)) {
-                playAlert = true;
+              if ((filter.hasOwnProperty('statusNot') && filter.statusNot.includes(qList[0].last_status.toLowerCase()))
+                || (filter.hasOwnProperty('status') && !(filter.status.includes(qList[0].last_status.toLowerCase())))) {
+                continue;
+              }
+              else {                
+                newRecordsFound = true;
+                let newRow = await buildRequestDetails(qList[0]);
+                reactData.dataRows.push(newRow);
+                if (OKToDisplay(newRow)) {
+                  playAlert = true;
+                }
               }
             }
           }
@@ -750,6 +779,30 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   : title
                 }
               </Typography>
+              {filter.foreign_key &&
+                <Typography
+                  className={classes.subTitle}
+                  style={AVATextStyle({ size: 1.5 })}
+                >
+                  {`For: ${makeDate(filter.foreign_key).absolute}`}
+                </Typography>
+              }
+              {filter.statusNot &&
+                <Typography
+                  className={classes.subTitle}
+                  style={AVATextStyle({ size: 1.5 })}
+                >
+                  {`Status NOT: ${listFromArray(filter.statusNot, {sentenceCase: true, or: true})}`}
+                </Typography>
+              }
+              {filter.status &&
+                <Typography
+                  className={classes.subTitle}
+                  style={AVATextStyle({ size: 1.5 })}
+                >
+                  {`Status: ${listFromArray(filter.status, { sentenceCase: true, or: true })}`}
+                </Typography>
+              }
             </Box>
             <Box
               paddingRight={2}
@@ -807,6 +860,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               </MenuList>
             </Menu>
           </Box>
+
+          {/* Text Filter */}
           <TextField
             id='List Filter'
             onChange={event => (handleChangeFilter(event.target.value))}
@@ -817,6 +872,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             variant={'standard'}
             autoComplete='off'
           />
+
+          {/* Main List */}
           <Paper
             component={Box}
             variant='outlined'
@@ -969,6 +1026,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }
             </List>
           </Paper>
+
+          {/* Prompts */}
           {
             promptForMessage &&
             <MakeMessage
@@ -989,6 +1048,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               allowCancel={true}
             />
           }
+
+          {/* Buttons */}
           {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>

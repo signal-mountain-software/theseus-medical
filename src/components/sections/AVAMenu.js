@@ -378,26 +378,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       idleTimer.current.start();
     }
   };
-  /*
-    async function putS3Object(pMediaData, pType) {
-      enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: true });
-      let uploadOK = true;
-      await s3
-        .putObject(pMediaData)
-        .promise()
-        .catch(err => {
-          uploadOK = false;
-          enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
-            { variant: 'error', persist: true });
-        });
-      if (uploadOK) {
-        closeSnackbar();
-        enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
-        return pMediaData.Key;
-      };
-      return null;
-    }
-  */
+
   async function putS3Object(pMediaData, pType) {
     /*
     pMediaData = {
