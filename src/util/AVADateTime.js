@@ -32,6 +32,7 @@ export function makeDate(pInput) {
             'numeric$': '20990101',
             'dayPart': 'day',   // afternoon
             'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 7
+            'weekday': '',   // 'weekend' or 'weekday' 
             'textOut': pInput
 
         };
@@ -93,6 +94,7 @@ export function makeDate(pInput) {
                 'numeric$': '20990101',
                 'dayPart': 'day',
                 'dayOfWeek': 9,
+                'weekday': 'invalid', 
                 'textOut': pInput
             };
         }
@@ -175,6 +177,7 @@ export function makeDate(pInput) {
         'numeric$': targetDateYMD.replace(/\./g, ''),
         'dayPart': dayPart,
         'dayOfWeek': targetDate.getDay(),
+        'weekday': (((targetDate.getDay() % 6) === 0) ? 'weekend' : 'weekday'),
         'textOut': pInput
     };
 
