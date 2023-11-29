@@ -91,7 +91,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   async function getGroupMemberList(pGroupArray) {
     reactData.progressMessage = 'Getting all accounts';
     let memberInfo;
-    if (!state.hasOwnProperty('groups')) {
+    if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('groupList') || !state.groups.hasOwnProperty('peopleList')) {
       enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
       onClose();
       return [];
