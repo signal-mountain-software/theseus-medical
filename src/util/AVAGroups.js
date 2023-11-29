@@ -49,6 +49,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   // Does my person account designate an account_class?
   let myPeopleRec = await getPerson(person_id);
   let myClass;
+  let accessList = {};
   if (myPeopleRec.account_class) {
     myClass = myPeopleRec.account_class;
   }
@@ -74,8 +75,11 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       }
     }
   }
+  accessList.accountClass = {
+    class: myClass,
+    client_id: pClient_id
+  };
   // Now get a list of people that I can access
-  let accessList = {};
   let myGroupAccessLevel = {};
   if (myClass !== 'inactive') {
     if (!session || (session.session_id !== person_id)) {
@@ -83,7 +87,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
     }
     let accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
     let clientList = [pClient_id];
-    if ((myClass === 'support')
+    if (((myClass === 'support') || (myClass === 'admin'))
       && (myPeopleRec.hasOwnProperty('clients') && Array.isArray(myPeopleRec.clients))) {
       myPeopleRec.clients.forEach(c => {
         if (!clientList.includes(c.id)) { clientList.push(c.id); }
@@ -129,7 +133,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         let accessLevel = 'none';
         let myMaxAccessLevelToThisPerson = -1;
         // if I am a support or master class user, I get FULL (level 3) access to all users in this client
-        if ((myClass === 'support') || (myClass === 'master')) { myMaxAccessLevelToThisPerson = 3; }
+        if (['support', 'master', 'admin'].includes(myClass)) {
+          myMaxAccessLevelToThisPerson = 3;
+        }
         // also... determine my role in all of the groups in this client
         let personFlavor = 99;
         if (p.groups) {

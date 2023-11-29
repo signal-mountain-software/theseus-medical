@@ -1080,6 +1080,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return response;
   }
 
+  function proxyAuthority() {
+    if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
+      if ((state.accessList[session.client_id].count.proxy > 0) || (state.accessList[session.client_id].count.full > 0)) {
+        return true;
+      }
+    }
+    return createAccountAuthority(); 
+  }
+
+  function createAccountAuthority() {
+    if (state.user.account_class) {
+      if (['master', 'support', 'admin'].includes(state.user.account_class)) {
+        return true;
+      }
+    }
+    if (state.accessList && state.accessList.accountClass && state.accessList.accountClass.client_id === state.session.client_id) {
+      if (['master', 'support', 'admin'].includes(state.accessList.accountClass.class)) {
+        return true;
+      }
+    }
+    else {
+      return false;
+    }
+  }
+
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
@@ -1251,23 +1276,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   </Box>
                 </MenuItem>
               }
-              {(
-                (state.hasOwnProperty('accessList') &&
-                  state.accessList.hasOwnProperty(session.client_id) &&
-                  state.accessList[session.client_id].hasOwnProperty('count')
-                  && (
-                    (state.accessList[session.client_id].count.proxy > 0) ||
-                    (state.accessList[session.client_id].count.full > 0)
-                  )
-                )
-                ||
-                (state.user.account_class
-                  && (
-                    (state.user.account_class === 'master')
-                    || (state.user.account_class === 'support')
-                  )
-                )
-              )
+              {proxyAuthority()
                 &&
                 <MenuItem onClick={() => {
                   setPopupMenuOpen(false);
@@ -1282,9 +1291,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   </Box>
                 </MenuItem>
               }
-              {(state.user.account_class
-                && ((state.user.account_class === 'master') || (state.user.account_class === 'support') || (state.user.account_class === 'admin'))
-              )
+              {createAccountAuthority()
                 &&
                 <MenuItem onClick={async () => {
                   setGroupData(state.groups);
