@@ -400,10 +400,9 @@ export default Component => props => {
             >
               <Box
                 component="img"
-                mb={2}
-                
-                minHeight={'40%'}
-                maxHeight={'40%'}
+                mb={2}                
+                minHeight={'35%'}
+                maxHeight={'35%'}
                 alt=''
                 src={reactData.currentClientLogo}
               />
