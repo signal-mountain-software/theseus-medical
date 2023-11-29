@@ -813,8 +813,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       session_id: ((needsConfirmation > -1) ? 'Confirmed' : 'Done'),
       method: 'AVAMenu',
       posted_time: postTime
-    };
-    if (pFact.commonKey) { newFact.common_key = pFact.commonKey; }
+    };    
+    if (pFact.value) {
+      let valueArray = makeArray(pFact.value, '~');
+      if (valueArray.length > 0) {
+        newFact.valueObj = {};
+        valueArray.forEach((val, ndx) => { 
+          if ((ndx === 0) && (val.includes('.'))) {
+            val = val.split('.').slice(1).join('.');
+          }
+          let [key, value] = val.split(/=/);
+          if (!value) {
+            [key, value] = val.split(/:/);
+          }
+          if (!value) {
+            value = key;
+            key = `v_${ndx}`
+          }
+          newFact.valueObj[key.trim()] = value.trim();
+        })
+      }
+    }
+    if (pFact.commonKey) {
+      newFact.common_key = pFact.commonKey;
+      newFact.request_id = pFact.commonKey;
+    }
     await dbClient
       .put({
         TableName: 'Facts',
@@ -825,8 +848,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (pFactName.toLowerCase().includes('send a')) {
       enqueueSnackbar(`AVA is sending your ${pFactName.replace(/send a/i, '').trim()}.`, { variant: 'success' });
     }
+    else if (pFact.commonKey) { 
+      enqueueSnackbar(`Your request is on the way!`, { variant: 'success' });
+    }
     else {
-      enqueueSnackbar(`Your ${pFactName.split(/[-/]/)[0]} is being processed by AVA.`, { variant: 'success' });
+      enqueueSnackbar(`Done!`, { variant: 'success' });
     }
   };
 

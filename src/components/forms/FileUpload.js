@@ -147,7 +147,7 @@ export default ({ promptText, pClient, fileTag, onCancel }) => {
     return;
   }
 
-  async function handleSaveFile() {
+  async function handleSaveFileOld() {
     reactData.loading = true;
     setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
@@ -160,6 +160,32 @@ export default ({ promptText, pClient, fileTag, onCancel }) => {
         ContentType: reactData.fileType
       })
       .promise()
+      .catch(err => {
+        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+      });
+    console.log(s3Resp);
+    onCancel();
+  };
+
+  async function handleSaveFile() {
+    reactData.loading = true;
+    setReactData(reactData);
+    setForceRedisplay(!forceRedisplay);
+    let s3Resp = await s3
+      .upload({
+        partSize: 10 * 1024 * 1024, queueSize: 1,
+        params: {
+          Bucket: 'theseus-medical-storage',
+          Key: `${pClient}_${fileTag[0]}`,
+          Body: reactData.file,
+          ACL: 'public-read-write',
+          ContentType: reactData.fileType
+        }
+      })
+      .promise()
+      .on('httpUploadProgress', ((evt) => {
+        console.log("Uploaded :: " + parseInt((evt.loaded * 100) / evt.total) + '%');
+      }))
       .catch(err => {
         enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
       });

@@ -221,7 +221,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     {  // build defaultColumns object from passed in activities for this request
       if (!defaultValue || !defaultValue.hasOwnProperty('activities')) {
         let this_requestType = defaultValue.requestType || defaultValue.request_type || await extractRequestType(fact.activity_code) || 'noRType';
-        let this_requestName = state.session.service_request_types[this_requestType].description || titleCase(this_requestType);
+        let this_requestName = state.session.service_request_types.hasOwnProperty(this_requestType) ? state.session.service_request_types[this_requestType].description : titleCase(this_requestType);
         let this_foreignKey = defaultValue.foreignKey || defaultValue.foreign_key || 'noFKey';
         let fDate = makeDate(this_foreignKey);
         let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(','))));
@@ -1049,80 +1049,90 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       client_name: state.session.client_name
     };
     if (fact.messaging) {
-      if (!fact.messaging.format.hasOwnProperty('logo') || fact.messaging.format.logo) {
-        formatCallObj.logo = state.session.client_logo;
-        formatCallObj.logo_dimensions = state.session.logo_dimensions;
+      let factMessagingList = [];
+      if (Array.isArray(fact.messaging)) {
+        factMessagingList.push(...fact.messaging);
       }
-      if (!fact.messaging.format.hasOwnProperty('initials') || fact.messaging.format.initials) {
-        formatCallObj.initials = true;
+      else { 
+        factMessagingList.push(fact.messaging);
       }
-      let html, plain, attachment;
-      switch (fact.messaging.format.type) {
-        case 'mealTicket':
-          {
-            [html, plain, attachment] = await mealTicketFormat(formatCallObj);
-            break;
-          }
-        default: { }
-      }
-      if (html) {  // if there is a message to send, send it and update all the Service Request records to show that it was sent
-        // prepare message that contains the tickets (one for the whole group)
-        message_body.messaging = deepCopy(fact.messaging);
-        message_body.messaging.format = { 'type': 'inBody', 'subject': 'Meal Ticket' };
-        message_body.htmlText = html;
-        message_body.messageText = plain;
-        let preparedMessages = await prepareMessage(message_body);
-        // send the message
-        if (preparedMessages.length > 0) {
-          preparedMessages.forEach((m, x) => {
-            preparedMessages[x].thread_id = `svc_${message_body.requestType}/${local_key}`;
-            if (attachment) {
-              preparedMessages[x].attachments = [attachment.Location];
-              if (message_body.messaging.hasOwnProperty('attachment_method')
-                && (message_body.messaging.attachment_method === 'file')) {
-                if (attachment.data) {
-                  preparedMessages[x].attachment_data = {
-                    filename: `MealTicket-${local_key}.pdf`,
-                    content: attachment.data,
-                    type: 'application/pdf',
-                    disposition: 'attachment',
-                    content_id: local_key
-                  };
+      for (let m = 0; m < factMessagingList.length; m++) {
+
+        if (!factMessagingList[m].format.hasOwnProperty('logo') || factMessagingList[m].format.logo) {
+          formatCallObj.logo = state.session.client_logo;
+          formatCallObj.logo_dimensions = state.session.logo_dimensions;
+        }
+        if (!factMessagingList[m].format.hasOwnProperty('initials') || factMessagingList[m].format.initials) {
+          formatCallObj.initials = true;
+        }
+        let html, plain, attachment;
+        switch (factMessagingList[m].format.type) {
+          case 'mealTicket':
+            {
+              [html, plain, attachment] = await mealTicketFormat(formatCallObj);
+              break;
+            }
+          default: { }
+        }
+        if (html) {  // if there is a message to send, send it and update all the Service Request records to show that it was sent
+          // prepare message that contains the tickets (one for the whole group)
+          message_body.messaging = deepCopy(factMessagingList[m]);
+          message_body.messaging.format = { 'type': 'inBody', 'subject': 'Meal Ticket' };
+          message_body.htmlText = html;
+          message_body.messageText = plain;
+          let preparedMessages = await prepareMessage(message_body);
+          // send the message
+          if (preparedMessages.length > 0) {
+            preparedMessages.forEach((m, x) => {
+              preparedMessages[x].thread_id = `svc_${message_body.requestType}/${local_key}`;
+              if (attachment) {
+                preparedMessages[x].attachments = [attachment.Location];
+                if (message_body.messaging.hasOwnProperty('attachment_method')
+                  && (message_body.messaging.attachment_method === 'file')) {
+                  if (attachment.data) {
+                    preparedMessages[x].attachment_data = {
+                      filename: `MealTicket-${local_key}.pdf`,
+                      content: attachment.data,
+                      type: 'application/pdf',
+                      disposition: 'attachment',
+                      content_id: local_key
+                    };
+                  }
                 }
               }
-            }
-          });
-          let rTime = makeDate(new Date().getTime());
-          let rMsg;
-          let last_status;
-          if (message_body.messaging?.format?.method === 'hold') {
-            last_status = 'Prepared & Held';
-            rMsg = `Held for future processing ${rTime.oaDate}`;
-          }
-          else {
-            let sendResults = (await sendMessages(preparedMessages)).pop();
-            if (!sendResults.sent) {
-              last_status = 'Failed to send';
-              rMsg = `Failed to send ${rTime.oaDate}`;
+            });
+            let rTime = makeDate(new Date().getTime());
+            let rMsg;
+            let last_status;
+            if (message_body.messaging?.format?.method === 'hold') {
+              last_status = 'Prepared & Held';
+              rMsg = `Held for future processing ${rTime.oaDate}`;
             }
             else {
-              last_status = 'Sent';
-              rMsg = `Sent for processing ${rTime.oaDate}`;
+              let sendResults = (await sendMessages(preparedMessages)).pop();
+              if (!sendResults.sent) {
+                last_status = 'Failed to send';
+                rMsg = `Failed to send ${rTime.oaDate}`;
+              }
+              else {
+                last_status = 'Sent';
+                rMsg = `Sent for processing ${rTime.oaDate}`;
+              }
             }
+            writtenRecords.forEach(w => {
+              w.messages = preparedMessages;
+              w.last_update = rTime.timestamp;
+              w.last_status = last_status;
+              if (('history' in w) && Array.isArray(w.history)) {
+                w.history.unshift(rMsg);
+              }
+              else { w.history = [rMsg]; }
+            });
+            await updateServiceRequest(writtenRecords);
           }
-          writtenRecords.forEach(w => {
-            w.messages = preparedMessages;
-            w.last_update = rTime.timestamp;
-            w.last_status = last_status;
-            if (('history' in w) && Array.isArray(w.history)) {
-              w.history.unshift(rMsg);
-            }
-            else { w.history = [rMsg]; }
-          });
-          await updateServiceRequest(writtenRecords);
-        }
-      }  // end of "is there a message to send?"
-      if (records2Update.length > 0) { await updateServiceRequest(records2Update); }
+        }  // end of "is there a message to send?"
+        if (records2Update.length > 0) { await updateServiceRequest(records2Update); }
+      }
     }
   }
 
@@ -1397,7 +1407,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       maxWidth={50}
                       key={`radiobox-rowP-col${this_columnNumber}`}
                       className={classes.listItem}
-                      justifyContent='flex-end'
+                      justifyContent='space-between'
                       alignItems='center'
                     >
                       <Box
