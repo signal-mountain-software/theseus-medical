@@ -545,13 +545,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let showName = testName.filter((n, x) => {
       return !commonRows[x];
     });
-    return showName.slice(-5).join(' ').trim();
+    let returnData = {
+      string: showName.slice(-5).join(' ').trim(),
+      array: showName
+    };
+    return returnData;
   }
 
   function columnCommonName() {
-    let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(reactData.columnList[0].dName)).slice(-7);
+    let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(reactData.columnList[0].dName)).slice(-1 * reactData.maxDName);
     reactData.columnList.forEach(this_column => {
-      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-7);
+      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-1 * reactData.maxDName);
       testName.forEach((dN, dX) => {
         if (dN !== commonRows[dX]) {
           commonRows[dX] = false;
@@ -561,8 +565,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let commonText = '';
     commonRows.forEach(c => {
       if (c && !reactData.columnList[0].display_name.includes(c)) { commonText += (c + ' '); };
-    });    
-    return commonText.trim();
+    });
+    updateReactData({
+      commonText,
+      commonRows
+    }, false)
+    return;
   }
 
   const onCheckEnter = (event, columnNumber, rowNumber) => {
@@ -805,7 +813,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       myDefaultColumns[c].person_id = this_id;
       myDefaultColumns[c].column_id = `${column.column_id}_${this_id}`;
       myDefaultColumns[c].display_name = this_name;
-      myDefaultColumns[c].dName.push(...(`${this_person.name.first} ${this_person.name.last}`).trim().split(' ').slice(-2));
+      // add three elements for the name at the end of the dName array (regardless of whether you have 2 or 3 words in your name)
+      let nameElements = [' ', ' '].concat((`${this_person.name.first} ${this_person.name.last}`).trim().split(/[\s-]+/));
+      myDefaultColumns[c].dName.push(...(nameElements.slice(-3)));
       if (myDefaultColumns[c].dName.length > reactData.maxDName) {
         updateReactData({
           maxDName: myDefaultColumns[c].dName.length
@@ -823,6 +833,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     };
     reactData.columnList.push(...myDefaultColumns);
+    columnCommonName();
   };
 
   async function applyExistingRequest(existingRequest, this_column) {
@@ -1257,7 +1268,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   bold: true
                 })}
               >
-                {`${titleCase(columnCommonName()) || factName}`}
+                {`${titleCase(reactData.commonText) || factName}`}
               </Typography>
               {reactData.titleName.display &&
                   <Typography
@@ -1422,7 +1433,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         alt=''
                         src={getImage(this_column.person_id)}
                       />
-                      {columnUniqueName(this_column).split(/\s+/).slice(-1 * Math.min(reactData.maxDName, 3)).map((n, nx) => (
+                      {columnUniqueName(this_column).array.slice(-1 * Math.min(reactData.maxDName, 3)).map((n, nx) => (
                         <Typography key={`name-${nx}-${this_columnNumber}`} className={classes.smallTextLine}>{n.slice(0, 10)}</Typography>
                       ))}
                       <Radio
@@ -1664,10 +1675,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           onSelect={async (selectedID) => {
             let sIDs = makeArray(selectedID);
             reactData.columnList = [];
-            for (let p = 0; p < sIDs.length; p++) {             // for each person you selected
-              await addColumns(sIDs[p]);
-            }
             if (sIDs.length > 0) {
+              for (let p = 0; p < sIDs.length; p++) {             // for each person you selected
+                await addColumns(sIDs[p]);
+              }
               updateReactData({
                 columnList: reactData.columnList,
                 titleName: reactData.titleName
@@ -1700,9 +1711,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       {confirmDelete
         &&
         <AVAConfirm
-          promptText={`Please confirm removing ${columnUniqueName(reactData.columnList[selectedColumn])}`}
+          promptText={`Please confirm removing ${columnUniqueName(reactData.columnList[selectedColumn]).string}`}
           cancelText={'No, go back'}
-          confirmText={`Yes, remove ${columnUniqueName(reactData.columnList[selectedColumn])}`}
+          confirmText={`Yes, remove ${columnUniqueName(reactData.columnList[selectedColumn]).string}`}
           onCancel={() => {
             setConfirmDelete(false);
           }}
@@ -1798,7 +1809,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   }}
                   startIcon={<DeleteIcon size="small" />}
                 >
-                  {`Remove ${columnUniqueName(reactData.columnList[selectedColumn])}`}
+                  {`Remove ${columnUniqueName(reactData.columnList[selectedColumn]).string}`}
                 </Button>
               }
             </Box>
