@@ -55,7 +55,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   else {
     // What admin group do I belong to in the client_id?
     let allGroupObject = await getAllGroups(person_id, pClient_id);
-    let myAdminGroup = await getGroup(allGroupObject.selectedID);
+    let myAdminGroup = await getGroup(allGroupObject.selectedID, pClient_id);
     if (myAdminGroup.admin_class) {
       myClass = myAdminGroup.admin_class;
     }
@@ -81,7 +81,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
     if (!session || (session.session_id !== person_id)) {
       session = await getSession(person_id);
     }
-    let accessLevelTable = ['none', 'view', 'proxy', 'full'];
+    let accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
     let clientList = [pClient_id];
     if ((myClass === 'support')
       && (myPeopleRec.hasOwnProperty('clients') && Array.isArray(myPeopleRec.clients))) {
@@ -160,7 +160,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
             // in the myGroupAccessLevel object;  if not, calculate it and save it there
             if (!myGroupAccessLevel.hasOwnProperty(g) && (myMaxAccessLevelToThisPerson < 3)) {
               let myRole = await getRole(g, person_id);
-              if (myRole === 'responsible') { myGroupAccessLevel[g] = 3; }
+              if (myRole === 'responsible') { myGroupAccessLevel[g] = accessLevelTable.indexOf('full'); }
               else {
                 // the Group table record for a group MAY contain a view_group attribute
                 // if it does, this attribute will contain an object
@@ -171,13 +171,16 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                 //       local users to see (but not proxy to) its members
                 let this_group = await getGroup(g, client_id);
                 if (!this_group.hasOwnProperty('view_group')) {
-                  myGroupAccessLevel[g] = 0;
+                  myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
                 }
-                else {
+                else if (this_group['view_group'].hasOwnProperty(myClass)) {
                   myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
                 }
+                else {
+                  myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
+                }
                 if ((myRole === 'member') && (myClass === 'local')) {
-                  myGroupAccessLevel[g] = Math.max(1, myGroupAccessLevel[g]);
+                  myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
                 }
               }
             }
