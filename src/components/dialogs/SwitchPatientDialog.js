@@ -91,7 +91,7 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ open, roles, onClose }) => {
 
   const { state } = useSession();
-  const { accessList, session } = state;
+  const { accessList } = state;
 
   const [person_filter, setPersonFilter] = React.useState('');
   const [client_filter, setClientFilter] = React.useState('');

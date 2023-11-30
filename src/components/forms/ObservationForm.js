@@ -623,28 +623,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       && (reactData.textInput[fieldName] !== ''));
   }
 
-  async function handleSaveFileOld(pTarget) {
-    let pType = pTarget.type;
-    let s3Resp = await s3
-      .upload({
-        Bucket: 'theseus-medical-storage',
-        Key: pTarget.name,
-        Body: pTarget,
-        ACL: 'public-read-write',
-        ContentType: pType
-      })
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-      });
-    reactData.attachmentList.push(s3Resp);
-    if (!reactData.textInput) { reactData.textInput = { 's3file': s3Resp.Location }; }
-    else { reactData.textInput.s3file = s3Resp.Location; }
-    setReactData(reactData);
-    setForceRedisplay(!forceRedisplay);
-    return s3Resp;
-  };
-
   let upload;
   async function handleSaveFile(pTarget) {
     let pType = pTarget.type;

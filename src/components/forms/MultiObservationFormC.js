@@ -93,7 +93,7 @@ const useStyles = makeStyles(theme => ({
     top: 0,
     opacity: 1,
     zIndex: 1,
-    width: '100%'
+    width: '100%',
   },
   page: {
     height: 950,
@@ -241,6 +241,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         for (let a = 0; a < defaultValue.activities.length; a++) {
           // merge global defaults and column_defaults into a single object; column_defaults will override globals
           let defaultsToUse = deepCopy(Object.assign({}, defaultObj, defaultValue.activities[a].column_defaults || {}));
+          // if this activity carries qualifiers with it, add those to the qualifiers object that was passed in
+          if (defaultValue.activities[a].hasOwnProperty('qualifiers')) {
+            Object.assign(qualifiers, defaultValue.activities[a].qualifiers);
+          }
           let this_activityKey = defaultValue.activities[a].column_defaults.activity_code || defaultValue.activities[a].activityRec.activity_code || fact.activity_code;
           let this_requestType = defaultValue.activities[a].column_defaults.requestType || defaultValue.requestType || defaultValue.request_type || await extractRequestType(this_activityKey) || 'noRType';
           let this_requestName = state.session.service_request_types[this_requestType].description || titleCase(this_requestType);
@@ -532,21 +536,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   }
 
   function columnUniqueName(my_column) {
-    let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(reactData.columnList[0].dName)).slice(-5);
+    let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(reactData.columnList[0].dName)).slice(-10);
     reactData.columnList.forEach(this_column => {
-      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-5);
+      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-10);
       testName.forEach((dN, dX) => {
         if (dN !== commonRows[dX]) {
           commonRows[dX] = false;
         }
       });
     });
-    let testName = ([' ', ' ', ' ', ' ', ' '].concat(my_column.dName)).slice(-5);
+    let testName = ([' ', ' ', ' ', ' ', ' '].concat(my_column.dName)).slice(-10);
     let showName = testName.filter((n, x) => {
       return !commonRows[x];
     });
     let returnData = {
-      string: showName.slice(-5).join(' ').trim(),
+      string: showName.slice(-7).join(' ').trim(),
       array: showName
     };
     return returnData;
@@ -569,7 +573,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     updateReactData({
       commonText,
       commonRows
-    }, false)
+    }, false);
     return;
   }
 
@@ -791,7 +795,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         last: this_person.name.last.trim(),
         display: this_name,
         remembered: [this_name]
-      }
+      };
     }
     else if (reactData.titleName.last.toLowerCase() !== this_person.name.last.trim().toLowerCase()) {
       if (!reactData.titleName.remembered.includes(this_name)) {
@@ -1064,7 +1068,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       if (Array.isArray(fact.messaging)) {
         factMessagingList.push(...fact.messaging);
       }
-      else { 
+      else {
         factMessagingList.push(fact.messaging);
       }
       for (let m = 0; m < factMessagingList.length; m++) {
@@ -1230,10 +1234,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       p={2}
       fullScreen
     >
-      {/* Header with Avatar, Message, and VertMenu */}
+      { /* MAIN */}
+
       {(reactData.columnList && reactData.columnList.length > 0)
         &&
         <React.Fragment>
+          {/* Header with Avatar, Message, and VertMenu */}
           <Box
             display='flex' flexDirection='row'
             className={classes.messageArea}
@@ -1271,20 +1277,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 {`${titleCase(reactData.commonText) || factName}`}
               </Typography>
               {reactData.titleName.display &&
-                  <Typography
-                    style={AVATextStyle({
-                      margin: {
-                        top: 0,
-                        right: 1,
-                        left: 1,
-                        bottom: 0
-                      },
-                      size: 1.3,
-                      bold: true
-                    })}
-                  >
-                    {`for ${reactData.titleName.display}`}
-                  </Typography>
+                <Typography
+                  style={AVATextStyle({
+                    margin: {
+                      top: 0,
+                      right: 1,
+                      left: 1,
+                      bottom: 0
+                    },
+                    size: 1.3,
+                    bold: true
+                  })}
+                >
+                  {`for ${reactData.titleName.display}`}
+                </Typography>
               }
             </Box>
             <Box
@@ -1364,8 +1370,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             </Menu>
           </Box>
 
-          { /* MAIN */}
-
           { /* Selection Row */}
           {(reactData.columnList.length > 1) &&
             <Box display='flex'
@@ -1375,8 +1379,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               marginTop={0}
               marginBottom={0}
               borderBottom={2}
-              padding={1}
+              paddingTop={(reactData.columnList.length > 5) ? '100px' : 1}
+              overflow={(reactData.columnList.length > 5) ? 'scroll' : null}
               key={'peopleSelectionBox'}
+              id={'peopleSelectionBox'}
               className={classes.listItemSticky}
             >
               <Box
@@ -1406,8 +1412,22 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     key={`radiobox-rowP-colSelect`}
                     className={classes.listItem}
                     justifyContent='flex-end'
-                    alignItems='flex-start'
+                    alignItems='center'
                   >
+                    {(reactData.titleName.remembered.length === 1) &&
+                      <Box
+                        component="img"
+                        mt={0}
+                        mb={1}
+                        border={1}
+                        minWidth={50}
+                        maxWidth={50}
+                        minHeight={50}
+                        maxHeight={50}
+                        alt=''
+                      src={getImage(reactData.columnList[0].person_id)}
+                      />
+                    }
                     <Typography key={`selectWord`} className={classes.smallTextLine}>{'Select'}</Typography>
                   </Box>
                   {reactData.columnList.map((this_column, this_columnNumber) => (
@@ -1421,19 +1441,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       justifyContent='space-between'
                       alignItems='center'
                     >
-                      <Box
-                        component="img"
-                        mt={0}
-                        mb={1}
-                        border={1}
-                        minWidth={50}
-                        maxWidth={50}
-                        minHeight={50}
-                        maxHeight={50}
-                        alt=''
-                        src={getImage(this_column.person_id)}
-                      />
-                      {columnUniqueName(this_column).array.slice(-1 * Math.min(reactData.maxDName, 3)).map((n, nx) => (
+                      {(reactData.titleName.remembered.length > 1) &&
+                        <Box
+                          component="img"
+                          mt={0}
+                          mb={1}
+                          border={1}
+                          minWidth={50}
+                          maxWidth={50}
+                          minHeight={50}
+                          maxHeight={50}
+                          alt=''
+                          src={getImage(this_column.person_id)}
+                        />
+                      }
+                      {columnUniqueName(this_column).array.slice(-1 * Math.min(reactData.maxDName, 7)).map((n, nx) => (
                         <Typography key={`name-${nx}-${this_columnNumber}`} className={classes.smallTextLine}>{n.slice(0, 10)}</Typography>
                       ))}
                       <Radio
