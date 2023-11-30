@@ -202,7 +202,6 @@ export default ({
     }
     console.log(sendToName);
     let senderName = await makeName(state.session.user_id);
-    let promptArray = makeArray(promptText);
     let principalMessageText = '';
     let voiceMailText = '';
     let subjectText = '';
