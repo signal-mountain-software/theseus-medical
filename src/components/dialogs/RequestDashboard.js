@@ -202,6 +202,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
     options: {
       shortForm - when true, don't show image, history, or message details
+      textForm - when true, show only requestor and selections (in a text format)
       updateMode - preselect first item
     }
   */
@@ -339,12 +340,12 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   function getSelectedDetails() {
     let selectedIDs = [];
     let selectedName = [];
-      reactData.dataRows.forEach(row => {
-        if (row.workData.checked && !selectedIDs.includes(row.workData.requestor_id)) {
-          selectedIDs.push(row.requestor);
-          selectedName.push(row.workData.requestor_name);
-        }
-      });
+    reactData.dataRows.forEach(row => {
+      if (row.workData.checked && !selectedIDs.includes(row.workData.requestor_id)) {
+        selectedIDs.push(row.requestor);
+        selectedName.push(row.workData.requestor_name);
+      }
+    });
     return { selectedIDs, selectedName };
   }
 
@@ -466,8 +467,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       filter.client_id = session.client_id;
     }
     filter.request_type = makeArray(filter.request_type, ',');
-    filter.sort = {
-      order: 'desc'
+    if (!filter.hasOwnProperty('sort')) {
+      filter.sort = {
+        order: 'desc'
+      };
     };
     qList = await getServiceRequests(filter);
     let maxTimeStamp = 0;
@@ -480,7 +483,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (filter.hasOwnProperty('statusNot') && filter.statusNot.includes(qList[x].last_status.toLowerCase())) {
         continue;
       }
-      else if (filter.hasOwnProperty('status') && !(filter.status.includes(qList[x].last_status.toLowerCase()))) { 
+      else if (filter.hasOwnProperty('status') && !(filter.status.includes(qList[x].last_status.toLowerCase()))) {
         continue;
       }
       reactData.dataRows.push(await buildRequestDetails(qList[x]));
@@ -543,7 +546,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 || (filter.hasOwnProperty('status') && !(filter.status.includes(qList[0].last_status.toLowerCase())))) {
                 continue;
               }
-              else {                
+              else {
                 newRecordsFound = true;
                 let newRow = await buildRequestDetails(qList[0]);
                 reactData.dataRows.push(newRow);
@@ -599,11 +602,12 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.requestor_location = requestorRec.location;
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
+    i.workData.textBased_request = '';
     i.workData.update_date = AVAupdateDate.relative;
     i.workData.requestTime = AVArequestDate.timestamp;
     i.workData.orderForDate = makeDate(i.foreign_key);
     i.workData.this_status = sentenceCase(i.last_status);
-    if (!options.shortForm) {
+    if ((!options.shortForm) && (!options.textForm)) {
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
         i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
       }
@@ -612,13 +616,15 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
     if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
       anonymous = (i.original_request.selections && i.original_request.selections.join(' ').includes('anonymous'));
-      let [fReq, fSearch] = formatRequest(i, i.original_request);
+      let [fReq, fSearch, fText] = formatRequest(i, i.original_request);
+      i.workData.textBased_request = `${AVArequestDate.relative} ` + (anonymous ? `Anonymous` : i.workData.requestor_name) + fText;
       i.workData.formatted_request.push(...fReq);
       i.workData.search_data += ` ${fSearch}`;
     }
     else {
       anonymous = i.original_request.includes('anonymous');
       i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
+      i.workData.textBased_request = `${AVArequestDate.relative} ` + (anonymous ? `Anonymous` : i.workData.requestor_name) + i.original_request;
       i.workData.search_data += ` ${i.original_request}`;
     }
     if (i.attachments && (i.attachments.length > 0)) {
@@ -636,7 +642,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       i.workData.requestor_image = null;
     }
     i.workData.search_data += i.workData.requestor_name;
-    if (!options.shortForm) {
+    if ((!options.shortForm) && (!options.textForm)) {
       if ('history' in i) {
         i.workData.formatted_request.push(['head', 'History']);
         if (typeof (i.history) === 'string') { i.workData.formatted_request.push(['detail', i.history]); }
@@ -670,13 +676,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   function formatRequest(i, req) {
     let returnMessage = [];
+    let returnText = '';
     let returnSearch = '';
     if (!('textInput' in req)) { req.textInput = {}; }
     if (!('qualifiers' in req)) { req.qualifiers = []; }
     if (!('selections' in req)) { req.selections = []; }
     if (i.workData.requestor_name !== i.on_behalf_of) {
       returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
+      returnText += ` on behalf of ${i.on_behalf_of}`;
     }
+    returnText += ` - `;
+    let textLink = '';
     req.selections.forEach(s => {
       let dLine = s.trim();
       let [selection, ...opts] = dLine.split(/[();,]/);
@@ -694,18 +704,26 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         });
       }
       returnMessage.push(['detail', selection.trim()]);
+      returnText += `${textLink} ${selection.trim()}`;
+      let rTextList = [];
       if (options.length > 0) {
         // let q = parts.shift().split(/[;,]/);
         options.forEach(qx => {
           let outO = titleCase(qx.trim());
           if (outO !== '') {
             returnMessage.push(['qual', outO]);
+            rTextList.push(outO);
           }
         });
       }
       if (s in req.textInput) {
         returnMessage.push(['qual', req.textInput[s]]);
+        rTextList.push(req.textInput[s]);
         delete req.textInput[s];
+      }
+      if (rTextList.length > 0) {
+        returnText += `(${rTextList.join(', ')})`;
+        textLink = ';';
       }
       returnSearch += ` ${dLine}`;
     });   // done with all selections; is there any text left?
@@ -720,11 +738,12 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           }
           else {
             returnMessage.push(['text', `${k} - ${req.textInput[k]}`]);
+            returnText += `${textLink} ${req.textInput[k]}`;
           }
         }
       }
     };
-    return [returnMessage, returnSearch];
+    return [returnMessage, returnSearch, returnText];
   }
 
   React.useEffect(() => {
@@ -792,7 +811,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   className={classes.subTitle}
                   style={AVATextStyle({ size: 1.5 })}
                 >
-                  {`Status NOT: ${listFromArray(filter.statusNot, {sentenceCase: true, or: true})}`}
+                  {`Status NOT: ${listFromArray(filter.statusNot, { sentenceCase: true, or: true })}`}
                 </Typography>
               }
               {filter.status &&
@@ -914,96 +933,98 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         key={this_item.message_id + 'r' + index}
                         className={classes.listItem}
                       >
-                        <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                          <Box display='flex' flexDirection='column'>
-                            <Box display='flex' flexDirection='row'>
-                              {!options.shortForm && !filter.person_id &&
-                                <Box
-                                  className={classes.imageArea}
-                                  component="img"
-                                  minWidth={50}
-                                  minHeight={50}
-                                  maxWidth={50}
-                                  border={1}
-                                  alt=' '
-                                  src={this_item.workData.requestor_image}
-                                />
-                              }
-                              <Box display='flex' flexDirection='column' marginBottom={1.5}>
-                                {filter.request_type && (filter.request_type.length > 1) &&
-                                  <Typography
-                                    variant='h5'
-                                    style={AVATextStyle({ size: 1, italic: true })}
-                                  >
-                                    {this_item.workData.formatted_type}
-                                  </Typography>
+                        {!options.textForm &&
+                          <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                            <Box display='flex' flexDirection='column'>
+                              <Box display='flex' flexDirection='row'>
+                                {!options.shortForm && !filter.person_id &&
+                                  <Box
+                                    className={classes.imageArea}
+                                    component="img"
+                                    minWidth={50}
+                                    minHeight={50}
+                                    maxWidth={50}
+                                    border={1}
+                                    alt=' '
+                                    src={this_item.workData.requestor_image}
+                                  />
                                 }
-                                {!filter.person_id &&
-                                  <Typography
-                                    variant='h5'
-                                    style={AVATextStyle({ size: 1.5, bold: true })}
-                                    className={classes.firstName}
-                                  >
-                                    {`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}
-                                  </Typography>
-                                }
-                                {this_item.workData.updated &&
-                                  <Typography
-                                    style={AVATextStyle({ size: 0.7 })}
-                                  >
-                                    {this_item.workData.updated}
-                                  </Typography>
-                                }
-                                {!options.shortForm &&
-                                  <React.Fragment>
-                                    {(this_item.requestor !== this_item.workData.enteredBy) &&
-                                      <Typography variant='h5' className={classes.firstName}>{`By ${this_item.workData.enteredBy_name}`}</Typography>
-                                    }
-                                    <Typography variant='h5' className={classes.firstName}>{this_item.workData.display_date}</Typography>
-                                    {!(this_item?.workData?.orderForDate.error) &&
-                                      <Typography variant='h5' className={classes.firstName}>{`For ${this_item?.workData?.orderForDate.relative}`}</Typography>
-                                    }
-                                  </React.Fragment>
-                                }
+                                <Box display='flex' flexDirection='column' marginBottom={1.5}>
+                                  {filter.request_type && (filter.request_type.length > 1) &&
+                                    <Typography
+                                      variant='h5'
+                                      style={AVATextStyle({ size: 1, italic: true })}
+                                    >
+                                      {this_item.workData.formatted_type}
+                                    </Typography>
+                                  }
+                                  {!filter.person_id &&
+                                    <Typography
+                                      variant='h5'
+                                      style={AVATextStyle({ size: 1.5, bold: true })}
+                                      className={classes.firstName}
+                                    >
+                                      {`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}
+                                    </Typography>
+                                  }
+                                  {this_item.workData.updated &&
+                                    <Typography
+                                      style={AVATextStyle({ size: 0.7 })}
+                                    >
+                                      {this_item.workData.updated}
+                                    </Typography>
+                                  }
+                                  {!options.shortForm &&
+                                    <React.Fragment>
+                                      {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                        <Typography variant='h5' className={classes.firstName}>{`By ${this_item.workData.enteredBy_name}`}</Typography>
+                                      }
+                                      <Typography variant='h5' className={classes.firstName}>{this_item.workData.display_date}</Typography>
+                                      {!(this_item?.workData?.orderForDate.error) &&
+                                        <Typography variant='h5' className={classes.firstName}>{`For ${this_item?.workData?.orderForDate.relative}`}</Typography>
+                                      }
+                                    </React.Fragment>
+                                  }
+                                </Box>
                               </Box>
-                            </Box>
-                            {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
-                              (mLine[0].startsWith('href=')
-                                ?
-                                <a
-                                  href={mLine[0].split('=')[1]}
-                                  key={`attach-${mIndex}-href`}
-                                  target='_blank'
-                                  rel='noopener noreferrer'
-                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                  <Typography
-                                    key={`attach-${mIndex}`}
-                                    className={classes.mrowdetail}
+                              {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                                (mLine[0].startsWith('href=')
+                                  ?
+                                  <a
+                                    href={mLine[0].split('=')[1]}
+                                    key={`attach-${mIndex}-href`}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                    <Typography
+                                      key={`attach-${mIndex}`}
+                                      className={classes.mrowdetail}
+                                    >
+                                      {`Attachment: ${mLine[1]}`}
+                                    </Typography>
+                                  </a>
+                                  :
+                                  < Typography
+                                    key={`prefLine-${mIndex}`}
+                                    className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
                                   >
-                                    {`Attachment: ${mLine[1]}`}
+                                    {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
                                   </Typography>
-                                </a>
-                                :
-                                < Typography
-                                  key={`prefLine-${mIndex}`}
-                                  className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                                >
-                                  {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
-                                </Typography>
-                              )
-                            ))}
-                            {this_item.workData.open &&
-                              this_item.workData.messageRecs.map((mLine, dX) => (
-                                <Typography
-                                  key={('mrow_out' + dX)}
-                                  className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                                >
-                                  {mLine[1]}
-                                </Typography>
-                              ))
-                            }
+                                )
+                              ))}
+                              {this_item.workData.open &&
+                                this_item.workData.messageRecs.map((mLine, dX) => (
+                                  <Typography
+                                    key={('mrow_out' + dX)}
+                                    className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                  >
+                                    {mLine[1]}
+                                  </Typography>
+                                ))
+                              }
+                            </Box>
                           </Box>
-                        </Box>
+                        }
                         <Box display='flex' flexDirection='row'>
                           <Checkbox
                             checked={this_item.workData.checked || false}
@@ -1012,6 +1033,28 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                             onClick={() => { toggleCheck(index); }}
                           />
                         </Box>
+                        {options.textForm &&
+                          <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                            <Box display='flex' flexDirection='row'>
+                              <Box
+                                className={classes.imageArea}
+                                component="img"
+                                minWidth={50}
+                                minHeight={50}
+                                maxWidth={50}
+                                border={1}
+                                alt=' '
+                                src={this_item.workData.requestor_image}
+                              />
+                            </Box>
+                            < Typography
+                              key={`singleTextLine-${index}`}
+                              className={classes.mrowdetail}
+                            >
+                              {this_item.workData.textBased_request}
+                            </Typography>
+                          </Box>
+                        }
                       </Box>
                     </Box>
                   </Paper>
