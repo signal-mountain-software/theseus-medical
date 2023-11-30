@@ -63,7 +63,7 @@ export async function getObservations(pClient, pKey, options = {}) {
       ExpressionAttributeValues: { ':p': `${pClient}~${pKey}` },
       TableName: "Observations",
       IndexName: "sort_order-index"
-    }
+    };
     observations = await dbClient
       .query(qQ)
       .promise()
@@ -111,7 +111,7 @@ export async function getObservations(pClient, pKey, options = {}) {
   return [valueList, returnQual];
 };
 
-export async function makeObservationList(pObs, pSession, variables = {}) {
+export async function makeObservationList(pObs, pSession, variables = {}, options = {clean: true}) {
   let returnList = [];
   let returnQObj = {};
   let activityRec;
@@ -136,7 +136,7 @@ export async function makeObservationList(pObs, pSession, variables = {}) {
           case (oType === 'includeObservations'): {
             let oClient = assignedClient;
             if (oKey.includes('//')) { [oClient, oKey] = oKey.split('//'); }
-            let [cList, cQual] = await getObservations(oClient, oKey, {session: pSession});
+            let [cList, cQual] = await getObservations(oClient, oKey, { session: pSession });
             returnList.push(...cList);
             if (Object.keys(cQual).length > 0) { returnQObj = Object.assign(returnQObj, cQual); }
             break;
@@ -165,6 +165,30 @@ export async function makeObservationList(pObs, pSession, variables = {}) {
         }
       }
     }
+    if (options && options.clean) {
+      let cleanedList = [];
+      let sortedSection = [];
+      returnList.forEach(r => {
+        if (r.startsWith('~')) {
+          if (sortedSection.length > 0) {
+            sortedSection.sort();
+            cleanedList.push(...sortedSection);
+            sortedSection = [];
+          }
+          cleanedList.push(r);
+        }
+        else {
+          if (!sortedSection.includes(r)) {
+            sortedSection.push(r);
+          }
+        }
+      });
+      if (sortedSection.length > 0) {
+        sortedSection.sort();
+        cleanedList.push(...sortedSection);
+      }
+      returnList = [...cleanedList];
+    }
     activityRec.valid_values_list = returnList;
     activityRec.value_qualifiers = returnQObj;
   }
@@ -185,10 +209,10 @@ export async function makeObservationList(pObs, pSession, variables = {}) {
     let rQual = [];
     if (lString) {
       let lObj = {};
-      lString.split(',').forEach(e => { 
+      lString.split(',').forEach(e => {
         let [key, value] = e.split(':');
         lObj[key] = value;
-      })
+      });
       let payload = { body: lObj };
       const AWS = require('aws-sdk');
       let b64 = AWS.util.base64.encode(JSON.stringify('AVAObservations'));
@@ -232,7 +256,7 @@ export async function getActivity(pClient, pCode) {
   let qQ = {
     Key: { client_id: pClient, activity_code: pCode },
     TableName: "Activities"
-  }
+  };
   let activityRec = await dbClient
     .get(qQ)
     .promise()
