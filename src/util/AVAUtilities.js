@@ -73,20 +73,25 @@ export function recordExists(recordId) {
 }
 
 export function deepCopy(pValue) {
-  if (Array.isArray(pValue)) {
+  if (!pValue) {
+    return pValue;
+  }
+  else if (Array.isArray(pValue)) {
     var count = pValue.length;
     var arr = new Array(count);
     for (var i = 0; i < count; i++) {
       arr[i] = deepCopy(pValue[i]);
     }
     return arr;
-  } else if (typeof pValue === 'object') {
+  }
+  else if (typeof pValue === 'object') {
     var obj = {};
     for (var prop in pValue) {
       obj[prop] = deepCopy(pValue[prop]);
     }
     return obj;
-  } else { 
+  }
+  else {
     return pValue;
   }
 }
@@ -206,15 +211,21 @@ export function clt() {
 export function sentenceCase(pString) {
   if (!pString) { return ''; }
   if (typeof (pString) === 'object') { return JSON.stringify(pString); }
-  pString = pString.trimStart();
-  if (pString.slice(0, 2).toLowerCase() === 'mc') {
-    return (
-      pString.slice(0, 1).toUpperCase() +
-      pString.slice(1, 2).toLowerCase() +
-      pString.slice(2, 3).toUpperCase() +
-      pString.slice(3).toLowerCase()
-  ); }
-  return (pString.slice(0, 1).toUpperCase() + pString.slice(1).toLowerCase());
+  let words = pString.split(/\s+/);
+  let returnString = '';
+  words.forEach((w, x) => {
+    if (w.toLowerCase() === 'ava') {
+      returnString += 'AVA';
+    }
+    else if (x === 0) {
+      returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1).toLowerCase()}`;
+    }
+    else {
+      returnString += w;
+    }
+    returnString += ' ';
+  });
+  return returnString.trim();
 }
 
 export function makeArray(input, delimiter = null) {
@@ -250,13 +261,39 @@ export function makeArray(input, delimiter = null) {
   return response;
 }
 
+export function makeObject(input) {
+  if (isObject(input)) {
+    return input;
+  }
+  else {
+    let returnO = makeObj(input);
+    return (returnO);
+  }
+}
+
 export function makeObj(input) {
   let returnObj = {};
-  let pairs = (input.split(','));
-  pairs.forEach(p => {
-    let [key, value] = p.split(':');
-    returnObj[key.trim()] = value.trim();
-  })
+  let pairs = [];
+  if (Array.isArray(input)) {
+    pairs = input;
+  }
+  else {
+    pairs = (input.split(','));
+  }
+  pairs.forEach((p, x) => {
+    let [key, value] = p.replace(/[{}]/g, '').split(/[:=]/);
+    if (!value) {
+      returnObj[`${x}`] = key.trim();
+    }
+    else {
+      if (isNaN(Number(value))) {
+        returnObj[key.trim()] = value.trim();
+      }
+      else {
+        returnObj[key.trim()] = Number(value);
+      }
+    }
+  });
   return returnObj;
 }
 
@@ -288,7 +325,8 @@ export function titleCase(pString) {
   let returnString = '';
   words.forEach(w => {
     if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
-    else { returnString += sentenceCase(w); }
+    else if (w.toLowerCase() === 'ava') { returnString += 'AVA'; }
+    else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     returnString += ' ';
   });
   return returnString.trim();
@@ -409,7 +447,7 @@ export function isEmpty(o) {
   else if (typeof (o) === 'object') { return (Object.keys(o).length === 0); }
   else if (typeof (o) === 'string') { return (o.length === 0); }
   else if (typeof (o) === 'number') { return (o === 0); }
-  else {return false;}
+  else { return false; }
 }
 
 export function isObject(a) {
@@ -431,6 +469,18 @@ export function uuid(pLen) {
   return ans.join('');
 }
 
+export async function deepResolve(pKey, pSession, options = {}) {
+  if (typeof (pKey) !== 'string') {
+    let workObj = deepCopy(pKey);
+    for (let aKey in workObj) {
+      workObj[aKey] = await deepResolve(workObj[aKey], pSession, options);
+    }
+    return workObj;
+  }
+  return resolveVariables(pKey, pSession, options);
+}
+
+
 export async function resolveVariables(pKey, pSession, options = {}) {
   if (!pKey) { return ''; }
   // look for brackets in the key and deal with what's between them
@@ -442,6 +492,19 @@ export async function resolveVariables(pKey, pSession, options = {}) {
       break;
     }
     let [, front, d1, middle, d2, back] = result;
+    if (middle.includes('%')) {
+      let [, before, , variable_name, , after] = middle.match(/(.*?)(%)(.*?)(%)(.*)/);
+      if (options.hasOwnProperty(variable_name)) {
+        middle = `${before}${options[variable_name]}${after}`;
+        d1 = '';
+        d2 = '';
+      }
+      else if (pSession.hasOwnProperty(variable_name)) {
+        middle = `${before}${pSession[variable_name]}${after}`;
+        d1 = '';
+        d2 = '';
+      }
+    }
     let [instruction, dType] = middle.split(':');
     instruction = instruction.toLowerCase();
     switch (instruction) {
@@ -468,6 +531,18 @@ export async function resolveVariables(pKey, pSession, options = {}) {
         response.push(front, pSession.user_id);
         break;
       }
+      case 'weekday': {
+        if (dType.startsWith('today~')) {
+          let now = new Date();
+          let ttime = Number(instruction.split(/~/g)[1]);
+          let tnow = (now.getHours() * 100) + now.getMinutes();
+          if (tnow > ttime) { dType = 'tomorrow'; }
+          else { dType = 'today'; }
+        }
+        let keyDate = makeDate(dType);
+        response.push(front, keyDate.weekday);
+        break;
+      }
       default: {
         if (instruction.startsWith('today~')) {
           let now = new Date();
@@ -490,7 +565,7 @@ export async function resolveVariables(pKey, pSession, options = {}) {
         if (!keyDate.error) { response.push(front, keyDate[dType || 'obs']); }
         else {
           let iParts = [];
-          if (typeof(instruction) === 'string') { iParts = instruction.split('~') };
+          if (typeof (instruction) === 'string') { iParts = instruction.split('~'); };
           if (iParts[2]) {
             let now = new Date();
             let tTime = Number(iParts[1]);  // get time
@@ -526,21 +601,60 @@ export function parseSpreadsheet(pWorkbook) {
   return returnObj;
 }
 
+export const isMobile = () => {
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+};
+
 export async function switchActiveAccount(session, newClient, newPatient) {
   await dbClient
-      .update({
-        Key: { session_id: session.user_id },
-        UpdateExpression: 'set client_id = :c, patient_id = :p, patient_display_name = :d, user_homeClient = :h',
-        ExpressionAttributeValues: {
-          ':c': newClient,
-          ':p': newPatient.id,
-          ':d': (newPatient.name ? (`${newPatient.name.first} ${newPatient.name.last}`).trim() : (`${newPatient.first} ${newPatient.last}`).trim()),
-          ':h': (session.user_homeClient || session.client_id)
-        },
-        TableName: "SessionsV2",
-      })
-      .promise()
-      .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+    .update({
+      Key: { session_id: session.user_id },
+      UpdateExpression: 'set client_id = :c, patient_id = :p, patient_display_name = :d, user_homeClient = :h',
+      ExpressionAttributeValues: {
+        ':c': newClient,
+        ':p': newPatient.id,
+        ':d': (newPatient.name ? (`${newPatient.name.first} ${newPatient.name.last}`).trim() : (`${newPatient.first} ${newPatient.last}`).trim()),
+        ':h': (session.user_homeClient || session.client_id)
+      },
+      TableName: "SessionsV2",
+    })
+    .promise()
+    .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
   let jumpTo = window.location.href.replace('refresh', 'theseus');
   window.location.replace(jumpTo);
 };
+
+export async function updateDb(pData) {
+  // pData in the form {["table": <tablename>, "key": {"key1": "keydata1", etc...}, "data": {"field_name1": "new value", "field_name2", "new value", ...}]}
+  let response = [];
+  for (let t = 0; t < pData.length; t++) {
+    let k_num = 0;
+    let aNamesObj = {};
+    let aValuesObj = {};
+    let expression = 'set';
+    for (let pKey in pData[t].data) {
+      let aKey = `n${k_num++}`;
+      aNamesObj[`#${aKey}`] = pKey;
+      aValuesObj[`:${aKey}`] = pData[t].data[pKey];
+      if (k_num > 1) {
+        expression += ', ';
+      }
+      expression += ` #${aKey} = :${aKey}`;
+    }
+    await dbClient
+      .update({
+        Key: pData[t].key,
+        UpdateExpression: expression,
+        ExpressionAttributeValues: aValuesObj,
+        ExpressionAttributeNames: aNamesObj,
+        TableName: pData[t].table,
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error updating ${pData[t].table}; error is:`, error);
+        response.push(error);
+      });
+    response.push('OK');
+  }
+  return response;
+}

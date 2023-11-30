@@ -10,6 +10,7 @@ import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 import MultiObservationForm from '../forms/MultiObservationForm';
 import MultiObservationFormB from '../forms/MultiObservationFormB';
+import MultiObservationFormC from '../forms/MultiObservationFormC';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
 import RequestDashboard from '../dialogs/RequestDashboard';
 import CalendarDashboard from '../dialogs/CalendarDashboard';
@@ -21,6 +22,7 @@ import LoadNamesFromFile from '../forms/LoadNamesFromFile';
 import ShowGroup from '../dialogs/ShowGroup';
 import AVACarousel from '../dialogs/AVACarousel';
 import GroupForm from '../forms/GroupForm';
+import AVASubscription from '../forms/AVASubscription';
 import NumberForm from './NumberForm';
 import Number2Form from './Number2Form';
 import FreeTextForm from './FreeTextForm';
@@ -294,7 +296,7 @@ export default ({
               let [dKey, dVal] = d.split('=');
               defaultValueObj[dKey] = dVal;
             }
-            else { 
+            else {
               for (let dKey in d) {
                 defaultValueObj[dKey] = d[dKey];
               }
@@ -351,6 +353,13 @@ export default ({
           onClose={onClose}
         />
       );
+    case 'subscription_management':
+      return (
+        <AVASubscription
+          defaults={defaultValue}
+          onClose={onClose}
+        />
+      );
     case 'multi_observation':
       return (
         <MultiObservationForm
@@ -379,6 +388,20 @@ export default ({
           onClose={onClose}
         />
       );
+    case 'multi_observation_type3':
+      return (
+        <MultiObservationFormC
+          fact={newFact}
+          factName={factName}
+          defaultValue={defaultObject}
+          prompt={message}
+          pClient={session.client_id}
+          qualifiers={qualifierTable}
+          listValues={values}
+          onSave={onSave}
+          onClose={onClose}
+        />
+      );
     case 'checkout':
       return (
         <CheckInCheckOut
@@ -393,12 +416,14 @@ export default ({
         filter = { request_type: newFact.value.freeText.requestType };
       }
       else {
-        filter = { person_id: session.patient_id }
+        filter = { person_id: session.patient_id };
       };
       return (
         <RequestDashboard
           session={session}
-          filter={Object.assign(filter, defaultObject)}
+          title={factName}
+          filter={Object.assign(filter, defaultObject, {options: null})}
+          options={defaultObject.options}
           onClose={onClose}
         />
       );

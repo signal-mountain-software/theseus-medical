@@ -167,7 +167,6 @@ export default ({ promptText, pClient, fileTag, onCancel }) => {
     onCancel();
   };
 
-
   // **************************
 
   return (

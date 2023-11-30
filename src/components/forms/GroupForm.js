@@ -1,5 +1,5 @@
 import React from 'react';
-import { lambda, cl, sentenceCase, switchActiveAccount } from '../../util/AVAUtilities';
+import { lambda, cl, sentenceCase, switchActiveAccount, listFromArray } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
@@ -195,7 +195,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole, onReset }) => {
+export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole = '', onReset }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -236,7 +236,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       : (pGroup.includes('~') || (pGroup === '*all'))
   );
 
-  const masterAccount = ['master', 'support'].includes(state.profile.account_class);
+  const adminAccount =
+    ['master', 'support', 'admin'].includes(state.profile.account_class)
+    || (pRole === 'admin')
+    || (pRole === 'responsible');
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -420,7 +423,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
 
   function okToShow(pPerson) {
     try {
-      if ((pRole !== 'admin') && (pRole !== 'responsible') && (!masterAccount) && (pPerson.directory_option === 'exclude')) {
+      if (!adminAccount && (pPerson.directory_option === 'exclude')) {
         return false;
       }
       else if (singleFilterDigit) {
@@ -437,12 +440,36 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     }
   }
 
+  let nameXRef;
+  function makeResponsibleLines(respArray) {
+    if (respArray.length === 0) {
+      return '';
+    }
+    if (!nameXRef && state.accessList) {
+      nameXRef = {};
+      state.accessList[state.session.client_id].list.forEach(a => {
+        if (a.access !== 'none') {
+          nameXRef[a.person_id] = (`${a.name.first} ${a.name.last}`).trim();
+        }
+      });
+    }
+    let respFiltered = respArray.filter(r => {
+      return (nameXRef.hasOwnProperty(r.trim()));
+    });
+    if (respFiltered.length === 0) {
+      return '';
+    }
+    else {
+      return ('Linked to: ' + listFromArray(respFiltered.map(r => { return nameXRef[r.trim()]; })));
+    }
+  }
+
   function makeContactLines(pMessaging, pPreference, pPerson) {
     let returnArray = [];
     for (const messageType in pMessaging) {
       switch (messageType) {
         case 'sms': {
-          if (pMessaging.sms && (!pMessaging.sms_private || masterAccount)) {
+          if (pMessaging.sms && (!pMessaging.sms_private || adminAccount)) {
             returnArray.push({
               action: [`sms:${pMessaging.sms}`, `tel:${pMessaging.sms}`],
               button: ['Send Text', 'Call Cell'],
@@ -454,7 +481,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
           break;
         }
         case 'voice': {
-          if (pMessaging.voice && (!pMessaging.voice_private || masterAccount)) {
+          if (pMessaging.voice && (!pMessaging.voice_private || adminAccount)) {
             returnArray.push({
               action: [`tel:${pMessaging.voice}`],
               button: ['Call Home'],
@@ -466,7 +493,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
           break;
         }
         case 'office': {
-          if (pMessaging.office && (!pMessaging.office_private || masterAccount)) {
+          if (pMessaging.office && (!pMessaging.office_private || adminAccount)) {
             returnArray.push({
               action: [`tel:${pMessaging.office}`],
               button: ['Call Work'],
@@ -478,7 +505,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
           break;
         }
         case 'email': {
-          if (pMessaging.email && (!pMessaging.email_private || masterAccount)) {
+          if (pMessaging.email && (!pMessaging.email_private || adminAccount)) {
             returnArray.push({
               action: [`mailto:${pMessaging.email}`],
               button: ['e-Mail'],
@@ -556,9 +583,16 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               }}
                               display='flex' flexDirection='column'>
                               <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
+                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
                                 <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{this_item.name.first}</Typography>
                               </Box>
+                              {adminAccount && this_item.session && this_item.session.responsible_for &&
+                                <Box display='flex' flexDirection='column'>
+                                  <Typography id={`resp_line`} key={`resp_line`} style={AVATextStyle({ size: 0.7, margin: { top: -0.8, bottom: 1.5 } })}>
+                                    {makeResponsibleLines(this_item.session.responsible_for)}
+                                  </Typography>
+                                </Box>
+                              }
                               {multiGroups && this_item.hasOwnProperty('member_of') &&
                                 <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 1, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
                               }
@@ -583,7 +617,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                         style={{ color: 'inherit', textDecoration: 'none' }}>
                                         <Typography
                                           key={`prefLine-${index}.${prefIndex}`}
-                                          style={AVATextVariableStyle(prefLine, { margin: { bottom: 0.5 } })}
+                                          style={AVATextVariableStyle(prefLineText(prefLine), { margin: { bottom: 0.5 } })}
                                         >
                                           {prefLineText(prefLine)}
                                         </Typography>
@@ -706,7 +740,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       {'Close'}
                     </Button>
                   </Box>
-                  {(pRole === 'admin' || pRole === 'responsible') &&
+                  {adminAccount &&
                     <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                       {!multiGroups &&
                         <Button
@@ -777,7 +811,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         }
                       </React.Fragment>
                     }
-                    {(pRole && (pRole !== 'admin') && (pRole !== 'responsible')) &&
+                    {!adminAccount &&
                       <Button
                         onClick={() => {
                           setPromptForMessage(true);
@@ -797,7 +831,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       </Button>
                     }
                   </Box>
-                  {(pRole === 'admin' || pRole === 'responsible') &&
+                  {adminAccount &&
                     <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                       <Button
                         onClick={() => {
@@ -878,10 +912,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     }
                   </a>
                 )))}
-              {(pRole === 'admin'
-                || pRole === 'responsible'
-                || masterAccount
-              ) &&
+              {adminAccount &&
                 <React.Fragment>
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
                     <React.Fragment>
@@ -900,7 +931,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       {`Member of`}
                     </Typography>
                     <Typography key={`HeadLine-superSize`} className={classes.superSizePreferenceLine3}>
-                      {`${sentenceCase(superSizeData.account_class)}${masterAccount ? ' account' : ''}`}
+                      {`${sentenceCase(superSizeData.account_class)}${adminAccount ? ' account' : ''}`}
                     </Typography>
                     {superSizeData.public_groups && (Object.keys(superSizeData.public_groups).length > 0) &&
                       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
@@ -992,10 +1023,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     </React.Fragment>
                   )))}
               </Box>
-              {(pRole === 'admin'
-                || pRole === 'responsible'
-                || masterAccount
-              ) &&
+              {adminAccount &&
                 <React.Fragment>
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
                     <Button
@@ -1032,10 +1060,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   </Box>
                 </React.Fragment>
               }
-              {(pRole === 'admin'
-                || pRole === 'responsible'
-                || masterAccount
-              )
+              {adminAccount
                 && !multiGroups
                 &&
                 <React.Fragment>

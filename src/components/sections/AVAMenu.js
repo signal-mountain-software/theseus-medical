@@ -2,10 +2,9 @@ import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
 import { recordExists, isObject, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda, deepCopy } from '../../util/AVAUtilities';
-import { makeTime, addDays, daysDiff } from '../../util/AVADateTime';
+import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
-import { getAllOccurrences } from '../../util/AVACalendars';
-import { getMemberList, prepareTargets, getAllGroups } from '../../util/AVAGroups';
+import { getMemberList, prepareTargets } from '../../util/AVAGroups';
 import { makeObservationList } from '../../util/AVAObservations';
 import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
@@ -38,6 +37,7 @@ import FavoriteIcon from '@material-ui/icons/FavoriteBorder';
 import NotFavorite from '@material-ui/icons/DeleteForever';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import SwapHorizIcon from '@material-ui/icons/SwapHoriz';
+import SubscriptionIcon from '@material-ui/icons/CardMembership';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
@@ -280,6 +280,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   let nowTime = new Date().getTime();
 
+  let loadError;
+
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});
 
@@ -310,7 +312,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
 
     let forceRefresh = true;
-    let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh);
+    let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh, state);
 
     if (wholeMenu.length > 0) {
       // cl(`Reloaded menu at ${new Date().toLocaleString()}.`);
@@ -372,27 +374,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         .promise()
         .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
-  };
-  /*
-    async function putS3Object(pMediaData, pType) {
-      enqueueSnackbar(`AVA is saving your ${pType.toLowerCase()} with the name ${pMediaData.Key}`, { variant: 'info', persist: true });
-      let uploadOK = true;
-      await s3
-        .putObject(pMediaData)
-        .promise()
-        .catch(err => {
-          uploadOK = false;
-          enqueueSnackbar(`Uh oh!  AVA couldn't save that.  The reason is ${err.message}`,
-            { variant: 'error', persist: true });
-        });
-      if (uploadOK) {
-        closeSnackbar();
-        enqueueSnackbar(`${pMediaData.Key} was saved successfully`, { variant: 'success', persist: true });
-        return pMediaData.Key;
-      };
-      return null;
+    if (idleTimer && idleTimer.current) {
+      idleTimer.current.start();
     }
-  */
+  };
+
   async function putS3Object(pMediaData, pType) {
     /*
     pMediaData = {
@@ -508,11 +494,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return;
   };
 
-  const screenStatus = (statusMessage, progressPct, progressWidth) => {
+  const screenStatus = (statusMessage, progressPct, progressWidth, interimMenu) => {
     setLoading(statusMessage);
     setProgress(progressPct);
     setPWidth(progressWidth * 100);
     setForceRedisplay(!forceRedisplay);
+    if (interimMenu) {
+      setMainMenu(interimMenu);
+    }
   };
 
   const updateFavorites = async (pType, activityRowIndex) => {
@@ -543,7 +532,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if ('favorite_activities' in personRec.Item) {
         favoriteList = personRec.Item.favorite_activities;
       }
-      let indexAt = favoriteList.findIndex(r => { return (r.split('~')[0] === activityRow.activity_code); });
+      let indexAt = favoriteList.findIndex(r => {
+        if (typeof (r) === 'string') {
+          return (r.split('~')[0] === activityRow.activity_code);
+        }
+        else {
+          return (r.activity_code === activityRow.activity_code);
+        }
+      });
       if ((indexAt === -1) && (pType === 'add')) {
         favoriteList.unshift(activityLine);
         changeMade = true;
@@ -557,7 +553,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       if ('favorite_blocked' in personRec.Item) {
         favoriteBlocked = personRec.Item.favorite_blocked;
       }
-      indexAt = favoriteBlocked.findIndex(r => { return (r.split('~')[0] === activityRow.activity_code); });
+      indexAt = favoriteBlocked.findIndex(r => {
+        if (typeof (r) === 'string') {
+          return (r.split('~')[0] === activityRow.activity_code);
+        }
+        else {
+          return (r.activity_code === activityRow.activity_code);
+        }
+      });
       if ((indexAt === -1) && (pType === 'remove')) {
         favoriteBlocked.push(activityLine);
         changeMade = true;
@@ -739,7 +742,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       async () => {
         setLoading('Getting your Information');
         setForceRedisplay(!forceRedisplay);
-        makeGreetingName(patient.name.first || session.patient_display_name || pPerson);
+        makeGreetingName(patient.hasOwnProperty('name') ? patient.name.first : (session.patient_display_name || pPerson));
         makeGreeting();
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);
@@ -810,8 +813,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       session_id: ((needsConfirmation > -1) ? 'Confirmed' : 'Done'),
       method: 'AVAMenu',
       posted_time: postTime
-    };
-    if (pFact.commonKey) { newFact.common_key = pFact.commonKey; }
+    };    
+    if (pFact.value) {
+      let valueArray = makeArray(pFact.value, '~');
+      if (valueArray.length > 0) {
+        newFact.valueObj = {};
+        valueArray.forEach((val, ndx) => { 
+          if ((ndx === 0) && (val.includes('.'))) {
+            val = val.split('.').slice(1).join('.');
+          }
+          let [key, value] = val.split(/=/);
+          if (!value) {
+            [key, value] = val.split(/:/);
+          }
+          if (!value) {
+            value = key;
+            key = `v_${ndx}`
+          }
+          newFact.valueObj[key.trim()] = value.trim();
+        })
+      }
+    }
+    if (pFact.commonKey) {
+      newFact.common_key = pFact.commonKey;
+      newFact.request_id = pFact.commonKey;
+    }
     await dbClient
       .put({
         TableName: 'Facts',
@@ -822,12 +848,33 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (pFactName.toLowerCase().includes('send a')) {
       enqueueSnackbar(`AVA is sending your ${pFactName.replace(/send a/i, '').trim()}.`, { variant: 'success' });
     }
+    else if (pFact.commonKey) { 
+      enqueueSnackbar(`Your request is on the way!`, { variant: 'success' });
+    }
     else {
-      enqueueSnackbar(`Your ${pFactName.split(/[-/]/)[0]} is being processed by AVA.`, { variant: 'success' });
+      enqueueSnackbar(`Done!`, { variant: 'success' });
     }
   };
 
   async function getActivityDetail(pActRec) {
+    if (pActRec.preLoad_code) {
+      let preLoaded = await dbClient
+        .get({
+          Key: {
+            client_id: session.client_id,
+            preLoad_key: pActRec.preLoad_code
+          },
+          TableName: "PreLoads",
+        })
+        .promise()
+        .catch(error => {
+          console.log({ 'Bad get on Customizations - caught error is': error });
+        });
+      if (recordExists(preLoaded)) {
+        setSelected(preLoaded.Item.preLoad_data.activityRec);
+        return preLoaded.Item.preLoad_data;
+      }
+    }
     let resolvedActivity = await makeObservationList(pActRec.activity_rec || pActRec.activity_code, session);
     resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
     [resolvedActivity.activityRec.default_value, resolvedActivity.activityRec.default_object] = await prepareDefaults(pActRec);
@@ -844,7 +891,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (fact.activity_rec?.type === 'make_message') {
 
     }
-    
+
     // check for default values in the person's record
     if (patient.hasOwnProperty('defaultValues')) {
       let pDefaults = patient.defaultValues;
@@ -871,7 +918,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       });
     }
     for (let dField in defaultValues) {
-      let dValue = await resolveDefaults(fact, defaultValues[dField]);
+      let dValue = await resolveDefaults(fact, dField, defaultValues[dField]);
       // we're returning an array and an object, they are duplicates of one another and consumed as needed by their targets
       // each entry is a default value which could be:
       //     a string alone (as in "myDefault")
@@ -896,31 +943,50 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     return [returnArray, returnObject];
   }
 
-  async function resolveDefaults(fact, this_value) {
+  async function resolveDefaults(fact, this_key, this_value) {
     if (typeof (this_value) !== 'string') {
-      for (let aKey in this_value) {
-        this_value[aKey] = await resolveDefaults(fact, this_value[aKey]);
+      let workObj = deepCopy(this_value);
+      for (let aKey in workObj) {
+        workObj[aKey] = await resolveDefaults(fact, aKey, workObj[aKey]);
       }
-      return this_value;
+      workObj = await specialCases(this_key, workObj);
+      return workObj;
     }
     let a = this_value.split('.');
+    // if there are two or more "." in the value, use the value itself 
+    if (a.length > 2) {
+      return this_value;
+    }
     let dValue = await resolveVariables(a.pop(), session, { ignoreArrayCheck: true });
     // if anything remains in array a (after the pop above), the value was in the form instruction=value
     // we'll act as per that instruction here
     if (a.length > 0) {
-      switch (a[0]) {
+      dValue = await specialCases(a[0], dValue);
+    }
+    return dValue;
+
+    async function specialCases(key, dValue) {
+      switch (key) {
         case 'people': {
           let factClient;
           if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
-          else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//'); }
+          else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//')[0]; }
           else { factClient = defaultClient; }
           dValue = await getMemberList(makeArray(dValue, ','), factClient, { sort: true, shortList: true });
           break;
         }
         case 'person': {
-          dValue = {
-            'peopleList': [state.patient]
-          };
+          if (dValue === 'patientRec') {
+            dValue = state.patient;
+          }
+          else if (dValue === 'userRec') {
+            dValue = state.user;
+          }
+          else {
+            dValue = {
+              'peopleList': [state.patient]
+            };
+          }
           break;
         }
         case 'select': {
@@ -939,40 +1005,53 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           break;
         }
         case 'events': {
+          if (!state.hasOwnProperty('calendar')) {
+            loadError = true;
+          }
+          else {
+            dValue = deepCopy(state.calendar);
+          }
+          break;
+        }
+        case 'activities': {
           setLoading('Loading');
           setForceRedisplay(!forceRedisplay);
-          let date_offset = 7;
-          switch (dValue) {
-            case 'future': { date_offset = 7; break; }
-            case 'past':
-            case 'history': { date_offset = -7; break; }
-            default: {
-              let s = Number(dValue);
-              if (s) { date_offset = s; break; }
+          // activities dValue is an object with
+          //     global_defaults - pass to every column
+          //     column_list - an array with info about each column to return
+          //          response entries will be resolved activities (with observation records prepared as per the instructions in the array element)
+          //          each element is an object with
+          //              activity_id - optional; if missing use the activity_id that this is a part of
+          //              column_defaults - add these to the global defaults when resolving and handling the activity
+          let responseArray = [];
+          let global_defaults = dValue.global_defaults;
+          if (!dValue.hasOwnProperty('column_list') || (dValue.column_list.length === 0)) {
+            let column_defaults = Object.assign({}, global_defaults);
+            let column_object = deepCopy(await makeObservationList(fact.activity_code, session, column_defaults));
+            column_object.column_defaults = column_defaults;
+            responseArray.push(column_object);
+          }
+          else {
+            for (let m = 0; m < dValue.column_list.length; m++) {
+              let column_defaults = Object.assign({}, global_defaults, dValue.column_list[m].column_defaults);
+              let column_object = deepCopy(await makeObservationList(dValue.column_list[m].activity_id, session, column_defaults));
+              column_object.column_defaults = column_defaults;
+              responseArray.push(column_object);
             }
           }
-          let rightNow = new Date();
-          let offset_date = addDays(rightNow, date_offset);
-          screenStatus('Retreiving the Calendar', 0, daysDiff(rightNow, offset_date));
-          let oList = await getAllOccurrences(
-            {
-              client_id: session.client_id,
-              start_date: ((date_offset < 0) ? offset_date : rightNow),
-              end_date: ((date_offset >= 0) ? offset_date : rightNow)
-            },
-            screenStatus
-          );
-          dValue = deepCopy(oList);
+          dValue = responseArray;
           setLoading(false);
           break;
         }
-        default: { }
+        default: {
+          if (key && (typeof (dValue) === 'string') && (key !== 'default')) {
+            dValue = `${key}.${dValue}`;
+          }
+        }
       }
+      return dValue;
     }
-    return dValue;
   }
-
-
 
   function makeGreetingName(pString) {
     setGreetingName(pString || 'AVA User');
@@ -999,6 +1078,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     let response = `Good ${makeTime(new Date()).dayPart}`;
     setGreetingWords(response);
     return response;
+  }
+
+  function proxyAuthority() {
+    if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
+      if ((state.accessList[session.client_id].count.proxy > 0) || (state.accessList[session.client_id].count.full > 0)) {
+        return true;
+      }
+    }
+    return createAccountAuthority(); 
+  }
+
+  function createAccountAuthority() {
+    if (state.user.account_class) {
+      if (['master', 'support', 'admin'].includes(state.user.account_class)) {
+        return true;
+      }
+    }
+    if (state.accessList && state.accessList.accountClass && state.accessList.accountClass.client_id === state.session.client_id) {
+      if (['master', 'support', 'admin'].includes(state.accessList.accountClass.class)) {
+        return true;
+      }
+    }
+    else {
+      return false;
+    }
   }
 
   const handleClick = async (event) => {
@@ -1030,7 +1134,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }
           }}
           onIdle={async () => {
-//            enqueueSnackbar(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`, { variant: 'warning' });
             cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
             await updateAVA(sectionOpen, mainMenu);
           }}
@@ -1050,9 +1153,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             className={classes.profileArea}
             key={'personBox'}
             onClick={async () => {
-              setPopupMenuOpen(false);
-              setGroupData(await getAllGroups(session.patient_id));
-              setShowProfileEdit(true);
+              if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy')) {
+                enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+              }
+              else {
+                setPopupMenuOpen(false);
+                setGroupData(state.groups);
+                setShowProfileEdit(true);
+              }
             }}
           >
             <Tooltip
@@ -1129,9 +1237,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               )}
               {!session?.kiosk_mode && (
                 <MenuItem onClick={async () => {
-                  setPopupMenuOpen(false);
-                  setGroupData(await getAllGroups(session.patient_id));
-                  setShowProfileEdit(true);
+                  if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('adminHierarchy')) {
+                    enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+                  }
+                  else {
+                    setPopupMenuOpen(false);
+                    setGroupData(state.groups);
+                    setShowProfileEdit(true);
+                  }
                 }}>
                   <Box
                     display='flex' flexDirection='row' alignItems={'center'}
@@ -1146,21 +1259,24 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               )
               }
               {(
-                (state.accessList
-                  && (
-                    (Object.keys(state.accessList).length > 1)
-                    || ((state.accessList[Object.keys(state.accessList)[0]].count.proxy
-                      + state.accessList[Object.keys(state.accessList)[0]].count.full) > 1)
-                  )
-                )
-                ||
-                (state.user.account_class
-                  && (
-                    (state.user.account_class === 'master')
-                    || (state.user.account_class === 'support')
-                  )
-                )
+                state.hasOwnProperty('accessList') &&
+                state.accessList.hasOwnProperty('subscription') &&
+                state.accessList.subscription.subscription_active
               )
+                &&
+                <MenuItem onClick={() => {
+                  window.open(`https://families.avaseniorliving.com/p/login/9AQ4hT0kI91OcFidQQ`);
+                }}>
+                  <Box
+                    display='flex' flexDirection='row' alignItems={'center'}
+                    key={'vRowSwitch'}
+                  >
+                    <SubscriptionIcon />
+                    <Typography className={classes.popUpMenuRow} >{'Manage Subscription'}</Typography>
+                  </Box>
+                </MenuItem>
+              }
+              {proxyAuthority()
                 &&
                 <MenuItem onClick={() => {
                   setPopupMenuOpen(false);
@@ -1175,12 +1291,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   </Box>
                 </MenuItem>
               }
-              {(state.user.account_class
-                && ((state.user.account_class === 'master') || (state.user.account_class === 'support'))
-              )
+              {createAccountAuthority()
                 &&
                 <MenuItem onClick={async () => {
-                  setGroupData(await getAllGroups('*NEW~0', state.session.client_id));
+                  setGroupData(state.groups);
                   setPopupMenuOpen(false);
                   setShowAddAccount(true);
                 }}>
@@ -1264,52 +1378,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           </Menu>
         </Box>
 
-        {/* Loading spinner */}
-        {loading &&
-          <Box
-            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={2} mr={2} mb={2} mt={8}
-          >
-            <Box
-              component="img"
-              mb={2}
-              minWidth={150}
-              maxWidth={150}
-              alt=''
-              src={session?.client_logo || process.env.REACT_APP_AVA_LOGO}
-            />
-            <React.Fragment>
-              <Box
-                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                flexWrap='wrap' textOverflow='ellipsis' width='100%' overflow={'hidden'}
-                key={'loadingBox'}
-                mb={2}
-              >
-                <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
-                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                {loading.startsWith('Common activities') ?
-                  <Box
-                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                    key={'loadingWordBox'}
-                  >
-                    <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
-                    <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
-                  </Box>
-                  :
-                  <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
-                }
-              </Box>
-              <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
-              <CircularProgress />
-            </React.Fragment>
-          </Box>
-        }
-
         {/* AVA Menu */}
-        {mainMenu && mainMenu.length > 0 && !loading &&
-          <Paper component={Box} variant='outlined' overflow='auto'>
+        {mainMenu && mainMenu.length > 0 &&
+          <Paper component={Box} variant='outlined' overflow={'auto'} >
             <List >
               {currentMenu !== 'main' &&
                 <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
@@ -1419,7 +1490,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               className={classes.listItem}
                               onContextMenu={async (e) => {
                                 e.preventDefault();
-                                enqueueSnackbar(<div>1. Function={this_row.activity_code}<br />2. Type={this_row.row_type}<br />3. Reason={this_row.reason}<br />4. User={session.user_id}<br />5. Inst={this_row.raw_data}</div>, { variant: 'info', persist: true });
+                                enqueueSnackbar(<div>
+                                  1. Func {this_row.activity_code}<br />
+                                  2. Type {this_row.row_type}<br />
+                                  3. Reas {this_row.reason}<br />
+                                  4. Defs {isObject(this_row.default_value) ? JSON.stringify(this_row.default_value) : this_row.default_value}</div>,
+                                  { variant: 'info', persist: true });
                               }}
                             >
                               <Box
@@ -1448,8 +1524,14 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                       setForceRedisplay(!forceRedisplay);
                                     }
                                     else {
+                                      loadError = false;
                                       await getActivityDetail(this_row);
-                                      setShowNewFactDialog(index);
+                                      if (loadError) {
+                                        enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+                                      }
+                                      else {
+                                        setShowNewFactDialog(index);
+                                      }
                                     }
                                   }
                                   setToggleClick(false);
@@ -1516,6 +1598,58 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </List>
           </Paper>
         }
+
+        {/* Loading Box */}
+        {mainMenu && mainMenu.length > 0 &&
+          <Box
+            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+            key={'lowerloadingBoxWrapper'}
+            id={'lowerloadingBoxWrapper'}
+            ml={2} mr={2} mb={1} mt={1}
+          >
+            <React.Fragment>
+              <Box
+                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                flexWrap='wrap' textOverflow='ellipsis' width='100%' overflow={'hidden'}
+                key={'loadingBox'}
+                id={'loadingBox'}
+              >
+                {loading &&
+                  <React.Fragment>
+                    <Typography style={AVATextStyle({ size: 1.5, align: 'center' })}  >{`Loading AVA`}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
+                      {`AVA version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
+                    </Typography>
+                  </React.Fragment>
+                }
+                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
+                  {`AVA for ${state.session.client_name}`}
+                </Typography>
+                {loading && loading.startsWith('Common activities') &&
+                  <Box
+                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                    key={'groupActivitiesBox'}
+                    id={'groupActivitiesBox'}
+                  >
+                    <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
+                  </Box>
+                }
+                {loading && !loading.startsWith('Common activities') &&
+                  <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
+                }
+              </Box>
+              {loading &&
+                <React.Fragment>
+                  <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
+                  <CircularProgress />
+                </React.Fragment>
+              }
+            </React.Fragment>
+          </Box>
+        }
+
         {showPersonSelect &&
           <SwitchPatientDialog
             open={showPersonSelect}
@@ -1525,6 +1659,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }}
           />
         }
+
         {showProfileEdit &&
           <PatientDialog
             patient={patient}
@@ -1538,6 +1673,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }}
           />
         }
+
         {showAddAccount &&
           <PatientDialog
             patient={{
@@ -1590,6 +1726,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             onSelected={() => { }}
           />
         }
+
         {/* Confirm Fact before saving */
           (needsConfirmation > -1) &&
           <AVAConfirm

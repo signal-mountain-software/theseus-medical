@@ -252,7 +252,8 @@ export default ({
     else if (reactData.forceMethod) { request.preffered_method = reactData.forceMethod; }
     if (thread_id) { request.thread_id = thread_id; }
     let response = await sendMessages(request);
-    enqueueSnackbar(response.message, { variant: (response.sent ? 'success' : 'error') });
+    let resp = makeArray(response);
+    enqueueSnackbar(resp[0].message, { variant: (resp[0].sent ? 'success' : 'error') });
     onComplete();
   };
 

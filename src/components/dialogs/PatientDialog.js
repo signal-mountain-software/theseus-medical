@@ -162,7 +162,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, picture, groupData, open, onClose }) => {
+export default ({ patient, picture, groupData, options = {}, open, onClose }) => {
   const classes = useStyles();
 
   const [localData, setLocalData] = React.useState({});
@@ -264,6 +264,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
           photoURL: await getObject(`${patient.person_id}`, 'image'),
           requirePassword: (targetSession.hasOwnProperty('requirePassword') ? targetSession.requirePassword : false),
           storePassword: (targetSession.hasOwnProperty('storePassword') ? targetSession.storePassword : true),
+          subscription_status: targetSession.subscription_status || 'na',
           groupMemberList: (workingGroupMemberList || []),
           directoryOption: (localPersonRec.directory_option || 'normal'),
           directoryPartner: (localPersonRec.directory_partner || 'na'),
@@ -383,6 +384,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
         "responsible_for": [],
         "status": {},
         "storePassword": true,
+        "subscription_status": "na",
         "url_parameters": {},
         "user_homeClient": state.session.client_id
       };
@@ -475,7 +477,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       sms_private: (localData.sms_private && 'true'),
       voice_private: (localData.voice_private && 'true'),
       office_private: (localData.office_private && 'true'),
-      surrogate: localData.surrogate,
+      surrogate: localData.surrogate || '',
       local_data: localData.local_data,
       search_data: makeSearchData([localData]),
       preferred_method: localData.preferred_method || 'AVA',
@@ -484,6 +486,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       favorite_activities: localData.favorite_activities,
       favorite_blocked: localData.favorite_blocked,
       storePassword: localData.storePassword,
+      subscription_status: localData.subscription_status,
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || null,
       time_based_rules: patient.time_based_rules,
@@ -520,6 +523,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
       favorite_blocked: localData.favorite_blocked,
       requirePassword: localData.requirePassword,
       storePassword: localData.storePassword,
+      subscription_status: localData.subscription_status || 'na',
       directory_option: localData.directoryOption || 'normal',
       directory_partner: localData.directoryPartner || 'na',
       time_based_rules: patient.time_based_rules,
@@ -593,6 +597,9 @@ export default ({ patient, picture, groupData, open, onClose }) => {
 
     attributeValues[':sp'] = localData.storePassword;
     updateExpression += 'storePassword = :sp, ';
+
+    attributeValues[':ss'] = localData.subscription_status;
+    updateExpression += 'subscription_status = :ss, ';
 
     if ((localData.sessionClient !== myClient) || (localData.sessionPatient !== patient.person_id)) {
       attributeValues[':c'] = myClient;
@@ -875,6 +882,12 @@ export default ({ patient, picture, groupData, open, onClose }) => {
     setChanges(true);
   };
 
+  function handleChangeSubscriptionStatus(newStatus) {
+    localData.subscription_status = newStatus;
+    setRefreshTrigger(!refreshTrigger);
+    setChanges(true);
+  }
+
   const onChangeMethod = tableRow => event => {
     patient.time_based_rules[tableRow].method = event.target.value;
     setChanges(true);
@@ -974,7 +987,7 @@ export default ({ patient, picture, groupData, open, onClose }) => {
               <Box display='flex' alignItems='center'
                 justifyContent='flex-start' flexDirection='row'>
                 <TextField classes={{ root: classes.idText }}
-                  id='surrogate' value={localData.surrogate} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
+                  id='surrogate' value={localData.surrogate || ''} fullWidth onChange={handleChangeSurrogate} helperText='on-site alternate contact' />
               </Box>
               {state.session.local_data &&
                 (Object.keys(state.session.local_data).length > 0) &&
@@ -1346,19 +1359,25 @@ export default ({ patient, picture, groupData, open, onClose }) => {
             </Box>
           </Paper>
         </Box >
-        <ClientsSection
-          person={patient}
-          groupData={groupData}
-          updateGroups={handleChangeGroups}
-        />
-        <RelationshipSection person={patient} />
-        <LinkedAccountsSection
-          groupMemberList={localData.groupMemberList}
-          session={patientSession}
-          updateSession={handleChangeLinkedAccounts}
-          updateProxy={handleChangeProxy}
-          version={sessionVersion}
-        />
+        {((options && options.fullAccess) || (['master', 'support'].includes(state.user.account_class)))
+          &&
+          <React.Fragment>
+            <ClientsSection
+              person={patient}
+              groupData={groupData}
+              updateGroups={handleChangeGroups}
+            />
+            <RelationshipSection person={patient} />
+            <LinkedAccountsSection
+              groupMemberList={localData.groupMemberList}
+              session={patientSession}
+              updateSession={handleChangeLinkedAccounts}
+              updateProxy={handleChangeProxy}
+              updateSubscription={(newStatus) => { handleChangeSubscriptionStatus(newStatus); }}
+              version={sessionVersion}
+            />
+          </React.Fragment>
+        }
         <Box m={2}>
           <Paper component={Box} variant={'outlined'}>
             <Box mt={1} py={1} px={3} borderBottom={2}>

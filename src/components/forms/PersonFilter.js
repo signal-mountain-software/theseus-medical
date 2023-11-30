@@ -271,7 +271,10 @@ export default ({
               <Paper
                 key={'person-list_' + x}
                 onClick={async () => {
-                  if (!multiSelect) { onSelect(listEntry); }
+                  if (!multiSelect) {
+                    if (returnValue === 'id') { onSelect(listEntry.split(':')[1]); }
+                    else { onSelect(listEntry); }
+                  }
                   else {
                     if (!toggling) { await toggleCheck(listEntry); }
                     toggling = false;

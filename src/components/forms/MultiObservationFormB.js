@@ -1363,7 +1363,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               marginRight={0}
               marginLeft={0}
               marginTop={0}
-              marginBottom={2}
+              marginBottom={0}
               borderBottom={2}
               padding={1}
               key={'peopleSelectionBox'}

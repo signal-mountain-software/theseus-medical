@@ -1,27 +1,31 @@
 import React from 'react';
-import { sentenceCase, makeArray, cl, titleCase, listFromArray } from '../../util/AVAUtilities';
-import { addDays, daysDiff, makeDate, sameDate } from '../../util/AVADateTime';
+import { sentenceCase, makeArray, isMobile, cl, titleCase, dbClient, recordExists, listFromArray } from '../../util/AVAUtilities';
+import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, messageHistory } from '../../util/AVAMessages';
 import MakeMessage from '../forms/MakeMessage';
-import AVATextInput from '../forms/AVATextInput';
+
+import AVA_AlertSound from '../../ava_alert.mp3';
+
+import IdleTimer from 'react-idle-timer';
+import useSound from 'use-sound';
 
 import { useSnackbar } from 'notistack';
-// import { print } from "pdf-to-printer";
 
 import List from '@material-ui/core/List';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/DoneSharp';
+import ArrowBackIcon from '@material-ui/icons/ArrowBack';
+import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
+import FirstPageIcon from '@material-ui/icons/FirstPage';
+import ClearAllIcon from '@material-ui/icons/ClearAll';
 
 import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
-import DialogContent from '@material-ui/core/DialogContent';
-import CircularProgress from '@material-ui/core/CircularProgress';
-import DynamicFeedIcon from '@material-ui/icons/DynamicFeed';
 
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
@@ -41,7 +45,7 @@ import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -185,7 +189,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ session, filter = {}, onClose }) => {
+export default ({ session, title, filter = { 'person_id': session.patient_id }, options = {}, onClose }) => {
 
   /*
     filter: {
@@ -196,33 +200,59 @@ export default ({ session, filter = {}, onClose }) => {
           if string or number or array with one entry, choose only this date
           if array with exactly two entries, use as start and end
     }
+    options: {
+      shortForm - when true, don't show image, history, or message details
+      textForm - when true, show only requestor and selections (in a text format)
+      updateMode - preselect first item
+    }
   */
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
+  const firstSelectedRowRef = React.useRef(null);
+
   const { enqueueSnackbar } = useSnackbar();
 
-  const [dataRows, setDataRows] = React.useState();
-  const [loading, setLoading] = React.useState(false);
-  const [filters, setFilters] = React.useState({
-    rowLimit: 5,
-  });
-  const [targetDatesExist, setTargetDatesExist] = React.useState(false);
-  const [rowsSelected, setRowsSelected] = React.useState([]);
-  const [forceRedisplay, setForceRedisplay] = React.useState(false);
-  const [statusDisplayed, setStatusDisplayed] = React.useState({});
+  const [loading, setLoading] = React.useState('no_value');
 
-  const showDeleted = false;
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
+
+  const [reactData, setReactData] = React.useState({
+    rebuilding: false,
+    selectedPersonName: null,
+    displayVersion: 0,
+    dataRows: [],
+    requestIDs: [],
+    selectionsChanged: false
+  });
 
   const [promptForMessage, setPromptForMessage] = React.useState(false);
-  const [showFilter, setShowFilter] = React.useState(false);
 
   const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
   const [anchorEl, setAnchorEl] = React.useState(null);
 
-  const scrollValue = 5;
+  const [play] = useSound(AVA_AlertSound, { volume: 1 });
+
   let rowsDisplayed = [];
+
+  let dashboard_idleTimer = React.createRef();
+  const oneMinute = 1000 * 60;
+  const msBeforeSleeping = (options.idle_delay || 5) * oneMinute;
+
+  const updateReactData = (newData, force = false) => {
+    for (let oKey in newData) {
+      setReactData((prevValues) => ({
+        ...prevValues,
+        [oKey]: newData[oKey],
+      }));
+    }
+    if (force) {
+      setForceRedisplay(forceRedisplay => !forceRedisplay);
+    }
+  };
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
@@ -233,227 +263,153 @@ export default ({ session, filter = {}, onClose }) => {
     open: 'Opened'
   };
 
-  async function handleUpdates(options) {
+  React.useEffect(() => {
+    if (firstSelectedRowRef && firstSelectedRowRef.current) {
+      firstSelectedRowRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }
+  }, [reactData.selectionsChanged]);
+
+  async function handleUpdates(pOptions) {
     let historyLine = '';
-    if (options.newStatus) {
-      if (options.newStatus.toLowerCase() !== 'printed') {
-        historyLine = `${await getPerson(session.user_id, 'name')} changed status to ${options.newStatus}`;
-      }
-      else {
-        historyLine = `Printed`;
+    if (pOptions.newStatus) {
+      switch (pOptions.newStatus.toLowerCase()) {
+        case 'printed': {
+          historyLine = `Printed`;
+          break;
+        }
+        case 'completed':
+        case 'complete': {
+          historyLine = `Marked complete by ${await getPerson(session.user_id, 'name')}`;
+          break;
+        }
+        default: {
+          historyLine = `${await getPerson(session.user_id, 'name')} changed status to ${pOptions.newStatus}`;
+        }
       }
     }
     let AVAdate = makeDate(new Date());
     historyLine += ` on ${AVAdate.absolute}`;
     let updateRows = [];
-    for (let x = 0; x < options.rowsToUpdate.length; x++) {
-      let r = dataRows[options.rowsToUpdate[x]];
-      if ((options.newStatus) && (r.last_status.toLowerCase() !== 'complete')) {
-        r.last_status = options.newStatus;
+    let rowChanged = [];
+    reactData.dataRows.forEach((r, x) => {
+      rowChanged[x] = false;
+      if (r.workData.checked && OKToDisplay(r)) {
+        if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== 'complete')) {
+          reactData.dataRows[x].last_status = pOptions.newStatus;
+          rowChanged[x] = true;
+        }
+        reactData.dataRows[x].last_update = AVAdate.timestamp;
+        reactData.dataRows[x].workData.update_date = AVAdate.relative;
+        if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
+          reactData.dataRows[x].history.unshift(historyLine);
+        }
+        else { reactData.dataRows[x].history = [historyLine]; }
+        reactData.dataRows[x].workData.checked = false;
+        updateRows.push(reactData.dataRows[x]);
       }
-      r.last_update = AVAdate.timestamp;
-      r.workData.update_date = AVAdate.relative;
-      if (('history' in r) && Array.isArray(r.history)) {
-        r.history.unshift(historyLine);
-      }
-      else { r.history = [historyLine]; }
-      updateRows.push(r);
-      dataRows[x] = await buildRequestDetails(r);
-      dataRows[x].workData.checked = false;
-      let xSelected = rowsSelected.findIndex(i => { return i === x; });
-      if (xSelected > -1) {
-        rowsSelected.splice(xSelected, 1);
-        setRowsSelected(rowsSelected);
-      }
-    };
-    updateServiceRequest(updateRows.map(u => {
+    });
+    await updateServiceRequest(updateRows.map(u => {
       let w = Object.assign({}, u);
       delete w.workData;
       return w;
     }));
-    setDataRows(dataRows);
-    setForceRedisplay(forceRedisplay => !forceRedisplay);
+    rowsDisplayed = [];
+    // have these rows now been disqualified based on the passed-in filter?
+    if ((filter.hasOwnProperty('statusNot') && filter.statusNot.includes(pOptions.newStatus.toLowerCase()))
+      || (filter.hasOwnProperty('status') && !(filter.status.includes(pOptions.newStatus.toLowerCase())))) {
+      let revisedDataRows = reactData.dataRows.filter((r, x) => {
+        return !rowChanged[x];
+      });
+      if (revisedDataRows.length > 0) {
+        revisedDataRows[0].workData.checked = true;
+      }
+      updateReactData({
+        dataRows: revisedDataRows
+      }, true);
+    }
+    else {
+      updateReactData({
+        dataRows: reactData.dataRows
+      }, true);
+    }
   }
 
-  function getSelectedDetails(rows) {
+  function getSelectedDetails() {
     let selectedIDs = [];
     let selectedName = [];
-    if (rows.length > 0) {
-      rows.forEach(row => {
-        if (!selectedIDs.includes(dataRows[row].workData.requestor_id)) {
-          selectedIDs.push(dataRows[row].requestor);
-          selectedName.push(dataRows[row].workData.requestor_name);
-        }
-      });
-    }
+    reactData.dataRows.forEach(row => {
+      if (row.workData.checked && !selectedIDs.includes(row.workData.requestor_id)) {
+        selectedIDs.push(row.requestor);
+        selectedName.push(row.workData.requestor_name);
+      }
+    });
     return { selectedIDs, selectedName };
   }
 
-  let scrollTimeOut;
-  function handleScroll() {
-    clearTimeout(scrollTimeOut);
-    scrollTimeOut = setTimeout(() => {
-      let updatedFilters = filters;
-      updatedFilters.rowLimit = filters.rowLimit + scrollValue;
-      setFilters(updatedFilters);
-      setForceRedisplay(forceRedisplay => !forceRedisplay);
+  let filterTimeOut;
+  const handleChangeFilter = vCheck => {
+    clearTimeout(filterTimeOut);
+    cl(`set timeout with ${vCheck} at ${new Date().getTime()}`);
+    filterTimeOut = setTimeout(() => {
+      cl(`timeout ended ${vCheck} at ${new Date().getTime()}`);
+      if (vCheck.length === 0) {
+        updateReactData({
+          filterTextLower: ''
+        });
+      }
+      else {
+        updateReactData({
+          filterTextLower: vCheck.toLowerCase()
+        });
+      }
     }, 500);
   };
 
-  let filterTimeOut;
-  const handleChangeRequestFilter = vCheck => {
-    clearTimeout(filterTimeOut);
-    filterTimeOut = setTimeout(() => {
-      if (vCheck.length < 2) {
-        setFilters(Object.assign(filters, {
-          request_filter: ((filters.statusFilterList && (filters.statusFilterList.length > 0)) || (filters.dateTime_filter && !filters.dateTime_filter.error)),
-          request_filter_lower: [],
-          singleFilterDigit: ((vCheck && (vCheck.length === 1)) ? true : false),
-          rowLimit: ((filters.rowLimit === 999) ? 5 : filters.rowLimit),
-        }));
-        setForceRedisplay(forceRedisplay => !forceRedisplay);
-      }
-      else {
-        let checkWords = makeArray(vCheck.trim().toLowerCase(), ' ');
-        setFilters(Object.assign(filters, {
-          request_filter: true,
-          request_filter_lower: checkWords,
-          singleFilterDigit: false,
-          rowLimit: 999,
-        }));
-        setForceRedisplay(forceRedisplay => !forceRedisplay);
-      }
-    }, 1000);
-  };
-
-  function checkDateFilter(vCheck) {
-    let dateFilterType = 0;
-    let dateFilterWords = '';
-    let dateTime_filter = makeDate(vCheck.trim());
-    if (!dateTime_filter.error) {
-      /* 
-        They entered a date.
-        
-        All Service Requests carry a "requested on" date in their request_date (this shows up here as a timestamp in the workData.request_date)
-        Some type of Service Requests carry a "requested for fulfillment" date in their foreign_key (a meal ordered in advance for next Sunday, for example)
-          If there are any "requested for fulfillment" type requests on this dashboard, the targetDatesExist variable will be true
-                    
-        There are four kinds of date searches available:
-           1. Search for requests "entered on" a date,
-           2. Search for requests "entered after" a date,
-           3. Search for requests "requested for fulfillment on" a date,
-           4. Search for requests "requested for fulfillment after" a date
-        Type 1 & 2 don't make sense for future dates.
-        Type 3 & 4 don't make sense if targetDatesExist is false
-        
-        We will determine the type by looking for keywords:
-           1. "on", or no keyWord and date is today or in the past
-           2. "after" (for dates in the past), or "since"
-           3. "for", or no keyWord and date is in the future
-           4. "after" (for today and dates in the future)
-
-        NOTE: In addition to date searching, AVA includes search by word (see quotedWords and elsewhere in this function)   
-      */
-      vCheck = dateTime_filter.textOut;
-      let keyWord = vCheck.toLowerCase().match(/\b(on|for|since|after)\b/gm);
-      const today = new Date();
-      if (!keyWord) {
-        if (dateTime_filter.date <= today) {
-          dateFilterType = 1;
-          dateFilterWords = `entered on ${dateTime_filter.absolute}`;
-        }
-        else {
-          dateFilterType = 3;
-          dateFilterWords = `requested for ${dateTime_filter.absolute}`;
-        }
-      }
-      else {
-        switch (keyWord[0]) {
-          case 'on': {
-            if (dateTime_filter.date <= today) {
-              dateFilterType = 1;
-              dateFilterWords = `entered on ${dateTime_filter.absolute}`;
-              break;
-            }
-            // "on" is invalid for future dates
-            else if (daysDiff(dateTime_filter.date, today) < 7) {
-              // if the date is within a week of today, coerce it back to a past date
-              dateTime_filter = makeDate(addDays(dateTime_filter.date, -7));
-              dateFilterType = 1;
-              dateFilterWords = `entered on ${dateTime_filter.absolute}`;
-              break;
-            }
-            else {
-              // if we can't fix it, make this filter "FOR <future_date>" (missing break is intentional)
-              keyWord[0] = 'for';
-            }
-          }
-          // eslint-disable-next-line
-          case 'for': {
-            //     if (targetDatesExist) {
-            dateFilterType = 3;
-            dateFilterWords = `requested for ${dateTime_filter.absolute}`;
-            //     }
-            break;
-          }
-          case 'since': {
-            if (dateTime_filter.date < today) {
-              dateFilterType = 2;
-              dateFilterWords = `entered on or after ${dateTime_filter.relative}`;
-            }
-            else if ((daysDiff(dateTime_filter.date, today) < 7)) {
-              dateTime_filter = makeDate(addDays(dateTime_filter.date, -7));
-              dateFilterType = 2;
-              dateFilterWords = `entered on or after ${dateTime_filter.relative}`;
-            }
-            else {    // future date that's more than 7 days in the future; it can't be "entered after <future date>"                  
-              dateFilterType = 4;
-              dateFilterWords = `requested for dates on or after ${dateTime_filter.relative}`;
-            }
-            break;
-          }
-          case 'after': {
-            if (dateTime_filter.date < today) {
-              dateFilterType = 2;
-              dateFilterWords = `entered on or after ${dateTime_filter.relative}`;
-            }
-            else if ((daysDiff(dateTime_filter.date, today) < 7) && (targetDatesExist)) {
-              dateFilterType = 4;
-              dateFilterWords = `requested for dates on or after ${dateTime_filter.relative}`;
-            }
-            break;
-          }
-          default: { }
-        }
-        if (dateFilterType > 0) {
-          vCheck = vCheck.split(/\s+/).filter(f => { return (f !== keyWord[0]); }).join(' ');
-        }
-      }
+  function OKToDisplay(this_item) {
+    if ((!this_item.workData) || (!reactData.filterTextLower)) {
+      return true;
     }
-    return { dateTime_filter, dateFilterType, dateFilterWords };
+    else {
+      return JSON.stringify(this_item).includes(reactData.filterTextLower);
+    }
   }
 
   function toggleCheck(pI) {
-    dataRows[pI].workData.checked = !dataRows[pI].workData.checked;
-    setDataRows(dataRows);
-    let xSelected = rowsSelected.findIndex(i => { return i === pI; });
-    if (xSelected > -1) {
-      rowsSelected.splice(xSelected, 1);
-    }
-    else {
-      rowsSelected.push(pI);
-    }
-    setRowsSelected(rowsSelected);
-    setForceRedisplay(forceRedisplay => !forceRedisplay);
+    reactData.dataRows[pI].workData.checked = !reactData.dataRows[pI].workData.checked;
+    updateReactData({
+      dataRows: reactData.dataRows
+    }, true);
   }
 
+  function anyRowsSelected() {
+    return reactData.dataRows.some(r => {
+      return r.workData.checked;
+    });
+  }
+
+  const firstSelectedRow = () => {
+    return reactData.dataRows.findIndex(this_row => {  // find first checked row
+      return this_row.workData.checked;
+    });
+  };
+
+  const lastSelectedRow = () => {
+    return reactData.dataRows.findLastIndex(this_row => {  // find last checked row
+      return this_row.workData.checked;
+    });
+  };
+
   async function toggleOpen(pI) {
-    dataRows[pI].workData.open = !dataRows[pI].workData.open;
-    if (!dataRows[pI].workData.messageRecs) {
-      dataRows[pI].workData.messageRecs = await prepareMessageHistory(dataRows[pI].request_id);
+    reactData.dataRows[pI].workData.open = !reactData.dataRows[pI].workData.open;
+    if (!reactData.dataRows[pI].workData.messageRecs) {
+      reactData.dataRows[pI].workData.messageRecs = await prepareMessageHistory(reactData.dataRows[pI].request_id);
     }
-    setDataRows(dataRows);
-    setForceRedisplay(forceRedisplay => !forceRedisplay);
+    updateReactData({
+      dataRows: reactData.dataRows
+    }, true);
   }
 
   async function prepareMessageHistory(thread) {
@@ -504,139 +460,123 @@ export default ({ session, filter = {}, onClose }) => {
     return mRow.map(r => { return r.body; });
   };
 
-  function filteredRequest(pRec) {
-    if (filters.singleFilterDigit) { return true; }
-    else if (filters.dateTime_filter && !filters.dateTime_filter.error) {
-      switch (filters.dateFilterType) {
-        case 1: {
-          // Search for requests "entered on" a date
-          if (!sameDate(pRec.workData.requestTime, filters.dateTime_filter.date)) {
-            return false;
-          }
-          break;
-        }
-        case 2: {
-          // Search for requests "entered after" a date
-          if (pRec.workData.requestTime < filters.dateTime_filter.timestamp) {
-            return false;
-          }
-          break;
-        }
-        case 3: {
-          // Search for requests "requested for fulfillment on" a date
-          if (pRec.workData.orderForDate.numeric !== filters.dateTime_filter.numeric) {
-            return false;
-          }
-          break;
-        }
-        case 4: {
-          // Search for requests "requested for fulfillment after" a date
-          if (pRec.workData.orderForDate.numeric < filters.dateTime_filter.numeric) {
-            return false;
-          }
-          break;
-        }
-        default: { }
-      }
-    }
-    if (filters.request_filter_lower && (filters.request_filter_lower.length > 0)) {
-      let searchString = `${pRec.workData.search_data} ${pRec.workData.formatted_type}`;
-      let allWordsFound = filters.request_filter_lower.every(w => {
-        return searchString.toLowerCase().includes(w);
-      });
-      if (!allWordsFound) { return false; }
-    }
-    if (filters.statusFilterList && (filters.statusFilterList.length > 0)) {
-      return (filters.statusFilterList.includes(pRec.last_status.toLowerCase().trim()));
-    }
-    else { return true; }
-  }
-
-  function makeFilterHelper() {
-    let filter_helper = '';
-    if (filters.request_filter) {
-      filter_helper = 'Requests ';
-      if (filters.dateFilterWords) {
-        filter_helper += filters.dateFilterWords;
-      }
-      if (filters.request_filter_lower && (filters.request_filter_lower.length > 0)) {
-        if (filters.dateFilterWords) { filter_helper += ' and'; }
-        filter_helper +=
-          ` containing the word${(filters.request_filter_lower.length > 1) ? 's' : ''} ${listFromArray(filters.request_filter_lower)}`;
-      }
-      if (filters.statusFilterList && (filters.statusFilterList.length > 0)) {
-        if (filter_helper.length > 9) { filter_helper += ' and'; }
-        filter_helper += ` with status ${listFromArray(filters.statusFilterList, {or: true, sentenceCase: true})}`;
-      }
-    }
-    return filter_helper;
-  }
-
   const buildDashboard = async () => {
-    setLoading(true);
     let qList = [];
-    if (filter) { filter.client_id = session.client_id; }
-    else { filter = { 'person': session.patient_id }; }
-    filter.limit = Math.min(filters.rowLimit, 5) * 3;
+    let selectedPersonName = await makeName(filter.person_id);
+    if ((!filter.hasOwnProperty('client_id') || !filter.client_id)) {
+      filter.client_id = session.client_id;
+    }
     filter.request_type = makeArray(filter.request_type, ',');
+    if (!filter.hasOwnProperty('sort')) {
+      filter.sort = {
+        order: 'desc'
+      };
+    };
     qList = await getServiceRequests(filter);
-    let limit = Math.min(filter.limit, qList.length);
-    for (let x = 0; x < limit; x++) {
-      qList[x] = await buildRequestDetails(qList[x]);
+    let maxTimeStamp = 0;
+    reactData.dataRows = [];
+    reactData.requestIDs = [];
+    for (let x = 0; (x < qList.length); x++) {
+      if (qList[x].request_date > maxTimeStamp) {
+        maxTimeStamp = qList[x].request_date;
+      }
+      if (filter.hasOwnProperty('statusNot') && filter.statusNot.includes(qList[x].last_status.toLowerCase())) {
+        continue;
+      }
+      else if (filter.hasOwnProperty('status') && !(filter.status.includes(qList[x].last_status.toLowerCase()))) {
+        continue;
+      }
+      reactData.dataRows.push(await buildRequestDetails(qList[x]));
+      reactData.requestIDs.push(qList[x].request_id);
     }
-    let filtering = false;
-    if (filter.selections || filter.words) {
-      handleChangeRequestFilter(filter.selections || filter.words);
-      filtering = true;
+    if (loading !== 'rebuild') {
+      updateReactData({
+        lastTimeStamp: maxTimeStamp,
+        dataRows: reactData.dataRows,
+        requestIDs: reactData.requestIDs,
+        rebuilding: false,
+        selectedPersonName
+      }, true);
     }
-    let dateFilterObj = {};
-    if (filter.dates) {
-      dateFilterObj = checkDateFilter(filter.dates);
-      dateFilterObj.dateAsEntered = filter.dates;
-      filtering = true;
-    }
-    let statusFilterList = [];
-    if (filter.status) {
-      statusFilterList = makeArray(filter.status);
-      filtering = true;
-    }
-    if (filter.statusNot) {
-      Object.keys(statusDisplayed).forEach((k) => {
-        if (!filter.statusNot.includes(k.toLowerCase())) {
-          statusFilterList.push(k.toLowerCase());
-          filtering = true;
-        }
-      });
-      filtering = true;
-    }
-    let newFilters = Object.assign(
-      filters,
-      { statusFilterList },
-      dateFilterObj,
-      { request_filter: filtering }
-    );
-    setFilters(newFilters);
-    setDataRows(qList);
-    setLoading(false);
-    filter.limit = Math.min(filters.rowLimit, 5) * 40;
-    getServiceRequests(filter)
-      .then(result => {
-        let finalLimit = result.length;
-        for (let x = limit; x < finalLimit; x++) {
-          buildRequestDetails(result[x])
-            .then(data => {
-              qList[x] = data;
-              setDataRows(qList);
-            });
-        }
-      });
-    if (qList.length === 0) {
+    if ((qList.length === 0) || (reactData.dataRows.length === 0)) {
       enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
+    }
+    else {
+      reactData.dataRows[0].workData.checked = true;
+    }
+    if (dashboard_idleTimer && dashboard_idleTimer.current) {
+      dashboard_idleTimer.current.start();
+      cl(`Idle timer started in dashboard at ${new Date().toLocaleString()}.`);
+    }
+  };
+
+  const extendDashboard = async () => {
+    if (reactData.rebuilding) {
+      return;
+    }
+    let qQ = { TableName: 'ServiceRequestLog' };
+    qQ.KeyConditionExpression = 'client_id = :c and log_time > :lt';
+    qQ.ExpressionAttributeValues = { ':c': session.client_id, ':lt': reactData.lastTimeStamp };
+    let qR = await dbClient
+      .query(qQ)
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          console.log(`Security Violation or no Internet Connection`);
+        }
+        console.log({ 'Error reading ServiceRequests': error, index: qQ.IndexName, qQ });
+      });
+    let newRecordsFound = false;
+    let maxTimeStamp = reactData.lastTimeStamp;
+    let playAlert = false;
+    if (recordExists(qR)) {
+      for (let x = 0; (x < qR.Items.length); x++) {
+        let newKey = qR.Items[x].request_id;
+        if (!reactData.requestIDs.includes(newKey)) {
+          let request_timestamp = Number(newKey.split('~').pop());
+          if (!isNaN(request_timestamp)) {
+            maxTimeStamp = Math.max(maxTimeStamp, request_timestamp);
+            reactData.requestIDs.push(newKey);
+            let qList = await getServiceRequests({
+              client_id: session.client_id,
+              request_id: newKey
+            });
+            if (filter.foreign_key && (filter.foreign_key === qList[0].foreign_key)) {
+              if ((filter.hasOwnProperty('statusNot') && filter.statusNot.includes(qList[0].last_status.toLowerCase()))
+                || (filter.hasOwnProperty('status') && !(filter.status.includes(qList[0].last_status.toLowerCase())))) {
+                continue;
+              }
+              else {
+                newRecordsFound = true;
+                let newRow = await buildRequestDetails(qList[0]);
+                reactData.dataRows.push(newRow);
+                if (OKToDisplay(newRow)) {
+                  playAlert = true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    if (newRecordsFound) {
+      updateReactData({
+        lastTimeStamp: maxTimeStamp,
+        dataRows: reactData.dataRows
+      }, true);
+      if (playAlert) {
+        play();
+      }
+    }
+    if (dashboard_idleTimer && dashboard_idleTimer.current) {
+      dashboard_idleTimer.current.start();
+      cl(`Idle timer restarted in dashboard at ${new Date().toLocaleString()}.`);
     }
   };
 
   async function buildRequestDetails(i) {
     i.workData = {};
+    i.workData.search_data = '';
     if (session.service_request_types.hasOwnProperty(i.request_type)) {
       i.workData.formatted_type = session.service_request_types[i.request_type].description || `${titleCase(i.request_type)}`;
     }
@@ -653,7 +593,7 @@ export default ({ session, filter = {}, onClose }) => {
     let anonymous = false;
     let requestorRec = await getPerson(i.requestor, '*all');
     i.workData.requestor_name = await makeName(i.requestor);
-    if (i.requestor !== enteredBy) { 
+    if (i.requestor !== enteredBy) {
       i.workData.enteredBy_name = await makeName(enteredBy);
     }
     else {
@@ -662,32 +602,29 @@ export default ({ session, filter = {}, onClose }) => {
     i.workData.requestor_location = requestorRec.location;
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
+    i.workData.textBased_request = '';
     i.workData.update_date = AVAupdateDate.relative;
     i.workData.requestTime = AVArequestDate.timestamp;
     i.workData.orderForDate = makeDate(i.foreign_key);
-    if (!i.workData.orderForDate.error) { setTargetDatesExist(true); }
-    if (AVAupdateDate.relative !== AVArequestDate.relative) {
-      i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
+    i.workData.this_status = sentenceCase(i.last_status);
+    if ((!options.shortForm) && (!options.textForm)) {
+      if (AVAupdateDate.relative !== AVArequestDate.relative) {
+        i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
+      }
+      i.workData.formatted_request.push(['head', `Current status: ${i.workData.this_status}`]);
+      i.workData.formatted_request.push(['head', 'Details']);
     }
-    let this_status = sentenceCase(i.last_status);
-    i.workData.formatted_request.push(['head', `Current status: ${this_status}`]);
-    if (!statusDisplayed[this_status]) {
-      statusDisplayed[this_status] = 1;
-    }
-    else {
-      statusDisplayed[this_status]++;
-    }
-    setStatusDisplayed(statusDisplayed);
-    i.workData.formatted_request.push(['head', 'Details']);
     if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
       anonymous = (i.original_request.selections && i.original_request.selections.join(' ').includes('anonymous'));
-      let [fReq, fSearch] = formatRequest(i, i.original_request);
+      let [fReq, fSearch, fText] = formatRequest(i, i.original_request);
+      i.workData.textBased_request = `${AVArequestDate.relative} ` + (anonymous ? `Anonymous` : i.workData.requestor_name) + fText;
       i.workData.formatted_request.push(...fReq);
       i.workData.search_data += ` ${fSearch}`;
     }
     else {
       anonymous = i.original_request.includes('anonymous');
       i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
+      i.workData.textBased_request = `${AVArequestDate.relative} ` + (anonymous ? `Anonymous` : i.workData.requestor_name) + i.original_request;
       i.workData.search_data += ` ${i.original_request}`;
     }
     if (i.attachments && (i.attachments.length > 0)) {
@@ -704,31 +641,34 @@ export default ({ session, filter = {}, onClose }) => {
       i.workData.requestor_location = null;
       i.workData.requestor_image = null;
     }
-    if ('history' in i) {
-      i.workData.formatted_request.push(['head', 'History']);
-      if (typeof (i.history) === 'string') { i.workData.formatted_request.push(['detail', i.history]); }
-      else if (Array.isArray(i.history)) {
-        i.history.forEach(h => {
-          if (typeof h === 'string') { i.workData.formatted_request.push(['detail', h]); }
-        });
+    i.workData.search_data += i.workData.requestor_name;
+    if ((!options.shortForm) && (!options.textForm)) {
+      if ('history' in i) {
+        i.workData.formatted_request.push(['head', 'History']);
+        if (typeof (i.history) === 'string') { i.workData.formatted_request.push(['detail', i.history]); }
+        else if (Array.isArray(i.history)) {
+          i.history.forEach(h => {
+            if (typeof h === 'string') { i.workData.formatted_request.push(['detail', h]); }
+          });
+        }
+        else {
+          Object.values(i.history).forEach(h => { i.workData.formatted_request.push(['detail', h]); });
+        }
       }
-      else {
-        Object.values(i.history).forEach(h => { i.workData.formatted_request.push(['detail', h]); });
+      let mHist = await messageHistory({
+        thread_id: `svc_${i.request_type}/${i.request_id}`,
+        type: 'delivery'
+      });
+      if (mHist && (mHist.length > 0)) {
+        i.workData.formatted_request.push(['head', 'Messages']);
+        mHist.map(h => { return i.workData.formatted_request.push(['detail', h]); });
       }
+      i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name} ~ ${i.workData.enteredBy_name}`;
+      if (['closed', 'completed', 'cancelled'].includes(i.last_status.toLowerCase())) {
+        i.workData.search_data += ` ~ closed`;
+      }
+      else { i.workData.search_data += ` ~ open`; }
     }
-    let mHist = await messageHistory({
-      thread_id: `svc_${i.request_type}/${i.request_id}`,
-      type: 'delivery'
-    });
-    if (mHist && (mHist.length > 0)) {
-      i.workData.formatted_request.push(['head', 'Messages']);
-      mHist.map(h => { return i.workData.formatted_request.push(['detail', h]); });
-    }
-    i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name} ~ ${i.workData.enteredBy_name}`;
-    if (['closed', 'completed', 'cancelled'].includes(i.last_status.toLowerCase())) {
-      i.workData.search_data += ` ~ closed`;
-    }
-    else { i.workData.search_data += ` ~ open`; }
     i.workData.checked = false;
     i.workData.open = false;
     return i;
@@ -736,37 +676,56 @@ export default ({ session, filter = {}, onClose }) => {
 
   function formatRequest(i, req) {
     let returnMessage = [];
+    let returnText = '';
     let returnSearch = '';
     if (!('textInput' in req)) { req.textInput = {}; }
     if (!('qualifiers' in req)) { req.qualifiers = []; }
     if (!('selections' in req)) { req.selections = []; }
     if (i.workData.requestor_name !== i.on_behalf_of) {
       returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
+      returnText += ` on behalf of ${i.on_behalf_of}`;
     }
+    returnText += ` - `;
+    let textLink = '';
     req.selections.forEach(s => {
-      let dLine = s;
+      let dLine = s.trim();
+      let [selection, ...opts] = dLine.split(/[();,]/);
+      let options = opts.map(o => { return o.trim(); });
+      if (req.hasOwnProperty('qualifiers')
+        && req.qualifiers.hasOwnProperty(selection.trim())
+      ) {
+        Object.values(req.qualifiers[selection.trim()]).forEach(choiceList => {
+          choiceList.forEach(c => {
+            let choice = c.trim();
+            if (!options.includes(choice)) {
+              options.push(choice);
+            }
+          });
+        });
+      }
+      returnMessage.push(['detail', selection.trim()]);
+      returnText += `${textLink} ${selection.trim()}`;
+      let rTextList = [];
+      if (options.length > 0) {
+        // let q = parts.shift().split(/[;,]/);
+        options.forEach(qx => {
+          let outO = titleCase(qx.trim());
+          if (outO !== '') {
+            returnMessage.push(['qual', outO]);
+            rTextList.push(outO);
+          }
+        });
+      }
       if (s in req.textInput) {
-        dLine += ` - ${req.textInput[s]}`;
+        returnMessage.push(['qual', req.textInput[s]]);
+        rTextList.push(req.textInput[s]);
         delete req.textInput[s];
       }
-      returnMessage.push(['detail', dLine]);
-      returnSearch += ` ${dLine}`;
-      if (s in req.qualifiers) {
-        for (let q in req.qualifiers[s]) {
-          let qLast = req.qualifiers[s][q].length - 1;
-          if (qLast >= 0) {
-            let qLine = `${q} -`;
-            // eslint-disable-next-line
-            req.qualifiers[s][q].forEach((qV, qX) => {
-              qLine += ` ${qV}`;
-              returnSearch += ` ${qV}`;
-              if ((qX < qLast) && (qLast > 1)) { qLine += ','; }  // array longer than 2
-              if (qX === (qLast - 1)) { qLine += ' and'; }  // next to last entry in array
-            });
-            returnMessage.push(['qual', qLine]);
-          }
-        }
+      if (rTextList.length > 0) {
+        returnText += `(${rTextList.join(', ')})`;
+        textLink = ';';
       }
+      returnSearch += ` ${dLine}`;
     });   // done with all selections; is there any text left?
     for (let k in req.textInput) {
       if (['-stamped', '-date', '-ymd'].some(w => { return k.includes(w); })) { continue; }
@@ -779,16 +738,19 @@ export default ({ session, filter = {}, onClose }) => {
           }
           else {
             returnMessage.push(['text', `${k} - ${req.textInput[k]}`]);
+            returnText += `${textLink} ${req.textInput[k]}`;
           }
         }
       }
     };
-    return [returnMessage, returnSearch];
+    return [returnMessage, returnSearch, returnText];
   }
 
   React.useEffect(() => {
     async function initialize() {
+      setLoading('initial_load');
       await buildDashboard();
+      setLoading('load_complete');
     }
     initialize();
   }, [session]);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -802,41 +764,24 @@ export default ({ session, filter = {}, onClose }) => {
       p={2}
       fullScreen
     >
-      {loading &&
-        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-          <Box
-            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={2} mr={2} mb={2} mt={8}
-          >
-            <Box
-              component="img"
-              mb={2}
-              minWidth={150}
-              maxWidth={150}
-              alt=''
-              src={session.client_logo || process.env.REACT_APP_AVA_LOGO}
-            />
-            <React.Fragment>
-              <Box
-                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                key={'loadingBox'}
-                mb={2}
-              >
-                <Typography variant='h5' >{`Retrieving`}</Typography>
-                <Typography variant='h5' className={classes.lastName} sx={{ marginBottom: '15px' }}>
-                  {(filter.request_type && session.service_request_types[filter.request_type]) ? session.service_request_types[filter.request_type].description : 'Request'}s
-                </Typography>
-                <Typography variant='caption' >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-              </Box>
-              <CircularProgress />
-            </React.Fragment>
-          </Box>
-        </DialogContent>
-      }
-      {!loading && dataRows &&
+      {reactData.dataRows &&
         <React.Fragment>
+          {/* Idle timer always running */}
+          <IdleTimer
+            ref={dashboard_idleTimer}
+            timeout={msBeforeSleeping}   // every "n" minutes
+            onActive={() => {
+              let now = new Date();
+              cl(`Active in dashboard at ${now.toLocaleString()}.  Idle since ${new Date(dashboard_idleTimer.current.state.lastIdle).toLocaleString()}`);
+            }}
+            onIdle={async () => {
+              cl(`Idle fired in dashboard at ${new Date().toLocaleString()}.  Last active at ${new Date(dashboard_idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(dashboard_idleTimer.current.state.lastIdle).toLocaleString()}`);
+              await extendDashboard();
+            }}
+            startOnMount={true}
+            debounce={250}
+          />
+
           {/* Header with Avatar, Message, and VertMenu */}
           <Box
             display='flex' flexDirection='row'
@@ -846,9 +791,37 @@ export default ({ session, filter = {}, onClose }) => {
             <Box display='flex' flexDirection='column' key={'titlesection'}>
               <Typography
                 className={classes.title}
+                style={AVATextStyle({ size: 2.5, bold: true })}
               >
-                Recent Requests
+                {filter.person_id
+                  ? reactData.selectedPersonName
+                  : title
+                }
               </Typography>
+              {filter.foreign_key &&
+                <Typography
+                  className={classes.subTitle}
+                  style={AVATextStyle({ size: 1.5 })}
+                >
+                  {`For: ${makeDate(filter.foreign_key).absolute}`}
+                </Typography>
+              }
+              {filter.statusNot &&
+                <Typography
+                  className={classes.subTitle}
+                  style={AVATextStyle({ size: 1.5 })}
+                >
+                  {`Status NOT: ${listFromArray(filter.statusNot, { sentenceCase: true, or: true })}`}
+                </Typography>
+              }
+              {filter.status &&
+                <Typography
+                  className={classes.subTitle}
+                  style={AVATextStyle({ size: 1.5 })}
+                >
+                  {`Status: ${listFromArray(filter.status, { sentenceCase: true, or: true })}`}
+                </Typography>
+              }
             </Box>
             <Box
               paddingRight={2}
@@ -906,18 +879,21 @@ export default ({ session, filter = {}, onClose }) => {
               </MenuList>
             </Menu>
           </Box>
+
+          {/* Text Filter */}
           <TextField
             id='List Filter'
-            onChange={event => (handleChangeRequestFilter(event.target.value))}
+            onChange={event => (handleChangeFilter(event.target.value))}
             className={classes.freeInput}
-            label={'Search'}
-            helperText={makeFilterHelper()}
+            helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+            inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+            FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
             variant={'standard'}
             autoComplete='off'
           />
+
+          {/* Main List */}
           <Paper
-            onScroll={() => (
-              handleScroll())}
             component={Box}
             variant='outlined'
             overflow='auto'
@@ -927,15 +903,20 @@ export default ({ session, filter = {}, onClose }) => {
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsDisplayed = []}
               </Typography>
-              {dataRows.map((this_item, index) => (
-                ((rowsDisplayed.length <= filters.rowLimit) && this_item.workData
-                  && (!filters.request_filter || filteredRequest(this_item, filters.request_filter))
-                  && (!this_item.workData.delete_flag || showDeleted) &&
-                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
+              {reactData.dataRows.map((this_item, index) => (
+                (OKToDisplay(this_item, index) &&
+                  <Paper
+                    component={Box}
+                    variant='outlined'
+                    key={`paper_row_${index}_${this_item.workData.checked}`}
+                  >
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsDisplayed.push(index)}
                     </Typography>
-                    <Box display='flex' flexDirection='column'
+                    <Box display='flex'
+                      flexDirection='column'
+                      bgcolor={(this_item.workData.checked) ? 'antiqueWhite' : null}
+                      ref={((firstSelectedRow() === index) || ((firstSelectedRow() === -1) && (rowsDisplayed.length === 1))) ? firstSelectedRowRef : null}
                       onContextMenu={async (e) => {
                         e.preventDefault();
                         enqueueSnackbar(<div>
@@ -952,8 +933,108 @@ export default ({ session, filter = {}, onClose }) => {
                         key={this_item.message_id + 'r' + index}
                         className={classes.listItem}
                       >
-                        <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                          <Box display='flex' flexDirection='column'>
+                        {!options.textForm &&
+                          <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                            <Box display='flex' flexDirection='column'>
+                              <Box display='flex' flexDirection='row'>
+                                {!options.shortForm && !filter.person_id &&
+                                  <Box
+                                    className={classes.imageArea}
+                                    component="img"
+                                    minWidth={50}
+                                    minHeight={50}
+                                    maxWidth={50}
+                                    border={1}
+                                    alt=' '
+                                    src={this_item.workData.requestor_image}
+                                  />
+                                }
+                                <Box display='flex' flexDirection='column' marginBottom={1.5}>
+                                  {filter.request_type && (filter.request_type.length > 1) &&
+                                    <Typography
+                                      variant='h5'
+                                      style={AVATextStyle({ size: 1, italic: true })}
+                                    >
+                                      {this_item.workData.formatted_type}
+                                    </Typography>
+                                  }
+                                  {!filter.person_id &&
+                                    <Typography
+                                      variant='h5'
+                                      style={AVATextStyle({ size: 1.5, bold: true })}
+                                      className={classes.firstName}
+                                    >
+                                      {`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}
+                                    </Typography>
+                                  }
+                                  {this_item.workData.updated &&
+                                    <Typography
+                                      style={AVATextStyle({ size: 0.7 })}
+                                    >
+                                      {this_item.workData.updated}
+                                    </Typography>
+                                  }
+                                  {!options.shortForm &&
+                                    <React.Fragment>
+                                      {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                        <Typography variant='h5' className={classes.firstName}>{`By ${this_item.workData.enteredBy_name}`}</Typography>
+                                      }
+                                      <Typography variant='h5' className={classes.firstName}>{this_item.workData.display_date}</Typography>
+                                      {!(this_item?.workData?.orderForDate.error) &&
+                                        <Typography variant='h5' className={classes.firstName}>{`For ${this_item?.workData?.orderForDate.relative}`}</Typography>
+                                      }
+                                    </React.Fragment>
+                                  }
+                                </Box>
+                              </Box>
+                              {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                                (mLine[0].startsWith('href=')
+                                  ?
+                                  <a
+                                    href={mLine[0].split('=')[1]}
+                                    key={`attach-${mIndex}-href`}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                    <Typography
+                                      key={`attach-${mIndex}`}
+                                      className={classes.mrowdetail}
+                                    >
+                                      {`Attachment: ${mLine[1]}`}
+                                    </Typography>
+                                  </a>
+                                  :
+                                  < Typography
+                                    key={`prefLine-${mIndex}`}
+                                    className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                  >
+                                    {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
+                                  </Typography>
+                                )
+                              ))}
+                              {this_item.workData.open &&
+                                this_item.workData.messageRecs.map((mLine, dX) => (
+                                  <Typography
+                                    key={('mrow_out' + dX)}
+                                    className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                  >
+                                    {mLine[1]}
+                                  </Typography>
+                                ))
+                              }
+                            </Box>
+                          </Box>
+                        }
+                        <Box display='flex' flexDirection='row'>
+                          <Checkbox
+                            checked={this_item.workData.checked || false}
+                            disableRipple
+                            key={'checkbox' + index}
+                            onClick={() => { toggleCheck(index); }}
+                          />
+                        </Box>
+                        {options.textForm &&
+                          <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='flex-start' alignItems='center'>
                             <Box display='flex' flexDirection='row'>
                               <Box
                                 className={classes.imageArea}
@@ -965,80 +1046,31 @@ export default ({ session, filter = {}, onClose }) => {
                                 alt=' '
                                 src={this_item.workData.requestor_image}
                               />
-                              <Box display='flex' flexDirection='column' marginBottom={1.5}>
-                                <Typography variant='h5' className={classes.lastName} >{this_item.workData.formatted_type}</Typography>
-                                <Typography variant='h5' className={classes.firstName}>{`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}</Typography>
-                                {(this_item.requestor !== this_item.workData.enteredBy) &&
-                                  <Typography variant='h5' className={classes.firstName}>{`By ${this_item.workData.enteredBy_name}`}</Typography>
-                                }
-                                <Typography variant='h5' className={classes.firstName}>{this_item.workData.display_date}</Typography>
-                                {!(this_item?.workData?.orderForDate.error) &&
-                                  <Typography variant='h5' className={classes.firstName}>{`For ${this_item?.workData?.orderForDate.relative}`}</Typography>
-                                }
-                              </Box>
                             </Box>
-                            {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
-                              (mLine[0].startsWith('href=')
-                                ?
-                                <a
-                                  href={mLine[0].split('=')[1]}
-                                  key={`attach-${mIndex}-href`}
-                                  target='_blank'
-                                  rel='noopener noreferrer'
-                                  style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                  <Typography
-                                    key={`attach-${mIndex}`}
-                                    className={classes.mrowdetail}
-                                  >
-                                    {`Attachment: ${mLine[1]}`}
-                                  </Typography>
-                                </a>
-                                :
-                                < Typography
-                                  key={`prefLine-${mIndex}`}
-                                  className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                                >
-                                  {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
-                                </Typography>
-                              )
-                            ))}
-                            {this_item.workData.open &&
-                              this_item.workData.messageRecs.map((mLine, dX) => (
-                                <Typography
-                                  key={('mrow_out' + dX)}
-                                  className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                                >
-                                  {mLine[1]}
-                                </Typography>
-                              ))
-                            }
+                            < Typography
+                              key={`singleTextLine-${index}`}
+                              className={classes.mrowdetail}
+                            >
+                              {this_item.workData.textBased_request}
+                            </Typography>
                           </Box>
-                        </Box>
-                        <Box display='flex' flexDirection='row'>
-                          <Checkbox
-                            checked={this_item.workData.checked || false}
-                            disableRipple
-                            key={'checkbox' + index}
-                            onClick={() => { toggleCheck(index); }}
-                          />
-                        </Box>
+                        }
                       </Box>
                     </Box>
                   </Paper>
                 )
               ))}
-              {(rowsDisplayed.length === 0) &&
-                <Box display='flex' flexDirection='column' flexWrap={'wrap'} justifyContent={'center'} alignContent={'center'}>
-                  <Box display='flex' flexDirection='row' justifyContent={'center'} alignContent={'center'}>
-                    <Typography variant='h5' className={classes.lastName} >Nothing found matches</Typography>
-                  </Box>
-                  <Box display='flex' flexDirection='row' justifyContent={'center'} alignContent={'center'}>
-                    <Typography variant='h5' className={classes.lastName} >{`"${makeFilterHelper()}"`}</Typography>
-                  </Box>
+              {(rowsDisplayed.length === 0) && (loading === 'load_complete') &&
+                <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
+                  <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >
+                    {`No requests match your criteria`}
+                  </Typography>
                 </Box>
               }
             </List>
           </Paper>
+
+          {/* Prompts */}
           {
             promptForMessage &&
             <MakeMessage
@@ -1059,57 +1091,10 @@ export default ({ session, filter = {}, onClose }) => {
               allowCancel={true}
             />
           }
-          {showFilter &&
-            <AVATextInput
-              titleText={'Include only...'}
-              promptText={
-                ['[display]What request dates?', 'Request date(s)?', '[display]~~~', '[display]Include which status(es)?']
-                  .concat(Object.keys(statusDisplayed).map(k => {
-                    return `[checkbox]${k}`;
-                  }))
-              }
-              valueText={
-                ['', ((filters.dateTime_filter && !filters.dateTime_filter.error) ? filters.dateAsEntered : ''),
-                  '', '']
-                  .concat(Object.keys(statusDisplayed).map(k => {
-                    return ((filters.statusFilterList && filters.statusFilterList.includes(k.toLowerCase())) ? 'checked' : '');
-                  }))}
-              buttonText='Filter'
-              onCancel={() => { setShowFilter(false); }}
-              onSave={async (requestUpdates) => {
-                setShowFilter(false);
-                let filtering = !!filters.request_filter_lower;
-                let dateFilterObj = {};
-                if (requestUpdates[1]) {
-                  dateFilterObj = checkDateFilter(requestUpdates[1]);
-                  dateFilterObj.dateAsEntered = requestUpdates[1];
-                  filtering = true;
-                }
-                else {
-                  delete filters.dateFilterType;
-                  delete filters.dateFilterWords;
-                  delete filters.dateTime_filter;
-                  delete filters.dateAsEntered;
-                }
-                let statusFilterList = [];
-                Object.keys(statusDisplayed).forEach((k, x) => {
-                  if (requestUpdates[4 + x] === 'checked') {
-                    statusFilterList.push(k.toLowerCase());
-                    filtering = true
-                  }                  
-                });
-                let newFilters = Object.assign(
-                  filters,
-                  { statusFilterList },
-                  dateFilterObj,
-                  { request_filter: filtering }
-                );
-                setFilters(newFilters);
-                setForceRedisplay(forceRedisplay => !forceRedisplay);
-              }}
-            />
-          }
-          { // Command Area
+
+          {/* Buttons */}
+          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
@@ -1122,50 +1107,23 @@ export default ({ session, filter = {}, onClose }) => {
                   >
                     {'Close'}
                   </Button>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'green', color: 'white' }}
-                    size='small'
-                    onClick={() => {
-                      rowsDisplayed.forEach((r, x) => {
-                        dataRows[r].workData.checked = true;
-                      });
-                      setRowsSelected(rowsDisplayed);
-                      setDataRows(dataRows);
-                      setForceRedisplay(forceRedisplay => !forceRedisplay);
-                    }}
-                    startIcon={<DoneAllIcon size="small" />}
-                  >
-                    {'Select all'}
-                  </Button>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'purple', color: 'white' }}
-                    size='small'
-                    onClick={() => {
-                      setShowFilter(true);
-                    }}
-                    startIcon={<DynamicFeedIcon size="small" />}
-                  >
-                    {'Filter'}
-                  </Button>
                 </Box>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                  {(rowsSelected.length > 0)
-                    &&
+                  {anyRowsSelected() &&
+                    (!filter.person_id) &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'orange', color: 'black' }}
                       size='small'
                       onClick={() => {
-                        setPromptForMessage(getSelectedDetails(rowsSelected));
+                        setPromptForMessage(getSelectedDetails());
                       }}
                       startIcon={<SendIcon size="small" />}
                     >
                       {'Message'}
                     </Button>
                   }
-                  {(rowsSelected.length > 0)
+                  {anyRowsSelected()
                     &&
                     <Button
                       className={AVAClass.AVAButton}
@@ -1173,21 +1131,22 @@ export default ({ session, filter = {}, onClose }) => {
                       size='small'
                       onClick={async () => {
                         let printList = [];
-                        rowsSelected.forEach(r => { printList.push(dataRows[r]); });
+                        reactData.dataRows.forEach(r => {
+                          if (r.workData.checked) { printList.push(r); }
+                          return;
+                        });
                         let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
                         enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
                         await handleUpdates({
                           newStatus: 'Printed',
-                          rowsToUpdate: rowsSelected
                         });
-                        setRowsSelected([]);
                       }}
                       startIcon={<PrintIcon size="small" />}
                     >
                       {'Print'}
                     </Button>
                   }
-                  {(rowsSelected.length > 0)
+                  {anyRowsSelected()
                     &&
                     <Button
                       className={AVAClass.AVAButton}
@@ -1196,9 +1155,7 @@ export default ({ session, filter = {}, onClose }) => {
                       onClick={async () => {
                         await handleUpdates({
                           newStatus: 'Complete',
-                          rowsToUpdate: rowsSelected
                         });
-                        setRowsSelected([]);
                       }}
                       startIcon={<CheckIcon size="small" />}
                     >
@@ -1206,6 +1163,102 @@ export default ({ session, filter = {}, onClose }) => {
                     </Button>
                   }
                 </Box>
+                {(rowsDisplayed.length > 0) &&
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      disabled={(firstSelectedRow() === rowsDisplayed[0]) || (firstSelectedRow() === -1)}
+                      style={{ backgroundColor: ((firstSelectedRow() === rowsDisplayed[0] || (firstSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
+                      size='small'
+                      onClick={() => {
+                        let firstRow = firstSelectedRow();
+                        reactData.dataRows[firstRow].workData.checked = false;
+                        let newSelectedRow = rowsDisplayed.findIndex(d => { return d === firstRow; }) - 1;
+                        reactData.dataRows[newSelectedRow].workData.checked = true;
+                        updateReactData({
+                          dataRows: reactData.dataRows,
+                          selectionsChanged: !reactData.selectionsChanged
+                        }, true);
+                      }}
+                      startIcon={<ArrowBackIcon size="small" />}
+                    >
+                      {'Prior'}
+                    </Button>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
+                      size='small'
+                      onClick={() => {
+                        rowsDisplayed.forEach((r, x) => {
+                          reactData.dataRows[r].workData.checked = (x === 0);
+                        });
+                        updateReactData({
+                          dataRows: reactData.dataRows,
+                          selectionsChanged: !reactData.selectionsChanged
+                        }, true);
+                      }}
+                      startIcon={
+                        <FirstPageIcon size="small" />}
+                    >
+                      {'First'}
+                    </Button>
+                    {anyRowsSelected() &&
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'pink', color: 'black' }}
+                        size='small'
+                        onClick={() => {
+                          rowsDisplayed.forEach((r) => {
+                            reactData.dataRows[r].workData.checked = false;
+                          });
+                          updateReactData({
+                            dataRows: reactData.dataRows,
+                            selectionsChanged: !reactData.selectionsChanged
+                          }, true);
+                        }}
+                        startIcon={<ClearAllIcon size="small" />}
+                      >
+                        {'Unselect all'}
+                      </Button>
+                    }
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
+                      size='small'
+                      onClick={() => {
+                        rowsDisplayed.forEach((r, x) => {
+                          reactData.dataRows[r].workData.checked = true;
+                        });
+                        updateReactData({
+                          dataRows: reactData.dataRows,
+                          selectionsChanged: !reactData.selectionsChanged
+                        }, true);
+                      }}
+                      startIcon={<DoneAllIcon size="small" />}
+                    >
+                      {'All'}
+                    </Button>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      disabled={(lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1))}
+                      style={{ backgroundColor: ((lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
+                      size='small'
+                      onClick={() => {
+                        let lastRow = lastSelectedRow();
+                        reactData.dataRows[lastRow].workData.checked = false;
+                        let newSelectedRow = rowsDisplayed.findLastIndex(d => { return d === lastRow; }) + 1;
+                        reactData.dataRows[newSelectedRow].workData.checked = true;
+                        updateReactData({
+                          dataRows: reactData.dataRows,
+                          selectionsChanged: !reactData.selectionsChanged
+                        }, true);
+                      }}
+                      endIcon={<ArrowForwardIcon size="small" />}
+                    >
+                      {'Next'}
+                    </Button>
+                  </Box>
+                }
               </Box>
             </DialogActions>
           }

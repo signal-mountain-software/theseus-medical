@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
-import { getMemberList, getGroup, getRole, getGroupsBelongTo, getGroupsResponsibleFor } from '../../util/AVAGroups';
+import { getGroup, getRole, getGroupsResponsibleFor } from '../../util/AVAGroups';
 
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
@@ -88,23 +88,50 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
 
   const { enqueueSnackbar } = useSnackbar();
 
-  async function getGroupMemberList(inGroup) {
+  async function getGroupMemberList(pGroupArray) {
     reactData.progressMessage = 'Getting all accounts';
-    let memberInfo = await getMemberList(inGroup, pSession.client_id, { "sort": true, "exclude": false });
+    let memberInfo;
+    if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('groupList') || !state.groups.hasOwnProperty('peopleList')) {
+      enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+      onClose();
+      return [];
+    }
+    if (pGroupArray.includes('*all')) {
+        memberInfo = {
+          groupList: state.groups.groupList,
+          peopleList: state.groups.peopleList
+        };
+    }
+    else {
+      memberInfo =
+      {
+        groupList: state.groups.groupList,
+        peopleList: state.groups.peopleList.filter((p, pX) => {
+          return makeArray(p.groups).some(g => {
+            return pGroupArray.includes(g);
+          });
+        })
+      };
+    }
 
+    if (!memberInfo.peopleList) {
+      enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+      onClose();
+      return [];
+    }
     if (memberInfo.peopleList.length === 0) {
       enqueueSnackbar(`AVA couldn't find any accounts.`, { variant: 'error' });
       onClose();
       return [];
     }
     reactData.groupMemberList = memberInfo.peopleList;
-    if (memberInfo.groupList.length === 1) {
-      if (memberInfo.groupList[0] === '*all') {
+    if (pGroupArray.length === 1) {
+      if (pGroupArray[0] === '*all') {
         reactData.groupID = '*all';
         reactData.groupRole = 'responsible';
       }
       else {
-        reactData.groupRec = await getGroup(memberInfo.groupList[0], pSession.client_id);
+        reactData.groupRec = await getGroup(pGroupArray[0], pSession.client_id);
         reactData.groupID = reactData.groupRec.group_id;
         if (reactData.groupsManagedObject[reactData.groupRec.name]) {
           reactData.groupRole = reactData.groupsManagedObject[reactData.groupRec.name].role;
@@ -114,15 +141,15 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
     }
     else {
       reactData.groupRec = {};
-      reactData.groupID = [...inGroup];
+      reactData.groupID = [...pGroupArray];
       reactData.groupRole = '';
     }
     setReactData(reactData);
     return memberInfo.peopleList;
   };
 
-  const getGroupsManagedObject = async (pPatient) => {
-    let gList = await getGroupsResponsibleFor(pPatient);
+  const getGroupsManagedObject = async (pClient, pPatient) => {
+    let [gList, ] = await getGroupsResponsibleFor(pClient, pPatient);
     // sort by group name
     let gSort = [];
     let gObj = {};
@@ -150,12 +177,11 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   React.useEffect(() => {
     async function prepare() {
       if (pGroup_id && makeArray(pGroup_id).length > 0) {
-        await getGroupMemberList(makeArray(pGroup_id));
+        await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
         reactData.showGroupSelect = false;
       }
       else {
-        let groupList = await getGroupsBelongTo(pSession.user_id, { account_class: state.profile.account_class, sort: true });
-        reactData.groupsManagedObject = groupList;
+        reactData.groupsManagedObject = state.groups.belongsTo;
         reactData.showGroupSelect = true;
       }
       setReactData(reactData);
@@ -263,7 +289,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
             }}
             onRefresh={async () => {
               reactData.showGroupSelect = true;
-              await getGroupsManagedObject(pSession.patient_id);
+              await getGroupsManagedObject(pSession.client_id, pSession.patient_id);
               setForceRedisplay(!forceRedisplay);
             }}
           >

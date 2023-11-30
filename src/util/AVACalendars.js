@@ -1586,6 +1586,14 @@ export async function eventData(body) {
           returnObj.description = this_rec.eventData.event_data.description;
           returnObj.location = this_rec.eventData.event_data.location.description;
           returnObj.type = this_rec.eventData.event_data.type;
+          if (this_rec.eventData.event_data.groups) {
+            returnObj.groups = this_rec.eventData.event_data.groups.filter(g => { 
+              return ((g !== 'ALL') && (g !== '__TOP__'));
+            })
+          }
+          if (!returnObj.groups || (returnObj.groups.length === 0)) {
+            returnObj.groups = ['*all'];
+          }
           returnObj.time = this_rec.eventData.event_data.time.from;
           if (this_rec.eventData.event_data.time.to) {
             returnObj.time += ` to ${this_rec.eventData.event_data.time.to}`;
@@ -1776,7 +1784,8 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     event_key (event_id#occurrence_date)  
     description,
     location,
-    time
+    time,
+    restrictedToGroup
   }]
   */
 
@@ -1841,7 +1850,8 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       description: occurrenceRec.description || eventRec.description,
       location: occurrenceRec.location || eventRec.location,
       time: oTime,
-      time24: makeTime(oTime).numeric24
+      time24: makeTime(oTime).numeric24,
+      groups: eventRec.groups
     };
     returnList.push(occurrenceObj);
   }

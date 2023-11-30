@@ -58,15 +58,16 @@ export async function getObservations(pClient, pKey, options = {}) {
   }
   else {
     pKey = await resolveVariables(pKey, options.session);
+    let qQ = {
+      KeyConditionExpression: 'composite_key = :p',
+      ExpressionAttributeValues: { ':p': `${pClient}~${pKey}` },
+      TableName: "Observations",
+      IndexName: "sort_order-index"
+    };
     observations = await dbClient
-      .query({
-        KeyConditionExpression: 'composite_key = :p',
-        ExpressionAttributeValues: { ':p': `${pClient}~${pKey}` },
-        TableName: "Observations",
-        IndexName: "sort_order-index"
-      })
+      .query(qQ)
       .promise()
-      .catch(error => { cl(`***getAct 956- ERR reading Observations*** caught error is: ${error}`); });
+      .catch(error => { cl(`***getAct 956- ERR reading Observations*** caught error is: ${error}`, qQ); });
   }
   if (recordExists(observations)) {
     let oL = observations.Items.length;
@@ -110,7 +111,7 @@ export async function getObservations(pClient, pKey, options = {}) {
   return [valueList, returnQual];
 };
 
-export async function makeObservationList(pObs, pSession) {
+export async function makeObservationList(pObs, pSession, variables = {}, options = {clean: true}) {
   let returnList = [];
   let returnQObj = {};
   let activityRec;
@@ -123,7 +124,7 @@ export async function makeObservationList(pObs, pSession) {
   if (activityRec?.validation?.values) {
     let listLength = activityRec.validation.values.length;
     for (let v = 0; v < listLength; v++) {
-      let this_entry = await resolveVariables(activityRec.validation.values[v], pSession);
+      let this_entry = await resolveVariables(activityRec.validation.values[v], pSession, variables);
       if (!this_entry.startsWith('~')) { returnList.push(this_entry); }
       else {
         // deconstruct this_entry as ~<oType>.<oKey>  
@@ -135,7 +136,7 @@ export async function makeObservationList(pObs, pSession) {
           case (oType === 'includeObservations'): {
             let oClient = assignedClient;
             if (oKey.includes('//')) { [oClient, oKey] = oKey.split('//'); }
-            let [cList, cQual] = await getObservations(oClient, oKey, {session: pSession});
+            let [cList, cQual] = await getObservations(oClient, oKey, { session: pSession });
             returnList.push(...cList);
             if (Object.keys(cQual).length > 0) { returnQObj = Object.assign(returnQObj, cQual); }
             break;
@@ -143,7 +144,7 @@ export async function makeObservationList(pObs, pSession) {
           case (oType.startsWith('includeIfGroup=')): {
             // ~includeIfGroup=AVT_soft_entree:~includeObservations.soft_entree_[wednesday]"
             let [, checkGroup] = oType.split(/[=|:]/g);
-            if (await isMemberOf(pSession.patient_id, checkGroup) && oKey) {
+            if (await isMemberOf(pSession.client_id, pSession.patient_id, checkGroup) && oKey) {
               activityRec.validation.values[v] = oKey;
               v--;
             }
@@ -163,6 +164,30 @@ export async function makeObservationList(pObs, pSession) {
           }
         }
       }
+    }
+    if (options && options.clean) {
+      let cleanedList = [];
+      let sortedSection = [];
+      returnList.forEach(r => {
+        if (r.startsWith('~')) {
+          if (sortedSection.length > 0) {
+            sortedSection.sort();
+            cleanedList.push(...sortedSection);
+            sortedSection = [];
+          }
+          cleanedList.push(r);
+        }
+        else {
+          if (!sortedSection.includes(r)) {
+            sortedSection.push(r);
+          }
+        }
+      });
+      if (sortedSection.length > 0) {
+        sortedSection.sort();
+        cleanedList.push(...sortedSection);
+      }
+      returnList = [...cleanedList];
     }
     activityRec.valid_values_list = returnList;
     activityRec.value_qualifiers = returnQObj;
@@ -184,10 +209,10 @@ export async function makeObservationList(pObs, pSession) {
     let rQual = [];
     if (lString) {
       let lObj = {};
-      lString.split(',').forEach(e => { 
+      lString.split(',').forEach(e => {
         let [key, value] = e.split(':');
         lObj[key] = value;
-      })
+      });
       let payload = { body: lObj };
       const AWS = require('aws-sdk');
       let b64 = AWS.util.base64.encode(JSON.stringify('AVAObservations'));
@@ -228,13 +253,14 @@ export async function getObservationOptions(pObs) {
 }
 
 export async function getActivity(pClient, pCode) {
+  let qQ = {
+    Key: { client_id: pClient, activity_code: pCode },
+    TableName: "Activities"
+  };
   let activityRec = await dbClient
-    .get({
-      Key: { client_id: pClient, activity_code: pCode },
-      TableName: "Activities"
-    })
+    .get(qQ)
     .promise()
-    .catch(error => { cl(`***getAct 956- ERR reading Observations*** caught error is: ${error}`); });
+    .catch(error => { cl(`***ERR reading Activity*** caught error is: ${error}`, qQ); });
   if (recordExists(activityRec)) {
     return activityRec.Item;
   }

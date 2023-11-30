@@ -21,6 +21,7 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import DeleteIcon from '@material-ui/icons/Delete';
+import LinearProgress from '@material-ui/core/LinearProgress';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
@@ -170,7 +171,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     attachmentList: [],
     textInput: {},
     initialLoadComplete: null,
-    popupMenuOpen: false
+    popupMenuOpen: false,
+    loadProgress: []
   });
 
   const [dataRows, setDataRows] = React.useState();
@@ -182,6 +184,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
+
 
   /* value                       | meaning                                  | example                                                   */
   /* ---------                   | ----------                               | -------------                                             */
@@ -214,7 +217,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   const defaultCheckedWords = ['checked', 'on', 'selected', 'true'];
 
   async function initialLoad() {
-  //if (!reactData.initialLoadComplete) {
+    //if (!reactData.initialLoadComplete) {
     let defaultObj = {};
     let defaultChecked = [];
     let defaultDataRows = {};
@@ -367,7 +370,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       dataRows: {},
       checked: defaultChecked
     },
-    defaultDataRows);
+      defaultDataRows);
     setDataRows(setValue);
     setReactData(reactData);
   }
@@ -453,6 +456,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     dataRows.chosenQual = workChosenQ;
     setDataRows(dataRows);
     setForceRedisplay(!forceRedisplay);
+  }
+
+  function loadingInProgress(index = 'all') {
+    if (!reactData.loadProgress) {
+      return false;
+    }
+    if (index !== 'all') {
+      return (reactData.loadProgress[index] && reactData.loadProgress[index].loading);
+    }
+    else {
+      return (reactData.loadProgress.some(i => {
+        return (i.loading);
+      }))
+    }
   }
 
   function getKey(pText) {
@@ -601,31 +618,88 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   function textIsPresent(fieldName) {
-    return (reactData.textInput
-      && (Object.keys(reactData.textInput).length > 0)
-      && reactData.textInput[fieldName]);
+    return (reactData.hasOwnProperty('textInput')
+      && reactData.textInput.hasOwnProperty(fieldName)
+      && (reactData.textInput[fieldName] !== ''));
   }
 
+  let upload;
   async function handleSaveFile(pTarget) {
     let pType = pTarget.type;
-    let s3Resp = await s3
-      .upload({
-        Bucket: 'theseus-medical-storage',
-        Key: pTarget.name,
-        Body: pTarget,
-        ACL: 'public-read-write',
-        ContentType: pType
-      })
-      .promise()
-      .catch(err => {
-        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-      });
-    reactData.attachmentList.push(s3Resp);
-    if (!reactData.textInput) { reactData.textInput = { 's3file': s3Resp.Location }; }
-    else { reactData.textInput.s3file = s3Resp.Location; }
+    upload = s3.upload({
+      partSize: 10 * 1024 * 1024,
+      queueSize: 4,
+      Bucket: 'theseus-medical-storage',
+      Key: pTarget.name,
+      Body: pTarget,
+      ACL: 'public-read-write',
+      ContentType: pType
+    });
+    let reactData_index = reactData.attachmentList.push({
+      Key: pTarget.name
+    }) - 1;
+    reactData.loadProgress[reactData_index] = {
+      loading: true,
+      fileName: '',
+      total: 1,
+      progress: 0
+    };
     setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
+    let s3Resp = await performUpload();    
+    reactData.attachmentList[reactData_index] = s3Resp;
+    if (!reactData.textInput) { reactData.textInput = { 's3file': s3Resp.Location }; }
+    else { reactData.textInput.s3file = s3Resp.Location; }
+    reactData.loadProgress[reactData_index] = {
+      loading: false,
+      fileName: '',
+      total: 1,
+      progress: 0
+    }
+    setReactData(reactData);
+    setForceRedisplay(forceRedisplay => !forceRedisplay);
     return s3Resp;
+
+    function performUpload() {
+      return new Promise(function (resolve, reject) {
+        upload
+          .send((err, good) => {
+            if (err) {
+              if (err.code === 'RequestAbortedError') {
+                enqueueSnackbar(`AVA stopped loading at your request.`, { variant: 'error', persist: false });
+              }
+              else {
+                enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+              }
+              reject({});
+            }
+            else {
+              resolve(good);
+            }
+          });
+        upload.on('httpUploadProgress', progress => {
+          if (reactData.loadProgress[reactData_index].loading === 'abort') {
+            upload.abort();
+            reactData.loadProgress.splice(reactData_index, 1);
+          }
+          else {
+            let pFactor = 1000;
+            do {
+              pFactor *= 10;
+            }
+            while (progress.total > (1000 * pFactor));
+            reactData.loadProgress[reactData_index] = {
+              loading: true,
+              fileName: progress.key,
+              total: (progress.total / pFactor),
+              progress: ((progress.loaded * 100) / progress.total)
+            };
+          }
+          setReactData(reactData);
+          setForceRedisplay(forceRedisplay => !forceRedisplay);
+        });
+      });
+    };
   };
 
   return (
@@ -723,8 +797,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   marginRight={2}
                   marginBottom={0.5}
                   marginTop={0.5}
-                  border={(isChecked(this_item) || textIsPresent(this_item.text)) ? 1 : 0}
-                  borderRadius={'16px'}
+                  border={(isChecked(this_item) || textIsPresent(this_item.text)) ? 1 : null}
+                  borderRadius={(isChecked(this_item) || textIsPresent(this_item.text)) ? '16px' : null}
                   minHeight={`${user_fontSize * 2}rem`}
                   justifyContent='center'
                   key={'fullRow' + this_index}
@@ -770,7 +844,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                     }
                     {!this_item.input &&
                       <Typography
-                        style={this_item.header ? AVATextStyle({ size: 1.3, bold: true, margin: { top: 3, bottom: 1 } }) : AVATextStyle({ margin: { right: 0.5 } })}
+                        style={this_item.header ? AVATextStyle({ size: 1.3, bold: true, margin: { top: 1, bottom: 0.25 } }) : AVATextStyle({ margin: { right: 0.5 } })}
                       >
                         {this_item.bold
                           ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
@@ -875,7 +949,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 <Typography className={classes.radioHead}>Attachments:</Typography>
                 {reactData.attachmentList.map((a, x) => (
                   <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                    alignItems='flex-start' key={`qrOpt_attachmentLine-${x}`}
+                    alignItems='center' key={`qrOpt_attachmentLine-${x}`}
                   >
                     <DeleteIcon
                       className={classes.radioButton}
@@ -883,11 +957,32 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       onClick={() => {
                         reactData.attachmentList.splice(x, 1);
                         reactData.forceRedisplay = !reactData.forceRedisplay;
+                        if (loadingInProgress(x)) {                                                   
+                          reactData.loadProgress[x].loading = 'abort';
+                        }
                         setReactData(reactData);
-                        setForceRedisplay(!forceRedisplay);
+                        setForceRedisplay(forceRedisplay => !forceRedisplay);
                       }}
                     />
-                    <Typography style={AVATextStyle({ size: 0.6, margin: { left: 0.3, right: 3 } })}>{a.Key}</Typography>
+                    {loadingInProgress(x) &&
+                      <React.Fragment>
+                        <LinearProgress
+                          variant="determinate"
+                          className={classes.progressBar}
+                          style={{ width: reactData.loadProgress[x].total }}
+                          value={reactData.loadProgress[x].progress}
+                        />
+                      </React.Fragment>
+                    }
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.6,
+                        color: ((loadingInProgress(x)) ? 'gray' : 'black'),
+                        margin: { left: 0.3, right: 3 }
+                      })}
+                    >
+                      {a.Key}
+                    </Typography>
                   </Box>
                 ))}
               </Box>
@@ -1056,8 +1151,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   {(!factType || (factType !== 'list')) &&
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
+                      style={{ backgroundColor: (loadingInProgress() ? 'white' : 'green'), color: (loadingInProgress() ? 'green' : 'white') }}
                       size='small'
+                      disabled={loadingInProgress()}
                       onClick={() => {
                         let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, reactData.textInput);
                         reactData.confirmPrompt = response;

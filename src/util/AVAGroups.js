@@ -1,10 +1,9 @@
-import { cl, clt, recordExists, makeArray, getCustomizations, dbClient } from './AVAUtilities';
+import { cl, clt, recordExists, makeArray, getCustomizations, dbClient, deepCopy } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
 import { SET_ACCESSLIST } from '../contexts/Session/actions';
 
 let profile, session;
 let groupRecs = {};
-let groupObj = {};
 let targetObj = {};
 let targetArray = [];
 let targetPerson = null;
@@ -50,22 +49,45 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   // Does my person account designate an account_class?
   let myPeopleRec = await getPerson(person_id);
   let myClass;
+  let accessList = {};
   if (myPeopleRec.account_class) {
     myClass = myPeopleRec.account_class;
   }
   else {
     // What admin group do I belong to in the client_id?
     let allGroupObject = await getAllGroups(person_id, pClient_id);
-    let myAdminGroup = await getGroup(allGroupObject.selectedID);
-    myClass = myAdminGroup.admin_class || 'local';
+    let myAdminGroup = await getGroup(allGroupObject.selectedID, pClient_id);
+    if (myAdminGroup.admin_class) {
+      myClass = myAdminGroup.admin_class;
+    }
+    else {
+      let clientGroupAssignments = await getCustomizations('group_assignments', pClient_id);
+      if (clientGroupAssignments && clientGroupAssignments.customization_value) {
+        for (let accountClass in clientGroupAssignments.customization_value) {
+          if (makeArray(clientGroupAssignments.customization_value[accountClass]).includes(myAdminGroup.group_id)) {
+            myClass = accountClass;
+            break;
+          }
+        }
+      }
+      if (!myClass) {
+        myClass = 'local';
+      }
+    }
   }
+  accessList.accountClass = {
+    class: myClass,
+    client_id: pClient_id
+  };
   // Now get a list of people that I can access
-  let accessList = {};
+  let myGroupAccessLevel = {};
   if (myClass !== 'inactive') {
-    let accessLevelTable = ['none', 'view', 'proxy', 'full'];
-    let myGroupAccessLevel = {};
+    if (!session || (session.session_id !== person_id)) {
+      session = await getSession(person_id);
+    }
+    let accessLevelTable = ['none', 'restricted', 'view', 'proxy', 'full'];
     let clientList = [pClient_id];
-    if ((myClass === 'support')
+    if (((myClass === 'support') || (myClass === 'admin'))
       && (myPeopleRec.hasOwnProperty('clients') && Array.isArray(myPeopleRec.clients))) {
       myPeopleRec.clients.forEach(c => {
         if (!clientList.includes(c.id)) { clientList.push(c.id); }
@@ -101,7 +123,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         count: {},
         list: []
       };
-      accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; }); 
+      accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
       let allPeople = await getMemberList('*all', client_id);
       // get all the people in the client
       let pxL = allPeople.peopleList.length;
@@ -111,13 +133,23 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         let accessLevel = 'none';
         let myMaxAccessLevelToThisPerson = -1;
         // if I am a support or master class user, I get FULL (level 3) access to all users in this client
-        if ((myClass === 'support') || (myClass === 'master')) { myMaxAccessLevelToThisPerson = 3; }
+        if (['support', 'master', 'admin'].includes(myClass)) {
+          myMaxAccessLevelToThisPerson = 3;
+        }
         // also... determine my role in all of the groups in this client
         let personFlavor = 99;
         if (p.groups) {
           let gL = p.groups.length;
           for (let x = 0; x < gL; x++) {
             let g = p.groups[x];
+            // am I specificaly responsible for this person?
+            if (session.hasOwnProperty('responsible_for')
+              && session.responsible_for.includes(p.person_id)
+              && ((myClass !== 'family') || !(['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)))
+            ) {
+              myMaxAccessLevelToThisPerson = 3;
+              continue;
+            }
             // this person may belong to multiple groups; each group is assigned a type (flavor) earlier
             // which describes where that group lands in the client's hierarchy of groups
             // a person is given a flavor based on the most significant (lowest hierarchy number) group
@@ -134,7 +166,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
             // in the myGroupAccessLevel object;  if not, calculate it and save it there
             if (!myGroupAccessLevel.hasOwnProperty(g) && (myMaxAccessLevelToThisPerson < 3)) {
               let myRole = await getRole(g, person_id);
-              if (myRole === 'responsible') { myGroupAccessLevel[g] = 3; }
+              if (myRole === 'responsible') { myGroupAccessLevel[g] = accessLevelTable.indexOf('full'); }
               else {
                 // the Group table record for a group MAY contain a view_group attribute
                 // if it does, this attribute will contain an object
@@ -145,13 +177,16 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                 //       local users to see (but not proxy to) its members
                 let this_group = await getGroup(g, client_id);
                 if (!this_group.hasOwnProperty('view_group')) {
-                  myGroupAccessLevel[g] = 0;
+                  myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
                 }
-                else {
+                else if (this_group['view_group'].hasOwnProperty(myClass)) {
                   myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
                 }
+                else {
+                  myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
+                }
                 if ((myRole === 'member') && (myClass === 'local')) {
-                  myGroupAccessLevel[g] = Math.max(1, myGroupAccessLevel[g]);
+                  myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
                 }
               }
             }
@@ -184,13 +219,28 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         else if (a.first < b.first) { return -1; }
         else { return 0; }
       });
-      accessList[client_id].shortList = accessList[client_id].list.map(p => { 
+      accessList[client_id].shortList = accessList[client_id].list.map(p => {
         accessList[client_id].count[p.access]++;
         let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
         if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
         // list is of the form <name>:<id>:<search_string>
         return `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
-      })
+      });
+      accessList[client_id].groups = myGroupAccessLevel;
+    }
+    if (myClass === 'family') {
+      if (['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)) {
+        accessList.subscription = {
+          subscription_active: false,
+          subscription_status: session.subscription_status
+        };
+      }
+      else {
+        accessList.subscription = {
+          subscription_active: true,
+          subscription_status: session.subscription_status
+        };
+      }
     }
   }
   dispatch({ type: SET_ACCESSLIST, payload: accessList });
@@ -214,66 +264,29 @@ export async function getAllClients() {
     everyClient.Items.sort((a, b) => {      // sort by client name
       if (a.customization_value > b.customization_value) { return 1; }
       else { return -1; }
-    })
-    returnArray = everyClient.Items.map(c => { return c.client_id; })
+    });
+    returnArray = everyClient.Items.map(c => { return c.client_id; });
   }
   return returnArray;
 }
 
-export async function isMemberOf(person_id, pGroup_id) {
+export async function isMemberOf(client_id, person_id, pGroup_id) {
   if (!loadedPerson || (loadedPerson !== person_id)) {
-    loadedGroupObj = await getGroupsBelongTo(person_id);
+    loadedGroupObj = await getGroupsBelongTo(client_id, person_id);
   }
   return (Object.keys(loadedGroupObj).includes(pGroup_id));
 };
 
-export async function getGroupsResponsibleFor(person_id, options) {
-  if (!session || (session.session_id !== person_id)) {
-    session = await getSession(person_id);
-  }
+export async function getGroupsResponsibleFor(client_id, person_id, options) {
   var returnObject = {};
-  // First, get Groups that this person explicitly manages (as per the SessionsV2 table)
-  if ('groups_managed' in session) {
-    for (let g = 0; g < session.groups_managed.length; g++) {
-      let gID = session.groups_managed[g].split('~')[0].trim();
-      let gRec = await getGroup(gID, session.client_id);
-      if (gRec.name) {
-        returnObject[gID] = {
-          group_name: gRec.name,
-          group_id: gID,
-          role: 'responsible'
-        };
-      };
-    }
-  }
-  // If there are groups in the "responsible for" array, include those
-  let respArray = [];
-  if ('responsible_for' in session) {
-    if (Array.isArray(session.responsible_for)) { respArray.push(...session.responsible_for); }
-    else if (session.responsible_for.startsWith('[')) { respArray = session.responsible_for.replace(/[[\s\]]/g, '').split(','); }
-    else { respArray.push(session.responsible_for); }
-  }
-  for (let g = 0; g < respArray.length; g++) {
-    let group = respArray[g].trim();
-    if (!(group in returnObject)) {
-      let gName;
-      if (groupObj[group]) { gName = groupObj[group].name; }
-      else {
-        let gRec = await getGroup(group, session.client_id);
-        if (gRec.name) { gName = gRec.name; }
-      }
-      if (gName) {
-        returnObject[group] = {
-          group_name: gName,
-          group_id: group,
-          role: 'responsible'
-        };
-      }
-    };
+  var rejectObject = {};
+  // first, get a list of every group in this client
+  if (!client_id && session) {
+    client_id = session.client_id;
   }
   let qParm = {
     KeyConditionExpression: 'client_id = :c',
-    ExpressionAttributeValues: { ':c': session.client_id },
+    ExpressionAttributeValues: { ':c': client_id },
     TableName: "Groups"
   };
   let everyGroup = await dbClient
@@ -282,26 +295,53 @@ export async function getGroupsResponsibleFor(person_id, options) {
     .catch(error => {
       cl({
         'Error reading Groups': error,
-        client_id: `<${session.client_id}>`
+        client_id: `<${client_id}>`
       });
     });
-  if (recordExists(everyGroup)) {
-    for (let g = 0; g < everyGroup.Items.length; g++) {
-      let this_group = everyGroup.Items[g];
-      if (!(this_group.group_id in returnObject)) {
-        if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
-        || (options && options.account_class && (['master', 'support'].includes(options.account_class)))) {
-          returnObject[this_group.group_id] = {
-            group_name: this_group.name,
-            group_id: this_group.group_id,
-            role: 'responsible'
-          };
-        }
-      };
+  if (!recordExists(everyGroup)) {
+    return returnObject;
+  }
+  // one at a time, determine if you are responsible for this group or not
+  // to do this, we'll need the session record for this person
+  let my_session = ((!!session && (session.session_id === person_id)) ? session : await getSession(person_id));
+  let my_session_groups_managed = [];
+  if (my_session.hasOwnProperty('groups_managed')) {
+    my_session_groups_managed = makeArray(my_session.groups_managed).map(g => {
+      return g.split('~').shift().trim();
+    });
+  }
+  let my_session_responsibleList = [];
+  if (my_session.hasOwnProperty('responsible_for')) {
+    if (Array.isArray(my_session.responsible_for)) {
+      my_session_responsibleList = deepCopy(my_session.responsible_for);
+    }
+    else if (my_session.responsible_for.startsWith('[')) {
+      my_session_responsibleList = session.responsible_for.replace(/[[\s\]]/g, '').split(',');
+    }
+    else {
+      my_session_responsibleList = makeArray(my_session.responsible_for);
     }
   }
+  everyGroup.Items.forEach(this_group => {
+    if ((this_group.hasOwnProperty('admin_list') && this_group.admin_list.includes(person_id))
+      || (options && options.account_class && (['master', 'support', 'admin'].includes(options.account_class)))
+      || (my_session_groups_managed.includes(this_group))
+      || (my_session_responsibleList.includes(this_group))) {
+      returnObject[this_group.group_id] = {
+        group_name: this_group.name,
+        group_id: this_group.group_id,
+        role: 'responsible'
+      };
+    }
+    else {
+      rejectObject[this_group.group_id] = {
+        group_name: this_group.name,
+        group_id: this_group.group_id
+      };
+    }
+  });
   loadedPerson = person_id;
-  return returnObject;
+  return [returnObject, rejectObject];
 }
 
 export async function getPeopleResponsibleFor(person_id) {
@@ -331,32 +371,26 @@ export async function getPeopleResponsibleFor(person_id) {
   });
 }
 
-export async function getGroupsBelongTo(person_id, options) {
+export async function getGroupsBelongTo(client_id, person_id, options = {}) {
+  if (options.hasOwnProperty('groups')) {
+
+  }
   // You belong to all groups that you are responsible for
-  var returnObject = await getGroupsResponsibleFor(person_id, options);
+  var [returnObject, rejectObject] = await getGroupsResponsibleFor(client_id, person_id, options);
   // Next, get any other Groups that this person belongs to (but aren't responsible for)
   if (!profile || (profile.person_id !== person_id)) {
     profile = await getPerson(person_id);
   }
   if (profile && profile.groups) {
-    for (let g = 0; g < profile.groups.length; g++) {
-      let group = profile.groups[g];
-      if (!(group in returnObject)) {
-        let gName;
-        if (groupObj[group]) { gName = groupObj[group].name; }
-        else {
-          let gRec = await getGroup(group, session.client_id);
-          if (gRec.name) { gName = gRec.name; }
-        }
-        if (gName) {
-          returnObject[group] = {
-            group_name: gName,
-            group_id: group,
-            role: 'member'
-          };
-        }
+    for (let rejectGroup in rejectObject) {
+      if (profile.groups.includes(rejectGroup)) {
+        returnObject[rejectGroup] = {
+          group_name: rejectGroup.group_name,
+          group_id: rejectGroup.group_id,
+          role: 'member'
+        };
       }
-    };
+    }
   }
   loadedPerson = person_id;
   loadedGroupObj = returnObject;
@@ -378,7 +412,9 @@ export async function getGroupsBelongTo(person_id, options) {
 export async function getGroup(pGroup_id, pClient_id) {
   if (!pClient_id) {
     if (pGroup_id && pGroup_id.includes('//')) { [pClient_id, pGroup_id] = pGroup_id.split('//'); }
-    else if (session) { pClient_id = session.client_id; }
+    else if (session) {
+      pClient_id = session.client_id;
+    }
     else return {};
   }
   let cKey = `${pClient_id}//${pGroup_id}`;
@@ -414,7 +450,7 @@ export async function getRole(pGroup, pPerson) {
     let gRec = await getGroup(pGroup, pSession.client_id);
     if (gRec.admin_list && gRec.admin_list.includes(pPerson)) { return 'responsible'; }
   }
-  if (await isMemberOf(pPerson, pGroup)) { return 'member'; }
+  if (await isMemberOf(pSession.client_id, pPerson, pGroup)) { return 'member'; }
   else { return 'non-member'; }
 }
 
@@ -499,17 +535,21 @@ export async function getMemberList(pGroups, pClient_id, options) {
         cl({ 'Bad scan on People in getGroupMembers - caught error is': error });
       });
     if (recordExists(gPeopleRecs)) {
-      gPeopleRecs.Items.forEach(i => {
+      for (let p = 0; p < gPeopleRecs.Items.length; p++) {
+        let i = gPeopleRecs.Items[p];
         if (!foundIDs.includes(i.person_id)) {
           foundIDs.push(i.person_id);
           if (!checkExclude || (i.directory_option !== 'exclude')) {
             if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
             if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
             i.display_name = AVAname(i);
+            if (options && options.withSession) {
+              i.session = await getSession(i.person_id);
+            }
             returnArray.push(i);
           }
         }
-      });
+      };
     }
   };
   if (sortResults) {
@@ -525,7 +565,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
     foundIDs,
     'peopleList': returnArray,
     'groupList': gList
-  }
+  };
   if (shortList) {
     rObj.shortList = returnArray.map(p => {
       let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
@@ -648,7 +688,7 @@ export async function prepareTargets(pPerson, pClient_id, options) {
   }
   let responsibleList = [];   // legacy format
   let responsibleObj = {};
-  let groupObj = await getGroupsBelongTo(pPerson);
+  let groupObj = await getGroupsBelongTo(pClient_id, pPerson);
   let allGroupArr = Object.keys(groupObj);
   if (allGroupArr.length === 0) { return []; }
   if (includeGroups) {   // first, add a list of groups that you are responsible for (if requested)
@@ -874,7 +914,7 @@ export async function getAllGroups(person_id, client_id) {
     }
   });
   responseData.publicGroups = await getPublicGroupList(client_id, person_id);
-  responseData.privateGroups = await getGroupsBelongTo(person_id, { sort: true });
+  responseData.privateGroups = await getGroupsBelongTo(client_id, person_id, { sort: true });
   responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
   for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
   return responseData;

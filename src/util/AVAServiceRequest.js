@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, dbClient, makeArray } from '../util/AVAUtilities';
+import { clt, cl, recordExists, dbClient, makeArray, deepCopy } from '../util/AVAUtilities';
 import { getActivity } from '../util/AVAObservations';
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
@@ -16,6 +16,11 @@ export function putServiceRequest_nonAsync(body) {
 }
 
 export async function getServiceRequests(body) {
+  let sortInstructions = {};
+  if (body.sort) {
+    sortInstructions = deepCopy(body.sort);
+    delete body.sort;
+  }
   if (body.filter) { Object.assign(body, body.filter); };
   let rP = body.person_id || body.person || body.requestor;
   let rT = body.request_type;
@@ -38,10 +43,10 @@ export async function getServiceRequests(body) {
       qQ.FilterExpression = '(request_type = :t';
       qQ.ExpressionAttributeValues[':t'] = rTarray[0];
       if (rTarray.length > 1) {
-        rTarray.forEach((rTa, x) => {
+        for (let x = 1; x < rTarray.length; x++) {
           qQ.FilterExpression += ` or request_type = :t${x}`;
-          qQ.ExpressionAttributeValues[`:t${x}`] = rTa;
-        });
+          qQ.ExpressionAttributeValues[`:t${x}`] = rTarray[x];
+        };
       }
       qQ.FilterExpression += ')';
       if (rP) {
@@ -89,7 +94,7 @@ export async function getServiceRequests(body) {
     }
   }
   let loopCount = 0;
-  let sortedList = [];
+  let unSortedList = [];
   do {
     let qR = await dbClient
       .query(qQ)
@@ -101,22 +106,28 @@ export async function getServiceRequests(body) {
         console.log({ 'Error reading ServiceRequests': error, index: qQ.IndexName, qQ });
       });
     if (recordExists(qR)) {
-      let thisSort = qR.Items.sort((a, b) => {
-        a.sort = a.request_date || Number(a.request_id.split(/~/g).pop());
-        b.sort = b.request_date || Number(b.request_id.split(/~/g).pop());
-        if (a.sort > b.sort) { return -1; }
-        if (a.sort < b.sort) { return 1; }
-        return 0;
-      });
-      sortedList = sortedList.concat(thisSort);
-    }
-    if (!qR.LastEvaluatedKey || (sortedList.length > body.limit)) {
-      return sortedList;
+      unSortedList = unSortedList.concat(qR.Items);
     }
     qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
     loopCount++;
-  } while (qQ.ExclusiveStartKey && (loopCount < 10));
-  return sortedList;
+  } while (qQ.ExclusiveStartKey && (loopCount < 10) && (unSortedList.length < body.limit));
+  if (sortInstructions.hasOwnProperty('sort') && !sortInstructions.sort) {
+    return unSortedList;
+  }
+  if (!sortInstructions.hasOwnProperty('key')) {
+    sortInstructions.key = 'request_date';
+  }
+  let sort_order = 1;
+  if (sortInstructions.hasOwnProperty('order') && (sortInstructions.order.toLowerCase().slice(0, 4) === 'desc')) {
+    sort_order = -1;
+  }
+  return unSortedList.sort((a, b) => {
+    a.sort = a[sortInstructions.key] || Number(a.request_id.split(/~/g).pop());
+    b.sort = b[sortInstructions.key] || Number(b.request_id.split(/~/g).pop());
+    if (a.sort > b.sort) { return -1 * sort_order; }
+    if (a.sort < b.sort) { return sort_order; }
+    return 0;
+  });
 }
 
 export async function putServiceRequest(body) {
@@ -165,7 +176,7 @@ export async function putServiceRequest(body) {
     "original_request": body.request,
     "history": historyArray,
     "local_key": body.local_key,
-    "foreign_key": body.foreign_key || '*tbd*',
+    "foreign_key": body.foreign_key || '',
     "last_update": body.update_time || now,
     "last_status": body.requestStatus || 'submitted',
     "last_note": body.notes
@@ -174,7 +185,7 @@ export async function putServiceRequest(body) {
     serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; });
   }
   if (body.messaging) {
-    let preparedMessages = await prepareMessage(body);
+    let preparedMessages = await prepareMessage(body, serviceRequestRec);
     if (preparedMessages.length > 0) {
       preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
       let rTime = makeDate(new Date().getTime());
@@ -202,6 +213,11 @@ export async function putServiceRequest(body) {
       else { serviceRequestRec.history = [rMsg]; }
     }
   }
+  serviceRequestRec.composite_key = '';
+  if (serviceRequestRec.foreign_key !== '') {
+    serviceRequestRec.composite_key = serviceRequestRec.foreign_key + '%';
+  }
+  serviceRequestRec.composite_key += `${serviceRequestRec.request_type}%${serviceRequestRec.last_status}`;
   cl({ 'adding ServiceRequestRec as': serviceRequestRec });
   let goodWrite = true;
   await dbClient
@@ -262,7 +278,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
     if (recordExists(remembered_customizationsRec)) {
       serviceRequestRec.activity_key = remembered_customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code;
     }
-    if (!remembered_activityRec.hasOwnProperty(serviceRequestRec.activity_key)) {
+    if (!remembered_activityRec.hasOwnProperty(serviceRequestRec.activity_key) || !remembered_activityRec[serviceRequestRec.activity_key]) {
       remembered_activityRec[serviceRequestRec.activity_key] = await getActivity(serviceRequestRec.client_id, serviceRequestRec.activity_key);
     }
     let activityRec = remembered_activityRec[serviceRequestRec.activity_key];
@@ -279,7 +295,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
   }
   if (requestList.length > 1) {
     requestList.forEach((r, x) => {
-      r.multiPrint = {
+      requestList[x].multiPrint = {
         firstDoc: (x === 0),
         lastDoc: (x === (requestList.length - 1))
       };
@@ -293,7 +309,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
       return {
         success,
         preparedMessages,
-        'message': `${preparedMessages.length} message${(preparedMessages.length > 1) ? 's' : ''}`
+        'message': `Job complete! (${requestList.length} request${(requestList.length > 1) ? 's' : ''} prepared to print.)`
       };
     };
   }

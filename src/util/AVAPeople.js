@@ -213,6 +213,9 @@ export async function getPerson(pID, pElement = '*all', override = false) {
         }
         else { personRec.Item.office = ''; }
         personRec.Item.email = personRec.Item.messaging.email;
+        if (!personRec.Item.hasOwnProperty('name')) {
+            personRec.Item.name = {};
+        }
         personRec.Item.first = personRec.Item.name.first;
         personRec.Item.last = personRec.Item.name.last;
         if (!personRec.Item.search_data) { personRec.Item.search_data = ''; }

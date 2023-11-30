@@ -91,25 +91,31 @@ const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={r
 export default ({ open, roles, onClose }) => {
 
   const { state } = useSession();
-  const { accessList, session } = state;
+  const { accessList } = state;
 
   const [person_filter, setPersonFilter] = React.useState('');
   const [client_filter, setClientFilter] = React.useState('');
-  const [forceRedisplay, setForceRedisplay] = React.useState(true);
-  const [selectedClient, setSelectedClient] = React.useState('*none');
+  const [forceRedisplay, setForceRedisplay] = React.useState(true);  
   const [rowLimit, setRowLimit] = React.useState(20);
 
-  const multiClient = (Object.keys(accessList).length > 1);
-  if (!multiClient && (selectedClient === '*none')) { setSelectedClient(Object.keys(accessList)[0]); }
-
+  let tally = 0;
+  let onlyClient;
+  Object.keys(accessList).forEach(k => {
+    if (okClient({ candidate_id: k })) {
+      tally++;
+      onlyClient = k;
+    }
+  })
+  if (tally === 0) {
+    onClose();
+  }
+  const multiClient = (tally > 1);
+  const [selectedClient, setSelectedClient] = React.useState((tally === 1) ? onlyClient : '*none');
+  
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
   const handleClose = () => {
-    if (session) {
-      // const { patient_id, patient_display_name } = session;
-      // setSelected({ patient_id, patient_display_name });
-    }
     onClose();
   };
 
@@ -156,6 +162,9 @@ export default ({ open, roles, onClose }) => {
 
   function okClient(cLine) {
     if (!cLine) { return false; }
+    if (!accessList[cLine.candidate_id].hasOwnProperty('list') || (accessList[cLine.candidate_id].list.length === 0)) {
+      return false;
+    }
     if (!client_filter) { return true; }
     return Object.values(cLine).toString().toLowerCase().includes(client_filter);
   };
@@ -190,7 +199,7 @@ export default ({ open, roles, onClose }) => {
       <Paper p={2} component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
         {(selectedClient === '*none') && Object.keys(accessList).map((client, c) => (
           <List key={`client_master_line_${c}`} component='nav'>
-            {okClient({ i: client, n: accessList[client].name }) &&
+            {okClient({ candidate_id: client, candidate_name: accessList[client].name }) &&
               <ListItem onClick={() => {
                 setSelectedClient(client);
                 setRowLimit(scrollValue);

@@ -55,6 +55,18 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
     return str;
   }
 
+  function blankLine(p) {
+    let a = p.match(/(\[.+\])/gm);
+    let ans;
+    if (!a) {
+      ans = p;
+    }
+    else {
+      ans = p.replace(a.pop(), '');
+    }
+    return (!ans || (ans.trim() === ''))
+  }
+
   function makeIndent(str) {
     let a = str.match(/(indent=.)/g);
     if (!a) {
@@ -103,11 +115,17 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       <Paper component={Box} className={classes.page} overflow='auto' square>
         {promptLines.map((pLine, index) => (
           (index > 0 ?
-            (pLine.trim() === ''
-              ? <Box key={`blank-line${index}`} marginTop={2} />
+            (blankLine(pLine)
+              ?
+              <Box
+                key={`blank-line${index}`}
+                id={`blank-line${index}`}
+                marginTop={'40px'}
+              />
               :
               <Box
                 key={`box-line${index}`}
+                id={`box-line${index}`}
                 marginLeft={3 + (3 * Number(makeIndent(pLine)))}
               >
                 <Typography
@@ -119,7 +137,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
                     })
                     :
                     AVATextStyle({
-                      margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 1.5), right: 1 },
+                      margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 0.5), right: 1 },
                       size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
                     })
                   }

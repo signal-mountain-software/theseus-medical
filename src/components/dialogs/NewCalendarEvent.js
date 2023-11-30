@@ -5,6 +5,8 @@ import { makeArray, cl } from '../../util/AVAUtilities';
 import { addEvent } from '../../util/AVACalendars';
 import { AVAclasses } from '../../util/AVAStyles';
 
+import ClientsSection from '../sections/ClientsSection';
+
 import { useSnackbar } from 'notistack';
 
 import PersonFilter from '../forms/PersonFilter';
@@ -184,8 +186,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
 
   const { state } = useSession();
   const { session } = state;
-  const [message_targets, setMessageTargets] = React.useState();
-  const [targetInfo, setTargetInfo] = React.useState();
   const [owner_targets, setOwnerTargets] = React.useState();
   const [ownerTargetInfo, setOwnerTargetInfo] = React.useState();
   const [description, setDescription] = React.useState(' ');
@@ -207,14 +207,32 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const [time_to_display_string, setTimeToAsDisplayString] = React.useState();
   const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [location, setLocation] = React.useState();
-  const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showOwnerSelect, setShowOwnerSelect] = React.useState(false);
-  const [restrictionList, setRestrictionList] = React.useState([]);
   const [ownerList, setOwnerList] = React.useState([patient.patient_id]);
 
   const [checkedDays, setCheckedDays] = React.useState({});
 
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
+
+  const [reactData, setReactData] = React.useState({
+    groupList: [],
+    restrictToGroups: []
+  });
+  //const [forceRedisplay, setForceRedisplay] = React.useState();
+
+  const updateReactData = (newData, force = false) => {
+    for (let oKey in newData) {
+      setReactData((prevValues) => ({
+        ...prevValues,
+        [oKey]: newData[oKey],
+        displayVersion: reactData.displayVersion + (force ? 1 : 0)
+      }));
+    }
+    if (force) {
+      // setForceRedisplay(forceRedisplay => !forceRedisplay);
+    }
+  };
+
 
   // const [patientGroups, setPatientGroups] = React.useState();
 
@@ -240,8 +258,8 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     enqueueSnackbar(`AVA is creating your new event!  Stand by...`, { variant: 'warning' });
     let oDays = [];
     Object.keys(checkedDays).forEach(a => {
-      if (checkedDays[a]) { oDays.push(Number(a))};
-    })
+      if (checkedDays[a]) { oDays.push(Number(a)); };
+    });
     var payload = {
       "clientId": patient.client_id,
       "calendar_info": {
@@ -257,7 +275,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         "occDays": oDays,
         "location": location,
         "owner": ownerList,
-        "restrictions": restrictionList,
+        "restrictions": reactData.restrictToGroups,
         "signup_type": signup_type,
         "slot_max_seats": slot_max_seats,
         "slot_interval": slot_interval,
@@ -268,10 +286,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     };
     let response = await addEvent(payload);
     closeSnackbar();
-    if (response) { 
+    if (response) {
       enqueueSnackbar(`${response.eventData.event_data.description} has been saved!`, { variant: 'success' });
     }
-    else { 
+    else {
       enqueueSnackbar(`Sorry.  AVA could not save this event!`, { variant: 'error' });
     }
     onClose();
@@ -323,7 +341,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     }, 500);
   };
 
- const handleChangeDate = event => {
+  const handleChangeDate = event => {
     setEventDate(event.target.value);
     setEventAsADate(null);
   };
@@ -1047,45 +1065,19 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                   </FormControl>
                 </Box>
                 {(specificPeople === 'yes') &&
-                  <div>
-                    {restrictionList.length > 0 ?
-                      restrictionList.map((restrictionEntry, x) => (
-                        (
-                          <ListItem
-                            key={`${restrictionEntry}_selected_${x}`}
-                            className={classes.noRow}
-                          >
-                            <Typography
-                              className={classes.radioText}>
-                              {(typeof targetInfo[restrictionEntry].name === 'object')
-                                ? `${targetInfo[restrictionEntry].name.first} ${targetInfo[restrictionEntry].name.last}`
-                                : targetInfo[restrictionEntry].name
-                              }
-                            </Typography>
-                          </ListItem>
-                        )
-                      ))
-                      : (
-                        <Typography
-                          className={classes.radioText}>
-                          {'Tap the button below to choose...'}
-                        </Typography>
-                      )
-                    }
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
-                      size='small'
-                      onClick={async () => {
-                        let targetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: true, includePeople: false });
-                        setMessageTargets(targetObj.responsibleList.sort());
-                        setTargetInfo(targetObj.responsibleObj);
-                        setShowPersonSelect(true); 
-                      }}
-                    >
-                      {`Tap to select`}
-                    </Button>
-                  </div>
+                  <ClientsSection
+                    person={patient}
+                    groupData={state.groups}
+                    multiple={true}
+                    updateGroups={(selections) => {
+                      if (selections.length === 0) {
+                        selections = ['*all'];
+                      }
+                      updateReactData({
+                        restrictToGroups: selections
+                      }, false);
+                    }}
+                  />
                 }
                 <Box
                   display="flex"
@@ -1138,8 +1130,8 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                               className={classes.radioText}>
                               {ownerTargetInfo && ownerTargetInfo[ownerEntry] &&
                                 ((typeof ownerTargetInfo[ownerEntry].name === 'object')
-                                ? `${ownerTargetInfo[ownerEntry].name.first} ${ownerTargetInfo[ownerEntry].name.last}`
-                                : ownerTargetInfo[ownerEntry].name
+                                  ? `${ownerTargetInfo[ownerEntry].name.first} ${ownerTargetInfo[ownerEntry].name.last}`
+                                  : ownerTargetInfo[ownerEntry].name
                                 )
                               }
                             </Typography>
@@ -1185,13 +1177,12 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                 </Button>
                 {OK2Save() &&
                   <Button
-                    onClick={() => {                      
+                    onClick={() => {
                       handleUpdate();
                     }}
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'green', color: 'white' }}
                     size='small'
-
                   >
                     {'Save'}
                   </Button>
@@ -1200,22 +1191,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
             </Box>
           </Box>
         </Box>
-        {showPersonSelect &&
-          <PersonFilter
-            prompt={'Restricted to which groups?'}
-            peopleList={message_targets}
-            multiSelect={true}
-            alreadyChecked={restrictionList}
-            onCancel={() => {
-              setShowPersonSelect(false);
-            }}
-            onSelect={(pChoices) => {
-              setRestrictionList(makeArray(pChoices));
-              setShowPersonSelect(false);
-            }}
-          >
-          </PersonFilter>
-        }
         {showOwnerSelect &&
           <PersonFilter
             prompt={`Who else should be listed as an owner for ${description}?`}
