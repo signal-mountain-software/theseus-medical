@@ -1032,7 +1032,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
       if ((selections.length > 0) || (Object.keys(textInput).length > 0)) {
         let svc_messaging = null;
-        if (Array.isArray(fact.messaging) || ((fact.messaging.hasOwnProperty('format')) && (fact.messaging.format.type !== 'mealTicket'))) {
+        if ((Array.isArray(fact.messaging) && (fact.messaging.every(m => { return (m.format && (m.format.type !== 'mealTicket')); })))
+          || (!Array.isArray(fact.messaging) && (fact.messaging.format && (fact.messaging.format.type !== 'mealTicket')))) {
           svc_messaging = fact.messaging;
         }
         let result = await putServiceRequest(
@@ -1057,7 +1058,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         writtenRecords.push(result.requestRec);
       }
     };
-    // print tickets...
+    // meal tickets print here combining all completed requests...
     let formatCallObj = {
       local_key,
       client_id: pClient,
@@ -1425,7 +1426,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         minHeight={50}
                         maxHeight={50}
                         alt=''
-                      src={getImage(reactData.columnList[0].person_id)}
+                        src={getImage(reactData.columnList[0].person_id)}
                       />
                     }
                     <Typography key={`selectWord`} className={classes.smallTextLine}>{'Select'}</Typography>
