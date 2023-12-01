@@ -1137,9 +1137,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         });
                         let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
                         enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
-                        await handleUpdates({
-                          newStatus: 'Printed',
-                        });
+                        if (result.success) {
+                          result.preparedMessages.forEach(m => {
+                            if (m.attachments) {
+                              window.open(m.attachments.Location);
+                            }
+                          });
+                          await handleUpdates({
+                            newStatus: 'Printed',
+                          });
+                        }
                       }}
                       startIcon={<PrintIcon size="small" />}
                     >
