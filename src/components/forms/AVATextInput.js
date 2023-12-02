@@ -85,11 +85,35 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
 
   const [textInput, setTextInput] = React.useState(valueText ? (Array.isArray(valueText) ? valueText : [valueText]) : []);
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
+  const [reactData, setReactData] = React.useState({
+    saving: false,
+    focusOn: 0
+  })
+
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+
+  /*
+  const setFocus = React.useRef(null);
+
+  React.useEffect(() => {
+    if (setFocus && setFocus.current) {
+      setFocus.current.focus();
+    }
+  }, [reactData]);
+  */
 
   const handleChangeTextInput = (event, ndx) => {
-    textInput[ndx] = event.target.value;
-    setTextInput(textInput);
-    setForceRedisplay(!forceRedisplay);
+    if (!reactData.saving) {
+      textInput[ndx] = event.target.value;
+      setTextInput(textInput);
+      setForceRedisplay(!forceRedisplay);
+    }
   };
 
   const toggleCheckbox = (ndx) => {
@@ -105,7 +129,21 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
   };
 
   const onCheckEnter = (event) => {
-    if ((event.key === 'Enter') && options.save_on_enter) { handleSave(); }
+    if (event.key === 'Enter') {
+      if (options.save_on_enter) {
+        updateReactData({ saving: true }, false);
+        handleSave();
+      }
+      else if (Array.isArray(promptText)) {
+        let currentFocus = reactData.focusOn + 1;
+        if (currentFocus >= promptText.length) {
+          currentFocus = 0;
+        }
+        updateReactData({
+          focusOn: currentFocus
+        }, true)
+      }
+    }
   };
 
   let promptArray = [];
@@ -123,7 +161,6 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
   else {
     buttonArray = [buttonText, 'Cancel/Go Back'];
   }
-
 
   // **************************
 
@@ -211,6 +248,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                       id={`prompt-${ndx}`}
                       key={`prompt-${ndx}`}
                       multiline
+                      autoFocus={(ndx === reactData.focusOn) ? true : null}
                       inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
                       FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                       error={!!(errorText && errorText[ndx])}
