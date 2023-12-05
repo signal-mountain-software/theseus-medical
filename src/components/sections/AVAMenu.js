@@ -906,8 +906,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
     else {
       // old style is a string of key/value pairs (in the form key=value) separated by " ~ "
-      makeArray(fact.default_value, /\s~|~\s/g).forEach((d, x) => {
-        if (d.includes('=')) {
+      let dArray = makeArray(fact.default_value, /\s~|~\s/g); 
+      dArray.forEach((d, x) => {
+        console.log(d);
+        if (isObject(d)) {
+          Object.assign(defaultValues, d);
+        } 
+        else if (d.includes('=')) {
           let dO = d.split('=');
           defaultValues[dO[0]] = dO[1];
         }
@@ -1086,7 +1091,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         return true;
       }
     }
-    return createAccountAuthority(); 
+    return false;
+    // return createAccountAuthority(); 
   }
 
   function createAccountAuthority() {

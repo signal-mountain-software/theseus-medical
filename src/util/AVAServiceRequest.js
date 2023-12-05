@@ -308,7 +308,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
       preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${requestList[x].requestType}/${requestList[x].requestID}`; });
       return {
         success,
-        preparedMessages,
+        preparedMessages,   // ***** RAY ***** this is where we could merge output to a single document for later printing
         'message': `Job complete! (${requestList.length} request${(requestList.length > 1) ? 's' : ''} prepared to print.)`
       };
     };

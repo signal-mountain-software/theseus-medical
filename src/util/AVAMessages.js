@@ -56,7 +56,7 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
     messageList = [];
     if (Array.isArray(inBody.messaging)) { messageList.push(...inBody.messaging); }
     else { messageList.push(inBody.messaging); }
-    returnResults = [];
+    //   returnResults = [];  why is this here?
     results = null;
     let requestInfo = Object.assign({}, inBody, {
       activityName: inBody.activityName || inBody.name,

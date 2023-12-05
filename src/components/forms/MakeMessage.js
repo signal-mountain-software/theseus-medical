@@ -202,7 +202,6 @@ export default ({
     }
     console.log(sendToName);
     let senderName = await makeName(state.session.user_id);
-    let promptArray = makeArray(promptText);
     let principalMessageText = '';
     let voiceMailText = '';
     let subjectText = '';
@@ -222,14 +221,11 @@ export default ({
           }
         }
       });
-      if (!voiceMailText) { voiceMailText = principalMessageText; }
-      if (!subjectText) { subjectText = `Message from ${senderName}`; }
     }
     else {
       principalMessageText = reactData.textInput[0];
-      voiceMailText = principalMessageText;
-      subjectText = (promptArray.length > 1 ? reactData.textInput[0] : `Message from ${senderName}`);
     }
+    if (!subjectText) { subjectText = `Message from ${senderName}`; }
     let request = {
       client: sender.client_id,
       author: state.session.user_id,

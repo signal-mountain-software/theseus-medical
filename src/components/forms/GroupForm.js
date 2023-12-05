@@ -693,8 +693,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             {promptForMessage &&
               <MakeMessage
                 titleText={(messageType.includes('URGENT')) ? 'AVA will attempt to voice call all phones' : null}
-                promptText={[`What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`, `(Optional) Alternate message if leaving Voice Mail`]}
-                promptUse={['message', 'voicemail']}
+                promptText={['Subject', `What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`, `(Optional) Alternate message if leaving Voice Mail`]}
+                promptUse={['subject', 'message', 'voicemail']}
                 buttonText={'Send'}
                 sender={{
                   "client_id": pClient,
