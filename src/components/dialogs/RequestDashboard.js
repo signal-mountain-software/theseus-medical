@@ -1,5 +1,5 @@
 import React from 'react';
-import { sentenceCase, makeArray, isMobile, cl, titleCase, dbClient, recordExists, listFromArray } from '../../util/AVAUtilities';
+import { sentenceCase, deepCopy, makeArray, isMobile, cl, titleCase, dbClient, recordExists, listFromArray } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
@@ -21,8 +21,11 @@ import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import FirstPageIcon from '@material-ui/icons/FirstPage';
 import ClearAllIcon from '@material-ui/icons/ClearAll';
+import BlockIcon from '@material-ui/icons/Block';
+import FilterListIcon from '@material-ui/icons/FilterList';
 
 import Button from '@material-ui/core/Button';
+import IconButton from '@material-ui/core/IconButton';
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -225,6 +228,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     selectedPersonName: null,
     displayVersion: 0,
     dataRows: [],
+    OGFilter: deepCopy(filter),
+    pageTitle: title.split(/\(/).shift().trim(),
     requestIDs: [],
     selectionsChanged: false
   });
@@ -318,8 +323,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }));
     rowsDisplayed = [];
     // have these rows now been disqualified based on the passed-in filter?
-    if ((filter.hasOwnProperty('statusNot') && filter.statusNot.includes(pOptions.newStatus.toLowerCase()))
-      || (filter.hasOwnProperty('status') && !(filter.status.includes(pOptions.newStatus.toLowerCase())))) {
+    if ((filter.statusNot &&  filter.statusNot.includes(pOptions.newStatus.toLowerCase()))
+      || (filter['status'] && !(filter.status.includes(pOptions.newStatus.toLowerCase())))) {
       let revisedDataRows = reactData.dataRows.filter((r, x) => {
         return !rowChanged[x];
       });
@@ -388,6 +393,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     return reactData.dataRows.some(r => {
       return r.workData.checked;
     });
+  }
+
+  function allRowsSelected() {
+    let filtered =  reactData.dataRows.filter(f => { 
+      return OKToDisplay(f)
+    })
+    let allChecked = filtered.every(r => {
+      return r.workData.checked;
+    });
+    return {count: filtered.length, allChecked}
   }
 
   const firstSelectedRow = () => {
@@ -480,10 +495,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (qList[x].request_date > maxTimeStamp) {
         maxTimeStamp = qList[x].request_date;
       }
-      if (filter.hasOwnProperty('statusNot') && filter.statusNot.includes(qList[x].last_status.toLowerCase())) {
+      if (filter.statusNot && filter.statusNot.includes(qList[x].last_status.toLowerCase())) {
         continue;
       }
-      else if (filter.hasOwnProperty('status') && !(filter.status.includes(qList[x].last_status.toLowerCase()))) {
+      else if (filter['status'] && !(filter.status.includes(qList[x].last_status.toLowerCase()))) {
         continue;
       }
       reactData.dataRows.push(await buildRequestDetails(qList[x]));
@@ -542,8 +557,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               request_id: newKey
             });
             if (filter.foreign_key && (filter.foreign_key === qList[0].foreign_key)) {
-              if ((filter.hasOwnProperty('statusNot') && filter.statusNot.includes(qList[0].last_status.toLowerCase()))
-                || (filter.hasOwnProperty('status') && !(filter.status.includes(qList[0].last_status.toLowerCase())))) {
+              if ((filter.statusNot && filter.statusNot.includes(qList[0].last_status.toLowerCase()))
+                || (filter['status'] && !(filter.status.includes(qList[0].last_status.toLowerCase())))) {
                 continue;
               }
               else {
@@ -795,7 +810,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               >
                 {filter.person_id
                   ? reactData.selectedPersonName
-                  : title
+                  : reactData.pageTitle
                 }
               </Typography>
               {filter.foreign_key &&
@@ -974,17 +989,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                       {this_item.workData.updated}
                                     </Typography>
                                   }
-                                  {!options.shortForm &&
                                     <React.Fragment>
                                       {(this_item.requestor !== this_item.workData.enteredBy) &&
                                         <Typography variant='h5' className={classes.firstName}>{`By ${this_item.workData.enteredBy_name}`}</Typography>
                                       }
                                       <Typography variant='h5' className={classes.firstName}>{this_item.workData.display_date}</Typography>
-                                      {!(this_item?.workData?.orderForDate.error) &&
+                                    {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey ) 
+                                      && !(this_item?.workData?.orderForDate.error)
+                                      &&
                                         <Typography variant='h5' className={classes.firstName}>{`For ${this_item?.workData?.orderForDate.relative}`}</Typography>
                                       }
                                     </React.Fragment>
-                                  }
                                 </Box>
                               </Box>
                               {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
@@ -1107,6 +1122,39 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   >
                     {'Close'}
                   </Button>
+                  {(filter.hasOwnProperty('statusNot') || filter.hasOwnProperty('status'))
+                    &&
+                    < Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        delete filter['status'];
+                        delete filter.statusNot;
+                        await buildDashboard();
+                      }}
+                      startIcon={<BlockIcon size="small" />}
+                    >
+                      {'Clear Filter'}
+                    </Button>
+                  }
+                  {(!filter.hasOwnProperty('statusNot') && !filter.hasOwnProperty('status')
+                    && ((reactData.OGFilter.hasOwnProperty('statusNot')) || (reactData.OGFilter.hasOwnProperty('status'))) )
+                    &&
+                    < Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        filter['status'] = reactData.OGFilter['status'];
+                        filter.statusNot = reactData.OGFilter.statusNot;
+                        await buildDashboard();
+                      }}
+                      startIcon={<FilterListIcon size="small" />}
+                    >
+                      {'Restore Filter'}
+                    </Button>
+                  }
                 </Box>
                 <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
                   {anyRowsSelected() &&
@@ -1172,7 +1220,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 </Box>
                 {(rowsDisplayed.length > 0) &&
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                    <Button
+                    <IconButton
                       className={AVAClass.AVAButton}
                       disabled={(firstSelectedRow() === rowsDisplayed[0]) || (firstSelectedRow() === -1)}
                       style={{ backgroundColor: ((firstSelectedRow() === rowsDisplayed[0] || (firstSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
@@ -1187,10 +1235,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           selectionsChanged: !reactData.selectionsChanged
                         }, true);
                       }}
-                      startIcon={<ArrowBackIcon size="small" />}
                     >
-                      {'Prior'}
-                    </Button>
+                      {<ArrowBackIcon size="small" />}
+                    </IconButton>
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'green', color: 'white' }}
@@ -1230,7 +1277,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     }
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
+                      style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
                       size='small'
                       onClick={() => {
                         rowsDisplayed.forEach((r, x) => {
@@ -1243,9 +1290,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       }}
                       startIcon={<DoneAllIcon size="small" />}
                     >
-                      {'All'}
+                      {`All ${allRowsSelected().count}`}
                     </Button>
-                    <Button
+                    <IconButton
                       className={AVAClass.AVAButton}
                       disabled={(lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1))}
                       style={{ backgroundColor: ((lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
@@ -1259,11 +1306,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           dataRows: reactData.dataRows,
                           selectionsChanged: !reactData.selectionsChanged
                         }, true);
-                      }}
-                      endIcon={<ArrowForwardIcon size="small" />}
-                    >
-                      {'Next'}
-                    </Button>
+                      }}>
+                      {<ArrowForwardIcon size="small" />}
+                    </IconButton>
                   </Box>
                 }
               </Box>

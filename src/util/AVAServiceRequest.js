@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, dbClient, makeArray, deepCopy } from '../util/AVAUtilities';
+import { clt, cl, recordExists, dbClient, makeArray, deepCopy, isObject } from '../util/AVAUtilities';
 import { getActivity } from '../util/AVAObservations';
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
@@ -16,11 +16,31 @@ export function putServiceRequest_nonAsync(body) {
 }
 
 export async function getServiceRequests(body) {
-  let sortInstructions = {};
+  let sortInstructions = {
+    sort: false
+  };
   if (body.sort) {
-    sortInstructions = deepCopy(body.sort);
-    delete body.sort;
+    if (isObject(body.sort)) {
+      sortInstructions = deepCopy(body.sort);
+    }
+    else {
+      let checkSort = body.sort.toLowerCase().slice(0, 3)
+      if (['asc','des'].includes(checkSort)) {
+        sortInstructions.order = checkSort;
+      }
+      else {
+        sortInstructions.key = body.sort;
+      }
+    }
+    sortInstructions.sort = true;
+    if (!sortInstructions.hasOwnProperty('order')) {
+      sortInstructions.order = 'des';
+    }
+    if (!sortInstructions.hasOwnProperty('key')) {
+      sortInstructions.key = 'request_date';
+    }
   }
+
   if (body.filter) { Object.assign(body, body.filter); };
   let rP = body.person_id || body.person || body.requestor;
   let rT = body.request_type;
@@ -110,22 +130,19 @@ export async function getServiceRequests(body) {
     }
     qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
     loopCount++;
-  } while (qQ.ExclusiveStartKey && (loopCount < 10) && (unSortedList.length < body.limit));
-  if (sortInstructions.hasOwnProperty('sort') && !sortInstructions.sort) {
+  } while (qQ.ExclusiveStartKey && (loopCount < 10) && (unSortedList.length < (body.limit || 100)));
+  if (!sortInstructions.sort) {
     return unSortedList;
   }
-  if (!sortInstructions.hasOwnProperty('key')) {
-    sortInstructions.key = 'request_date';
-  }
   let sort_order = 1;
-  if (sortInstructions.hasOwnProperty('order') && (sortInstructions.order.toLowerCase().slice(0, 4) === 'desc')) {
+  if (sortInstructions.order === 'des') {
     sort_order = -1;
   }
   return unSortedList.sort((a, b) => {
     a.sort = a[sortInstructions.key] || Number(a.request_id.split(/~/g).pop());
     b.sort = b[sortInstructions.key] || Number(b.request_id.split(/~/g).pop());
-    if (a.sort > b.sort) { return -1 * sort_order; }
-    if (a.sort < b.sort) { return sort_order; }
+    if (a.sort < b.sort) { return -1 * sort_order; }
+    if (a.sort > b.sort) { return sort_order; }
     return 0;
   });
 }
@@ -365,41 +382,65 @@ export async function updateServiceRequest(body) {
         }
       }
     };
-
   }
   let initialCount = unProcessed.length;
   let finalCount = 0;
   let retryNeeded;
   let retryCount = 0;
   do {
+    let this_Request_group = [];
+    let this_Log_group = [];
+    let failedItems = [];
+    let r;
+    for (r = 0; ((r < unProcessed.length) && (r < 10)); r++) {
+      this_Request_group.push(unProcessed[r]);
+      this_Log_group.push(logRec[r]);
+    }
+    unProcessed.splice(0, r);
+    logRec.splice(0, r);
     retryNeeded = false;
+    finalCount += r;
+    let requestObject = {
+      RequestItems: {
+        'ServiceRequests': this_Request_group,
+        'ServiceRequestLog': this_Log_group
+      }
+    }
+    let goodWrite = true;
     let writeResponse = await dbClient
-      .batchWrite({
-        RequestItems: {
-          'ServiceRequests': unProcessed,
-          'ServiceRequestLog': logRec
-        }
-      })
+      .batchWrite(requestObject)
       .promise()
       .catch(error => {
         clt({ 'Bad batch write on ServiceRequests - caught error is': error });
+        goodWrite = false;
       });
     if (writeResponse
       && ('UnprocessedItems' in writeResponse)
       && (Object.keys(writeResponse.UnprocessedItems)).length > 0) {
-      unProcessed = [...writeResponse.UnprocessedItems];
-      finalCount = unProcessed.length;
+      failedItems.push(...writeResponse.UnprocessedItems);  
+      finalCount -= writeResponse.UnprocessedItems.length / 2;
       retryNeeded = true;
+    }
+    if (!goodWrite) {
+      finalCount -= r;
+    }
+    if (unProcessed.length > 0) {
+      retryNeeded = true;
+    }
+    if (retryNeeded) {
       retryCount++;
     }
   } while (retryNeeded && (retryCount < 5));
   let returnMessage = '';
-  if (finalCount === 0) { returnMessage = `Successfully updated ${initialCount} Request record${(initialCount > 1) ? 's' : ''}`; }
-  else if (finalCount < initialCount) {
-    let processedCount = initialCount - finalCount;
-    returnMessage = `Updated ${processedCount} of ${initialCount} Request records`;
+  if (finalCount >= initialCount) {
+    returnMessage = `Successfully updated ${initialCount} Request record${(initialCount > 1) ? 's' : ''}`;
   }
-  else { returnMessage = `Failed to update Request record${(initialCount > 1) ? 's' : ''}`; }
+  else if (finalCount <= 0) { 
+    returnMessage = `Failed to update Request record${(initialCount > 1) ? 's' : ''}`;
+  }
+  else {
+    returnMessage = `Updated ${finalCount} of ${initialCount} Request records`;
+  }
   return returnMessage;
 }
 
