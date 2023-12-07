@@ -516,9 +516,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if ((qList.length === 0) || (reactData.dataRows.length === 0)) {
       enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
     }
-    else {
-      reactData.dataRows[0].workData.checked = true;
-    }
     if (dashboard_idleTimer && dashboard_idleTimer.current) {
       dashboard_idleTimer.current.start();
       cl(`Idle timer started in dashboard at ${new Date().toLocaleString()}.`);
