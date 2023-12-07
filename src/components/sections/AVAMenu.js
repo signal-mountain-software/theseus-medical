@@ -1,11 +1,10 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, isObject, cl, switchActiveAccount, resolveVariables, makeArray, s3, dbClient, lambda, deepCopy } from '../../util/AVAUtilities';
+import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
 import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
-import { getMemberList, prepareTargets } from '../../util/AVAGroups';
-import { makeObservationList } from '../../util/AVAObservations';
+import { getActivityDetail } from '../../util/AVAActivityLoader';
 import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -279,8 +278,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   let idleTimer = React.createRef();
 
   let nowTime = new Date().getTime();
-
-  let loadError;
 
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});
@@ -856,208 +853,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
   };
 
-  async function getActivityDetail(pActRec) {
-    if (pActRec.preLoad_code) {
-      let preLoaded = await dbClient
-        .get({
-          Key: {
-            client_id: session.client_id,
-            preLoad_key: pActRec.preLoad_code
-          },
-          TableName: "PreLoads",
-        })
-        .promise()
-        .catch(error => {
-          console.log({ 'Bad get on Customizations - caught error is': error });
-        });
-      if (recordExists(preLoaded)) {
-        setSelected(preLoaded.Item.preLoad_data.activityRec);
-        return preLoaded.Item.preLoad_data;
-      }
-    }
-    let resolvedActivity = await makeObservationList(pActRec.activity_rec || pActRec.activity_code, session);
-    resolvedActivity.activityRec.name = await resolveVariables(pActRec.activity_name, session);
-    [resolvedActivity.activityRec.default_value, resolvedActivity.activityRec.default_object] = await prepareDefaults(pActRec);
-    setSelected(resolvedActivity.activityRec);
-    return resolvedActivity;
-  };
-
-  async function prepareDefaults(fact) {
-    let excludeList = ['reservation', 'play_video'];
-    let returnArray = [];
-    let returnObject = {};
-    if (!fact.default_value) { return [returnArray, returnObject]; }
-    if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
-    if (fact.activity_rec?.type === 'make_message') {
-
-    }
-
-    // check for default values in the person's record
-    if (patient.hasOwnProperty('defaultValues')) {
-      let pDefaults = patient.defaultValues;
-      for (let key in pDefaults) {
-        returnArray.push(`private~${key}=${pDefaults[key]}`);
-      }
-    }
-    // now pull in default values associated with this specific function call
-    let defaultValues = {};
-    if (isObject(fact.default_value)) {
-      defaultValues = Object.assign({}, fact.default_value);
-    }
-    else {
-      // old style is a string of key/value pairs (in the form key=value) separated by " ~ "
-      let dArray = makeArray(fact.default_value, /\s~|~\s/g); 
-      dArray.forEach((d, x) => {
-        console.log(d);
-        if (isObject(d)) {
-          Object.assign(defaultValues, d);
-        } 
-        else if (d.includes('=')) {
-          let dO = d.split('=');
-          defaultValues[dO[0]] = dO[1];
-        }
-        else {
-          // a value may not be in the form key=value; in this case, just use value
-          defaultValues[`_key_${x}`] = d;
-        }
-      });
-    }
-    for (let dField in defaultValues) {
-      let dValue = await resolveDefaults(fact, dField, defaultValues[dField]);
-      // we're returning an array and an object, they are duplicates of one another and consumed as needed by their targets
-      // each entry is a default value which could be:
-      //     a string alone (as in "myDefault")
-      //     a string with some field name (as in "requestType=myDefault")
-      //     an object (as in {requestType: myDefault, peopleList: [person1, person2, ...], ...})
-      let rKey;
-      let k = dField.match(/_key_(.*)/);
-      if (k) {          // if no field name was specified
-        rKey = `d${k[1]}`;
-      }
-      else {
-        rKey = (dField.split('.')).pop();
-      }
-      returnObject[rKey] = dValue;
-      if (typeof dValue !== 'string') {
-        returnArray.push({ [rKey]: dValue });
-      }
-      else {
-        returnArray.push(`${k ? '' : (rKey + '=')}${dValue}`);
-      }
-    }
-    return [returnArray, returnObject];
-  }
-
-  async function resolveDefaults(fact, this_key, this_value) {
-    if (typeof (this_value) !== 'string') {
-      let workObj = deepCopy(this_value);
-      for (let aKey in workObj) {
-        workObj[aKey] = await resolveDefaults(fact, aKey, workObj[aKey]);
-      }
-      workObj = await specialCases(this_key, workObj);
-      return workObj;
-    }
-    let a = this_value.split('.');
-    // if there are two or more "." in the value, use the value itself 
-    if (a.length > 2) {
-      return this_value;
-    }
-    let dValue = await resolveVariables(a.pop(), session, { ignoreArrayCheck: true });
-    // if anything remains in array a (after the pop above), the value was in the form instruction=value
-    // we'll act as per that instruction here
-    if (a.length > 0) {
-      dValue = await specialCases(a[0], dValue);
-    }
-    return dValue;
-
-    async function specialCases(key, dValue) {
-      switch (key) {
-        case 'people': {
-          let factClient;
-          if (fact.activity_rec.client_id) { factClient = fact.activity_rec.client_id; }
-          else if (fact.activity_code.includes('//')) { factClient = fact.activity_code.split('//')[0]; }
-          else { factClient = defaultClient; }
-          dValue = await getMemberList(makeArray(dValue, ','), factClient, { sort: true, shortList: true });
-          break;
-        }
-        case 'person': {
-          if (dValue === 'patientRec') {
-            dValue = state.patient;
-          }
-          else if (dValue === 'userRec') {
-            dValue = state.user;
-          }
-          else {
-            dValue = {
-              'peopleList': [state.patient]
-            };
-          }
-          break;
-        }
-        case 'select': {
-          if (dValue === 'accessList') {
-            dValue = {
-              'selectionList': state.accessList[state.session.client_id].shortList
-            };
-          }
-          else if (state.patients) {
-            dValue = state.patients;
-          }
-          else {
-            let targetObj = await prepareTargets(session.patient_id, session.client_id, { includeGroups: true });
-            dValue = targetObj.responsibleList.sort();
-          }
-          break;
-        }
-        case 'events': {
-          if (!state.hasOwnProperty('calendar')) {
-            loadError = true;
-          }
-          else {
-            dValue = deepCopy(state.calendar);
-          }
-          break;
-        }
-        case 'activities': {
-          setLoading('Loading');
-          setForceRedisplay(!forceRedisplay);
-          // activities dValue is an object with
-          //     global_defaults - pass to every column
-          //     column_list - an array with info about each column to return
-          //          response entries will be resolved activities (with observation records prepared as per the instructions in the array element)
-          //          each element is an object with
-          //              activity_id - optional; if missing use the activity_id that this is a part of
-          //              column_defaults - add these to the global defaults when resolving and handling the activity
-          let responseArray = [];
-          let global_defaults = dValue.global_defaults;
-          if (!dValue.hasOwnProperty('column_list') || (dValue.column_list.length === 0)) {
-            let column_defaults = Object.assign({}, global_defaults);
-            let column_object = deepCopy(await makeObservationList(fact.activity_code, session, column_defaults));
-            column_object.column_defaults = column_defaults;
-            responseArray.push(column_object);
-          }
-          else {
-            for (let m = 0; m < dValue.column_list.length; m++) {
-              let column_defaults = Object.assign({}, global_defaults, dValue.column_list[m].column_defaults);
-              let column_object = deepCopy(await makeObservationList(dValue.column_list[m].activity_id, session, column_defaults));
-              column_object.column_defaults = column_defaults;
-              responseArray.push(column_object);
-            }
-          }
-          dValue = responseArray;
-          setLoading(false);
-          break;
-        }
-        default: {
-          if (key && (typeof (dValue) === 'string') && (key !== 'default')) {
-            dValue = `${key}.${dValue}`;
-          }
-        }
-      }
-      return dValue;
-    }
-  }
-
   function makeGreetingName(pString) {
     setGreetingName(pString || 'AVA User');
     return pString;
@@ -1530,9 +1325,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                       setForceRedisplay(!forceRedisplay);
                                     }
                                     else {
-                                      loadError = false;
-                                      await getActivityDetail(this_row);
-                                      if (loadError) {
+                                      setLoading('Loading');
+                                      setForceRedisplay(!forceRedisplay);
+                                      let gad_response = await getActivityDetail(this_row, state);
+                                      setSelected(gad_response.activityRec);
+                                      setLoading(false);
+                                      if (gad_response.loadError) {
                                         enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
                                       }
                                       else {
