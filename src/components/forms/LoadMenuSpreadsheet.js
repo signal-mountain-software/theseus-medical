@@ -162,130 +162,11 @@ export default ({ pClient, showUpload, handleClose }) => {
     req.onload = function (e) {
       var data = new Uint8Array(req.response);
       var workbook = XLSX.read(data, { type: "array" });
-      if (pClient === 'SMSoft') { parseSpreadsheet(workbook); }
-      else { parseTemplateMenu(workbook); }
+      parseTemplateMenu(workbook);
       setChangeDetected(true);
     };
     req.send();
   };
-
-  function parseSpreadsheet(pWorkbook) {
-    let dateWords = 'monday%tuesday%wednesday%thursday%friday%saturday%sunday%january%february%march%april%may%june%july%august%september%october%november%december';
-    let itemType = ['header', 'soup', 'salad', 'entree', 'salad', 'side', 'bread', 'side', 'dessert', 'entree', 'side', 'side'];
-    let sundayType = ['header', 'entree', 'side', 'entree', 'salad', 'entree', 'side', 'side', 'bread', 'side', 'dessert', 'side', 'side'];
-    let dateString = '';
-    let results = [];
-    let needDate = true;
-    let fullValue, cellValue, cellKey, cellOKey;
-    let workingDate, workingDoW;
-    let messages = [];
-    let itemTypeNumber = 0;
-    pWorkbook.SheetNames.forEach((sheetName) => {
-      let currentSheet = pWorkbook.Sheets[sheetName];
-      let previousRow = 0;
-      let dateRow = 0;
-      for (const currentCell in currentSheet) {
-        if (!currentSheet[currentCell].v) { continue; }
-        fullValue = currentSheet[currentCell].v;
-        let valueArray = fullValue.toString().split('~');
-        if (!valueArray || valueArray.length < 2) {
-          cellValue = (isNaN(fullValue) ? fullValue.trim() : fullValue);
-          cellOKey = null;
-        }
-        else {
-          cellValue = valueArray[0].trim();
-          cellOKey = valueArray[1].trim();
-        }
-        let cellColumn = currentCell.replace(/[^A-Z]+/, '');
-        let cellRow = Number(currentCell.replace(cellColumn, ''));
-        if ((cellRow - previousRow) > 1) {
-          needDate = true;
-          dateString = '';
-        }
-        previousRow = cellRow;
-        if (isNaN(Number(cellValue)) && cellValue.length < 3) { continue; }
-        if (cellValue.toString().includes('+++++')) { continue; }
-        cellKey = cellValue.toString().trim().toLowerCase().replace(/[^a-z]+/, '');
-        if (cellKey && dateWords.includes(cellKey)) {
-          dateString = cellValue;
-          needDate = true;
-          dateRow = cellRow;
-          continue;
-        }
-        else {
-          if (needDate) {
-            let valueNumber = Number(cellValue);
-            if (valueNumber < 32) {
-              dateString += ' ' + cellValue;
-              dateRow = cellRow;
-              continue;
-            }
-            else if (valueNumber > 2000) {
-              dateString += ' ' + cellValue;
-              dateRow = cellRow;
-            }
-          }
-        }
-        if (needDate) {
-          if (dateString === '') {
-            messages.push(cellValue);
-            continue;
-          }
-          else {
-            workingDate = new Date(dateString);
-            workingDoW = workingDate.getDay();
-            dateString = '';
-            needDate = false;
-            itemTypeNumber = 0;
-            results.push({
-              date: workingDate,
-              item: '~~' + workingDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-              type: 'header'
-            });
-            if (messages.length > 0) {
-              for (let m = 0; m < messages.length; m++) {
-                results.push({
-                  date: workingDate,
-                  item: messages[m],
-                  type: 'message'
-                });
-              };
-              messages = [];
-            }
-          }
-        }
-        if (!isNaN(Number(cellValue))) { continue; }
-        if (cellRow === dateRow) {
-          results.push({
-            date: workingDate,
-            item: cellValue,
-            type: 'message'
-          });
-          continue;
-        }
-        itemTypeNumber++;
-        let twoValues = cellValue.indexOf(' or ');
-        if (twoValues > 0) {
-          let [firstValue, secondValue] = cellValue.split(' or ');
-          results.push({
-            date: workingDate,
-            item: firstValue,
-            type: ((workingDoW > 0) ? itemType[itemTypeNumber] : sundayType[itemTypeNumber])
-          });
-          cellValue = secondValue;
-        }
-        results.push({
-          date: workingDate,
-          item: cellValue,
-          type: ((workingDoW > 0) ? itemType[itemTypeNumber] : sundayType[itemTypeNumber]),
-          oKey: cellOKey || null
-        });
-      }
-    });
-    results.forEach(o => { o.sort_order = o.date.getFullYear() + '.' + (o.date.getMonth() + 101) + '.' + (o.date.getDate() + 100).toString() + '.' + (entryTypes.indexOf(o.type) + 100).toString() + o.item; });
-    results.sort((a, b) => { return (a.sort_order > b.sort_order ? 1 : -1); });
-    setBulkItemList(results);
-  }
 
   function parseTemplateMenu(pWorkbook) {
     let headers = [];
@@ -342,8 +223,13 @@ export default ({ pClient, showUpload, handleClose }) => {
         sort_order: o
       };
     });
-    results.sort((a, b) => { return (a.sort_order > b.sort_order ? 1 : -1); });
-    setBulkItemList(results);
+    let lower_date = makeDate('1/1/23').date;
+    let upper_date = makeDate('12/31/33').date;
+    let filtered_results = results.filter(r => {
+      return ((r.date > lower_date) && (r.date < upper_date));
+    })
+    filtered_results.sort((a, b) => { return (a.sort_order > b.sort_order ? 1 : -1); });
+    setBulkItemList(filtered_results);
   }
 
   return (
