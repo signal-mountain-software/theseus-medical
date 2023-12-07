@@ -344,12 +344,17 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     //     "~promptAll:Table Number"
     if (instruction[2]) {
       let this_instruction = instruction[2].trim();
+      let proxyOK =
+        ((sessionState.accessList[sessionState.session.client_id].count.full +
+          sessionState.accessList[sessionState.session.client_id].count.proxy +
+          sessionState.accessList[sessionState.session.client_id].count.view) > 0);
       displayRowList.push({
         checkbox: false,
         required: false,
         multiColumn: false,
         text: this_instruction,
         textValue: defaults[this_instruction],
+        obo_line: (proxyOK && ((defaults.obo || defaults.onBehalfOf) === this_instruction)),
         observationKey: instruction[3] || getKey(this_instruction),
         desc: getDescription(this_instruction),
         input: instruction[1].trim().toLowerCase(),

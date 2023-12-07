@@ -1,4 +1,4 @@
-import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient, parseNumeric } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations } from './AVAUtilities';
@@ -379,11 +379,17 @@ export async function formatRequestDetails(body, summaryType) {
   if (body.textInput && (Object.keys(body.textInput).length > 0)) {
     textInput = Object.assign({}, body.textInput);
   }
-  let titleWords = body.subject;
-  if (!titleWords && body.format) { titleWords = body.format.subject; }
-  if (!titleWords && body.activityName) { titleWords = body.activityName; }
-  if (!titleWords) { titleWords = 'AVA Request'; }
-  else { titleWords = await resolveMessageVariables(titleWords, body); }
+  let titleWords;
+  if (body.subject) {
+    titleWords = (await resolveMessageVariables(body.subject, body)).replace(/\(.+\)/g, '').trim();
+  }
+  else if (body.format && body.format.subject) {
+    titleWords = (await resolveMessageVariables(body.format.subject, body)).replace(/\(.+\)/g, '').trim();
+  }
+  else if (body.activityName) {
+    titleWords = await resolveMessageVariables(body.activityName, body);
+  }
+  else { titleWords = 'AVA Request'; }
   if (body.reprint) { titleWords = '*** REPRINT ' + titleWords + ' ***'; };
 
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${titleWords}</span></h1>`;
@@ -396,14 +402,24 @@ export async function formatRequestDetails(body, summaryType) {
   let pRec = await getPerson(body.author);
 
   let authorName = await makeName(body.author);
-  let pName = body.onBehalfOf || authorName;
-  htmlMessage += `<h2 style = "color: black;" >${pName}`;
-  rawMessage += `${pName}\n`;
-  if (titleWords.toLowerCase().includes(pName.toLowerCase())) {
+  let pName = (body.onBehalfOf || authorName).replace(/\(.+\)/g, '').trim();  // this removes anything inside parenthesis
+  // does the title contain all of the words in the obo?
+  let tLower = titleWords.toLowerCase();
+  let oboWords = pName.toLowerCase().split(/\s+/);
+  let allWordsAppear = oboWords.every(oboWord => {
+    return (tLower.includes(oboWord));
+  });
+  if (!allWordsAppear) {
+    htmlMessage += `<h2 style = "color: black;" >${pName}`;
+    rawMessage += `${pName}\n`;
     pdfLine(`for ${pName}`, { style: 'normal', align: 'center', size: 'large' });
   }
 
   if (pRec.location) {
+    let locNum = parseNumeric(pRec.location);
+    if (locNum.hasNumbers) {
+      pRec.location = `Apt ${locNum.value}`;
+    }
     htmlMessage += `<br />${pRec.location}`;
     rawMessage += `${pRec.location}\n`;
     pdfLine(pRec.location, { align: 'center' });
@@ -412,16 +428,16 @@ export async function formatRequestDetails(body, summaryType) {
 
   if (!body.requestDate) { body.requestDate = new Date(); }
   let pDateTime = makeDate(body.requestDate).absolute;
-  let pTime = pDateTime + ' by ' + await makeName(body.author);
-  htmlMessage += `<p style = "color: black;">created: <strong>${pTime}</strong>`;
-  rawMessage += `${pTime}\n\r`;
-  if (pName.toLowerCase().includes(authorName.toLowerCase())) {
-    pdfLine(`created: ${pDateTime}`, { size: 'medium', align: 'center' });
-  }
-  else {
-    pdfLine(`created: ${pTime}`, { size: 'medium', align: 'center' });
-  }
 
+  // get creator info - most reliable spot is first characters of the request id
+  let creator_id = (body.request_id || body.requestID || body.author).split('~')[0];
+  if (creator_id !== body.author) {
+    pDateTime += ` by ${await makeName(creator_id)}`; 
+  }
+  htmlMessage += `<p style = "color: black;">created: <strong>${pDateTime}</strong>`;
+  rawMessage += `${pDateTime}\n\r`;
+  pdfLine(`created: ${pDateTime}`, { size: 'medium', align: 'center' });
+  
   for (let cTyp in pRec.messaging) {
     if ((cTyp in pRec) && (pRec[cTyp].trim() !== '')) {
       let cLab;

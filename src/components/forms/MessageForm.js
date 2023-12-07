@@ -486,7 +486,7 @@ export default ({ pPerson, pClient, pMessageList, pSession, onReset, defaultValu
               m.author.author_name = `${sRec.name.first} ${sRec.name.last}`;
             }
           }
-          // convert inline link to an attachment
+          // convert inline link to an attachment by extracting all text after (and including http:)
           let hLink = extract(m.content.current[language].text, 'http', ' ', {
             fuzzyRight: true,  // allow end-of-string as a right delimeter 
             includeLeft: true,  // return the left delimeter

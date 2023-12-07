@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy,  titleCase, sentenceCase, makeArray } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray } from '../../util/AVAUtilities';
 import { getObservationOptions, getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows } from '../../util/AVAActivityLoader';
@@ -381,7 +381,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(event.target.value, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
-      else { handleTextExit(event.target.value, columnNumber, rowNumber); }
+      else {
+        if (reactData.columnList[columnNumber].rowDetails[rowNumber].obo_line) {
+          handleOBOText(event.target.value, columnNumber, rowNumber);
+        }
+        else {
+          handleTextExit(event.target.value, columnNumber, rowNumber);
+        }
+      }
     }
     setForceRedisplay(!forceRedisplay);
   };
@@ -395,12 +402,18 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       handleTextExit(vText, columnNumber, rowNumber);
     }
     else {
-      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') { handleDateExit(vText, columnNumber, rowNumber); }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') { handleTimeExit(vText, columnNumber, rowNumber); }
+      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
+        handleDateExit(vText, columnNumber, rowNumber);
+      }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
+        handleTimeExit(vText, columnNumber, rowNumber);
+      }
       else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
-      else { handleTextExit(vText, columnNumber, rowNumber); }
+      else {
+        handleTextExit(vText, columnNumber, rowNumber);
+      }
     }
     setForceRedisplay(!forceRedisplay);
     return;
@@ -449,6 +462,101 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = vText;
     updateReactData({ columnList: reactData.columnList }, true);
   };
+
+  function handleOBOText(vText, columnNumber, rowNumber) {
+    let typed_in_words = vText.toLowerCase().split(/\s+/);
+    let hitCount = [];
+    let hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
+      if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
+        return false;
+      }
+      // if any word in the display_name matches a typed in word, it is a "hit"
+      let wordsMatched = accessList_person.display_name.toLowerCase().split(/\s+/).reduce((total_matches, name_word) => {  // for every word in the display_name...
+        if (typed_in_words.some(typed_in_word => {   // check for any typed in word that exactly matches
+          return (typed_in_word === name_word);
+        })) {
+          total_matches++;
+        };
+        return total_matches;
+      }, 0);
+      if (wordsMatched > 0) {
+        hitCount.push(wordsMatched);
+        return true;
+      }
+      return false;
+    });
+    let winner = false;
+    let winner_at;
+    if (hits.length === 1) {
+      winner = true;
+      winner_at = 0;
+    }
+    else if (hits.length > 1) {
+      // is there a clear winner in the hit_count array?
+      let maxHits = 0;
+      let maxHitCount = 0;
+      hitCount.forEach((h, x) => {
+        if (h > maxHits) {
+          winner_at = x;
+          winner = true;
+          maxHits = h;
+          maxHitCount = 1;
+        }
+        else if (h === maxHits) {
+          winner = false;
+          maxHitCount++;
+        }
+      })
+      if (!winner) {
+        enqueueSnackbar(
+          `AVA found ${maxHitCount} people to match that name.`,
+          { variant: 'info', persist: false }
+        );
+      }
+    }
+    if (winner) {
+      reactData.columnList[columnNumber].person_id = hits[winner_at].id;
+      let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+      reactData.columnList[columnNumber].display_name = newDName;
+      reactData.columnList[columnNumber].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
+      vText = `${newDName} (${hits[winner_at].location})`;
+      resetTitleName();
+    }
+    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = titleCase(vText);
+    updateReactData({ columnList: reactData.columnList }, true);
+  };
+
+  function resetTitleName() {
+    let workingTitle = {};
+    reactData.columnList.forEach(this_person => {
+      let nameWords = this_person.display_name.split(/\s+/);
+      let this_lastName = nameWords.pop();
+      let this_firstName = nameWords.join(' ');
+      if (!workingTitle || !workingTitle.remembered || (workingTitle.remembered.length === 0)) {
+        workingTitle = {
+          first: this_firstName,
+          last: this_lastName.trim(),
+          display: this_person.display_name,
+          remembered: [this_person.display_name]
+        };
+      }
+      else if (workingTitle.last.toLowerCase() !== this_lastName.trim().toLowerCase()) {
+        if (!workingTitle.remembered.includes(this_person.display_name)) {
+          workingTitle.display = `${workingTitle.remembered.push(this_person.display_name)} people`;
+        }
+        workingTitle.first = '_multi_';
+        workingTitle.last = '_multi_';
+      }
+      else {         // same last name as all others so far
+        if (!workingTitle.remembered.includes(this_person.display_name)) {
+          workingTitle.remembered.push(this_person.display_name);
+          workingTitle.display = `${workingTitle.first} and ${this_person.display_name}`;
+          workingTitle.first = `${workingTitle.first}, ${this_firstName.trim()}`;
+        }
+      }
+    });
+    updateReactData({ titleName: workingTitle }, false);
+  }
 
   function handleTextAll(vText, this_item) {
     reactData.columnList.forEach((this_column, columnNumber) => {

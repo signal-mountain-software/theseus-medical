@@ -341,6 +341,15 @@ export function makeNumber(pNum) {
   }
 };
 
+export function parseNumeric(pStr) {
+  let v = pStr.replace(/\D/g, '');
+  return ({
+    isNumeric: !!Number(pStr),
+    hasNumbers: !!v,
+    value: Number(v)
+  });
+}
+
 export async function getIcon(pIcon) {
   const imageBucket = 'ava-icons';
   const imageURI = `${pIcon}.png`;
