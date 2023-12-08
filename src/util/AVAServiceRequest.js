@@ -283,17 +283,19 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
   let remembered_activityRec = {};
   for (let r = 0; r < requestsIn.length; r++) {
     let serviceRequestRec = requestsIn[r];
-    if (!remembered_customizationsRec) {
-      remembered_customizationsRec = await dbClient
-        .get({
-          Key: { client_id: serviceRequestRec.client_id, custom_key: 'service_request_types' },
-          TableName: "Customizations"
-        })
-        .promise()
-        .catch(error => { cl(`***ERR reading Customizations*** caught error is: ${error}`); });
-    }
-    if (recordExists(remembered_customizationsRec)) {
-      serviceRequestRec.activity_key = remembered_customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code;
+    if (!serviceRequestRec.activity_key) {
+      if (!remembered_customizationsRec) {
+        remembered_customizationsRec = await dbClient
+          .get({
+            Key: { client_id: serviceRequestRec.client_id, custom_key: 'service_request_types' },
+            TableName: "Customizations"
+          })
+          .promise()
+          .catch(error => { cl(`***ERR reading Customizations*** caught error is: ${error}`); });
+      }
+      if (recordExists(remembered_customizationsRec)) {
+        serviceRequestRec.activity_key = remembered_customizationsRec.Item.customization_value[serviceRequestRec.request_type].activity_code;
+      }
     }
     if (!remembered_activityRec.hasOwnProperty(serviceRequestRec.activity_key) || !remembered_activityRec[serviceRequestRec.activity_key]) {
       remembered_activityRec[serviceRequestRec.activity_key] = await getActivity(serviceRequestRec.client_id, serviceRequestRec.activity_key);
@@ -316,6 +318,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
         firstDoc: (x === 0),
         lastDoc: (x === (requestList.length - 1))
       };
+      requestList[x].overrideMethod = 'print';
     });
   }
   let success = true;

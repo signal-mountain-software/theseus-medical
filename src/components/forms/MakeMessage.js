@@ -204,9 +204,15 @@ export default ({
     let senderName = await makeName(state.session.user_id);
     let principalMessageText = '';
     let voiceMailText = '';
-    let subjectText = '';
-    if (promptUse && reactData.textInput.length > 1) {
-      makeArray(promptUse).forEach((u, n) => {
+    let subjectText = '';   
+    if (reactData.textInput.length > 1) {
+      if (!promptUse) {
+        promptUse = ['subject', 'message', 'voicemail']
+      }
+      else {
+        promptUse = makeArray(promptUse);
+      }
+      promptUse.forEach((u, n) => {
         if (reactData.textInput[n]) {
           switch (u) {
             case 'subject': { subjectText += ' ' + reactData.textInput[n]; break; }

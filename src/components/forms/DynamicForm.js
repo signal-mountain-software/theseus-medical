@@ -312,6 +312,7 @@ export default ({
         <MakeMessage
           titleText={defaultValueObj.title}
           promptText={defaultValueObj.prompt || `What's the Message?`}
+          promptUse={defaultValueObj.promptUse}
           buttonText={defaultValueObj.button || 'Send'}
           sender={session}
           pRecipientID={defaultValueObj.recipientID || '*select'}

@@ -69,7 +69,8 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       selections: inBody.selections,
       qualifiers: inBody.qualifiers,
       textInput: inBody.textInput,
-      reprint: inBody.reprint
+      reprint: inBody.reprint,
+      overrideMethod: inBody.overrideMethod
     },
       inBody.original_request,
       inBody.request);
@@ -87,10 +88,13 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       }
       results.client = this_request.client;
       results.author = this_request.author;
-      results.preferred_method = this_request.method;
-      if (!('format' in this_request)) { this_request.format = { 'type': 'factForm' }; }
-      if ('subject' in this_request.format) { results.subject = this_request.format.subject; }
-      if ('method' in this_request.format) { results.preferred_method = this_request.format.method; }
+      results.preferred_method = this_request.overrideMethod || this_request.format?.method || this_request.method;
+      if (!('format' in this_request)) {
+        this_request.format = { 'type': 'factForm' };
+      }
+      if ('subject' in this_request.format) {
+        results.subject = this_request.format.subject;
+      }
       switch (this_request.format.type) {
         case 'mealOrder':
         case 'checklist':
@@ -588,27 +592,35 @@ export async function formatRequestDetails(body, summaryType) {
   htmlMessage += `<div>***** END *****</div></p>`;
   rawMessage += `\n\r${refText}\n***** END *****`;
 
-  let s3Resp;
+  if (body.fileName && body.fileName.slice(-4) !== '.pdf') {
+    body.fileName += '.pdf';
+  }
+  let pdfInfo = {
+    s3Key: (body.fileName || `AVA_${body.requestID.replace('~', '_')}.pdf`),
+    s3Bucket: (body.S3_bucket || 'theseus-medical-storage')
+  };
   if (!body.multiPrint || body.multiPrint.lastDoc) {
     pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
-    await savePDF(doc, { local: !body.PDF, S3: !!body.PDF });
+    let this_method = body.overrideMethod || body.messaging?.format?.method;
+    let pdfResp = await savePDF(doc, pdfInfo, { local: !body.PDF, S3: true, onSave: this_method });
+    if (pdfResp.responseData.s3Resp) {
+      pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+    }
   }
-  return [htmlMessage, rawMessage, s3Resp];
+  return [htmlMessage, rawMessage, pdfInfo];
 }
 
-export async function savePDF(doc, options = {}) {
-  let pBlob = doc.output('blob');
+export async function savePDF(doc, pdfInfo, options = {}) {
   let s3Resp;
   let responseStatus = 400;
   let responseData = { message: [] };
-  let saveName = options.key || options.name || `AVA_${new Date().getTime()}`;
   if (options.S3) {
     let goodS3 = true;
     s3Resp = await s3
       .upload({
-        Bucket: (options.bucket || 'theseus-medical-storage'),
-        Key: saveName,
-        Body: pBlob,
+        Bucket: pdfInfo.s3Bucket,
+        Key: pdfInfo.s3Key,
+        Body: doc.output('blob'),
         ACL: 'public-read-write',
         ContentType: 'application/pdf'
       })
@@ -619,18 +631,18 @@ export async function savePDF(doc, options = {}) {
         responseStatus = 401;
         responseData.message = err.message;
       });
-    if (goodS3) {
+    if (goodS3 && options.onSave === 'print') {
       window.open(s3Resp.Location);
       responseStatus = 200;
       responseData.message.push(`S3 saved at ${s3Resp.Location}`);
       responseData.s3Resp = s3Resp;
     }
   }
-  if (options.local) {
-    doc.save(`${saveName}.PDF`);
+  if (options.local) {    
+    doc.save(pdfInfo.s3Key);
     responseStatus++;
-    responseData.message.push(`Locally saved as ${saveName}`);
-    responseData.saveName = `${saveName}.PDF`;
+    responseData.message.push(`Locally saved as ${pdfInfo.s3Key}`);
+    responseData.saveName = pdfInfo.s3Key;
   }
   return {
     responseStatus,

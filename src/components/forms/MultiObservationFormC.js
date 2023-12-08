@@ -761,6 +761,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
       }
     });
+    if (existingRequest.requestToUse.original_request.hasOwnProperty('textInput')) {
+      for (let selection in existingRequest.requestToUse.original_request.textInput) {
+        let rowNumber = this_column.rowDetails.findIndex(r => {
+          return (r.text === selection);
+        });
+        if (rowNumber < 0) {
+          continue;
+        };
+        this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
+      }
+    }
     if (existingRequest.requestToUse.original_request.hasOwnProperty('qualifiers')) {
       /*
          original_request.qualifiers come in as qualifiers.[<Menu choice>][<Qualifier Option>][<array of selections>]
@@ -1060,8 +1071,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function makeConfirm(pData) {
     let warningsExist = false;
     let dataExists = false;
-    let warningSection = [`[bold][italic]There are no selections for:`, ' '];
-    let responseArray = [`[bold][italic]AVA will send the following:`];
+    let warningSection = [`[bold][italic]There are no selections for:`];
+    let responseArray = [' ', `[bold][italic]AVA will send the following:`];
     // figure out column Names
     let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(pData[0].dName)).slice(-5);
     pData.forEach(this_column => {
