@@ -258,7 +258,18 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [progress, setProgress] = React.useState(100);
   const [pWidth, setPWidth] = React.useState(60);
 
+  const [reactData, setReactData] = React.useState({
+    lastActiveTime: new Date()
+  });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+
 
   let currentSection = '';
 
@@ -929,14 +940,16 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           timeout={msBeforeSleeping}   // every "n" minutes
           onActive={() => {
             let now = new Date();
+            updateReactData({
+              lastActiveTime: now
+            }, false);
             cl(`Active at ${now.toLocaleString()}.  Idle since ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
-            if ((now.getTime() - idleTimer.current.state.lastIdle) > oneHour) {
-              window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
-            }
           }}
           onIdle={async () => {
-            cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
-            await updateAVA(sectionOpen, mainMenu);
+            cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
+            if ((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) {
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
+            }
           }}
           startOnMount={true}
           debounce={250}
