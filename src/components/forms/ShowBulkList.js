@@ -132,7 +132,9 @@ export default ({ pClient, workingList, showList }) => {
                   className={classes.listRow}
                 >
                   <Box className={classes.detailRow}>
-                    <Typography noWrap={true} variant='subtitle1'>{sentenceCase(this_item.type.split('_').pop())}</Typography>
+                    <Typography noWrap={true} variant='subtitle1'>
+                      {this_item?.type ? sentenceCase(this_item.type.split('_').pop()) : 'none'}
+                    </Typography>
                   </Box>
                   <Box flexGrow={1}>
                     {this_item.item.startsWith('~~') ?

@@ -932,16 +932,21 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     if (recordExists(aRecs)) {
       if (addClient) { aRecs.Item.activity_code = `${pClient}//${pActivity}`; };
       if (overrideDefault) {
-        if (!('validation' in aRecs.Item)) { aRecs.Item.validation = {}; }
-        if (!isObject(aRecs.Item.validation.default_value)) {
-          let a1 = aRecs.Item.validation.default_value.split('.');
-          let a2 = a1.pop();
-          let a3 = makeArray(a2, '~');
-          let a4 = makeObject(a3);
-          aRecs.Item.validation.default_value = a4;
-
+        if (!('validation' in aRecs.Item)) {
+          aRecs.Item.validation = {
+            default_value: deepCopy(overrideDefault)
+          };
         }
-        aRecs.Item.validation.default_value = deepCopy(Object.assign({}, aRecs.Item.validation.default_value, overrideDefault));
+        else {
+          if ((aRecs.Item.validation.default_value) && (!isObject(aRecs.Item.validation.default_value))) {
+              let a1 = aRecs.Item.validation.default_value.split('.');
+              let a2 = a1.pop();
+              let a3 = makeArray(a2, '~');
+              let a4 = makeObject(a3);
+              aRecs.Item.validation.default_value = a4;
+          }
+          aRecs.Item.validation.default_value = deepCopy(Object.assign({}, aRecs.Item.validation.default_value, overrideDefault));
+        }
       }
       if (overrideTitle) {
         aRecs.Item.name = overrideTitle;

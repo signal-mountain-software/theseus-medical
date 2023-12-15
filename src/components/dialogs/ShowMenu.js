@@ -88,8 +88,8 @@ const useStyles = makeStyles(theme => ({
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({ pClient, showMenu, onClose }) => {
-  const [observationList, setObservationList] = React.useState([]);
-  const [selectedDate, setSelectedDate] = React.useState();
+  const [observationList, setObservationList] = React.useState();
+  const [selectedDate, setSelectedDate] = React.useState(new Date().toDateString());
   const [loadMode, setLoadMode] = React.useState(false);
   const [addMode, setAddMode] = React.useState(false);
   const [copyMode, setCopyMode] = React.useState(false);
@@ -178,13 +178,13 @@ export default ({ pClient, showMenu, onClose }) => {
 
   // **************************
 
-  if (!selectedDate) {
-    setSelectedDate(new Date().toDateString());
+  if (!observationList) {
+ //   setSelectedDate(new Date().toDateString());
     buildObservationList(new Date().toDateString());
   }
 
   return (
-    (showMenu &&
+    (showMenu &&      
       <Dialog
         open={showMenu}
         onClose={handleAbort}
@@ -213,7 +213,7 @@ export default ({ pClient, showMenu, onClose }) => {
               {`Dining Menu Maintenance`}
             </DialogContentText>
             <DialogContentText className={classes.subDescriptionText}>
-              {observationList.length === 0 ? 'Loading the Menu' : `Menu for ${selectedDate}`}
+              {(!observationList || (observationList.length === 0)) ? 'Loading the Menu' : `Menu for ${selectedDate}`}
             </DialogContentText>
           </Box>
           <Box
@@ -236,19 +236,21 @@ export default ({ pClient, showMenu, onClose }) => {
             />
           </Box>
         </Box>
-        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-          <MenuForm
-            observationList={observationList}
-            pClient={pClient}
-            keyDate={selectedDate}
-            filter={''}
-            onReset={() => {
-              buildObservationList(selectedDate);
-            }}
-            handleAbort={handleAbort}
-            handleLoad={handleLoad}
-          />
-        </DialogContent>
+        {observationList &&
+          <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+            <MenuForm
+              observationList={observationList}
+              pClient={pClient}
+              keyDate={selectedDate}
+              filter={''}
+              onReset={() => {
+                buildObservationList(selectedDate);
+              }}
+              handleAbort={handleAbort}
+              handleLoad={handleLoad}
+            />
+          </DialogContent>
+        }
         <DialogActions style={{ justifyContent: 'center' }}>
           <Button
             className={AVAClass.AVAButton}

@@ -341,6 +341,15 @@ export function makeNumber(pNum) {
   }
 };
 
+export function parseNumeric(pStr) {
+  let v = pStr.replace(/\D/g, '');
+  return ({
+    isNumeric: !!Number(pStr),
+    hasNumbers: !!v,
+    value: Number(v)
+  });
+}
+
 export async function getIcon(pIcon) {
   const imageBucket = 'ava-icons';
   const imageURI = `${pIcon}.png`;
@@ -504,76 +513,81 @@ export async function resolveVariables(pKey, pSession, options = {}) {
         d1 = '';
         d2 = '';
       }
+      response.push(front, d1, middle, d2);
     }
-    let [instruction, dType] = middle.split(':');
-    instruction = instruction.toLowerCase();
-    switch (instruction) {
-      case 'client': {
-        response.push(front, pSession.client_id);
-        break;
-      }
-      case 'name': {
-        response.push(front, await makeName(pSession.patient_id));
-        break;
-      }
-      case 'location': {
-        let pMe = await getPerson(pSession.patient_id);
-        response.push(front, pMe.location);
-        break;
-      }
-      case 'person':
-      case 'patient': {
-        response.push(front, pSession.patient_id);
-        break;
-      }
-      case 'user_id':
-      case 'user': {
-        response.push(front, pSession.user_id);
-        break;
-      }
-      case 'weekday': {
-        if (dType.startsWith('today~')) {
-          let now = new Date();
-          let ttime = Number(instruction.split(/~/g)[1]);
-          let tnow = (now.getHours() * 100) + now.getMinutes();
-          if (tnow > ttime) { dType = 'tomorrow'; }
-          else { dType = 'today'; }
+    else {
+      let [instruction, dType] = middle.split(':');
+      instruction = instruction.toLowerCase();
+      switch (instruction) {
+        case 'client': {
+          response.push(front, pSession.client_id);
+          break;
         }
-        let keyDate = makeDate(dType);
-        response.push(front, keyDate.weekday);
-        break;
-      }
-      default: {
-        if (instruction.startsWith('today~')) {
-          let now = new Date();
-          let ttime = Number(instruction.split(/~/g)[1]);
-          let tnow = (now.getHours() * 100) + now.getMinutes();
-          if (tnow > ttime) { instruction = 'tomorrow'; }
-          else { instruction = 'today'; }
+        case 'name': {
+          response.push(front, await makeName(pSession.patient_id));
+          break;
         }
-        else if (instruction.startsWith('next_event~')) {
-          let splitInstruction = instruction.split(/~/g);
-          let oResponse = await getOccurenceList({
-            client: pSession.client_id,
-            event: splitInstruction[1],
-            from_date: new Date(),
-            number_of_occurrences: splitInstruction[2] || 1
-          });
-          instruction = oResponse.occArray[oResponse.occArray.length - 1];
+        case 'location': {
+          let pMe = await getPerson(pSession.patient_id);
+          response.push(front, pMe.location);
+          break;
         }
-        let keyDate = makeDate(instruction);
-        if (!keyDate.error) { response.push(front, keyDate[dType || 'obs']); }
-        else {
-          let iParts = [];
-          if (typeof (instruction) === 'string') { iParts = instruction.split('~'); };
-          if (iParts[2]) {
-            let now = new Date();
-            let tTime = Number(iParts[1]);  // get time
-            let tNow = (now.getHours() * 100) + now.getMinutes();
-            if (tNow > tTime) { response.push(front, iParts[2]); }
-            else { response.push(front, iParts[0]); }
+        case 'person':
+        case 'patient': {
+          response.push(front, pSession.patient_id);
+          break;
+        }
+        case 'user_id':
+        case 'user': {
+          response.push(front, pSession.user_id);
+          break;
+        }
+        case 'weekday': {
+          if (dType) {
+            if (dType.startsWith('today~')) {
+              let now = new Date();
+              let ttime = Number(instruction.split(/~/g)[1]);
+              let tnow = (now.getHours() * 100) + now.getMinutes();
+              if (tnow > ttime) { dType = 'tomorrow'; }
+              else { dType = 'today'; }
+            }
+            let keyDate = makeDate(dType);
+            response.push(front, keyDate.weekday);
           }
-          else { response.push(front, d1, middle, d2); }
+          break;
+        }
+        default: {
+          if (instruction.startsWith('today~')) {
+            let now = new Date();
+            let ttime = Number(instruction.split(/~/g)[1]);
+            let tnow = (now.getHours() * 100) + now.getMinutes();
+            if (tnow > ttime) { instruction = 'tomorrow'; }
+            else { instruction = 'today'; }
+          }
+          else if (instruction.startsWith('next_event~')) {
+            let splitInstruction = instruction.split(/~/g);
+            let oResponse = await getOccurenceList({
+              client: pSession.client_id,
+              event: splitInstruction[1],
+              from_date: new Date(),
+              number_of_occurrences: splitInstruction[2] || 1
+            });
+            instruction = oResponse.occArray[oResponse.occArray.length - 1];
+          }
+          let keyDate = makeDate(instruction);
+          if (!keyDate.error) { response.push(front, keyDate[dType || 'obs']); }
+          else {
+            let iParts = [];
+            if (typeof (instruction) === 'string') { iParts = instruction.split('~'); };
+            if (iParts[2]) {
+              let now = new Date();
+              let tTime = Number(iParts[1]);  // get time
+              let tNow = (now.getHours() * 100) + now.getMinutes();
+              if (tNow > tTime) { response.push(front, iParts[2]); }
+              else { response.push(front, iParts[0]); }
+            }
+            else { response.push(front, d1, middle, d2); }
+          }
         }
       }
     }

@@ -1,4 +1,4 @@
-import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient, parseNumeric } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations } from './AVAUtilities';
@@ -69,7 +69,8 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       selections: inBody.selections,
       qualifiers: inBody.qualifiers,
       textInput: inBody.textInput,
-      reprint: inBody.reprint
+      reprint: inBody.reprint,
+      overrideMethod: inBody.overrideMethod
     },
       inBody.original_request,
       inBody.request);
@@ -87,10 +88,13 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       }
       results.client = this_request.client;
       results.author = this_request.author;
-      results.preferred_method = this_request.method;
-      if (!('format' in this_request)) { this_request.format = { 'type': 'factForm' }; }
-      if ('subject' in this_request.format) { results.subject = this_request.format.subject; }
-      if ('method' in this_request.format) { results.preferred_method = this_request.format.method; }
+      results.preferred_method = this_request.overrideMethod || this_request.format?.method || this_request.method;
+      if (!('format' in this_request)) {
+        this_request.format = { 'type': 'factForm' };
+      }
+      if ('subject' in this_request.format) {
+        results.subject = this_request.format.subject;
+      }
       switch (this_request.format.type) {
         case 'mealOrder':
         case 'checklist':
@@ -379,11 +383,17 @@ export async function formatRequestDetails(body, summaryType) {
   if (body.textInput && (Object.keys(body.textInput).length > 0)) {
     textInput = Object.assign({}, body.textInput);
   }
-  let titleWords = body.subject;
-  if (!titleWords && body.format) { titleWords = body.format.subject; }
-  if (!titleWords && body.activityName) { titleWords = body.activityName; }
-  if (!titleWords) { titleWords = 'AVA Request'; }
-  else { titleWords = await resolveMessageVariables(titleWords, body); }
+  let titleWords;
+  if (body.subject) {
+    titleWords = (await resolveMessageVariables(body.subject, body)).replace(/\(.+\)/g, '').trim();
+  }
+  else if (body.format && body.format.subject) {
+    titleWords = (await resolveMessageVariables(body.format.subject, body)).replace(/\(.+\)/g, '').trim();
+  }
+  else if (body.activityName) {
+    titleWords = await resolveMessageVariables(body.activityName, body);
+  }
+  else { titleWords = 'AVA Request'; }
   if (body.reprint) { titleWords = '*** REPRINT ' + titleWords + ' ***'; };
 
   let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${titleWords}</span></h1>`;
@@ -396,14 +406,24 @@ export async function formatRequestDetails(body, summaryType) {
   let pRec = await getPerson(body.author);
 
   let authorName = await makeName(body.author);
-  let pName = body.onBehalfOf || authorName;
-  htmlMessage += `<h2 style = "color: black;" >${pName}`;
-  rawMessage += `${pName}\n`;
-  if (titleWords.toLowerCase().includes(pName.toLowerCase())) {
+  let pName = (body.onBehalfOf || authorName).replace(/\(.+\)/g, '').trim();  // this removes anything inside parenthesis
+  // does the title contain all of the words in the obo?
+  let tLower = titleWords.toLowerCase();
+  let oboWords = pName.toLowerCase().split(/\s+/);
+  let allWordsAppear = oboWords.every(oboWord => {
+    return (tLower.includes(oboWord));
+  });
+  if (!allWordsAppear) {
+    htmlMessage += `<h2 style = "color: black;" >${pName}`;
+    rawMessage += `${pName}\n`;
     pdfLine(`for ${pName}`, { style: 'normal', align: 'center', size: 'large' });
   }
 
   if (pRec.location) {
+    let locNum = parseNumeric(pRec.location);
+    if (locNum.hasNumbers) {
+      pRec.location = `Apt ${locNum.value}`;
+    }
     htmlMessage += `<br />${pRec.location}`;
     rawMessage += `${pRec.location}\n`;
     pdfLine(pRec.location, { align: 'center' });
@@ -412,16 +432,16 @@ export async function formatRequestDetails(body, summaryType) {
 
   if (!body.requestDate) { body.requestDate = new Date(); }
   let pDateTime = makeDate(body.requestDate).absolute;
-  let pTime = pDateTime + ' by ' + await makeName(body.author);
-  htmlMessage += `<p style = "color: black;">created: <strong>${pTime}</strong>`;
-  rawMessage += `${pTime}\n\r`;
-  if (pName.toLowerCase().includes(authorName.toLowerCase())) {
-    pdfLine(`created: ${pDateTime}`, { size: 'medium', align: 'center' });
-  }
-  else {
-    pdfLine(`created: ${pTime}`, { size: 'medium', align: 'center' });
-  }
 
+  // get creator info - most reliable spot is first characters of the request id
+  let creator_id = (body.request_id || body.requestID || body.author).split('~')[0];
+  if (creator_id !== body.author) {
+    pDateTime += ` by ${await makeName(creator_id)}`; 
+  }
+  htmlMessage += `<p style = "color: black;">created: <strong>${pDateTime}</strong>`;
+  rawMessage += `${pDateTime}\n\r`;
+  pdfLine(`created: ${pDateTime}`, { size: 'medium', align: 'center' });
+  
   for (let cTyp in pRec.messaging) {
     if ((cTyp in pRec) && (pRec[cTyp].trim() !== '')) {
       let cLab;
@@ -572,27 +592,35 @@ export async function formatRequestDetails(body, summaryType) {
   htmlMessage += `<div>***** END *****</div></p>`;
   rawMessage += `\n\r${refText}\n***** END *****`;
 
-  let s3Resp;
+  if (body.fileName && body.fileName.slice(-4) !== '.pdf') {
+    body.fileName += '.pdf';
+  }
+  let pdfInfo = {
+    s3Key: (body.fileName || `AVA_${body.requestID.replace('~', '_')}.pdf`),
+    s3Bucket: (body.S3_bucket || 'theseus-medical-storage')
+  };
   if (!body.multiPrint || body.multiPrint.lastDoc) {
     pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
-    await savePDF(doc, { local: !body.PDF, S3: !!body.PDF });
+    let this_method = body.overrideMethod || body.messaging?.format?.method;
+    let pdfResp = await savePDF(doc, pdfInfo, { local: !body.PDF, S3: true, onSave: this_method });
+    if (pdfResp.responseData.s3Resp) {
+      pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+    }
   }
-  return [htmlMessage, rawMessage, s3Resp];
+  return [htmlMessage, rawMessage, pdfInfo];
 }
 
-export async function savePDF(doc, options = {}) {
-  let pBlob = doc.output('blob');
+export async function savePDF(doc, pdfInfo, options = {}) {
   let s3Resp;
   let responseStatus = 400;
   let responseData = { message: [] };
-  let saveName = options.key || options.name || `AVA_${new Date().getTime()}`;
   if (options.S3) {
     let goodS3 = true;
     s3Resp = await s3
       .upload({
-        Bucket: (options.bucket || 'theseus-medical-storage'),
-        Key: saveName,
-        Body: pBlob,
+        Bucket: pdfInfo.s3Bucket,
+        Key: pdfInfo.s3Key,
+        Body: doc.output('blob'),
         ACL: 'public-read-write',
         ContentType: 'application/pdf'
       })
@@ -603,18 +631,18 @@ export async function savePDF(doc, options = {}) {
         responseStatus = 401;
         responseData.message = err.message;
       });
-    if (goodS3) {
+    if (goodS3 && options.onSave === 'print') {
       window.open(s3Resp.Location);
       responseStatus = 200;
       responseData.message.push(`S3 saved at ${s3Resp.Location}`);
       responseData.s3Resp = s3Resp;
     }
   }
-  if (options.local) {
-    doc.save(`${saveName}.PDF`);
+  if (options.local) {    
+    doc.save(pdfInfo.s3Key);
     responseStatus++;
-    responseData.message.push(`Locally saved as ${saveName}`);
-    responseData.saveName = `${saveName}.PDF`;
+    responseData.message.push(`Locally saved as ${pdfInfo.s3Key}`);
+    responseData.saveName = pdfInfo.s3Key;
   }
   return {
     responseStatus,
