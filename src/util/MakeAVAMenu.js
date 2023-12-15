@@ -458,7 +458,9 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   async function getCustomizations(pName) {
-    if (pName in customObj) { return [customObj[pName].color, customObj[pName].icon]; }
+    if (pName in customObj) {
+      return [customObj[pName].color, customObj[pName].icon];
+    }
     let cRec = await dbClient
       .get({
         Key: {

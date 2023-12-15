@@ -114,6 +114,9 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
       setTextInput(textInput);
       setForceRedisplay(!forceRedisplay);
     }
+    else {
+      updateReactData({ saving: false }, false);
+    }
   };
 
   const toggleCheckbox = (ndx) => {

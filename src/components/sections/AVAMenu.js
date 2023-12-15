@@ -11,7 +11,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { useCookies } from 'react-cookie';
-import IdleTimer from 'react-idle-timer';
+import { useIdleTimer } from 'react-idle-timer';
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import PatientDialog from '../dialogs/PatientDialog';
@@ -259,7 +259,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [pWidth, setPWidth] = React.useState(60);
 
   const [reactData, setReactData] = React.useState({
-    lastActiveTime: new Date()
+    lastActiveTime: new Date(),
+    idleState: true 
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -286,7 +287,36 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     height: `${(30 * user_fontSize)}px`
   };
 
-  let idleTimer = React.createRef();
+  const onIdle = () => {
+    cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
+    let now = new Date();
+    if ((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) {
+      window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
+    }
+    updateReactData({
+      idleState: true
+    }, false)
+    reset();
+  };
+
+  const onAction = () => {
+    let now = new Date();
+    if (reactData.idleState) {
+      cl(`Action at ${now.toLocaleString()}.  Was idle since ${new Date(getLastActiveTime()).toLocaleString()}`);
+    }
+    updateReactData({
+      lastActiveTime: now,
+      idleState: false 
+    }, false)
+    reset();
+  };
+
+  const { start, reset, getLastActiveTime } = useIdleTimer({
+    onIdle,
+    onAction,
+    timeout: msBeforeSleeping,
+    throttle: 500
+  })
 
   let nowTime = new Date().getTime();
 
@@ -382,9 +412,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         .promise()
         .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
-    if (idleTimer && idleTimer.current) {
-      idleTimer.current.start();
-    }
+    start();
   };
 
   async function putS3Object(pMediaData, pType) {
@@ -933,28 +961,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       p={2}
       fullScreen
     >
-      <React.Fragment>
-        {/* Idle timer always running */}
-        <IdleTimer
-          ref={idleTimer}
-          timeout={msBeforeSleeping}   // every "n" minutes
-          onActive={() => {
-            let now = new Date();
-            updateReactData({
-              lastActiveTime: now
-            }, false);
-            cl(`Active at ${now.toLocaleString()}.  Idle since ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
-          }}
-          onIdle={async () => {
-            cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
-            if ((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) {
-              window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
-            }
-          }}
-          startOnMount={true}
-          debounce={250}
-        />
-
+      <React.Fragment>        
         {/* Header with Avatar, Message, and VertMenu */}
         <Box
           display='flex' flexDirection='row'

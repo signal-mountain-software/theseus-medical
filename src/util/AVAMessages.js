@@ -6,6 +6,7 @@ import { getServiceRequests } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
+import { makeSRPrint, savePDFBlob } from './AVAPrintServiceRequest';
 
 let page = {};
 let pdfCurrent = {};
@@ -77,9 +78,17 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
     if (inBody.hasOwnProperty('attachments')) {
       requestInfo.attachments = inBody.attachments.map(a => { return a.Location; });
     }
+    let needMultiPrint = (messageList.length > 1);
+    let firstDoc = true;
+      
     do {
       let this_request = Object.assign({}, requestInfo, messageList.shift());   // this removes the message from the messageList
-      // cl({ 'in prepare messages': { this_request } });
+      if (needMultiPrint) {
+        this_request.multiPrint = {
+          firstDoc,
+          lastDoc: (messageList.length === 0)
+        };
+      }
       results = {};
       if (Array.isArray(this_request.recipientList)) { results.recipientList = [...this_request.recipientList]; }
       else { results.recipientList = [this_request.recipientList]; }
@@ -100,6 +109,12 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
         case 'checklist':
         case 'factForm': {
           [results.htmlText, results.messageText, results.pdfInfo] = await formatRequestDetails(this_request, this_request.format.type);
+          let SRPrint_response = await makeSRPrint(this_request);
+          let pdfInfo = {
+            s3Key: `AVA_RayTest.pdf`, size: 'medium',
+            s3Bucket: 'theseus-medical-storage'
+          };
+          await savePDFBlob(SRPrint_response[0].mealOrder.output, pdfInfo, { S3: true, onSave: 'print' }); 
           break;
         }
         case 'mealTicket': {
@@ -116,7 +131,7 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
         }
         case 'plainText':
         default: {
-          results.messageText = await resolveMessageVariables(this_request.format.text, this_request) + ' %%custom_text%%';
+          results.messageText = await resolveMessageVariables(this_request.format.text, this_request) + ' ** AVA **';
           results.htmlText = results.messageText;
         }
       }
@@ -127,8 +142,8 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       if (results.subject) {
         results.subject = await resolveMessageVariables(results.subject, this_request);
       }
-      results.messageText = results.messageText.replace('%%custom_text%%', '').trim();
-      results.htmlText = results.htmlText.replace('%%custom_text%%', '').trim();
+      results.messageText = results.messageText.replace('** AVA **', '').trim();
+      results.htmlText = results.htmlText.replace('** AVA **', '').trim();
 
       if (requestInfo.hasOwnProperty('attachments')) {
         results.htmlText += '<br>';
@@ -151,6 +166,7 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       }
 
       returnResults.push(results);
+      firstDoc = false;
     } while (messageList.length > 0);
   } while (bodyList.length > 0);
 
@@ -249,8 +265,8 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
           }
           case 'add_message': {
             let custom_text = await resolveMessageVariables(rule.value, requestToTest);
-            results.messageText = results.messageText.replace('%%custom_text%%', `${custom_text} %%custom_text%%`);
-            results.htmlText = results.htmlText.replace('%%custom_text%%', `${custom_text} %%custom_text%%`);
+            results.messageText = results.messageText.replace('** AVA **', `${custom_text} ** AVA **`);
+            results.htmlText = results.htmlText.replace('** AVA **', `${custom_text} ** AVA **`);
             break;
           }
           case 'skip_to': {
@@ -375,6 +391,7 @@ export async function resolveMessageVariables(inString, body) {
 };
 
 export async function formatRequestDetails(body, summaryType) {
+  // Standard 8.5 x 11 output for a Request of any type
   // Prep the PDF output
   if (!body.margin) { body.margin = {}; }
   await pdfLaunch(Object.assign({}, body, { client_id: (body.client || body.client_id) }));
@@ -383,24 +400,11 @@ export async function formatRequestDetails(body, summaryType) {
   if (body.textInput && (Object.keys(body.textInput).length > 0)) {
     textInput = Object.assign({}, body.textInput);
   }
-  let titleWords;
-  if (body.subject) {
-    titleWords = (await resolveMessageVariables(body.subject, body)).replace(/\(.+\)/g, '').trim();
-  }
-  else if (body.format && body.format.subject) {
-    titleWords = (await resolveMessageVariables(body.format.subject, body)).replace(/\(.+\)/g, '').trim();
-  }
-  else if (body.activityName) {
-    titleWords = await resolveMessageVariables(body.activityName, body);
-  }
-  else { titleWords = 'AVA Request'; }
-  if (body.reprint) { titleWords = '*** REPRINT ' + titleWords + ' ***'; };
 
-  let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${titleWords}</span></h1>`;
-  let rawMessage = `${titleWords}\n\r`;
+  let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${page.title}</span></h1>`;
+  let rawMessage = `${page.title}\n\r`;
   pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
-  pdfLine(titleWords, { style: 'bold', size: 'large', align: 'center', after: 1 });
-
+  pdfLine(page.title, { style: 'bold', size: 'large', align: 'center', after: 1 });
 
   // Person
   let pRec = await getPerson(body.author);
@@ -408,7 +412,7 @@ export async function formatRequestDetails(body, summaryType) {
   let authorName = await makeName(body.author);
   let pName = (body.onBehalfOf || authorName).replace(/\(.+\)/g, '').trim();  // this removes anything inside parenthesis
   // does the title contain all of the words in the obo?
-  let tLower = titleWords.toLowerCase();
+  let tLower = page.title.toLowerCase();
   let oboWords = pName.toLowerCase().split(/\s+/);
   let allWordsAppear = oboWords.every(oboWord => {
     return (tLower.includes(oboWord));
@@ -457,31 +461,24 @@ export async function formatRequestDetails(body, summaryType) {
   }
   pdfDown(2);
 
-  htmlMessage += '</p><h2 style = "color: black;" >%%custom_text%%</h2>';
-  rawMessage += '\n\r%%custom_text%%\n\r';
+  htmlMessage += '</p><h2 style = "color: black;" >** AVA **</h2>';
+  rawMessage += '\n\r** AVA **\n\r';
 
   let spaceBetweenLines = 25;
   if (body.selections.length > 7) { spaceBetweenLines = 125 / (body.selections.length - 2); }
 
   let renderCheckBox = '';
   if (summaryType === 'mealOrder') {
-    let pTag = '<h2 style = "color: black;" >';
-    let pXTag = '';
     for (let x = 0; x < body.selections.length; x++) {
       let aVal = body.selections[x];
-      if (['Dinner', 'Lunch', 'Pick-up', 'Deliver (+$5)', 'Deliver ($5)'].includes(aVal.trim())) {
-        htmlMessage += pTag + aVal.trim();
+      if (['Dinner', 'Lunch', 'Pick-up', 'Deliver'].includes(aVal.split(/\s+/)[0])) {
+        htmlMessage += `<h2 style="color: black;">${aVal.trim()}</h2>`;
         rawMessage += `${aVal}\r\n`;
-        pdfLine(aVal);
-        pXTag = '</h2>';
-        pTag = ' / ';
+        pdfLine(aVal); 
         body.selections.splice(x, 1);
         x--;
       }
     };
-    htmlMessage += `${pXTag}<h2 style = "color: black;" >Order filled by: _______________________</h2>`;
-    rawMessage += '\n\nOrder filled by: ________________________\n\n';
-
     renderCheckBox = '&#8414;   ';
     htmlMessage += `<h2 style="color: black;">Order Details</h2><dl style="padding-left: 40px;">`;
     pdfLine('Order Details', { style: 'bold', before: 1, align: 'left' });
@@ -570,12 +567,15 @@ export async function formatRequestDetails(body, summaryType) {
     }
   }
 
+  htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
+
   // Finish
   if (summaryType === 'mealOrder') {
     pdfStyle('reset');
     pdfLine('Order filled by: ________________________', { before: 4, after: 1 });
+    htmlMessage += `<h2 style = "color: black;" >Order filled by: _______________________</h2>`;
+    rawMessage += '\n\nOrder filled by: ________________________\n\n';
   }
-  htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
 
   let refText = `AVA reference: ${body.client || body.client_id}/${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})`;
   if (body.local_key) {
@@ -966,9 +966,28 @@ async function pdfLaunch(body) {
   page.right = page.width - page.margin.right;
   page.centerPoint = page.width / 2;
   page.printableArea = page.width - page.margin.left - page.margin.right;
-  page.title = body.pdf.title || 'AVA Senior Living';
+  
+  if (body.pdf?.title) {
+    page.title = (await resolveMessageVariables(body.pdf.title, body)).replace(/\(.+\)/g, '').trim();
+  }
+  else if (body.subject) {
+    page.title = (await resolveMessageVariables(body.subject, body)).replace(/\(.+\)/g, '').trim();
+  }
+  else if (body.format?.subject) {
+    page.title = (await resolveMessageVariables(body.format.subject, body)).replace(/\(.+\)/g, '').trim();
+  }
+  else if (body.activityName) {
+    page.title = await resolveMessageVariables(body.activityName, body);
+  }
+  else {
+    page.title = 'AVA Senior Living';
+  }
+  if (body.reprint) {
+    page.title = `*** REPRINT ${page.title} ***`;
+  };
   page.info.title = page.title;
   clt({ page });
+  
   let nowTime = makeDate(new Date());
   pdfCurrent = {
     yPos: page.margin.top,
