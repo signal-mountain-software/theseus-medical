@@ -486,6 +486,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
   // if you happen to include a person_id in the pGroups list, getMemberList returns those too
   let returnArray = [];
   let foundIDs = [];
+  let foundGroups = {};
   // if options.exclude is TRUE, getMemberList respects directory_option === exclude 
   // otherwise, people records are return without regard to the directory_option
   let checkExclude = false;
@@ -546,8 +547,20 @@ export async function getMemberList(pGroups, pClient_id, options) {
             if (options && options.withSession) {
               i.session = await getSession(i.person_id);
             }
+            // if you belong to a group that has a parent, you belong to the parent
+            if (i.groups) {
+              for (let g = 0; g < i.groups.length; g++) {
+                if (!foundGroups.hasOwnProperty(i.groups[g])) {
+                  foundGroups[i.groups[g]] = await getGroup(i.groups[g], client);
+                }
+                if ((foundGroups[i.groups[g]]?.belongs_to) && (!i.groups.includes(foundGroups[i.groups[g]].belongs_to))) {
+                  i.groups.push(foundGroups[i.groups[g]].belongs_to);
+                }
+              }
+            }
             returnArray.push(i);
           }
+          
         }
       };
     }
