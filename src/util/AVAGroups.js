@@ -537,7 +537,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
       });
     if (recordExists(gPeopleRecs)) {
       for (let p = 0; p < gPeopleRecs.Items.length; p++) {
-        let i = gPeopleRecs.Items[p];
+        let i = deepCopy(gPeopleRecs.Items[p]);
         if (!foundIDs.includes(i.person_id)) {
           foundIDs.push(i.person_id);
           if (!checkExclude || (i.directory_option !== 'exclude')) {
@@ -560,7 +560,6 @@ export async function getMemberList(pGroups, pClient_id, options) {
             }
             returnArray.push(i);
           }
-          
         }
       };
     }
