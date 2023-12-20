@@ -1,6 +1,5 @@
 import { cl, clt, recordExists, makeArray, getCustomizations, dbClient, deepCopy } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
-import { SET_ACCESSLIST } from '../contexts/Session/actions';
 
 let profile, session;
 let groupRecs = {};
@@ -50,6 +49,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   let myPeopleRec = await getPerson(person_id);
   let myClass;
   let accessList = {};
+  let proxyList = [];
   if (myPeopleRec.account_class) {
     myClass = myPeopleRec.account_class;
   }
@@ -75,10 +75,6 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       }
     }
   }
-  accessList.accountClass = {
-    class: myClass,
-    client_id: pClient_id
-  };
   // Now get a list of people that I can access
   let myGroupAccessLevel = {};
   if (myClass !== 'inactive') {
@@ -195,6 +191,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         }
         if (myMaxAccessLevelToThisPerson > 0) { accessLevel = accessLevelTable[myMaxAccessLevelToThisPerson]; }
         if (accessLevel !== 'none') {
+          if ((accessLevel === 'proxy') || (accessLevel === 'full')) {
+            proxyList.push(p.person_id);
+          };
           accessList[client_id].list.push({
             person_id: p.person_id,
             name: p.name,
@@ -202,6 +201,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
             member_of: ((personFlavor < 99) ? groupHierarchy[personFlavor] : null),
             last: p.name.last,
             display_name: `${p.name.first} ${p.name.last}`,
+            groups: p.groups,
             location: p.location,
             directory_option: p.directory_option,
             messaging: p.messaging,
@@ -243,7 +243,6 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       }
     }
   }
-  dispatch({ type: SET_ACCESSLIST, payload: accessList });
   return accessList;
 }
 
@@ -385,8 +384,8 @@ export async function getGroupsBelongTo(client_id, person_id, options = {}) {
     for (let rejectGroup in rejectObject) {
       if (profile.groups.includes(rejectGroup)) {
         returnObject[rejectGroup] = {
-          group_name: rejectGroup.group_name,
-          group_id: rejectGroup.group_id,
+          group_name: rejectObject[rejectGroup].group_name,
+          group_id: rejectObject[rejectGroup].group_id,
           role: 'member'
         };
       }

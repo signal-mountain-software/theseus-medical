@@ -634,6 +634,7 @@ export async function switchActiveAccount(session, newClient, newPatient) {
     })
     .promise()
     .catch(error => { console.log(`caught error updating SessionsV2; error is:`, error); });
+  sessionStorage.removeItem('AVASessionData');
   let jumpTo = window.location.href.replace('refresh', 'theseus');
   window.location.replace(jumpTo);
 };

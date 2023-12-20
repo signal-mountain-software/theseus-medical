@@ -323,8 +323,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});
 
-    // Temp - make menu refresh on every reload
-    reload = true;
+    // reload = true;
 
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
@@ -343,12 +342,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (recordExists(menuRec)) {
       setSectionOpen(menuRec.Item.AVA_section_open || {});
       if ((menuRec.Item.AVA_main_menu.length > 0) && !reload) {
-        // cl(`Used cached menu at ${new Date().toLocaleString()}.`);
         setMainMenu(menuRec.Item.AVA_main_menu);
         return menuRec.Item.AVA_main_menu;
       }
     }
 
+    // we are going to have to build their menu for the first time...
     let forceRefresh = true;
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh, state);
 
@@ -926,24 +925,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       }
     }
     return false;
-    // return createAccountAuthority(); 
   }
 
-  function createAccountAuthority() {
-    if (state.user.account_class) {
-      if (['master', 'support', 'admin'].includes(state.user.account_class)) {
-        return true;
-      }
-    }
-    if (state.accessList && state.accessList.accountClass && state.accessList.accountClass.client_id === state.session.client_id) {
-      if (['master', 'support', 'admin'].includes(state.accessList.accountClass.class)) {
-        return true;
-      }
-    }
-    else {
-      return false;
-    }
-  }
+  const createAccountAuthority = () => {
+    return (state.user?.account_class && (['master', 'support', 'admin'].includes(state.user.account_class)));
+  };
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
@@ -1492,6 +1478,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             onClose={(updatedPerson) => {
               setShowProfileEdit(false);
               if (updatedPerson && updatedPerson.person_id) {
+                sessionStorage.removeItem('AVASessionData');
                 window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
               }
             }}

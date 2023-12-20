@@ -11,7 +11,6 @@ import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import Button from '@material-ui/core/Button';
 
-import Slide from '@material-ui/core/Slide';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -178,8 +177,6 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
-
 export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }) => {
   const [activity_filter, setActivityFilter] = React.useState('');
   const [lower_activity_filter, setLowerFilter] = React.useState('');
@@ -239,7 +236,6 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
       open={true}
       fullWidth
       variant={'elevation'} elevation={2}
-      TransitionComponent={Transition}
     >
       {Object.keys(groupsManagedObject).length === 0
         ?

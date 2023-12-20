@@ -1,5 +1,5 @@
 import React from 'react';
-import { lambda, cl, sentenceCase, switchActiveAccount, listFromArray } from '../../util/AVAUtilities';
+import { lambda, cl, sentenceCase, switchActiveAccount, listFromArray, makeArray } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
@@ -195,7 +195,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pRole = '', onReset }) => {
+export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, pGroup, pGroupRec, pGroupName, pStyle = 'full', pRole = '', onReset }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -441,17 +441,20 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   }
 
   let nameXRef;
-  function makeResponsibleLines(respArray) {
+  function makeResponsibleLines(respIn) {
+    let respArray = makeArray(respIn);
     if (respArray.length === 0) {
       return '';
     }
-    if (!nameXRef && state.accessList) {
+    if (!nameXRef) {
       nameXRef = {};
-      state.accessList[state.session.client_id].list.forEach(a => {
-        if (a.access !== 'none') {
-          nameXRef[a.person_id] = (`${a.name.first} ${a.name.last}`).trim();
-        }
-      });
+      if (state.accessList?.[state.session.client_id]) {
+        state.accessList[state.session.client_id].list.forEach(a => {
+          if (a.access !== 'none') {
+            nameXRef[a.person_id] = (`${a.name.first} ${a.name.last}`).trim();
+          }
+        });
+      }
     }
     let respFiltered = respArray.filter(r => {
       return (nameXRef.hasOwnProperty(r.trim()));
@@ -582,18 +585,26 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 setshowSuperSize(true);
                               }}
                               display='flex' flexDirection='column'>
-                              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
-                                <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{this_item.name.first}</Typography>
-                              </Box>
-                              {adminAccount && this_item.session && this_item.session.responsible_for &&
+                              {(pStyle !== 'short')
+                                ?
+                                <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                                  <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
+                                  <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{this_item.name.first}</Typography>
+                                </Box>
+                                :
+                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                  <Typography style={AVATextStyle({ size: 1.5 })} >{this_item.name.first}</Typography>
+                                  <Typography style={AVATextStyle({ size: 1.5, bold: true, margin: { left: 0.5 } })}>{this_item.name.last || this_item.display_name}</Typography>
+                                </Box>
+                              }
+                              {adminAccount && ((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for)) &&
                                 <Box display='flex' flexDirection='column'>
-                                  <Typography id={`resp_line`} key={`resp_line`} style={AVATextStyle({ size: 0.7, margin: { top: -0.8, bottom: 1.5 } })}>
-                                    {makeResponsibleLines(this_item.session.responsible_for)}
+                                  <Typography id={`resp_line`} key={`resp_line`} style={AVATextStyle({ size: 0.7, margin: { top: (pStyle !== 'short' ? -0.8 : 0), bottom: (pStyle !== 'short' ? 1.5 : 0.5) } })}>
+                                    {makeResponsibleLines((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for))}
                                   </Typography>
                                 </Box>
                               }
-                              {multiGroups && this_item.hasOwnProperty('member_of') &&
+                              {(pStyle !== 'short') && multiGroups && this_item.hasOwnProperty('member_of') &&
                                 <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 1, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
                               }
                               {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
@@ -627,27 +638,29 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               </Box>
                             </Box>
                           </Box>
-                          <Box
-                            display='flex'
-                            flexDirection='row'
-                            justifyContent='space-between'
-                            alignItems='center'
-                          >
-                            <Box>
-                              <Box
-                                component="img"
-                                ml={isMobile ? 2 : 5}
-                                mr={1}
-                                border={1}
-                                minHeight={100}
-                                maxHeight={200}
-                                minWidth={isMobile ? 100 : 150}
-                                maxWidth={isMobile ? 100 : 150}
-                                alt={''}
-                                src={getImage(this_item.person_id)}
-                              />
+                          {(pStyle !== 'short') &&
+                            <Box
+                              display='flex'
+                              flexDirection='row'
+                              justifyContent='space-between'
+                              alignItems='center'
+                            >
+                              <Box>
+                                <Box
+                                  component="img"
+                                  ml={isMobile ? 2 : 5}
+                                  mr={1}
+                                  border={1}
+                                  minHeight={100}
+                                  maxHeight={200}
+                                  minWidth={isMobile ? 100 : 150}
+                                  maxWidth={isMobile ? 100 : 150}
+                                  alt={''}
+                                  src={getImage(this_item.person_id)}
+                                />
+                              </Box>
                             </Box>
-                          </Box>
+                          }
                         </Box>
                       </Box>
                     </Paper>

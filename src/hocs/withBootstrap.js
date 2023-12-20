@@ -1,6 +1,6 @@
 import React from 'react';
 import { dbClient, lambda, makeArray, getCustomizations, deepCopy } from '../util/AVAUtilities';
-import { isMemberOf, accountAccess, getMemberList, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
+import { accountAccess, getAllGroups, getGroupsBelongTo } from '../util/AVAGroups';
 import { makeName } from '../util/AVAPeople';
 import { getAllOccurrences } from '../util/AVACalendars';
 import { sendMessages } from '../util/AVAMessages';
@@ -10,6 +10,7 @@ import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
 import { AVADefaults, AVATextStyle } from '../util/AVAStyles';
 import AVAConfirm from '../components/forms/AVAConfirm';
+import MakeAVAMenu from '../util/MakeAVAMenu';
 
 import Box from '@material-ui/core/Box';
 import Button from '@material-ui/core/Button';
@@ -23,7 +24,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
-import { SET_PATIENT, SET_PROFILE, SET_GROUPS, SET_CALENDAR, SET_SESSION, SET_USER } from '../contexts/Session/actions';
+import { SET_PATIENT, SET_PROFILE, SET_GROUPS, SET_ACCESSLIST, SET_CALENDAR, SET_SESSION, SET_USER } from '../contexts/Session/actions';
 import AVATextInput from '../components/forms/AVATextInput';
 
 const useStyles = makeStyles(theme => ({
@@ -71,10 +72,10 @@ export default Component => props => {
   const [messageList, setMessageList] = React.useState([]);
 
   const [reactData, setReactData] = React.useState({
-    currentClientLogo: 
+    currentClientLogo:
       ((state.session && state.session.client_logo)
-          ? state.session.client_logo
-          : process.env.REACT_APP_AVA_LOGO
+        ? state.session.client_logo
+        : process.env.REACT_APP_AVA_LOGO
       )
   });
 
@@ -84,8 +85,11 @@ export default Component => props => {
         ...prevValues,
         [oKey]: newData[oKey],
       }));
-    }    
+    }
   };
+
+  let bootState = {};
+  let belongsTo;
 
   const allParams = useParams();
   function useParams() {
@@ -400,7 +404,7 @@ export default Component => props => {
             >
               <Box
                 component="img"
-                mb={2}                
+                mb={2}
                 minHeight={'35%'}
                 maxHeight={'35%'}
                 alt=''
@@ -938,7 +942,7 @@ export default Component => props => {
       sessionRec.Item.client_icon = logoRec.Item.icon;
       updateReactData({
         currentClientLogo: sessionRec.Item.client_icon
-      })
+      });
     }
     setDoneTrying(true);
     return [true, sessionRec.Item];
@@ -1108,7 +1112,12 @@ export default Component => props => {
 
   async function launchAVA(pLaunchUser) {
     // Get the sessionlaunchAVA
-    let [goodSession, currentSession, dbError] = await getSessionV2(pLaunchUser);
+    let goodSession, currentSession, dbError;
+    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+    [goodSession, currentSession, dbError] = await getSessionV2(pLaunchUser);
+    if (currentSession.customizations && currentSession.customizations.font_size) {
+      AVADefaults({ fontSize: Math.max(currentSession.customizations.font_size, 1) });
+    }
     if (!goodSession) {
       let eMessage;
       if (dbError) {
@@ -1126,7 +1135,14 @@ export default Component => props => {
       return false;
     }
     // Get the User's profile (info about the logged in person)
-    let [goodUser, currentProfile] = await getPerson(pLaunchUser);
+    let goodUser, currentProfile;
+    if (sessionObject && (sessionObject.currentProfile.person_id === pLaunchUser)) {
+      goodUser = true;
+      currentProfile = sessionObject.currentProfile;
+    }
+    else {
+      [goodUser, currentProfile] = await getPerson(pLaunchUser);
+    }
     if (!goodUser) {
       let eMessage = `No People record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
       await logAccessAttempt(pLaunchUser, '', false, eMessage);
@@ -1137,8 +1153,6 @@ export default Component => props => {
       setDoneTrying(true);
       return false;
     }
-    // create an accessList of accounts you are allowed to see/view/proxy
-    await accountAccess(pLaunchUser, currentSession.client_id, dispatch);
     // Get the Patient's profile (info about the active person - usually the same as the logged in user)
     let currentPatient;
     if (currentSession.patient_id === pLaunchUser) {
@@ -1165,55 +1179,62 @@ export default Component => props => {
       }
     }
     // Get Client Defaults
-    var customizationsRec = await dbClient
-      .query({
-        KeyConditionExpression: 'client_id = :c',
-        ExpressionAttributeValues: { ':c': currentSession.client_id },
-        TableName: "Customizations",
-      })
-      .promise()
-      .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
-    if (recordExists(customizationsRec)) {
-      for (let c = 0; c < customizationsRec.Items.length; c++) {
-        let cRec = customizationsRec.Items[c];
-        switch (cRec.custom_key) {
-          case 'logo': {
-            currentSession.client_logo = cRec.icon;
-            break;
-          }
-          case 'client_name': {
-            currentSession.client_name = cRec.customization_value;
-            break;
-          }
-          case 'group_assignments': {
-            currentSession.group_assignments = cRec.customization_value;
-            break;
-          }
-          case 'greeting':
-          case 'greetings': {
-            let today = new Date();
-            let this_year = today.getFullYear();
-            let this_month = today.getMonth() + 1;
-            let this_day = today.getDate();
-            let mmdd = `${this_month}.${this_day}`;
-            let yymmdd = `${this_year % 100}.${mmdd}`;
-            if (cRec.customization_value.hasOwnProperty(yymmdd)) {
-              currentSession.custom_greeting = cRec.customization_value[yymmdd];
+    if (!currentSession || !currentSession.client_name) {
+      var customizationsRec = await dbClient
+        .query({
+          KeyConditionExpression: 'client_id = :c',
+          ExpressionAttributeValues: { ':c': currentSession.client_id },
+          TableName: "Customizations",
+        })
+        .promise()
+        .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
+      if (recordExists(customizationsRec)) {
+        for (let c = 0; c < customizationsRec.Items.length; c++) {
+          let cRec = customizationsRec.Items[c];
+          switch (cRec.custom_key) {
+            case 'logo': {
+              currentSession.client_logo = cRec.icon;
+              updateReactData({
+                currentClientLogo: cRec.icon
+              });
+              break;
             }
-            else if (cRec.customization_value.hasOwnProperty(mmdd)) {
-              currentSession.custom_greeting = cRec.customization_value[mmdd];
+            case 'client_name': {
+              currentSession.client_name = cRec.customization_value;
+              break;
             }
-            break;
-          }
-          default: {
-            if (cRec.customization_value) {
-              currentSession[cRec.custom_key] = cRec.customization_value;
+            case 'group_assignments': {
+              currentSession.group_assignments = cRec.customization_value;
+              break;
             }
-            break;
+            case 'greeting':
+            case 'greetings': {
+              let today = new Date();
+              let this_year = today.getFullYear();
+              let this_month = today.getMonth() + 1;
+              let this_day = today.getDate();
+              let mmdd = `${this_month}.${this_day}`;
+              let yymmdd = `${this_year % 100}.${mmdd}`;
+              if (cRec.customization_value.hasOwnProperty(yymmdd)) {
+                currentSession.custom_greeting = cRec.customization_value[yymmdd];
+              }
+              else if (cRec.customization_value.hasOwnProperty(mmdd)) {
+                currentSession.custom_greeting = cRec.customization_value[mmdd];
+              }
+              break;
+            }
+            default: {
+              if (cRec.customization_value) {
+                currentSession[cRec.custom_key] = cRec.customization_value;
+              }
+              break;
+            }
           }
         }
       }
     }
+
+    belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.user_id, {});
 
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {
@@ -1236,6 +1257,13 @@ export default Component => props => {
     dispatch({ type: SET_USER, payload: currentProfile });
     dispatch({ type: SET_PATIENT, payload: currentPatient });
 
+    bootState = {
+      session: currentSession,
+      profile: currentProfile,
+      user: currentProfile,
+      patient: currentPatient
+    };
+
     let sessionInfo = await Auth
       .currentSession()
       .catch(e => {
@@ -1250,7 +1278,7 @@ export default Component => props => {
     updateSession(currentSession.session_id, currentSession, currentPatient, currentProfile, currentSession.last_login, currentSession.url_parameters, 'AVA Launch', sessionInfo);
 
     // synchronous load other data
-    loadSyncInfo(currentSession);
+    loadSyncInfo(currentSession, currentPatient);
 
     putValidationCookie();
     setAVAReady(true);
@@ -1259,42 +1287,29 @@ export default Component => props => {
     return true;
   }
 
-  function loadSyncInfo(workSession) {
+  async function loadSyncInfo(workSession, this_patient) {
     console.log(`in loadSyncInfo`);
     let pSession = deepCopy(workSession);
     let groupsObj = {};
     let membersObj = {};
-    let belongsObj = {};
-    getMemberList(['*all'], pSession.client_id, { "sort": true, "exclude": false, "withSession": true })
-      .then(members => {
-        dispatch({ type: SET_GROUPS, payload: Object.assign(groupsObj, belongsObj, members) });
-        console.log(`done with loadSyncInfo Members. Retrieved members keys as ${Object.keys(members)}`);
-        membersObj = members;
+    let aPromise = accountAccess(pSession.user_id, pSession.client_id, dispatch)
+      .then(accessList => {
+        dispatch({ type: SET_ACCESSLIST, payload: accessList });
+        bootState.accessList = accessList;
+        console.log(`done with loadSyncInfo AccessList.`);
       })
       .catch(error => {
-        console.log(`error in loadSyncInfo Members. Message is ${error.message}`);
+        console.log(`error in loadSyncInfo AccessList. Message is ${error.message}`);
       });
-    getAllGroups(pSession.patient_id, pSession.client_id)
+    let cPromise = getAllGroups(pSession.patient_id, pSession.client_id)
       .then(groups => {
-        dispatch({ type: SET_GROUPS, payload: Object.assign(belongsObj, membersObj, groups) });
-        getGroupsBelongTo(pSession.client_id, pSession.user_id, { allGroups: groups, sort: true, account_class: pSession.adminAccount ? 'master' : 'local' })
-          .then(belongsTo => {
-            dispatch({ type: SET_GROUPS, payload: Object.assign(membersObj, groupsObj, { belongsTo }) });
-            console.log(`done with loadSyncInfo Belongs to. Retrieved belongsto keys as ${Object.keys(belongsTo)}`);
-            belongsObj = { belongsTo };
-          })
- //         .catch(error => {
- //           console.log(`error in loadSyncInfo Belongs to. Message is ${error.message}`);
- //         });
+        dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }, membersObj, groups) });
         console.log(`done with loadSyncInfo Groups. Retrieved groups keys as ${Object.keys(groups)}`);
         groupsObj = groups;
-      })
- //     .catch(error => {
- //       console.log(`error in loadSyncInfo Groups. Message is ${error.message}`);
- //     });
-    
+      });
+
     let rightNow = new Date();
-    getAllOccurrences(
+    let dPromise = getAllOccurrences(
       {
         client_id: pSession.client_id,
         start_date: rightNow,
@@ -1302,11 +1317,33 @@ export default Component => props => {
       },
     ).then(occList => {
       dispatch({ type: SET_CALENDAR, payload: occList });
+      bootState.calendar = occList;
       console.log(`done with loadSyncInfo Calendar. Loaded ${occList.length} ocurrence`);
     })
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
-      });;
+      });
+    await Promise.allSettled([aPromise, cPromise, dPromise])
+      .then(results => {
+        console.log(`All resolved; results are ${JSON.stringify(results)}`, 'Launching MakeAVAMenu');
+        bootState.groups = Object.assign({}, { belongsTo }, membersObj, groupsObj);
+        MakeAVAMenu(this_patient, pSession.client_id, screenQuiet, null, null, bootState);
+        let last_state = {
+          list: deepCopy(bootState.accessList[pSession.client_id].list)
+        };
+        console.log(`lastState size is approx ${JSON.stringify(last_state).length}`);
+        dbClient
+          .update({
+            Key: { session_id: pSession.user_id },
+            UpdateExpression: 'set last_state = :s',
+            ExpressionAttributeValues: { ":s": last_state },
+            TableName: "SessionsV2",
+          })
+          .promise()
+          .catch(error => {
+            console.log(`caught error updating SessionsV2; error is:`, error);
+          });
+      });
     return;
   }
 
@@ -1317,11 +1354,15 @@ export default Component => props => {
     if (groupObject.hasOwnProperty('admin')) { adminArray.push(...(makeArray(groupObject.admin))); }
     if (groupObject.hasOwnProperty('staff')) { adminArray.push(...(makeArray(groupObject.staff))); }
     if (adminArray.length === 0) { return true; }
-    for (let x = 0; x < adminArray.length; x++) {
-      if (await isMemberOf(currentSession.client_id, currentSession.user_id, adminArray[x])) { return true; }
-    }
-    return false;
+    return adminArray.some(g => {
+      return belongsTo.hasOwnProperty[g];
+    });
   }
+
+
+  function screenQuiet(statusMessage) {
+    return;
+  };
 
   function recordExists(recordId) {
     if (!recordId) { return false; }

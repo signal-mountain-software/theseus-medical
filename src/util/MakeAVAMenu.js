@@ -231,8 +231,9 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           let aPieces = this_activity.match(/~\[auth=.+|\]/g);
           let foundAt = aPieces.findIndex(p => { return (p === '~[auth=view]'); });
           if (foundAt > -1) {
-            if ((state.accessList[masterClient].groups.hasOwnProperty(this_group.group_id))
-              && (state.accessList[masterClient].groups[this_group.group_id] === 0)
+            if (!state.accessList
+              || ((state.accessList[masterClient].groups.hasOwnProperty(this_group.group_id))
+              && (state.accessList[masterClient].groups[this_group.group_id] === 0))
             ) {
               continue;
             }
@@ -727,7 +728,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           break;
         }
         case 'select': {
-          if (dValue === 'accessList') {
+          if (dValue === 'accessList' && state.accessList) {
             dValue = {
               'selectionList': state.accessList[state.session.client_id].shortList
             };
