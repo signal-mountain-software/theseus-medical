@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3 } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
@@ -25,6 +25,8 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 import DeleteIcon from '@material-ui/icons/Delete';
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import LinearProgress from '@material-ui/core/LinearProgress';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
@@ -133,7 +135,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       display: null,
       remembered: []
     },
-    columnList: []
+    columnList: [],
+    loadProgress: [],
+    attachmentList: [],
+    allowAttachments: false
   });
 
   const [records2Update, setRecords2Update] = React.useState([]);
@@ -290,6 +295,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               setAllowAddPeople(defaultValue.allowAddPeople);
               break;
             }
+            case ('allowAttachments'): {
+              updateReactData({ allowAttachments: true }, false);
+              break;
+            }
             case ('allowRemovePeople'): {
               setAllowRemovePeople(defaultValue.allowRemovePeople);
               break;
@@ -391,6 +400,91 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     }
     setForceRedisplay(!forceRedisplay);
+  };
+
+  const hiddenFileInput = React.useRef(null);
+  const handleFileUpload = event => {
+    hiddenFileInput.current.click();
+  };
+
+  let upload;
+  async function handleSaveFile(pTarget) {
+    let pType = pTarget.type;
+    upload = s3.upload({
+      partSize: 10 * 1024 * 1024,
+      queueSize: 4,
+      Bucket: 'theseus-medical-storage',
+      Key: pTarget.name,
+      Body: pTarget,
+      ACL: 'public-read-write',
+      ContentType: pType
+    });
+    let reactData_index = reactData.attachmentList.push({
+      Key: pTarget.name
+    }) - 1;
+    reactData.loadProgress[reactData_index] = {
+      loading: true,
+      fileName: '',
+      total: 1,
+      progress: 0
+    };
+    updateReactData({ loadProgress: reactData.loadProgress }, true);
+    let s3Resp = await performUpload();
+    reactData.attachmentList[reactData_index] = s3Resp;
+    if (!reactData.textInput) { reactData.textInput = { 's3file': s3Resp.Location }; }
+    else { reactData.textInput.s3file = s3Resp.Location; }
+    reactData.loadProgress[reactData_index] = {
+      loading: false,
+      fileName: '',
+      total: 1,
+      progress: 0
+    };
+    updateReactData({
+      loadProgress: reactData.loadProgress,
+      attachmentList: reactData.attachmentList,
+      textInput: reactData.textInput
+    }, true);
+    return s3Resp;
+
+    function performUpload() {
+      return new Promise(function (resolve, reject) {
+        upload
+          .send((err, good) => {
+            if (err) {
+              if (err.code === 'RequestAbortedError') {
+                enqueueSnackbar(`AVA stopped loading at your request.`, { variant: 'error', persist: false });
+              }
+              else {
+                enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+              }
+              reject({});
+            }
+            else {
+              resolve(good);
+            }
+          });
+        upload.on('httpUploadProgress', progress => {
+          if (reactData.loadProgress[reactData_index].loading === 'abort') {
+            upload.abort();
+            reactData.loadProgress.splice(reactData_index, 1);
+          }
+          else {
+            let pFactor = 1000;
+            do {
+              pFactor *= 10;
+            }
+            while (progress.total > (1000 * pFactor));
+            reactData.loadProgress[reactData_index] = {
+              loading: true,
+              fileName: progress.key,
+              total: (progress.total / pFactor),
+              progress: ((progress.loaded * 100) / progress.total)
+            };
+          }
+          updateReactData({ loadProgress: reactData.loadProgress }, true);
+        });
+      });
+    };
   };
 
   const handleChangeTextField = (vText, columnNumber, rowNumber) => {
@@ -525,6 +619,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = titleCase(vText);
     updateReactData({ columnList: reactData.columnList }, true);
   };
+
+  function loadingInProgress(index = 'all') {
+    if (!reactData.loadProgress) {
+      return false;
+    }
+    if (index !== 'all') {
+      return (reactData.loadProgress[index] && reactData.loadProgress[index].loading);
+    }
+    else {
+      return (reactData.loadProgress.some(i => {
+        return (i.loading);
+      }));
+    }
+  }
 
   function resetTitleName() {
     let workingTitle = {};
@@ -807,6 +915,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   async function checkExistingRequests(request_key) {
     // Does this person already have a request for this requestype and foreignkey?
+    if (!request_key.foreign_key || (request_key.foreign_key === 'noFKey')) {
+      return {
+        'status': 'make new'
+      };
+    }
     let existingRequest = await getServiceRequests(request_key);
     if (existingRequest.length > 0) {
       let requestAction = await orderWarning(request_key);
@@ -953,23 +1066,26 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           || (!Array.isArray(fact.messaging) && (fact.messaging.format && (fact.messaging.format.type !== 'mealTicket')))) {
           svc_messaging = fact.messaging;
         }
-        let result = await putServiceRequest(
-          {
-            client: state.session.client_id,
-            author: this_column.person_id || state.session.patient_id,
-            proxy_user: state.session.user_id,
-            requestType: this_column.requestType,
-            activity_key: this_column.activity_key,
-            onBehalfOf: oBo,
-            foreign_key: this_column.foreignKey,
-            request: {
-              selections,
-              options,
-              textInput
-            },
-            messaging: svc_messaging,
-            local_key
-          });
+        let putSR = {
+          client: state.session.client_id,
+          author: this_column.person_id || state.session.patient_id,
+          proxy_user: state.session.user_id,
+          requestType: this_column.requestType,
+          activity_key: this_column.activity_key,
+          onBehalfOf: oBo,
+          foreign_key: this_column.foreignKey,
+          request: {
+            selections,
+            options,
+            textInput
+          },
+          messaging: svc_messaging,
+          local_key
+        };
+        if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
+          putSR.attachments = reactData.attachmentList;
+        }
+        let result = await putServiceRequest(putSR);
         local_key = result.requestRec.local_key;
         message_body = result.body;
         writtenRecords.push(result.requestRec);
@@ -1136,7 +1252,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         warningsExist = true;
       }
       else {
-        responseArray.push(`[bold]${columnName}`);
+        if (columnName) {
+          responseArray.push(`[bold]${columnName}`);
+        };
         responseArray.push(...selectionText);
         responseArray.push('[style = { bottom: 3 }] ');
         dataExists = true;
@@ -1608,6 +1726,52 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 </Box>
               ))
             }
+            { /* Show list of already uploaded attachments (if applicable) */}
+            {(reactData.attachmentList.length > 0) &&
+              <Box display='flex' flexDirection='column' pl={'24px'} justifyContent='flex-start'
+                alignItems='flex-start' key={'qrOpt_attachmentlist'}
+              >
+                <Typography className={classes.radioHead}>Attachments:</Typography>
+                {reactData.attachmentList.map((a, x) => (
+                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                    alignItems='center' key={`qrOpt_attachmentLine-${x}`}
+                  >
+                    <DeleteIcon
+                      className={classes.radioButton}
+                      size="small"
+                      onClick={() => {
+                        reactData.attachmentList.splice(x, 1);
+                        reactData.forceRedisplay = !reactData.forceRedisplay;
+                        if (loadingInProgress(x)) {
+                          reactData.loadProgress[x].loading = 'abort';
+                        }
+                        setReactData(reactData);
+                        setForceRedisplay(forceRedisplay => !forceRedisplay);
+                      }}
+                    />
+                    {loadingInProgress(x) &&
+                      <React.Fragment>
+                        <LinearProgress
+                          variant="determinate"
+                          className={classes.progressBar}
+                          style={{ width: reactData.loadProgress[x].total }}
+                          value={reactData.loadProgress[x].progress}
+                        />
+                      </React.Fragment>
+                    }
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.6,
+                        color: ((loadingInProgress(x)) ? 'gray' : 'black'),
+                        margin: { left: 0.3, right: 3 }
+                      })}
+                    >
+                      {a.Key}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            }
           </Paper>
         </React.Fragment>
       }
@@ -1720,6 +1884,28 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             >
               {'Exit'}
             </Button>
+            {reactData.allowAttachments &&
+              <React.Fragment>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'blue', color: 'white' }}
+                  startIcon={<CloudUploadIcon />}
+                  size='small'
+                  onClick={handleFileUpload}
+                >
+                  {'Attach'}
+                </Button>
+                <input
+                  type="file"
+                  style={{ display: 'none' }}
+                  ref={hiddenFileInput}
+                  onChange={async (target) => {
+                    await handleSaveFile(target.target.files[0]);
+                    setForceRedisplay(!forceRedisplay);
+                  }}
+                />
+              </React.Fragment>
+            }
             {(!factType || (factType !== 'list')) &&
               <Button
                 className={AVAClass.AVAButton}

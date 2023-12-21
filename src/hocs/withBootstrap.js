@@ -1327,7 +1327,10 @@ export default Component => props => {
       .then(results => {
         console.log(`All resolved; results are ${JSON.stringify(results)}`, 'Launching MakeAVAMenu');
         bootState.groups = Object.assign({}, { belongsTo }, membersObj, groupsObj);
-        MakeAVAMenu(this_patient, pSession.client_id, screenQuiet, null, null, bootState);
+        MakeAVAMenu(this_patient, pSession.client_id, screenQuiet, null, null, bootState)
+          .then(() => {
+            console.log(`Menu reload complete`);
+          });
         let last_state = {
           list: deepCopy(bootState.accessList[pSession.client_id].list)
         };

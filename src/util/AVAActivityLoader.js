@@ -328,10 +328,13 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     //     "~promptAll:Table Number"
     if (instruction[2]) {
       let this_instruction = instruction[2].trim();
-      let proxyOK =
-        ((sessionState.accessList[sessionState.session.client_id].count.full +
-          sessionState.accessList[sessionState.session.client_id].count.proxy +
-          sessionState.accessList[sessionState.session.client_id].count.view) > 0);
+      let proxyOK = true;
+      if (sessionState.accessList) {
+        proxyOK =
+          ((sessionState.accessList?.[sessionState.session.client_id]?.count.full +
+            sessionState.accessList?.[sessionState.session.client_id]?.count.proxy +
+            sessionState.accessList?.[sessionState.session.client_id]?.count.view) > 0);
+      }
       displayRowList.push({
         checkbox: false,
         required: false,

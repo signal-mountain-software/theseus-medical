@@ -515,7 +515,7 @@ export function formatServiceRequestDetails(pInput) {
       textInput: {}
     };
     pInput.rowDetails.forEach(row => {
-      if (row.isChecked) {
+      if (row.isChecked || row.textValue) {
         let selection = row.text.trim();
         this_request.selections.push(selection);
         this_request.options[selection] = row.qualSelections;
@@ -529,9 +529,14 @@ export function formatServiceRequestDetails(pInput) {
   let requestDetailsObj = {};
   if (this_request.selections) {
     this_request.selections.forEach(s => {
-      let [unTrimmed_selection, ...choices] = s.split(/[();,]/);
-      let selection = unTrimmed_selection.trim();
+      let selection = s;
+      let choices = [];
       let qualifiers = [];
+      if (!this_request.textInput[s]) {
+        let unTrimmed_selection;
+        [unTrimmed_selection, ...choices] = s.split(/[();,]/);
+        selection = unTrimmed_selection.trim();
+      }
       if (this_request.qualifiers?.[selection]) {
         Object.values(this_request.qualifiers?.[selection]).forEach(v => {
           qualifiers.push(...v);
@@ -640,7 +645,10 @@ export async function formatServiceRequest(inboundRequest) {
     }
     else {
       // assume that the args provided a reference to one or more SRs
-      let returnedRequests = await getServiceRequests({ request_id: this_request });
+      let returnedRequests = await getServiceRequests({
+        client_id: this_request.client,
+        request_id: this_request.requestID
+      });
       if (returnedRequests.length === 0) {
         return { error: true };
       }
@@ -654,8 +662,9 @@ export async function formatServiceRequest(inboundRequest) {
     }
 
     let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
-    if (!this_request.client_id) {
+    if (!this_request.client_id && !this_request.client) {
       this_request.client_id = sessionObject?.currentSession?.client_id;
+      this_request.client = sessionObject?.currentSession?.client_id;
     }
     if (this_request.request_type && !this_request.requestTypeRec) {
       this_request.requestTypeRec =
@@ -666,7 +675,7 @@ export async function formatServiceRequest(inboundRequest) {
     if (!this_request.activityRec) {
       this_request.activityRec =
         await getActivity(
-          this_request.client_id,
+          this_request.client_id || this_request.client,
           (this_request.activity_key || this_request.activity_id || this_request.requestTypeRec?.activity_code));
     }
 

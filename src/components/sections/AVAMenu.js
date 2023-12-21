@@ -260,7 +260,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const [reactData, setReactData] = React.useState({
     lastActiveTime: new Date(),
-    idleState: true 
+    idleState: true,
+    menu_reloaded: false
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -287,14 +288,35 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     height: `${(30 * user_fontSize)}px`
   };
 
-  const onIdle = () => {
+  const onIdle = async () => {
     cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
     let now = new Date();
     if ((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
+    else if (!reactData.menu_reloaded) {
+      let menuRec = await dbClient
+        .get({
+          Key: { person_id: pPerson },
+          TableName: "AVAMenu"
+        })
+        .promise()
+        .catch(error => {
+          if (error.code === 'NetworkingError') {
+            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+          }
+          cl(`caught error getting People record; error is:`, error);
+        });
+      if (recordExists(menuRec)) {
+        if ((menuRec.Item.AVA_main_menu.length > 0)) {
+          setMainMenu(menuRec.Item.AVA_main_menu);
+        }
+        cl(`Completed AVA Menu reload`);
+      }
+    }
     updateReactData({
-      idleState: true
+      idleState: true,
+      menu_reloaded: true
     }, false)
     reset();
   };
@@ -388,10 +410,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       dbClient
         .update({
           Key: { person_id: pPerson },
-          UpdateExpression: 'set AVA_section_open = :o, AVA_main_menu = :m',
+          UpdateExpression: 'set AVA_section_open = :o',
           ExpressionAttributeValues: {
-            ':o': pOpen,
-            ':m': pMenu
+            ':o': pOpen
           },
           TableName: "AVAMenu",
         })

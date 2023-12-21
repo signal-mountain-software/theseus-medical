@@ -542,6 +542,11 @@ export async function resolveVariables(pKey, pSession, options = {}) {
           response.push(front, pSession.user_id);
           break;
         }
+        case 'user_name':
+        case 'username': {
+          response.push(front, await makeName(pSession.user_id));
+          break;
+        }
         case 'weekday': {
           if (dType) {
             if (dType.startsWith('today~')) {

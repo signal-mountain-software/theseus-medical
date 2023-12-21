@@ -6,7 +6,7 @@ import { getServiceRequests } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
-import { makeSRPrint, savePDFBlob } from './AVAPrintServiceRequest';
+// import { makeSRPrint, savePDFBlob } from './AVAPrintServiceRequest';
 
 let page = {};
 let pdfCurrent = {};
@@ -109,12 +109,14 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
         case 'checklist':
         case 'factForm': {
           [results.htmlText, results.messageText, results.pdfInfo] = await formatRequestDetails(this_request, this_request.format.type);
+          /*
           let SRPrint_response = await makeSRPrint(this_request);
           let pdfInfo = {
             s3Key: `AVA_RayTest.pdf`, size: 'medium',
             s3Bucket: 'theseus-medical-storage'
           };
           await savePDFBlob(SRPrint_response[0].mealOrder.output, pdfInfo, { S3: true, onSave: 'print' }); 
+          */
           break;
         }
         case 'mealTicket': {
