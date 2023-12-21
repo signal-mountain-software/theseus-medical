@@ -1234,7 +1234,7 @@ export default Component => props => {
       }
     }
 
-    belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.user_id, {});
+    belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.patient_id, {});
 
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {
