@@ -224,7 +224,7 @@ export default ({ pClient, showUpload, handleClose }) => {
       };
     });
     let lower_date = makeDate('1/1/23').date;
-    let upper_date = makeDate('12/31/33').date;
+    let upper_date = new Date('12/31/33');
     let filtered_results = results.filter(r => {
       return ((r.date > lower_date) && (r.date < upper_date));
     })
