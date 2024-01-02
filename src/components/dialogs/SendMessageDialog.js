@@ -133,17 +133,19 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
 
   const { state } = useSession();
   const { session } = state;
-  const [message_targets, setMessageTargets] = React.useState(state.accessList[state.session.client_id].list);
+  const [message_targets, setMessageTargets] = React.useState();
   const [loading, setLoading] = React.useState(true);
 
   const classes = useStyles();
 
   if (loading) {
     let response = [];
-    state.accessList[state.session.client_id].list.forEach(a => {
+    if (state.hasOwnProperty('accessList') && state.accessList.hasOwnProperty(state.session.client_id)) {
+      state.accessList[state.session.client_id].list.forEach(a => {
         // list is of the form <name>:<id>:<search_string>
         response.push(`${a.last}, ${a.first}:${a.id}:${a.display_name}_${a.location}`);
-    });
+      });
+    }
     setMessageTargets(response);
     setLoading(false);
   }
@@ -161,7 +163,7 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
     getTargets();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   */
-  
+
   const handleClose = () => {
     if (session) {
     }
@@ -204,22 +206,20 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
         <Box p={3}>
           <Paper component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
             <List component='nav'>
-              {(message_targets.length > 0) &&
-                <PersonFilter
-                  prompt={'Who do you want to send a message to?'}
-                  peopleList={message_targets}
-                  onCancel={() => {
-                    onClose();
-                  }}
-                  onSelect={(selectedPerson) => {
-                    open = false;
-                    onSelect(selectedPerson);
-                  }}
-                  allowRandom={true}
-                  returnValue={pReturnValue}
-                  multiSelect={true}
-                />
-              }
+              <PersonFilter
+                prompt={'Who do you want to send a message to?'}
+                peopleList={message_targets}
+                onCancel={() => {
+                  onClose();
+                }}
+                onSelect={(selectedPerson) => {
+                  open = false;
+                  onSelect(selectedPerson);
+                }}
+                allowRandom={true}
+                returnValue={pReturnValue}
+                multiSelect={true}
+              />
             </List>
           </Paper>
         </Box>

@@ -344,6 +344,20 @@ export default ({
               </Box>
             </ListItem>
           }
+          {(rowsWritten === 0) && (!random_address) &&
+            <ListItem
+              key={'person-list_new'}
+            >
+              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+                <Typography style={AVATextStyle({ bold: true })}>
+                  {'AVA is still loading'}
+                </Typography>
+                <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>
+                  {'Please try again in a moment.'}
+                </Typography>
+              </Box>
+            </ListItem>
+          }
         </List>
       </Paper>
       <DialogActions style={{ justifyContent: 'center' }}>
@@ -358,7 +372,7 @@ export default ({
         >
           {'Close/Exit'}
         </Button>
-        {multiSelect &&
+        {multiSelect && (rowsWritten > 0) &&
           <Button
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'green', color: 'white' }}
