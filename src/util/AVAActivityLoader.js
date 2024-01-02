@@ -46,7 +46,9 @@ export async function prepareDefaults(fact) {
   let returnArray = [];
   let returnObject = {};
   if (!fact.default_value) { return [returnArray, returnObject]; }
-  if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
+  if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) {
+    return [fact.default_value, { default: fact.default_value }];
+  }
   if (fact.activity_rec?.type === 'make_message') {
 
   }
