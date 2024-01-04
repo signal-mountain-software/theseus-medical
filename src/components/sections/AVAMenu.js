@@ -949,7 +949,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   }
 
   const createAccountAuthority = () => {
-    return (state.user?.account_class && (['master', 'support', 'admin'].includes(state.user.account_class)));
+    if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
+      if (state.user?.account_class && (['master', 'support', 'admin'].includes(state.user.account_class))) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const handleClick = async (event) => {
