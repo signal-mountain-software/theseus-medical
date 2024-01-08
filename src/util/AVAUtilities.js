@@ -329,7 +329,7 @@ export function titleCase(pString) {
     else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     returnString += ' ';
   });
-  return returnString.trim();
+  return returnString;
 }
 
 export function makeNumber(pNum) {
