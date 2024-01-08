@@ -101,7 +101,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       // then establish where in the hierarchy of groups this one belongs
       // store that in an object (groupFlavor) for easy retrieval later
       let groupFlavor = {};
-      let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'guest', 'vendor'];
+      let groupHierarchy = ['admin', 'staff', 'resident', 'family', 'inactive', 'guest', 'vendor', 'unassigned'];
       if (clientGroupAssignments && clientGroupAssignments.customization_value) {
         Object.keys(clientGroupAssignments.customization_value).forEach(t => {
           let groups = makeArray(clientGroupAssignments.customization_value[t]);
