@@ -610,7 +610,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
                 })
                 .promise()
                 .catch(error => {
-                  console.log('Error adding an pre-loaded activity', error.message);
+                  console.log(`error preloading ${resolvedActivity.activityRec.name} (${returnRowObject.code}) as preload_code ${preLoad_code}`, error.message);
                 });
               console.log(`done with preload for ${resolvedActivity.activityRec.name} (${returnRowObject.code}) as preload_code ${preLoad_code}`);
             })
