@@ -441,14 +441,16 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   async function saveMenu(pPerson, pMenu) {
+    let timeStamp = new Date().getTime();
     await dbClient
       .update({
         Key: {
           person_id: pPerson
         },
-        UpdateExpression: "set AVA_main_menu = :m",
+        UpdateExpression: "set AVA_main_menu = :m, menu_version = :v",
         ExpressionAttributeValues: {
-          ":m": pMenu
+          ":m": pMenu,
+          ":v": timeStamp
         },
         TableName: "AVAMenu"
       })

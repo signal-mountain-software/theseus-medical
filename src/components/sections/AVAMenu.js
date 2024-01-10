@@ -58,6 +58,15 @@ const useStyles = makeStyles(theme => ({
     transition: 'none',
     height: '5px'
   },
+  pendingBar: {
+    marginRight: theme.spacing(2.2),
+    marginTop: theme.spacing(1),
+    backgroundColor: '#a3a0a0',
+    color: '#000000',
+    transition: 'none',
+    height: '5px',
+    alignSelf: 'flex-end'
+  },
   freeInput: {
     marginLeft: '25px',
     marginRight: 2,
@@ -261,7 +270,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [reactData, setReactData] = React.useState({
     lastActiveTime: new Date(),
     idleState: true,
-    menu_reloaded: false
+    menu_reloaded: false,
+    loadedMenuVersion: 1
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -295,41 +305,51 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
     else if (!reactData.menu_reloaded) {
-      let menuRec = await dbClient
-        .get({
-          Key: { person_id: pPerson },
-          TableName: "AVAMenu"
-        })
-        .promise()
-        .catch(error => {
-          if (error.code === 'NetworkingError') {
-            enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
-          }
-          cl(`caught error getting People record; error is:`, error);
-        });
-      if (recordExists(menuRec)) {
-        if ((menuRec.Item.AVA_main_menu.length > 0)) {
-          setMainMenu(menuRec.Item.AVA_main_menu);
-        }
-        cl(`Completed AVA Menu reload`);
-      }
+      await checkReload();
     }
     updateReactData({
       idleState: true,
-      menu_reloaded: true
-    }, false)
+    }, false);
     reset();
   };
 
-  const onAction = () => {
+  const checkReload = async () => {
+    let menuRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "AVAMenu"
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
+        cl(`caught error getting People record; error is:`, error);
+      });
+    if (recordExists(menuRec) && (menuRec.Item.menu_version !== reactData.loadedMenuVersion)) {
+      if ((menuRec.Item.AVA_main_menu.length > 0)) {
+        setMainMenu(menuRec.Item.AVA_main_menu);
+      }
+      cl(`Completed AVA Menu reload`);
+      updateReactData({
+        menu_reloaded: true,
+        loadedMenuVersion: menuRec.Item.menu_version
+      }, true);
+    }
+  }
+
+  const onAction = async () => {
     let now = new Date();
     if (reactData.idleState) {
       cl(`Action at ${now.toLocaleString()}.  Was idle since ${new Date(getLastActiveTime()).toLocaleString()}`);
     }
+    if (!reactData.menu_reloaded) {
+      await checkReload();
+    }
     updateReactData({
       lastActiveTime: now,
-      idleState: false 
-    }, false)
+      idleState: false
+    }, false);
     reset();
   };
 
@@ -338,7 +358,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     onAction,
     timeout: msBeforeSleeping,
     throttle: 500
-  })
+  });
 
   let nowTime = new Date().getTime();
 
@@ -362,6 +382,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         cl(`caught error getting People record; error is:`, error);
       });
     if (recordExists(menuRec)) {
+      updateReactData({ loadedMenuVersion: menuRec.Item.menu_version }, false);
       setSectionOpen(menuRec.Item.AVA_section_open || {});
       if ((menuRec.Item.AVA_main_menu.length > 0) && !reload) {
         setMainMenu(menuRec.Item.AVA_main_menu);
@@ -869,12 +890,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       session_id: ((needsConfirmation > -1) ? 'Confirmed' : 'Done'),
       method: 'AVAMenu',
       posted_time: postTime
-    };    
+    };
     if (pFact.value) {
       let valueArray = makeArray(pFact.value, '~');
       if (valueArray.length > 0) {
         newFact.valueObj = {};
-        valueArray.forEach((val, ndx) => { 
+        valueArray.forEach((val, ndx) => {
           if ((ndx === 0) && (val.includes('.'))) {
             val = val.split('.').slice(1).join('.');
           }
@@ -884,10 +905,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           }
           if (!value) {
             value = key;
-            key = `v_${ndx}`
+            key = `v_${ndx}`;
           }
           newFact.valueObj[key.trim()] = value.trim();
-        })
+        });
       }
     }
     if (pFact.commonKey) {
@@ -904,7 +925,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (pFactName.toLowerCase().includes('send a')) {
       enqueueSnackbar(`AVA is sending your ${pFactName.replace(/send a/i, '').trim()}.`, { variant: 'success' });
     }
-    else if (pFact.commonKey) { 
+    else if (pFact.commonKey) {
       enqueueSnackbar(`Your request is on the way!`, { variant: 'success' });
     }
     else {
@@ -973,7 +994,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       p={2}
       fullScreen
     >
-      <React.Fragment>        
+      <React.Fragment>
         {/* Header with Avatar, Message, and VertMenu */}
         <Box
           display='flex' flexDirection='row'
@@ -1026,20 +1047,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </Box>
           </Box>
           <Box
-            component="img"
-            ml={2}
-            mr={2}
-            aria-controls='hidden-menu'
-            aria-haspopup='true'
-            minWidth={50}
-            maxWidth={50}
-            onClick={(event) => {
-              handleClick(event);
-              setPopupMenuOpen(true);
-            }}
-            alt=''
-            src={process.env.REACT_APP_AVA_LOGO}
-          />
+            flexGrow={1}
+            display='flex'
+            overflow='auto'
+            flexDirection='column'
+          >
+            <Box
+              component="img"
+              ml={2}
+              mr={2}
+              aria-controls='hidden-menu'
+              aria-haspopup='true'
+              minWidth={50}
+              maxWidth={50}
+              alignSelf='flex-end'  
+              onClick={(event) => {
+                handleClick(event);
+                setPopupMenuOpen(true);
+              }}
+              alt=''
+              src={process.env.REACT_APP_AVA_LOGO}
+            />
+            {!reactData.menu_reloaded &&
+              <LinearProgress className={classes.pendingBar} style={{ width: 50 }} />
+            }
+          </Box>
           <Menu
             id='hidden-menu'
             anchorEl={anchorEl}
