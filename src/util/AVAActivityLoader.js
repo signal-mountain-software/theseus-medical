@@ -67,7 +67,7 @@ export async function prepareDefaults(fact) {
   }
   else {
     // old style is a string of key/value pairs (in the form key=value) separated by " ~ "
-    let dArray = makeArray(fact.default_value, /\s~|~\s/g);
+    let dArray = makeArray(fact.default_value, /\s*~|~\s*/g);
     dArray.forEach((d, x) => {
       console.log(d);
       if (isObject(d)) {
