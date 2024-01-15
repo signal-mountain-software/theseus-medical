@@ -1,8 +1,8 @@
-import { clt, cl, recordExists, dbClient, makeArray, deepCopy, isObject } from '../util/AVAUtilities';
+import { clt, cl, recordExists, getCustomizations, dbClient, makeArray, deepCopy, isObject } from '../util/AVAUtilities';
 import { getActivity } from '../util/AVAObservations';
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
-import { prepareMessage, sendMessages } from '../util/AVAMessages';
+import { prepareMessage, sendMessages, resolveMessageVariables, messageHistory } from '../util/AVAMessages';
 
 // Functions
 
@@ -24,8 +24,8 @@ export async function getServiceRequests(body) {
       sortInstructions = deepCopy(body.sort);
     }
     else {
-      let checkSort = body.sort.toLowerCase().slice(0, 3)
-      if (['asc','des'].includes(checkSort)) {
+      let checkSort = body.sort.toLowerCase().slice(0, 3);
+      if (['asc', 'des'].includes(checkSort)) {
         sortInstructions.order = checkSort;
       }
       else {
@@ -408,7 +408,7 @@ export async function updateServiceRequest(body) {
         'ServiceRequests': this_Request_group,
         'ServiceRequestLog': this_Log_group
       }
-    }
+    };
     let goodWrite = true;
     let writeResponse = await dbClient
       .batchWrite(requestObject)
@@ -420,7 +420,7 @@ export async function updateServiceRequest(body) {
     if (writeResponse
       && ('UnprocessedItems' in writeResponse)
       && (Object.keys(writeResponse.UnprocessedItems)).length > 0) {
-      failedItems.push(...writeResponse.UnprocessedItems);  
+      failedItems.push(...writeResponse.UnprocessedItems);
       finalCount -= writeResponse.UnprocessedItems.length / 2;
       retryNeeded = true;
     }
@@ -438,7 +438,7 @@ export async function updateServiceRequest(body) {
   if (finalCount >= initialCount) {
     returnMessage = `Successfully updated ${initialCount} Request record${(initialCount > 1) ? 's' : ''}`;
   }
-  else if (finalCount <= 0) { 
+  else if (finalCount <= 0) {
     returnMessage = `Failed to update Request record${(initialCount > 1) ? 's' : ''}`;
   }
   else {
@@ -447,3 +447,335 @@ export async function updateServiceRequest(body) {
   return returnMessage;
 }
 
+export function formatServiceRequestDetails(pInput) {
+  let this_request;
+  /*  
+  TAKES INPUT IN THIS FORMAT
+  { 
+    selections: [
+      <string>  of the form "selection (choice, choice, ...)"
+    ], 
+    qualifiers: {
+      <selection_words>: {
+        <option_words>: [
+          <choice_words>,
+          <choice_words>,
+          ...
+        ],
+        ...
+      },
+      ...
+    },
+    textInput: {
+      <selection_words>: <text string>
+    },     
+    options: {
+      <selection_words>: {
+          <option_words>: [
+            <choice_words> : <boolean> or <string_value>,
+            ...
+          ],
+          ...
+        }
+      }
+    }
+  }
+
+  AND PRODUCES OUTPUT AS
+  {
+    selection: [
+      option1,
+      option2,
+      ...
+    ],
+    ...
+  }
+  */
+  if (pInput.hasOwnProperty('request_id')) {  // passed in pInput as an entire ServiceRequest record
+    this_request = pInput.original_request;
+  }
+  else if (pInput.hasOwnProperty('rowDetails')) {
+    /*
+    rowDetails[
+      {
+        text: <string>  (the actual selection text, such as "Chopped Steak" or "Pancake Platter")
+        isChecked: <boolean>,
+        qualSelections: {
+          option: {
+            choice: <boolean> or <string>
+          }
+        },
+        textValue: <string>
+      }, ...
+    ],
+    */
+    this_request = {
+      selections: [],
+      options: {},
+      textInput: {}
+    };
+    pInput.rowDetails.forEach(row => {
+      if (row.isChecked || row.textValue) {
+        let selection = row.text.trim();
+        this_request.selections.push(selection);
+        this_request.options[selection] = row.qualSelections;
+        this_request.textInput[selection] = row.textValue;
+      }
+    });
+  }
+  else {
+    this_request = pInput;
+  }
+  let requestDetailsObj = {};
+  if (this_request.selections) {
+    this_request.selections.forEach(s => {
+      let selection = s;
+      let choices = [];
+      let qualifiers = [];
+      if (!this_request.textInput[s]) {
+        let unTrimmed_selection;
+        [unTrimmed_selection, ...choices] = s.split(/[();,]/);
+        selection = unTrimmed_selection.trim();
+      }
+      if (this_request.qualifiers?.[selection]) {
+        Object.values(this_request.qualifiers?.[selection]).forEach(v => {
+          qualifiers.push(...v);
+        });
+      };
+      for (let this_option in this_request.options?.[selection]) {
+        for (let this_choice in this_request.options?.[selection][this_option]) {
+          if (typeof (this_request.options?.[selection][this_option][this_choice]) === 'boolean') {
+            if (this_request.options?.[selection][this_option][this_choice]) {
+              qualifiers.push(this_choice);
+            }
+          }
+          else {
+            qualifiers.push(this_request.options?.[selection][this_option][this_choice]);
+          }
+        };
+      }
+      let options = [];
+      (choices.concat(qualifiers)).forEach(e => {
+        if (e && !options.includes(e.trim())) {
+          options.push(e.trim());
+          return;
+        }
+      });
+      requestDetailsObj[selection] = options;
+
+    });
+  }
+  for (let selection in this_request.textInput) {
+    if (this_request.textInput[selection]) {
+      if (!requestDetailsObj[selection]) {
+        requestDetailsObj[selection] = [];
+      };
+      requestDetailsObj[selection].push(this_request.textInput[selection]);
+    }
+  }
+  return requestDetailsObj;
+}
+
+export async function formatServiceRequest(inboundRequest) {
+  let requestList = [];
+  if (Array.isArray(inboundRequest)) {
+    requestList.push(...inboundRequest);
+  }
+  else {
+    requestList = [inboundRequest];
+  }
+  let final_result = [];
+
+  for (let rN = 0; rN < requestList.length; rN++) {
+    let this_request = requestList[rN];
+    let result = {
+      print: {
+        data: {},
+        format: [],
+        job: []
+      },
+      message_history: []
+    };
+    /*
+    result: {
+      error: <boolean>,
+      print: {
+        data: {
+          title: 
+          client_name:
+          logo:
+          creator_id:
+          creator_name:
+          request_person_name:
+          request_person_id:
+          request_person_rec:
+          created_time: <makeDate object format>
+          onBehalfOf_name
+          requestDetails: {
+            selection: [
+              option,
+              ...
+            ],
+            ...
+          }
+          request_id
+        },
+        format: [<AVA format>, ...]      
+      },
+      message_history: [
+        {
+          thread_id:        
+          recipients: [<result for this recipient>, ...]
+        },
+        ...
+      ],
+      request_status: {
+        current:
+        history: [<text line>, ...]
+      }
+    }
+    */
+    
+    // what we find inside this_request could be a string, an array of stuff, or an object
+    if (this_request.original_request || this_request.history || this_request.messages) {
+      // assume that a good SR record was passed in
+    }
+    else if (this_request.rowDetails) {
+      // assume that a SR under construction was passed in and let it build (if possible) from the data passed in
+    }
+    else {
+      // assume that the args provided a reference to one or more SRs
+      let returnedRequests = await getServiceRequests({
+        client_id: this_request.client,
+        request_id: this_request.requestID
+      });
+      if (returnedRequests.length === 0) {
+        return { error: true };
+      }
+      else if (returnedRequests.length === 1) {
+        this_request = deepCopy(returnedRequests[0]);  
+      }
+      else {
+        requestList.splice(rN, 1, ...returnedRequests);
+        this_request = deepCopy(returnedRequests[0]);  
+      }
+    }
+
+    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+    if (!this_request.client_id && !this_request.client) {
+      this_request.client_id = sessionObject?.currentSession?.client_id;
+      this_request.client = sessionObject?.currentSession?.client_id;
+    }
+    if (this_request.request_type && !this_request.requestTypeRec) {
+      this_request.requestTypeRec =
+        await getCustomizations(
+          'service_request_types',
+          this_request.client_id).customization_value?.[this_request.request_type];
+    }
+    if (!this_request.activityRec) {
+      this_request.activityRec =
+        await getActivity(
+          this_request.client_id || this_request.client,
+          (this_request.activity_key || this_request.activity_id || this_request.requestTypeRec?.activity_code));
+    }
+
+    result.print.data.request_id = this_request.request_id;
+
+    result.print.data.title = this_request.title
+      || this_request.pdf?.title
+      || this_request.subject
+      || this_request.format?.subject
+      || this_request.requestTypeRec?.description
+      || this_request.activityRec?.name
+      || 'AVA Senior Living';
+    result.print.data.title = (await resolveMessageVariables(result.print.data.title, this_request)).replace(/\(.+\)/g, '').trim();
+
+    if (this_request.reprint) {
+      result.print.data.title = `*** REPRINT ${result.print.data.title} ***`;
+    };
+
+    result.print.data.client_id = this_request.client_id;
+
+    result.print.data.client_name = this_request.client_name
+      || sessionObject?.currentSession?.client_name
+      || `Client ${this_request.client_id}`;
+
+    result.print.data.logo = this_request.client_logo
+      || this_request.logo
+      || sessionObject.currentSession?.client_logo
+      || await getCustomizations('logo', this_request.client_id)?.icon;
+
+    result.print.data.created = {};
+
+    result.print.data.creator_id =
+      (this_request.request_id ? this_request.request_id.split('~').shift() : null)
+      || this_request.user_id
+      || this_request.userID
+      || this_request.requestor
+      || this_request.session.user_id
+      || sessionObject?.currentSession?.user_id;
+
+    result.print.data.creator_name = this_request.author_name
+      || this_request.user_name
+      || this_request.userName
+      || await makeName(result.print.data.creator_id);
+
+    result.print.data.request_person_id = this_request.requestor
+      || this_request.patient_id
+      || this_request.patientID
+      || this_request.session.patient_id
+      || sessionObject?.currentSession?.patient_id;
+
+    result.print.data.request_person_rec = await getPerson(result.print.data.request_person_id);
+    result.print.data.request_person_name =
+      await makeName(result.print.data.request_person_rec);
+
+    result.print.data.created_time = makeDate(this_request.request_date);
+
+    result.print.data.onBehalfOf_name = this_request.on_behalf_of
+      || this_request.onBehalfOf;
+
+    if (!result.print.data.onBehalfOf_name) {
+      this_request.obo_key = this_request?.activityRec?.default_value?.onBehalfOf
+        || this_request?.activityRec?.default_value?.global_defaults?.onBehalfOf
+        || this_request?.activityRec?.default_value?.activities?.global_defaults?.onBehalfOf;
+      result.print.data.onBehalfOf_name = this_request?.original_request?.textInput?.[this_request.obo_key];
+      if (!result.print.data.onBehalfOf_name && this_request.rowDetails) {
+        this_request.rowDetails.forEach(row => {
+          if (row.isChecked && (row.text.trim() === this_request.obo_key)) {
+            result.print.data.onBehalfOf_name = row.textValue;
+          }
+        });
+      }
+      else {
+        result.print.data.onBehalfOf_name = result.print.data.request_person_name;
+      };
+    }
+
+    result.print.data.requestDetails = formatServiceRequestDetails(this_request);
+    
+    result.print.format = [];
+    makeArray(this_request.activityRec.messaging).forEach(m => {
+      if (!result.print.format.includes(m.format.type)) {
+        result.print.format.push(m.format.type);
+      }
+    });
+
+    for (let m = 0; m < this_request.messages.length; m++) {
+      if (this_request.messages[m].record_type === 'delivery') {
+        result.message_history.push({
+          thread_id: this_request.messages[m].thread_id,
+          recipients: await messageHistory(this_request.messages[m])
+        });
+      }
+    }
+
+    result.request_status = {
+      current: this_request.last_status,
+      history: this_request.history
+    };
+
+    final_result.push(result);
+  }
+  return final_result;
+}

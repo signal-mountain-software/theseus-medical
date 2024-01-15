@@ -66,7 +66,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClose }) => {
+export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full', onClose, onAbort }) => {
 
   const [reactData, setReactData] = React.useState({
     groupMemberList: [],
@@ -91,37 +91,32 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   async function getGroupMemberList(pGroupArray) {
     reactData.progressMessage = 'Getting all accounts';
     let memberInfo;
-    if (!state.hasOwnProperty('groups') || !state.groups.hasOwnProperty('groupList') || !state.groups.hasOwnProperty('peopleList')) {
-      enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
-      onClose();
-      return [];
-    }
-    if (pGroupArray.includes('*all')) {
+    if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])
+      || (state.session.hasOwnProperty('last_state') && (state.session.client_id === pSession.client_id))) {
+      if (pGroupArray.includes('*all')) {
         memberInfo = {
-          groupList: state.groups.groupList,
-          peopleList: state.groups.peopleList
+          peopleList: state.accessList?.[state.session.client_id]?.list || state.session.last_state.list
         };
+      }
+      else {
+        memberInfo =
+        {
+          peopleList: (state.accessList?.[state.session.client_id]?.list || state.session.last_state.list).filter((p, pX) => {
+            return makeArray(p.groups).some(g => {
+              return pGroupArray.includes(g);
+            });
+          })
+        };
+      }
     }
     else {
-      memberInfo =
-      {
-        groupList: state.groups.groupList,
-        peopleList: state.groups.peopleList.filter((p, pX) => {
-          return makeArray(p.groups).some(g => {
-            return pGroupArray.includes(g);
-          });
-        })
-      };
-    }
-
-    if (!memberInfo.peopleList) {
       enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
-      onClose();
+      onAbort();
       return [];
     }
     if (memberInfo.peopleList.length === 0) {
       enqueueSnackbar(`AVA couldn't find any accounts.`, { variant: 'error' });
-      onClose();
+      onAbort();
       return [];
     }
     reactData.groupMemberList = memberInfo.peopleList;
@@ -149,7 +144,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
   };
 
   const getGroupsManagedObject = async (pClient, pPatient) => {
-    let [gList, ] = await getGroupsResponsibleFor(pClient, pPatient);
+    let [gList,] = await getGroupsResponsibleFor(pClient, pPatient);
     // sort by group name
     let gSort = [];
     let gObj = {};
@@ -257,6 +252,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList, onClos
               pGroupRec={reactData.groupRec}
               pGroupName={reactData.groupName}
               pRole={reactData.groupRole}
+              pStyle={showList}
               onReset={() => {
                 if (pGroup_id) { handleAbort(); }
                 else {

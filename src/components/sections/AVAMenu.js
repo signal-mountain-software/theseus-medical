@@ -11,7 +11,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
 import { useCookies } from 'react-cookie';
-import IdleTimer from 'react-idle-timer';
+import { useIdleTimer } from 'react-idle-timer';
 import useSession from '../../hooks/useSession';
 import SwitchPatientDialog from '../dialogs/SwitchPatientDialog';
 import PatientDialog from '../dialogs/PatientDialog';
@@ -57,6 +57,15 @@ const useStyles = makeStyles(theme => ({
     color: '#000000',
     transition: 'none',
     height: '5px'
+  },
+  pendingBar: {
+    marginRight: theme.spacing(2.2),
+    marginTop: theme.spacing(1),
+    backgroundColor: '#a3a0a0',
+    color: '#000000',
+    transition: 'none',
+    height: '5px',
+    alignSelf: 'flex-end'
   },
   freeInput: {
     marginLeft: '25px',
@@ -258,7 +267,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [progress, setProgress] = React.useState(100);
   const [pWidth, setPWidth] = React.useState(60);
 
+  const [reactData, setReactData] = React.useState({
+    lastActiveTime: new Date(),
+    idleState: true,
+    menu_reloaded: false,
+    loadedMenuVersion: 1
+  });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+
 
   let currentSection = '';
 
@@ -275,15 +298,74 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     height: `${(30 * user_fontSize)}px`
   };
 
-  let idleTimer = React.createRef();
+  const onIdle = async () => {
+    cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
+    let now = new Date();
+    if ((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) {
+      window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
+    }
+    else if (!reactData.menu_reloaded) {
+      await checkReload();
+    }
+    updateReactData({
+      idleState: true,
+    }, false);
+    reset();
+  };
+
+  const checkReload = async () => {
+    let menuRec = await dbClient
+      .get({
+        Key: { person_id: pPerson },
+        TableName: "AVAMenu"
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
+        }
+        cl(`caught error getting People record; error is:`, error);
+      });
+    if (recordExists(menuRec) && (menuRec.Item.menu_version !== reactData.loadedMenuVersion)) {
+      if ((menuRec.Item.AVA_main_menu.length > 0)) {
+        setMainMenu(menuRec.Item.AVA_main_menu);
+      }
+      cl(`Completed AVA Menu reload`);
+      updateReactData({
+        menu_reloaded: true,
+        loadedMenuVersion: menuRec.Item.menu_version
+      }, true);
+    }
+  }
+
+  const onAction = async () => {
+    let now = new Date();
+    if (reactData.idleState) {
+      cl(`Action at ${now.toLocaleString()}.  Was idle since ${new Date(getLastActiveTime()).toLocaleString()}`);
+    }
+    if (!reactData.menu_reloaded) {
+      await checkReload();
+    }
+    updateReactData({
+      lastActiveTime: now,
+      idleState: false
+    }, false);
+    reset();
+  };
+
+  const { start, reset, getLastActiveTime } = useIdleTimer({
+    onIdle,
+    onAction,
+    timeout: msBeforeSleeping,
+    throttle: 500
+  });
 
   let nowTime = new Date().getTime();
 
   const buildMenu = async (reload = false, beQuiet = null) => {
     setSectionOpen({});
 
-    // Temp - make menu refresh on every reload
-    reload = true;
+    // reload = true;
 
     // AVA_section_open in People record, or (legacy code) current_event in SessionV2 record
     // is used to save what the screen looked like last time the user was in AVA
@@ -300,14 +382,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         cl(`caught error getting People record; error is:`, error);
       });
     if (recordExists(menuRec)) {
+      updateReactData({ loadedMenuVersion: menuRec.Item.menu_version }, false);
       setSectionOpen(menuRec.Item.AVA_section_open || {});
       if ((menuRec.Item.AVA_main_menu.length > 0) && !reload) {
-        // cl(`Used cached menu at ${new Date().toLocaleString()}.`);
         setMainMenu(menuRec.Item.AVA_main_menu);
         return menuRec.Item.AVA_main_menu;
       }
     }
 
+    // we are going to have to build their menu for the first time...
     let forceRefresh = true;
     let wholeMenu = await MakeAVAMenu(patient, defaultClient, (beQuiet ? screenQuiet : screenStatus), null, forceRefresh, state);
 
@@ -348,10 +431,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       dbClient
         .update({
           Key: { person_id: pPerson },
-          UpdateExpression: 'set AVA_section_open = :o, AVA_main_menu = :m',
+          UpdateExpression: 'set AVA_section_open = :o',
           ExpressionAttributeValues: {
-            ':o': pOpen,
-            ':m': pMenu
+            ':o': pOpen
           },
           TableName: "AVAMenu",
         })
@@ -371,9 +453,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         .promise()
         .catch(error => { cl(`caught error updating SessionsV2; error is:`, error); });
     }
-    if (idleTimer && idleTimer.current) {
-      idleTimer.current.start();
-    }
+    start();
   };
 
   async function putS3Object(pMediaData, pType) {
@@ -810,12 +890,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       session_id: ((needsConfirmation > -1) ? 'Confirmed' : 'Done'),
       method: 'AVAMenu',
       posted_time: postTime
-    };    
+    };
     if (pFact.value) {
       let valueArray = makeArray(pFact.value, '~');
       if (valueArray.length > 0) {
         newFact.valueObj = {};
-        valueArray.forEach((val, ndx) => { 
+        valueArray.forEach((val, ndx) => {
           if ((ndx === 0) && (val.includes('.'))) {
             val = val.split('.').slice(1).join('.');
           }
@@ -825,10 +905,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           }
           if (!value) {
             value = key;
-            key = `v_${ndx}`
+            key = `v_${ndx}`;
           }
           newFact.valueObj[key.trim()] = value.trim();
-        })
+        });
       }
     }
     if (pFact.commonKey) {
@@ -845,7 +925,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (pFactName.toLowerCase().includes('send a')) {
       enqueueSnackbar(`AVA is sending your ${pFactName.replace(/send a/i, '').trim()}.`, { variant: 'success' });
     }
-    else if (pFact.commonKey) { 
+    else if (pFact.commonKey) {
       enqueueSnackbar(`Your request is on the way!`, { variant: 'success' });
     }
     else {
@@ -887,24 +967,16 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       }
     }
     return false;
-    // return createAccountAuthority(); 
   }
 
-  function createAccountAuthority() {
-    if (state.user.account_class) {
-      if (['master', 'support', 'admin'].includes(state.user.account_class)) {
+  const createAccountAuthority = () => {
+    if (state.accessList && state.accessList.hasOwnProperty(session.client_id) && state.accessList[session.client_id].hasOwnProperty('count')) {
+      if (state.user?.account_class && (['master', 'support', 'admin'].includes(state.user.account_class))) {
         return true;
       }
     }
-    if (state.accessList && state.accessList.accountClass && state.accessList.accountClass.client_id === state.session.client_id) {
-      if (['master', 'support', 'admin'].includes(state.accessList.accountClass.class)) {
-        return true;
-      }
-    }
-    else {
-      return false;
-    }
-  }
+    return false;
+  };
 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
@@ -923,25 +995,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       fullScreen
     >
       <React.Fragment>
-        {/* Idle timer always running */}
-        <IdleTimer
-          ref={idleTimer}
-          timeout={msBeforeSleeping}   // every "n" minutes
-          onActive={() => {
-            let now = new Date();
-            cl(`Active at ${now.toLocaleString()}.  Idle since ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
-            if ((now.getTime() - idleTimer.current.state.lastIdle) > oneHour) {
-              window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
-            }
-          }}
-          onIdle={async () => {
-            cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${new Date(idleTimer.current.state.lastActive).toLocaleString()}.   Previous idle at ${new Date(idleTimer.current.state.lastIdle).toLocaleString()}`);
-            await updateAVA(sectionOpen, mainMenu);
-          }}
-          startOnMount={true}
-          debounce={250}
-        />
-
         {/* Header with Avatar, Message, and VertMenu */}
         <Box
           display='flex' flexDirection='row'
@@ -994,20 +1047,31 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </Box>
           </Box>
           <Box
-            component="img"
-            ml={2}
-            mr={2}
-            aria-controls='hidden-menu'
-            aria-haspopup='true'
-            minWidth={50}
-            maxWidth={50}
-            onClick={(event) => {
-              handleClick(event);
-              setPopupMenuOpen(true);
-            }}
-            alt=''
-            src={process.env.REACT_APP_AVA_LOGO}
-          />
+            flexGrow={1}
+            display='flex'
+            overflow='auto'
+            flexDirection='column'
+          >
+            <Box
+              component="img"
+              ml={2}
+              mr={2}
+              aria-controls='hidden-menu'
+              aria-haspopup='true'
+              minWidth={50}
+              maxWidth={50}
+              alignSelf='flex-end'  
+              onClick={(event) => {
+                handleClick(event);
+                setPopupMenuOpen(true);
+              }}
+              alt=''
+              src={process.env.REACT_APP_AVA_LOGO}
+            />
+            {!reactData.menu_reloaded &&
+              <LinearProgress className={classes.pendingBar} style={{ width: 50 }} />
+            }
+          </Box>
           <Menu
             id='hidden-menu'
             anchorEl={anchorEl}
@@ -1472,6 +1536,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             onClose={(updatedPerson) => {
               setShowProfileEdit(false);
               if (updatedPerson && updatedPerson.person_id) {
+                sessionStorage.removeItem('AVASessionData');
                 window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
               }
             }}

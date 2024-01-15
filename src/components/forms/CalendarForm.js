@@ -204,7 +204,7 @@ export default ({ myCalendar, person_id, peopleList, onClose }) => {
 
   function okToShow(this_event) {
     if (this_event.date === '29991231') { return false; }   // event was soft-deleted
-    else if (this_event.groups[0] !== '*all') {
+    else if (this_event.groups && (this_event.groups[0] !== '*all')) {
       let belongsToASelectedGroup = this_event.groups.some(g => {
         return (state.groups.belongsTo.hasOwnProperty(g));
       })

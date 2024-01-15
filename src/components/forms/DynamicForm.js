@@ -514,14 +514,17 @@ export default ({
         />
       );
     case 'show_groups':
+      let dGroups = defaultObject?.groups || defaultValue;
+      let dFlavor = defaultObject?.mode || 'full';
       return (
         <ShowGroup
           pSession={session}
-          pGroup_id={defaultValue}
+          pGroup_id={dGroups}
           pGroup_name={message}
           peopleList={values}
-          showList={true}
+          showList={dFlavor}
           onClose={onSave}
+          onAbort={onClose}
         />
       );
     case 'carousel':

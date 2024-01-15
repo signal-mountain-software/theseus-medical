@@ -2,11 +2,10 @@ import React from 'react';
 import Cropper from "react-cropper";
 import "cropperjs/dist/cropper.css";
 import { API, graphqlOperation } from 'aws-amplify';
-import { getPerson, makeName, makeSearchData, formatPhone } from '../../util/AVAPeople';
+import { getPerson, getSession, makeName, makeSearchData, formatPhone } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { getObject, cl, dbClient, s3, lambda, cloudfront } from '../../util/AVAUtilities';
+import { getObject, cl, dbClient, s3, lambda, cloudfront, titleCase } from '../../util/AVAUtilities';
 import { createPutFact } from '../../graphql/mutations';
-import { getSession } from '../../graphql/queries';
 import useSession from '../../hooks/useSession';
 
 import { useSnackbar } from 'notistack';
@@ -33,6 +32,7 @@ import FormControl from '@material-ui/core/FormControl';
 import Slider from '@material-ui/core/Slider';
 
 import CircularProgress from '@material-ui/core/CircularProgress';
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 
 import ClientsSection from '../sections/ClientsSection';
 import RelationshipSection from '../sections/RelationshipSection';
@@ -177,6 +177,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   const [sessionVersion, setSessionVersion] = React.useState(0);
 
   const [changes, setChanges] = React.useState(false);
+  const [showQuestionMark, setShowQuestionMark] = React.useState(false);
   const [photoChanges, setPhotoChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(false);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
@@ -205,6 +206,20 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   React.useEffect(() => {
     async function initialize() {
       if (patient) {
+        if (patient.person_id.startsWith('*NEW~')) {
+          let inactiveAssignment = state?.session?.group_assignments?.inactive;
+          let inactiveGroup;
+          if (!inactiveAssignment) {
+            inactiveGroup = 'inactive';
+          }
+          else if (Array.isArray(inactiveAssignment)) {
+            inactiveGroup = inactiveAssignment[0];
+          }
+          else {
+            inactiveGroup = inactiveAssignment;
+          }
+          groupData.selectedID = inactiveGroup;
+        }
         let localPersonRec = await getPersonRec(patient.person_id);
         setPatientGroups(localPersonRec.groups);
         if (localPersonRec.relationships) {
@@ -236,9 +251,9 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
 
         let workLocalData = {
           ready: true,
-          patient_id: localPersonRec.patient_id,
-          firstName: (localPersonRec.name?.first || ''),
-          lastName: (localPersonRec.name?.last || ''),
+          patient_id: (localPersonRec.person_id || ''),
+          firstName: (titleCase(localPersonRec.name?.first) || ''),
+          lastName: (titleCase(localPersonRec.name?.last) || ''),
           email: (localPersonRec.messaging?.email || ''),
           cell: (localPersonRec.messaging?.sms ? formatPhone(localPersonRec.messaging?.sms) : ''),
           voice: (localPersonRec.messaging?.voice ? formatPhone(localPersonRec.messaging?.voice) : ''),
@@ -350,19 +365,11 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   };
 
   const getSessionData = async (pWho) => {
-    let sessionRec = await dbClient
-      .get({
-        Key: { session_id: pWho },
-        TableName: "SessionsV2"
-      })
-      .promise()
-      .catch(error => {
-        cl({ 'Bad get on Session - caught error is': error });
-      });
+    let sessionRec = getSession(pWho);
     if (recordExists(sessionRec)) {
-      setPatientSession(sessionRec.Item);
-      setPatientPChange(sessionRec.Item.password_change_date);
-      return sessionRec.Item;
+      setPatientSession(sessionRec);
+      setPatientPChange(sessionRec.password_change_date);
+      return sessionRec;
     }
     else {
       let temp_session = {
@@ -445,28 +452,66 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     onClose();
   };
 
-  const handleUpdate = async () => {
+  async function prepareUserID() {
     if (patient.person_id.startsWith('*NEW~')) {
-      let tryAgain;
-      let namePart = localData.firstName.trim().substr(0, 1).toLowerCase() + localData.lastName.toLowerCase().replace(/\W/g, '');
-      let numberPart = 1;
-      patient.person_id = namePart;
-      do {
-        tryAgain = false;
-        let getSessionResult = await API
-          .graphql(graphqlOperation(getSession, { session_id: patient.person_id }))
-          .catch(() => { });
-        if (getSessionResult) {
-          numberPart++;
-          patient.person_id = namePart + numberPart.toString();
-          tryAgain = true;
-        }
-      } while (tryAgain);
-      enqueueSnackbar(`User ID ${patient.person_id} assigned`, { variant: 'success', persist: true });
+      if (localData.firstName && localData.lastName) {
+        localData.patient_id = await newUserID(localData);
+        setRefreshTrigger(!refreshTrigger);
+      }
     }
+  }
+
+  async function newUserID(pLocal) {
+    let tryAgain;
+    let showWarning = false;
+    let newID, namePart;
+    let clientPart = `-${state.session.client_id.toLowerCase()}`;
+    let numberPart = 1;
+    if (pLocal.proposedID) {
+      namePart = (pLocal.proposedID.match(/([\w-]*[^\d]+)(\d*)$/))[1];
+      newID = pLocal.proposedID;
+    }
+    else {
+      if (!pLocal.lastName) {
+        if (!pLocal.firstName) {
+          return patient.person_id;
+        }
+        namePart = pLocal.firstName.trim().toLowerCase();
+      }
+      else {
+        namePart = pLocal.firstName.trim().substr(0, 1).toLowerCase() + pLocal.lastName.toLowerCase().replace(/\W/g, '');
+      }
+      newID = `${namePart}${clientPart}`;
+    }
+    do {
+      tryAgain = false;
+      let getSessionResult = await getSession(newID);
+      if (getSessionResult.hasOwnProperty('session_id')) {
+        if (pLocal.proposedID) {
+          showWarning = true;
+        }
+        numberPart++;
+        if (newID.includes(clientPart)) {
+          newID = `${namePart.replace(clientPart, '')}${numberPart}${clientPart}`;
+        }
+        else {
+          newID = `${namePart}${numberPart}`;
+        }
+        tryAgain = true;
+      }
+    } while (tryAgain);
+    if (showWarning) {
+      enqueueSnackbar(`User ID ${pLocal.proposedID} is not available; AVA proposes ${newID} instead`, { variant: 'error', persist: false });
+      showWarning = false;
+      setChanges(true);
+    }
+    return newID;
+  }
+
+  const handleUpdate = async () => {
     let updatePerson = {
       client_id: state.session.client_id,
-      person_id: patient.person_id,
+      person_id: localData.patient_id || (patient.person_id.startsWith('*NEW~') ? await newUserID(localData) : patient.person_id),
       first: localData.firstName.substr(0, 1).toUpperCase() + localData.firstName.substr(1),
       last: localData.lastName.substr(0, 1).toUpperCase() + localData.lastName.substr(1),
       email: localData.email,
@@ -498,7 +543,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     };
     let myClient = state.session.client_id;
     let putPerson = {
-      person_id: patient.person_id,
+      person_id: updatePerson.person_id,
       client_id: myClient,
       "name": {
         first: updatePerson.first,
@@ -546,11 +591,11 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       })
       .promise()
       .catch(error => { cl(`caught error updating People; error is:`, error); });
-
+     
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     cl(updatePerson);
     let newFactData = {
-      patient_id: patient.person_id,
+      patient_id: updatePerson.person_id,
       activity_key: 'action.updateUser',
       value: updateString,
       qualifier: null,
@@ -564,6 +609,55 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       cl(error);
     });
 
+    let sessionRec = await getSession(patient.person_id);
+    sessionRec.session_id = localData.patient_id;
+    sessionRec.person_id = localData.patient_id;
+    sessionRec.user_id = localData.patient_id;
+    sessionRec.status = JSON.stringify({
+      'version': `v${process.env.REACT_APP_AVA_VERSION}`,
+      'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
+      'time': new Date().toString(),
+      'action': 'Updated Person record',
+      'source': 'patient_dialog'
+    });
+    if (proxy) {
+      sessionRec.patient_id = proxy;
+    }
+    else {
+      sessionRec.patient_id = localData.patient_id;
+    }
+    if (localData.last_login && !resettingPwd) {
+      sessionRec.last_login = (localData.storePassword ? localData.last_login : '<not retained>');
+    }
+    if (resettingPwd) {
+      sessionRec.last_login = (localData.storePassword ? localData.inputPWD : '<not retained>');
+      sessionRec.password_change_date = new Date().toLocaleString();
+    }
+    sessionRec.requirePassword = localData.requirePassword;
+    sessionRec.storePassword = localData.storePassword;
+    sessionRec.subscription_status = localData.subscription_status;
+    if (responsibleArray) {
+      sessionRec.responsible_for = responsibleArray;
+    }
+    if ((localData.sessionClient !== myClient) || (localData.sessionPatient !== patient.person_id)) {
+      sessionRec.client_id = myClient;
+    }
+    if (fontFactorChanged) {
+      if (!sessionRec.hasOwnProperty('customizations')) {
+        sessionRec.customizations = {};
+      }
+      sessionRec.customizations.font_size = fontFactor * user_fontSize;
+    }
+    await dbClient
+      .put({
+        Item: sessionRec,
+        TableName: "SessionsV2",
+      })
+      .promise()
+      .catch(error => { cl(`caught error updating People; error is:`, error); });
+    
+    /*
+    {
     let attributeValues = {
       ':s': JSON.stringify({
         'version': `v${process.env.REACT_APP_AVA_VERSION}`,
@@ -619,9 +713,10 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       updateExpression += '#c.#f = :f, ';
     }
     updateExpression = updateExpression.substring(0, updateExpression.length - 2);
+    
     await dbClient
       .update({
-        Key: { session_id: patient.person_id },
+        Key: { session_id: updatePerson.person_id },
         UpdateExpression: updateExpression,
         ExpressionAttributeValues: attributeValues,
         ExpressionAttributeNames: attributeNames,
@@ -633,7 +728,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
         if ((error.code === 'ValidationException') && fontFactorChanged) {
           await dbClient
             .update({
-              Key: { session_id: patient.person_id },
+              Key: { session_id: updatePerson.person_id },
               UpdateExpression: 'set #c = :m',
               ExpressionAttributeValues: { ':m': {} },
               ExpressionAttributeNames: { '#c': 'customizations' },
@@ -647,7 +742,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
           if (resolved) {
             await dbClient
               .update({
-                Key: { session_id: patient.person_id },
+                Key: { session_id: updatePerson.person_id },
                 UpdateExpression: updateExpression,
                 ExpressionAttributeValues: attributeValues,
                 ExpressionAttributeNames: attributeNames,
@@ -664,8 +759,62 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
           cl(`caught error updating SessionsV2; error is: `, error);
         }
       });
+    }
+    */
 
-    enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
+    // If we changed the person_id, make the original preon_id an inactive account
+    if (putPerson.person_id !== patient.person_id) {
+      let inactiveAssignment = state?.session?.group_assignments?.inactive;
+      let inactiveGroup;
+      if (!inactiveAssignment) {
+        inactiveGroup = 'inactive';
+      }
+      else if (Array.isArray(inactiveAssignment)) {
+        inactiveGroup = inactiveAssignment[0];
+      }
+      else {
+        inactiveGroup = inactiveAssignment;
+      }
+      await dbClient
+        .update({
+          Key: { person_id: patient.person_id },
+          UpdateExpression: 'set #g = :g, #c = :c',
+          ExpressionAttributeValues: {
+            ':g': [inactiveGroup],
+            ':c': {
+              'groups': [inactiveGroup],
+              'id': state.session.client_id
+            }
+          },
+          ExpressionAttributeNames: {
+            '#g': 'groups',
+            '#c': 'clients'
+          },
+          TableName: "People",
+        })
+        .promise()
+        .catch(error => {
+          cl(`caught error updating People; error is: `, error);
+        });
+      // copy photo
+      let [fileID, extension] = localData.photoURL.split('/').pop().split('?').shift().split('.');
+      let copy_response = await s3.copyObject({
+        CopySource: `theseus-medical-storage/public/patients/${fileID}.${extension}`,
+        Bucket: 'theseus-medical-storage',
+        Key: `public/patients/${putPerson.person_id}.${extension}`,
+        ACL: 'public-read-write',
+      })
+        .promise()
+        .catch(err => {
+          enqueueSnackbar(`AVA couldn't save the photo.  The reason is ${err.message}`, { variant: 'error', persist: true });
+        });
+      cl(copy_response);
+      enqueueSnackbar(`ID changed to ${putPerson.person_id}.  Information updated!`, { variant: 'success', persist: false })
+    }
+    else {
+      enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
+    }
+
     patient.name.first = localData.firstName;
     patient.name.last = localData.lastName;
     setChanges(false);
@@ -692,17 +841,37 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     setChanges(true);
   };
 
-  const handleChangeFirstName = event => {
+  const handleChangeUser = async event => {
+    localData.patient_id = event.target.value;
+    setRefreshTrigger(!refreshTrigger);
+    setShowQuestionMark(true);
+    setChanges(false);
+  };
+
+  const handleBlurUser = async event => {
+    if (event.target.value !== patient.person_id) {
+      localData.patient_id = await newUserID({
+        proposedID: event.target.value
+      });
+      setRefreshTrigger(!refreshTrigger);
+      setShowQuestionMark(false);
+      setChanges(true);
+    }
+  };
+
+  const handleBlurName = async event => {
+    await prepareUserID();
+  };
+
+  const handleChangeFirstName = async event => {
     localData.firstName = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setFirstName(event.target.value);
     setChanges(true);
   };
 
-  const handleChangeLastName = event => {
+  const handleChangeLastName = async event => {
     localData.lastName = event.target.value;
     setRefreshTrigger(!refreshTrigger);
-    // setLastName(event.target.value);
     setChanges(true);
   };
 
@@ -932,7 +1101,9 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             </Typography>
             {(changes || pwdConfirmed || photoChanges) &&
               <Button
-                onClick={handleUpdate}
+                onClick={async () => {
+                    handleUpdate();
+                }}
                 variant='contained'
                 className={classes.topButton}
               >
@@ -961,9 +1132,31 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
               <Box display='flex' alignItems='center'
                 justifyContent='flex-start' flexDirection='row'>
                 <TextField classes={{ root: classes.idText }}
-                  id='FirstName' value={localData.firstName} onChange={handleChangeFirstName} helperText='First' />
+                  id='FirstName'
+                  onChange={async (event) => { await handleChangeFirstName(event); }}
+                  onBlur={async () => { await handleBlurName(); }}
+                  value={localData.firstName}
+                  helperText='First'
+                />
                 <TextField classes={{ root: classes.idText }}
-                  id='LastName' onChange={handleChangeLastName} value={localData.lastName} helperText='Last' />
+                  id='LastName'
+                  onChange={async (event) => { await handleChangeLastName(event); }}
+                  onBlur={async () => { await handleBlurName(); }}
+                  value={localData.lastName}
+                  helperText='Last'
+                />
+              </Box>
+              <Box display='flex' alignItems='flex-start'
+                justifyContent='flex-start' flexDirection='row'>
+                <TextField classes={{ root: classes.idText }}
+                  id='UserID'
+                  value={localData.patient_id}
+                  fullWidth
+                  onChange={async (event) => { await handleChangeUser(event); }}
+                  onBlur={async (event) => { await handleBlurUser(event); }}
+                  helperText='User ID'
+                />
+                {showQuestionMark && <HelpOutlineIcon sx={{alignSelf: 'start'}} />}
               </Box>
               <Box display='flex' alignItems='center'
                 justifyContent='flex-start' flexDirection='row'>
@@ -1082,10 +1275,6 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                 {localData.preferred_method !== 'time_based' &&
                   <Typography className={classes.radioText}>Urgent messages will re-try this method every 30 minutes for 2 hours</Typography>
                 }
-
-                <Typography className={classes.idText1}>
-                  {`My userID is ${patient?.person_id}`}
-                </Typography>
 
                 <Typography className={classes.radioTextWithTopMargin}>With regard to the Directory...</Typography>
                 {localData.directoryOption &&

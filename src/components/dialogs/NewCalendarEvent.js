@@ -2,8 +2,9 @@ import React from 'react';
 
 import { prepareTargets } from '../../util/AVAGroups';
 import { makeArray, cl } from '../../util/AVAUtilities';
-import { addEvent } from '../../util/AVACalendars';
+import { addEvent, getAllOccurrences } from '../../util/AVACalendars';
 import { AVAclasses } from '../../util/AVAStyles';
+import { addDays } from '../../util/AVADateTime';
 
 import ClientsSection from '../sections/ClientsSection';
 
@@ -33,6 +34,7 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 
 import ListItem from '@material-ui/core/ListItem';
+import { SET_CALENDAR } from '../../contexts/Session/actions';
 
 import useSession from '../../hooks/useSession';
 
@@ -184,7 +186,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  const { state } = useSession();
+  const { state, dispatch } = useSession();
   const { session } = state;
   const [owner_targets, setOwnerTargets] = React.useState();
   const [ownerTargetInfo, setOwnerTargetInfo] = React.useState();
@@ -198,13 +200,13 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const [specificPeople, setSpecificPeople] = React.useState();
   const [specificOwners, setSpecificOwners] = React.useState();
   const [signup_type, setSignUpType] = React.useState('none');
-  const [slot_max_seats, setSlotMaxSeats] = React.useState();
+  const [slot_max_seats, setSlotMaxSeats] = React.useState(' ');
   const [slot_interval, setSlotInterval] = React.useState();
-  const [time_from_display_string, setTimeFromAsDisplayString] = React.useState();
+  const [time_from_display_string, setTimeFromAsDisplayString] = React.useState(' ');
   const [timeFromAs24HourNumber, setTimeFromAs24HourNumber] = React.useState();
   const [displayTimes, setIntervalDisplay] = React.useState([]);
   const [displayTimes24, setDisplayTimes24] = React.useState([]);
-  const [time_to_display_string, setTimeToAsDisplayString] = React.useState();
+  const [time_to_display_string, setTimeToAsDisplayString] = React.useState(' ');
   const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
   const [location, setLocation] = React.useState();
   const [showOwnerSelect, setShowOwnerSelect] = React.useState(false);
@@ -285,6 +287,20 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       }
     };
     let response = await addEvent(payload);
+    let rightNow = new Date();
+    getAllOccurrences(
+      {
+        client_id: patient.client_id,
+        start_date: rightNow,
+        end_date: addDays(rightNow, 90)
+      },
+    ).then(occList => {
+      dispatch({ type: SET_CALENDAR, payload: occList });
+      console.log(`done with loadSyncInfo Calendar. Loaded ${occList.length} ocurrence`);
+    })
+      .catch(error => {
+        console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
+      });
     closeSnackbar();
     if (response) {
       enqueueSnackbar(`${response.eventData.event_data.description} has been saved!`, { variant: 'success' });

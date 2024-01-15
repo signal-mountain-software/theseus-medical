@@ -231,8 +231,9 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           let aPieces = this_activity.match(/~\[auth=.+|\]/g);
           let foundAt = aPieces.findIndex(p => { return (p === '~[auth=view]'); });
           if (foundAt > -1) {
-            if ((state.accessList[masterClient].groups.hasOwnProperty(this_group.group_id))
-              && (state.accessList[masterClient].groups[this_group.group_id] === 0)
+            if (!state.accessList
+              || ((state.accessList[masterClient].groups.hasOwnProperty(this_group.group_id))
+              && (state.accessList[masterClient].groups[this_group.group_id] === 0))
             ) {
               continue;
             }
@@ -440,14 +441,16 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   async function saveMenu(pPerson, pMenu) {
+    let timeStamp = new Date().getTime();
     await dbClient
       .update({
         Key: {
           person_id: pPerson
         },
-        UpdateExpression: "set AVA_main_menu = :m",
+        UpdateExpression: "set AVA_main_menu = :m, menu_version = :v",
         ExpressionAttributeValues: {
-          ":m": pMenu
+          ":m": pMenu,
+          ":v": timeStamp
         },
         TableName: "AVAMenu"
       })
@@ -458,7 +461,9 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   async function getCustomizations(pName) {
-    if (pName in customObj) { return [customObj[pName].color, customObj[pName].icon]; }
+    if (pName in customObj) {
+      return [customObj[pName].color, customObj[pName].icon];
+    }
     let cRec = await dbClient
       .get({
         Key: {
@@ -607,7 +612,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
                 })
                 .promise()
                 .catch(error => {
-                  console.log('Error adding an pre-loaded activity', error.message);
+                  console.log(`error preloading ${resolvedActivity.activityRec.name} (${returnRowObject.code}) as preload_code ${preLoad_code}`, error.message);
                 });
               console.log(`done with preload for ${resolvedActivity.activityRec.name} (${returnRowObject.code}) as preload_code ${preLoad_code}`);
             })
@@ -621,7 +626,9 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     let returnArray = [];
     let returnObject = {};
     if (!fact.default_value) { return [returnArray, returnObject]; }
-    if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
+    if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) {
+      return [fact.default_value, { default: fact.default_value }];
+    }
     if (fact.activity_rec?.type === 'make_message') {
 
     }
@@ -725,7 +732,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           break;
         }
         case 'select': {
-          if (dValue === 'accessList') {
+          if (dValue === 'accessList' && state.accessList) {
             dValue = {
               'selectionList': state.accessList[state.session.client_id].shortList
             };

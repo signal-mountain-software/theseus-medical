@@ -1,11 +1,11 @@
 import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray } from '../../util/AVAUtilities';
-import { getObservationOptions, getActivity } from '../../util/AVAObservations';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3 } from '../../util/AVAUtilities';
+import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
-import { buildDisplayRows } from '../../util/AVAActivityLoader';
-import { putServiceRequest, getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
+import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
+import { putServiceRequest, getServiceRequests, updateServiceRequest, formatServiceRequestDetails } from '../../util/AVAServiceRequest';
 import PersonFilter from './PersonFilter';
 import { useSnackbar } from 'notistack';
 
@@ -25,6 +25,8 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 import DeleteIcon from '@material-ui/icons/Delete';
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import LinearProgress from '@material-ui/core/LinearProgress';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
@@ -133,7 +135,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       display: null,
       remembered: []
     },
-    columnList: []
+    columnList: [],
+    loadProgress: [],
+    attachmentList: [],
+    allowAttachments: false
   });
 
   const [records2Update, setRecords2Update] = React.useState([]);
@@ -229,7 +234,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           let this_requestName = state.session.service_request_types.hasOwnProperty(this_requestType) ? state.session.service_request_types[this_requestType].description : titleCase(this_requestType);
           let this_foreignKey = defaultValue.activities[a].column_defaults.foreignKey || defaultValue.foreignKey || defaultValue.foreign_key || 'noFKey';
           let fDate = makeDate(this_foreignKey);
-          let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(','))));
+          let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(/,\s*/))));
           localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
           defaultColumnList.push({
             rowDetails: await buildDisplayRows(defaultValue.activities[a].activityRec.valid_values_list, defaultsToUse, qualifiers),
@@ -288,6 +293,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             }
             case ('allowAddPeople'): {
               setAllowAddPeople(defaultValue.allowAddPeople);
+              break;
+            }
+            case ('allowAttachments'): {
+              updateReactData({ allowAttachments: true }, false);
               break;
             }
             case ('allowRemovePeople'): {
@@ -393,6 +402,91 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     setForceRedisplay(!forceRedisplay);
   };
 
+  const hiddenFileInput = React.useRef(null);
+  const handleFileUpload = event => {
+    hiddenFileInput.current.click();
+  };
+
+  let upload;
+  async function handleSaveFile(pTarget) {
+    let pType = pTarget.type;
+    upload = s3.upload({
+      partSize: 10 * 1024 * 1024,
+      queueSize: 4,
+      Bucket: 'theseus-medical-storage',
+      Key: pTarget.name,
+      Body: pTarget,
+      ACL: 'public-read-write',
+      ContentType: pType
+    });
+    let reactData_index = reactData.attachmentList.push({
+      Key: pTarget.name
+    }) - 1;
+    reactData.loadProgress[reactData_index] = {
+      loading: true,
+      fileName: '',
+      total: 1,
+      progress: 0
+    };
+    updateReactData({ loadProgress: reactData.loadProgress }, true);
+    let s3Resp = await performUpload();
+    reactData.attachmentList[reactData_index] = s3Resp;
+    if (!reactData.textInput) { reactData.textInput = { 's3file': s3Resp.Location }; }
+    else { reactData.textInput.s3file = s3Resp.Location; }
+    reactData.loadProgress[reactData_index] = {
+      loading: false,
+      fileName: '',
+      total: 1,
+      progress: 0
+    };
+    updateReactData({
+      loadProgress: reactData.loadProgress,
+      attachmentList: reactData.attachmentList,
+      textInput: reactData.textInput
+    }, true);
+    return s3Resp;
+
+    function performUpload() {
+      return new Promise(function (resolve, reject) {
+        upload
+          .send((err, good) => {
+            if (err) {
+              if (err.code === 'RequestAbortedError') {
+                enqueueSnackbar(`AVA stopped loading at your request.`, { variant: 'error', persist: false });
+              }
+              else {
+                enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+              }
+              reject({});
+            }
+            else {
+              resolve(good);
+            }
+          });
+        upload.on('httpUploadProgress', progress => {
+          if (reactData.loadProgress[reactData_index].loading === 'abort') {
+            upload.abort();
+            reactData.loadProgress.splice(reactData_index, 1);
+          }
+          else {
+            let pFactor = 1000;
+            do {
+              pFactor *= 10;
+            }
+            while (progress.total > (1000 * pFactor));
+            reactData.loadProgress[reactData_index] = {
+              loading: true,
+              fileName: progress.key,
+              total: (progress.total / pFactor),
+              progress: ((progress.loaded * 100) / progress.total)
+            };
+          }
+          updateReactData({ loadProgress: reactData.loadProgress }, true);
+        });
+      });
+    };
+  };
+
   const handleChangeTextField = (vText, columnNumber, rowNumber) => {
     // reactData.columnList[columnNumber].rowDetails[rowNumber].textValue
     if (!reactData.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('textValue')) {
@@ -412,7 +506,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
       else {
-        handleTextExit(vText, columnNumber, rowNumber);
+        handleTextExit(vText.replace(/[\r\n]+/gm, ''), columnNumber, rowNumber);
       }
     }
     setForceRedisplay(!forceRedisplay);
@@ -506,7 +600,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           winner = false;
           maxHitCount++;
         }
-      })
+      });
       if (!winner) {
         enqueueSnackbar(
           `AVA found ${maxHitCount} people to match that name.`,
@@ -525,6 +619,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = titleCase(vText);
     updateReactData({ columnList: reactData.columnList }, true);
   };
+
+  function loadingInProgress(index = 'all') {
+    if (!reactData.loadProgress) {
+      return false;
+    }
+    if (index !== 'all') {
+      return (reactData.loadProgress[index] && reactData.loadProgress[index].loading);
+    }
+    else {
+      return (reactData.loadProgress.some(i => {
+        return (i.loading);
+      }));
+    }
+  }
 
   function resetTitleName() {
     let workingTitle = {};
@@ -577,41 +685,40 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   }
 
   async function itemSelected(columnNumber, rowNumber) {
-    if (reactData.columnList[columnNumber].rowDetails[rowNumber].isChecked) {
-      reactData.columnList[columnNumber].rowDetails[rowNumber].isChecked = false;
+    let this_row = reactData.columnList[columnNumber].rowDetails[rowNumber];
+    this_row.isChecked = !this_row.isChecked;
+    if (this_row.isChecked && this_row.observationKey && !this_row.qualData) {
+      [this_row.qualSelections, this_row.qualData] = await buildQualifiers(this_row.observationKey);
     }
-    else {
-      reactData.columnList[columnNumber].rowDetails[rowNumber].isChecked = true;
-      await getQualifierSelections(columnNumber, rowNumber);
-    }
+    reactData.columnList[columnNumber].rowDetails[rowNumber] = this_row;
     updateReactData({ columnList: reactData.columnList }, true);
   }
-
-  async function getQualifierData(observationKey) {
-    // first time we've seen anybody check off this text in this session
-    if (observationKey) {
-      return (await getObservationOptions(observationKey));
+  /*
+    async function getQualifierData(observationKey) {
+      // first time we've seen anybody check off this text in this session
+      if (observationKey) {
+        return (await getObservationOptions(observationKey));
+      }
+      else {
+        return [];
+      }
     }
-    else {
-      return [];
-    }
-  }
-
-  async function getQualifierSelections(columnNumber, rowNumber) {
-    let keyText = reactData.columnList[columnNumber].rowDetails[rowNumber].text;
-    if (((reactData.qualData ? reactData.qualData[keyText] : null) || await getQualifierData(reactData.columnList[columnNumber].rowDetails[rowNumber].observationKey)).length > 0) {
-      if (!reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections) {     // no previous selections made
-        reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
-        if (reactData.defaultQualSelections[keyText]) {
-          reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = deepCopy(reactData.defaultQualSelections[keyText]);
-        }
-        else {
+  
+    async function getQualifierSelections(columnNumber, rowNumber) {
+      let keyText = reactData.columnList[columnNumber].rowDetails[rowNumber].text;
+      if (((reactData.qualData ? reactData.qualData[keyText] : null) || await getQualifierData(reactData.columnList[columnNumber].rowDetails[rowNumber].observationKey)).length > 0) {
+        if (!reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections) {     // no previous selections made
           reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
+          if (reactData.defaultQualSelections[keyText]) {
+            reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = deepCopy(reactData.defaultQualSelections[keyText]);
+          }
+          else {
+            reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
+          }
         }
       }
     }
-  }
-
+  */
   function getQualTextValue(rowData, qOpt, qChoice) {
     if (rowData.qualSelections && rowData.qualSelections[qOpt]) {
       return rowData.qualSelections[qOpt][qChoice] || '';
@@ -751,14 +858,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let rowNumber = this_column.rowDetails.findIndex(r => {
         return (r.text === selection);
       });
-      this_column.rowDetails[rowNumber].isChecked = true;
-      if ((existingRequest.requestToUse.original_request.hasOwnProperty('options'))
-        && (existingRequest.requestToUse.original_request.options.hasOwnProperty(selection))) {
-        this_column.rowDetails[rowNumber].qualSelections = deepCopy(existingRequest.requestToUse.original_request.options[selection]);
-      }
-      if ((existingRequest.requestToUse.original_request.hasOwnProperty('textInput'))
-        && (existingRequest.requestToUse.original_request.options.hasOwnProperty(selection))) {
-        this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
+      if (rowNumber > -1) {
+        this_column.rowDetails[rowNumber].isChecked = true;
+        if ((existingRequest.requestToUse.original_request.hasOwnProperty('options'))
+          && (existingRequest.requestToUse.original_request.options.hasOwnProperty(selection))) {
+          this_column.rowDetails[rowNumber].qualSelections = deepCopy(existingRequest.requestToUse.original_request.options[selection]);
+        }
+        if ((existingRequest.requestToUse?.original_request.hasOwnProperty('textInput'))
+          && (existingRequest.requestToUse?.original_request?.options?.hasOwnProperty(selection))) {
+          this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
+        }
       }
     });
     if (existingRequest.requestToUse.original_request.hasOwnProperty('textInput')) {
@@ -806,6 +915,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   async function checkExistingRequests(request_key) {
     // Does this person already have a request for this requestype and foreignkey?
+    if (!request_key.foreign_key || (request_key.foreign_key === 'noFKey')) {
+      return {
+        'status': 'make new'
+      };
+    }
     let existingRequest = await getServiceRequests(request_key);
     if (existingRequest.length > 0) {
       let requestAction = await orderWarning(request_key);
@@ -952,23 +1066,26 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           || (!Array.isArray(fact.messaging) && (fact.messaging.format && (fact.messaging.format.type !== 'mealTicket')))) {
           svc_messaging = fact.messaging;
         }
-        let result = await putServiceRequest(
-          {
-            client: state.session.client_id,
-            author: this_column.person_id || state.session.patient_id,
-            proxy_user: state.session.user_id,
-            requestType: this_column.requestType,
-            activity_key: this_column.activity_key,
-            onBehalfOf: oBo,
-            foreign_key: this_column.foreignKey,
-            request: {
-              selections,
-              options,
-              textInput
-            },
-            messaging: svc_messaging,
-            local_key
-          });
+        let putSR = {
+          client: state.session.client_id,
+          author: this_column.person_id || state.session.patient_id,
+          proxy_user: state.session.user_id,
+          requestType: this_column.requestType,
+          activity_key: this_column.activity_key,
+          onBehalfOf: oBo,
+          foreign_key: this_column.foreignKey,
+          request: {
+            selections,
+            options,
+            textInput
+          },
+          messaging: svc_messaging,
+          local_key
+        };
+        if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
+          putSR.attachments = reactData.attachmentList;
+        }
+        let result = await putServiceRequest(putSR);
         local_key = result.requestRec.local_key;
         message_body = result.body;
         writtenRecords.push(result.requestRec);
@@ -1068,30 +1185,39 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
   }
 
-  function makeConfirm(pData) {
+  function makeConfirm(pData) {  // assumes you've passed in a columnList
     let warningsExist = false;
     let dataExists = false;
     let warningSection = [`[bold][italic]There are no selections for:`];
-    let responseArray = [' ', `[bold][italic]AVA will send the following:`];
-    // figure out column Names
-    let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(pData[0].dName)).slice(-5);
+    let responseArray = [`[bold][italic]AVA will send the following:`];
     pData.forEach(this_column => {
-      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-5);
-      testName.forEach((dN, dX) => {
-        if (dN !== commonRows[dX]) {
-          commonRows[dX] = false;
-        }
-      });
-    });
-    let commonText = '';
-    commonRows.forEach(c => {
-      if (c) { commonText += (c + ' '); };
-    });
-    pData.forEach(this_column => {
-      // what is checked off in this column?
-      // columnList[columnNumber].rowDetails[rowNumber].isChecked
+      /*
+      pData[
+        {
+          rowDetails[{
+              text: <string>  (the actual selection text, such as "Chopped Steak" or "Pancake Platter")
+              isChecked: <boolean>,
+              qualSelections: {
+                option: {
+                  choice: <boolean> or <string>
+                }
+              },
+              textValue: <string>
+            }, ...
+          ],
+          xxxxxx: ...
+        },
+        {},...
+      ]
+      */
       let selectionText = [];
-      let inputText = [];
+      for (const [this_selection, optionList] of Object.entries(formatServiceRequestDetails(this_column))) {
+        selectionText.push(`[style={size:1}]${sentenceCase(this_selection)}`);
+        optionList.forEach(option => {
+          selectionText.push(`[indent=1][italic][style={size:0.4}]${option}`);
+        });
+      };
+      /*
       this_column.rowDetails.forEach(this_row => {
         if (this_row.isChecked) {
           selectionText.push(`[style={size:1}]${titleCase(this_row.text)}`);
@@ -1118,30 +1244,35 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
         }
       });
+                */
       // that's all the rows for this column
-      let testName = ([' ', ' ', ' ', ' ', ' '].concat(this_column.dName)).slice(-5);
-      let showName = testName.filter((n, x) => {
-        return !commonRows[x];
-      });
-      let columnName = showName.slice(-3).join(' ');
+      let columnName = columnUniqueName(this_column).string;
       if (selectionText.length === 0) {
         warningSection.push(`[bold]${columnName}`);
         warningsExist = true;
       }
       else {
-        responseArray.push(`[bold]${columnName}`);
-        responseArray.push(...inputText);
+        if (columnName) {
+          responseArray.push(`[bold]${columnName}`);
+        };
         responseArray.push(...selectionText);
         responseArray.push('[style = { bottom: 3 }] ');
         dataExists = true;
       }
     });
     let returnArray = ['Selection summary'];
-    if (commonText) {
-      returnArray = [titleCase(commonText)];
+    if (reactData.commonText) {
+      returnArray.push(`[bold]${titleCase(reactData.commonText)}`);
     }
-    if (warningsExist) { returnArray.push(...warningSection); }
-    if (dataExists) { returnArray.push(...responseArray); }
+    if (warningsExist) {
+      returnArray.push(...warningSection);
+    }
+    if (dataExists) {
+      if (warningsExist) {
+        returnArray.push(' ');
+      }
+      returnArray.push(...responseArray);
+    }
     return ['confirm', returnArray];
   };
 
@@ -1595,6 +1726,52 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 </Box>
               ))
             }
+            { /* Show list of already uploaded attachments (if applicable) */}
+            {(reactData.attachmentList.length > 0) &&
+              <Box display='flex' flexDirection='column' pl={'24px'} justifyContent='flex-start'
+                alignItems='flex-start' key={'qrOpt_attachmentlist'}
+              >
+                <Typography className={classes.radioHead}>Attachments:</Typography>
+                {reactData.attachmentList.map((a, x) => (
+                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                    alignItems='center' key={`qrOpt_attachmentLine-${x}`}
+                  >
+                    <DeleteIcon
+                      className={classes.radioButton}
+                      size="small"
+                      onClick={() => {
+                        reactData.attachmentList.splice(x, 1);
+                        reactData.forceRedisplay = !reactData.forceRedisplay;
+                        if (loadingInProgress(x)) {
+                          reactData.loadProgress[x].loading = 'abort';
+                        }
+                        setReactData(reactData);
+                        setForceRedisplay(forceRedisplay => !forceRedisplay);
+                      }}
+                    />
+                    {loadingInProgress(x) &&
+                      <React.Fragment>
+                        <LinearProgress
+                          variant="determinate"
+                          className={classes.progressBar}
+                          style={{ width: reactData.loadProgress[x].total }}
+                          value={reactData.loadProgress[x].progress}
+                        />
+                      </React.Fragment>
+                    }
+                    <Typography
+                      style={AVATextStyle({
+                        size: 0.6,
+                        color: ((loadingInProgress(x)) ? 'gray' : 'black'),
+                        margin: { left: 0.3, right: 3 }
+                      })}
+                    >
+                      {a.Key}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            }
           </Paper>
         </React.Fragment>
       }
@@ -1707,6 +1884,28 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             >
               {'Exit'}
             </Button>
+            {reactData.allowAttachments &&
+              <React.Fragment>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'blue', color: 'white' }}
+                  startIcon={<CloudUploadIcon />}
+                  size='small'
+                  onClick={handleFileUpload}
+                >
+                  {'Attach'}
+                </Button>
+                <input
+                  type="file"
+                  style={{ display: 'none' }}
+                  ref={hiddenFileInput}
+                  onChange={async (target) => {
+                    await handleSaveFile(target.target.files[0]);
+                    setForceRedisplay(!forceRedisplay);
+                  }}
+                />
+              </React.Fragment>
+            }
             {(!factType || (factType !== 'list')) &&
               <Button
                 className={AVAClass.AVAButton}

@@ -46,7 +46,9 @@ export async function prepareDefaults(fact) {
   let returnArray = [];
   let returnObject = {};
   if (!fact.default_value) { return [returnArray, returnObject]; }
-  if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) { return fact.default_value; }
+  if (excludeList.includes(fact.activity_rec?.type) || excludeList.includes(fact.type)) {
+    return [fact.default_value, { default: fact.default_value }];
+  }
   if (fact.activity_rec?.type === 'make_message') {
 
   }
@@ -313,23 +315,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         if ((defaults.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaults[instruction[0]])) // this item is checked off by default
           || (defaultCheckedWords.includes(observationDefaultValue))) {  // this item is checked off because this instruction had a modifier such as [default=checked]
           rObj.isChecked = true;
-        }
-        // see if there any any qualifiers for this item
-        rObj.qualSelections = {};
-        if (rObj.observationKey) {
-          let oItem = await getObservationItems(rObj.observationKey);
-          if (oItem && oItem.hasOwnProperty('options')) {
-            rObj.qualData = await getObservationOptions(oItem.options.observation_key);
-            rObj.qualSelections = {};
-            oItem.options.display_value.forEach(v => {
-              if (v.default) {
-                rObj.qualSelections[v.title] = {};
-                makeArray(v.default).forEach(dVal => {
-                  rObj.qualSelections[v.title][dVal] = true;
-                });
-              }
-            });
-          }
+          [rObj.qualSelections, rObj.qualData] = await buildQualifiers(rObj.observationKey);  // see if there any any qualifiers for this item
         }
       }
       displayRowList.push(rObj);
@@ -344,10 +330,13 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     //     "~promptAll:Table Number"
     if (instruction[2]) {
       let this_instruction = instruction[2].trim();
-      let proxyOK =
-        ((sessionState.accessList[sessionState.session.client_id].count.full +
-          sessionState.accessList[sessionState.session.client_id].count.proxy +
-          sessionState.accessList[sessionState.session.client_id].count.view) > 0);
+      let proxyOK = true;
+      if (sessionState.accessList) {
+        proxyOK =
+          ((sessionState.accessList?.[sessionState.session.client_id]?.count.full +
+            sessionState.accessList?.[sessionState.session.client_id]?.count.proxy +
+            sessionState.accessList?.[sessionState.session.client_id]?.count.view) > 0);
+      }
       displayRowList.push({
         checkbox: false,
         required: false,
@@ -401,4 +390,30 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       return null;
     }
   }
+}
+
+let rememberedQualifiers = {};
+export async function buildQualifiers(qKey) {
+  if (!qKey) {
+    return [{}, {}];
+  }
+  if (!rememberedQualifiers[qKey]) {
+    rememberedQualifiers[qKey] = {
+      selections: {},
+      data: {}
+    };
+    let oItem = await getObservationItems(qKey);
+    if (oItem && oItem.hasOwnProperty('options')) {
+      rememberedQualifiers[qKey].data = await getObservationOptions(oItem.options.observation_key);
+      oItem.options.display_value.forEach(v => {
+        if (v.default) {
+          rememberedQualifiers[qKey].selections[v.title] = {};
+          makeArray(v.default).forEach(dVal => {
+            rememberedQualifiers[qKey].selections[v.title][dVal] = true;
+          });
+        }
+      });
+    }
+  }
+  return [rememberedQualifiers[qKey].selections, rememberedQualifiers[qKey].data];
 }
