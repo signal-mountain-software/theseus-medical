@@ -1113,7 +1113,6 @@ export default Component => props => {
   async function launchAVA(pLaunchUser) {
     // Get the sessionlaunchAVA
     let goodSession, currentSession, dbError;
-    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
     [goodSession, currentSession, dbError] = await getSessionV2(pLaunchUser);
     if (currentSession.customizations && currentSession.customizations.font_size) {
       AVADefaults({ fontSize: Math.max(currentSession.customizations.font_size, 1) });
@@ -1136,13 +1135,7 @@ export default Component => props => {
     }
     // Get the User's profile (info about the logged in person)
     let goodUser, currentProfile;
-    if (sessionObject && (sessionObject.currentProfile.person_id === pLaunchUser)) {
-      goodUser = true;
-      currentProfile = sessionObject.currentProfile;
-    }
-    else {
-      [goodUser, currentProfile] = await getPerson(pLaunchUser);
-    }
+    [goodUser, currentProfile] = await getPerson(pLaunchUser);
     if (!goodUser) {
       let eMessage = `No People record for ${pLaunchUser}.  This Account is not set up properly in AVA.`;
       await logAccessAttempt(pLaunchUser, '', false, eMessage);
