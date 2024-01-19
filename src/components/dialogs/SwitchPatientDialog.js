@@ -2,7 +2,6 @@ import React from 'react';
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogContentText from '@material-ui/core/DialogContentText';
-import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
 import Slide from '@material-ui/core/Slide';
 
@@ -95,29 +94,31 @@ export default ({ open, roles, onClose }) => {
 
   const [person_filter, setPersonFilter] = React.useState('');
   const [client_filter, setClientFilter] = React.useState('');
-  const [forceRedisplay, setForceRedisplay] = React.useState(true);  
+  const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [rowLimit, setRowLimit] = React.useState(20);
 
   let tally = 0;
   let onlyClient;
   Object.keys(accessList).forEach(k => {
-    if (okClient({ candidate_id: k })) {
+    if (okClient({ candidate_id: k, candidate_name: k.name })) {
       tally++;
       onlyClient = k;
     }
-  })
-  if (tally === 0) {
-    onClose();
-  }
+  });
+  // if (tally === 0) {
+  //  onClose();
+  // }
   const multiClient = (tally > 1);
   const [selectedClient, setSelectedClient] = React.useState((tally === 1) ? onlyClient : '*none');
-  
+
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
   const handleClose = () => {
     onClose();
   };
+
+  const subMenuHead = React.useRef(null);
 
   const scrollValue = 20;
   var rowsWritten;
@@ -162,12 +163,23 @@ export default ({ open, roles, onClose }) => {
 
   function okClient(cLine) {
     if (!cLine) { return false; }
+    // if you are not authorized to access this client, reject it
     if (!accessList[cLine.candidate_id].hasOwnProperty('list') || (accessList[cLine.candidate_id].list.length === 0)) {
       return false;
     }
+    // you ARE autohirzed to this client; is it filtered out?
     if (!client_filter) { return true; }
     return Object.values(cLine).toString().toLowerCase().includes(client_filter);
   };
+
+  React.useEffect(() => {
+    if (subMenuHead && subMenuHead.current) {
+      subMenuHead.current.scrollIntoView({
+        behavior: 'instant',
+        block: 'start',
+      });
+    }
+  }, [selectedClient]);
 
   return (
     accessList &&
@@ -197,14 +209,18 @@ export default ({ open, roles, onClose }) => {
         {`You may filter the list below`}
       </Typography>
       <Paper p={2} component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
-        {(selectedClient === '*none') && Object.keys(accessList).map((client, c) => (
-          <List key={`client_master_line_${c}`} component='nav'>
-            {okClient({ candidate_id: client, candidate_name: accessList[client].name }) &&
-              <ListItem onClick={() => {
-                setSelectedClient(client);
-                setRowLimit(scrollValue);
-                setForceRedisplay(!forceRedisplay);
-              }}
+        {(selectedClient === '*none') &&
+          <React.Fragment>
+            {Object.keys(accessList).map((client, c) => (
+              okClient({ candidate_id: client, candidate_name: accessList[client].name }) &&
+              <ListItem
+                key={`client_master_line_${c}`}
+                onClick={() => {
+                  setSelectedClient(client);
+
+                  setRowLimit(scrollValue);
+                  setForceRedisplay(!forceRedisplay);
+                }}
               >
                 <Box display='flex' height={50} flexDirection='row' ml={1} justifyContent='flex-start' alignItems='center'>
                   <Box
@@ -218,9 +234,9 @@ export default ({ open, roles, onClose }) => {
                   <Typography variant='h5' className={classes.lastName}>{accessList[client].name}</Typography>
                 </Box>
               </ListItem>
-            }
-          </List>
-        ))}
+            ))}
+          </React.Fragment>
+        }
         {(selectedClient !== '*none') &&
           <React.Fragment>
             <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -234,6 +250,7 @@ export default ({ open, roles, onClose }) => {
                     await onSelect(selectedClient, listEntry);
                   }}
                   button
+                  ref={(rowsWritten === 0) ? subMenuHead : null}
                 >
                   <Box height={50} key={'name_box_' + x} display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -275,9 +292,9 @@ export default ({ open, roles, onClose }) => {
       </Paper>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'red', color: 'white' }}
-            size='small'
+          className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'red', color: 'white' }}
+          size='small'
           onClick={() => {
             if ((selectedClient === '*none') || (!multiClient)) {
               onClose();
