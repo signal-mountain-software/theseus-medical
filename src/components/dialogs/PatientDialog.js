@@ -639,7 +639,10 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     if (responsibleArray) {
       sessionRec.responsible_for = responsibleArray;
     }
-    if ((localData.sessionClient !== myClient) || (localData.sessionPatient !== patient.person_id)) {
+    if ((localData.sessionClient !== myClient)
+      || (localData.sessionPatient !== putPerson.person_id)
+      || !sessionRec.client_id
+      || (sessionRec.client_id === '')) {
       sessionRec.client_id = myClient;
     }
     if (fontFactorChanged) {
