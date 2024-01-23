@@ -298,7 +298,7 @@ export async function getGroupsResponsibleFor(client_id, person_id, options) {
       });
     });
   if (!recordExists(everyGroup)) {
-    return returnObject;
+    return [returnObject, rejectObject];
   }
   // one at a time, determine if you are responsible for this group or not
   // to do this, we'll need the session record for this person
