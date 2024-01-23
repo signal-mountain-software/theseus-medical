@@ -1114,9 +1114,6 @@ export default Component => props => {
     // Get the sessionlaunchAVA
     let goodSession, currentSession, dbError;
     [goodSession, currentSession, dbError] = await getSessionV2(pLaunchUser);
-    if (currentSession.customizations && currentSession.customizations.font_size) {
-      AVADefaults({ fontSize: Math.max(currentSession.customizations.font_size, 1) });
-    }
     if (!goodSession) {
       let eMessage;
       if (dbError) {
@@ -1132,6 +1129,9 @@ export default Component => props => {
       setAVAFollowUpData();
       setDoneTrying(true);
       return false;
+    }
+    if (currentSession.customizations && currentSession.customizations.font_size) {
+      AVADefaults({ fontSize: Math.max(currentSession.customizations.font_size, 1) });
     }
     // Get the User's profile (info about the logged in person)
     let goodUser, currentProfile;
