@@ -558,10 +558,24 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   function handleOBOText(vText, columnNumber, rowNumber) {
+    let inactiveAssignment = state?.session?.group_assignments?.inactive;
+    let inactiveGroup;
+    if (!inactiveAssignment) {
+      inactiveGroup = 'inactive';
+    }
+    else if (Array.isArray(inactiveAssignment)) {
+      inactiveGroup = inactiveAssignment[0];
+    }
+    else {
+      inactiveGroup = inactiveAssignment;
+    }
     let typed_in_words = vText.toLowerCase().split(/\s+/);
     let hitCount = [];
     let hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
       if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
+        return false;
+      }
+      if (accessList_person.member_of === inactiveGroup) {
         return false;
       }
       // if any word in the display_name matches a typed in word, it is a "hit"
@@ -608,15 +622,29 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         );
       }
     }
-    if (winner) {
-      reactData.columnList[columnNumber].person_id = hits[winner_at].id;
-      let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
-      reactData.columnList[columnNumber].display_name = newDName;
-      reactData.columnList[columnNumber].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
-      vText = `${newDName} (${hits[winner_at].location})`;
-      resetTitleName();
+    let targetColumns = [];
+    if (!defaultValue.selectList) {
+      reactData.columnList.forEach((c, x) => {
+        targetColumns.push(x);
+      });
     }
-    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = titleCase(vText);
+    else {
+      targetColumns.push(columnNumber);
+    }
+    targetColumns.forEach(c => {
+      if (winner) {
+        reactData.columnList[c].person_id = hits[winner_at].id;
+        let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+        reactData.columnList[c].display_name = newDName;
+        reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
+        vText = `${newDName}`;
+        if (hits[winner_at].location) {
+          vText += ` (${hits[winner_at].location})`;
+        }
+        resetTitleName();
+      }
+      reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
+    });
     updateReactData({ columnList: reactData.columnList }, true);
   };
 
