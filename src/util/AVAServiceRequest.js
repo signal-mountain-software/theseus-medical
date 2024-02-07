@@ -135,7 +135,7 @@ export async function getServiceRequests(body) {
     return unSortedList;
   }
   let sort_order = 1;
-  if (sortInstructions.order === 'des') {
+  if (sortInstructions.order.startsWith('des')) {
     sort_order = -1;
   }
   return unSortedList.sort((a, b) => {
