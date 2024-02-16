@@ -121,6 +121,10 @@ export function AVATextStyle(options = {}) {
                 returnStyle.fontWeight = options.weight;
                 break;
             }
+            case "wrap": {
+                returnStyle.textWrap = options.wrap;
+                break;
+            }
             case "margin": {
                 if (Array.isArray(options.margin)) {
                     if (options[0]) { returnStyle.marginLeft = options[0] * 16; }
