@@ -613,13 +613,13 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     sessionRec.session_id = localData.patient_id;
     sessionRec.person_id = localData.patient_id;
     sessionRec.user_id = localData.patient_id;
-    sessionRec.status = JSON.stringify({
+    sessionRec.status = {
       'version': `v${process.env.REACT_APP_AVA_VERSION}`,
       'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
       'time': new Date().toString(),
       'action': 'Updated Person record',
       'source': 'patient_dialog'
-    });
+    };
     if (proxy) {
       sessionRec.patient_id = proxy;
     }
