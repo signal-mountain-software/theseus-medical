@@ -14,7 +14,7 @@ export function daysDiff(d1, d2) {
     return Math.abs(Math.floor((d2.getTime() - d1.getTime() - ((d2DST - d1DST) * oneMinute)) / one_day));
 }
 
-export function makeDate(pInput) {
+export function makeDate(pInput, validation = null) {
     if (!pInput) {
         return {
             'error': true,
@@ -34,9 +34,9 @@ export function makeDate(pInput) {
             'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 7
             'weekday': '',   // 'weekend' or 'weekday' 
             'textOut': pInput
-
         };
     }
+    let originalInput = pInput;
     let targetDateStamp, targetDate;
     if (pInput instanceof Date) {
         targetDateStamp = pInput.getTime();
@@ -99,12 +99,54 @@ export function makeDate(pInput) {
             };
         }
     }
+
     let currentDate = new Date();
-    let relDate, absDate, oaDate, dateOnly, absFull;
-    // Make relative date
-    let hours = 60 * 60 * 1000;
     let beginningOfCurrentDay = currentDate.setHours(0, 0, 0, 0);
 
+    // validation
+    if (validation) {
+        let foundError;
+        switch (validation) {
+            case 'noFuture': {
+                if (targetDate > currentDate) {
+                    foundError = `${originalInput} is in the future and not allowed here`;
+                }
+                break;
+            }
+            case 'noPast': {
+                if (targetDateStamp < beginningOfCurrentDay) {
+                    foundError = `${originalInput} is in the past and not allowed here`;
+                }
+                break;
+            }
+            default: { }
+        }
+        if (foundError) {
+            return {
+                'error': true,
+                'relative': foundError,
+                'absolute': foundError,
+                'absolute_full': foundError,
+                'dateOnly': foundError,
+                'timeOnly': foundError,
+                'oaDate': foundError,
+                'date': null,
+                'timestamp': 0,
+                'ymd': '2099.01.01',
+                'obs': '2099.1.1',
+                'numeric': 20990101,
+                'numeric$': '20990101',
+                'dayPart': 'day',
+                'dayOfWeek': 9,
+                'weekday': 'invalid',
+                'textOut': pInput
+            };
+        }
+    }
+   
+    // Make relative date
+    let relDate, absDate, oaDate, dateOnly, absFull;
+    let hours = 60 * 60 * 1000;
     if (targetDateStamp < beginningOfCurrentDay) {
         if (targetDateStamp > (beginningOfCurrentDay - (24 * hours))) {
             relDate = 'yesterday';
@@ -182,11 +224,29 @@ export function makeDate(pInput) {
     };
 
     function buildDate(pString) {
-        let [words, days$] = pString.split(/[-+]/);
+        if (!pString) {
+            return {
+                date: new Date(),
+                leftOver_text: ''
+            };
+        }
         let daysToAdd = 0;
-        if (days$) {
-            daysToAdd = parseInt(days$.trim(), 10) * (pString.includes('-') ? -1 : 1);
+        let words, plusMinus, days$;
+        let validString = pString.match(/(\d+[/\-.]\s*\d+[/\-.]\s*\d+)\s*(([+-])(.*))?/);
+        if (validString) {
+            [, words, , plusMinus, days$] = validString;
+        }
+        else {
+            validString = pString.match(/(.*)([-+])(.*)/);
+            if (validString) {
+                [, words, plusMinus, days$] = validString;
+            }
+        }
+        if (words) {
             pString = words.trim();
+        }
+        if (days$) {
+            daysToAdd = parseInt(days$.trim(), 10) * (plusMinus.includes('-') ? -1 : 1);
         }
         if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }      // a string that is all numbers
         else {
@@ -195,7 +255,12 @@ export function makeDate(pInput) {
                 let yearAt = pStringPieces.findIndex(p => { return (p > 2000); });
                 let yearPiece, monthPiece, dayPiece;
                 if (yearAt < 0) {
-                    yearPiece = new Date().getFullYear();
+                    if (pStringPieces.length > 2) {
+                        yearPiece = parseInt(pStringPieces[2], 10) + 2000;
+                    }
+                    else {
+                        yearPiece = new Date().getFullYear();
+                    }
                 }
                 else {
                     yearPiece = pStringPieces[yearAt];
@@ -214,7 +279,9 @@ export function makeDate(pInput) {
         let goodDate = new Date(pString);
         if (!isDate(goodDate)) {
             let m = pString.match(/(\d+:*\d*)\s*([PpAa].*[Mm])/);
-            if (m) { pString = pString.replace(m[0], `${m[1]}${m[2]}`); }
+            if (m) {
+                pString = pString.replace(m[0], `${m[1]}${m[2]}`);
+            }
             let pWords = pString.split(/\s+/);
             let currentDate, timePart;
             pWords = pWords.filter(f => {      // filter expression will consume words that successfully contribute to the date 
@@ -251,69 +318,22 @@ export function makeDate(pInput) {
                 date: addDays(currentDate, (variant + daysToAdd)),
                 leftOver_text: pWords.join(' ')
             };
-            /*
-            let currentDate = new Date();
-            let tDate = pString.trim().substr(0, 3).toLowerCase();
-            if (tDate === 'now') { tDate = 'tod'; }
-            else { currentDate.setHours(0, 0, 0, 0); }
-            if (tDate === 'tom') {
-                return addDays(currentDate, (1 + daysToAdd));
-            }
-            else if (tDate === 'tod') {
-                return addDays(currentDate, daysToAdd);
-            }
-            else if (tDate === 'yes') {
-                return addDays(currentDate, (daysToAdd - 1));
-            }
-            else {
-                // the pString doesn't translate to a date on its own
-                // it is therefore in the format [next | last] <day of the week>
-                // if "last" is used, look backward from today to the previous Monday, then move backward (7 - <day of the week>) more days
-                // if "next" is used, look ahead to the next Sunday (7 - <day of the week>), then find the next instance of the requested day
-                let tLast = false;
-                let tNext = pString.trim().toLowerCase().startsWith('next');
-                if (!tNext) {
-                    tLast = pString.trim().toLowerCase().startsWith('last');
-                }
-                if (tLast || tNext) {
-                    let parts = pString.split(/\W+/);
-                    parts.shift();
-                    pString = parts.join(' ');
-                }
-                let currentDofWeek = new Date().getDay();
-                let variant = 0;
-                let dayWord = pString.split(' ')[0].trim().slice(0, 3).toLowerCase();
-                let requestedDofWeek = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(dayWord);
-                if (requestedDofWeek > -1) {
-                    if (tLast) { variant = (0 - currentDofWeek) - (7 - requestedDofWeek); }
-                    else if (tNext) {
-                        variant = (7 + requestedDofWeek - currentDofWeek);
-                    }
-                    else {
-                        variant = requestedDofWeek - currentDofWeek;
-                        if (variant <= 0) { variant += 7; }
-                    }
-                    return addDays(currentDate, (variant + daysToAdd));
-                }
-                else {
-                    return null;
-                }
-            }
-            */
         }
         else {
             // the date passed in was a good date
-            // if the year is more than 2 years from now, assume that no year was passed in
+            // if the year is more than 100 years from now, assume that no year was passed in
             // Adjust the year to be the year that makes the month and day closest to now
+            goodDate = addDays(goodDate, daysToAdd);
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 2) {
+            if (Math.abs(resolvedYear - thisYear) < 100) {
                 return {
                     date: goodDate,
                     leftOver_text: null
                 };
             }
+            // If you arrive here, the date is 100 years from now.  Set it to a more recent date automatically
             goodDate.setFullYear(thisYear);
             if ((goodDate > today) || (daysDiff(today, goodDate) <= 120)) {
                 return {
