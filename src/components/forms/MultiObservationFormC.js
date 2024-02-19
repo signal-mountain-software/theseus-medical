@@ -138,7 +138,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     columnList: [],
     loadProgress: [],
     attachmentList: [],
-    allowAttachments: false
+    allowAttachments: false,
+    errorOnScreen: false
   });
 
   const [records2Update, setRecords2Update] = React.useState([]);
@@ -522,6 +523,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function handleDateExit(vText, columnNumber, rowNumber) {
     let AVAdate = makeDate(vText, 'noFuture');
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
+    reactData.errorOnScreen = AVAdate.error;
     updateReactData({ columnList: reactData.columnList }, true);
   };
 
@@ -1943,8 +1945,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             {(!factType || (factType !== 'list')) &&
               <Button
                 className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
+                style={reactData.errorOnScreen ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
                 size='small'
+                disabled={reactData.errorOnScreen}
                 onClick={() => {
                   let [cStatus, response] = makeConfirm(reactData.columnList);
                   setConfirmPrompt(response);
