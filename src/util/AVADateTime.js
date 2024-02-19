@@ -109,7 +109,8 @@ export function makeDate(pInput, validation = null) {
         switch (validation) {
             case 'noFuture': {
                 if (targetDate > currentDate) {
-                    foundError = `${originalInput} is in the future and not allowed here`;
+                    foundError =
+                        `${targetDate.toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric' })} is in the future and not allowed here`;
                 }
                 break;
             }

@@ -523,7 +523,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function handleDateExit(vText, columnNumber, rowNumber) {
     let AVAdate = makeDate(vText, 'noFuture');
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
-    reactData.errorOnScreen = AVAdate.error;
+    reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
     updateReactData({ columnList: reactData.columnList }, true);
   };
 
@@ -1642,7 +1642,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         helperText={this_item.text}
                         multiline
                         inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                        onChange={event => (handleChangeTextField(event.target.value, selectedColumn, this_index))}
+                      onChange={event => {
+                        if (!event.target.value) {
+                          reactData.errorOnScreen = false;
+                        }
+                        handleChangeTextField(event.target.value, selectedColumn, this_index);
+                        }}
                         FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                         onKeyPress={(event) => {
                           onCheckEnter(event, selectedColumn, this_index);
