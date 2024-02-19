@@ -190,11 +190,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   async function extractRequestType(aKey) {
-    let activityParts = aKey.split('//').pop();
+    let activityParts = aKey.split('//');
     let activityCode = activityParts.pop();
     let activityClient = ((activityParts.length > 0) ? activityParts[0] : state.session.client_id);
     let activityRec = await getActivity(activityClient, activityCode);
-    return activityRec.request_type;
+    return activityRec.request_type || activityRec.name;
   }
 
   async function initialLoad() {
@@ -204,6 +204,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     // eslint-disable-next-line
     {  // build defaultColumns object from passed in activities for this request
       if (!defaultValue || !defaultValue.hasOwnProperty('activities')) {
+        if (!fact.activity_code && fact.activity_key) {
+          fact.activity_code = fact.activity_key;
+        }
         let this_requestType = defaultValue.requestType || defaultValue.request_type || await extractRequestType(fact.activity_code) || 'noRType';
         let this_requestName = state.session.service_request_types.hasOwnProperty(this_requestType) ? state.session.service_request_types[this_requestType].description : titleCase(this_requestType);
         let this_foreignKey = defaultValue.foreignKey || defaultValue.foreign_key || 'noFKey';
@@ -496,13 +499,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       handleTextExit(vText, columnNumber, rowNumber);
     }
     else {
+      /*
       if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
         handleDateExit(vText, columnNumber, rowNumber);
       }
       else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
         handleTimeExit(vText, columnNumber, rowNumber);
       }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
+      else 
+      */
+      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
       else {
@@ -514,7 +520,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   function handleDateExit(vText, columnNumber, rowNumber) {
-    let AVAdate = makeDate(vText);
+    let AVAdate = makeDate(vText, 'noFuture');
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
     updateReactData({ columnList: reactData.columnList }, true);
   };
