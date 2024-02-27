@@ -110,15 +110,23 @@ export function AVATextStyle(options = {}) {
     Object.keys(options).forEach(optionKey => {
         switch (optionKey) {
             case "bold": {
-                returnStyle.fontWeight = 'bold';
+                if (options.bold) {
+                    returnStyle.fontWeight = 'bold';
+                }
                 break;
             }
             case "italic": {
-                returnStyle.fontStyle = 'italic';
+                if (options.italic) {
+                    returnStyle.fontStyle = 'italic';
+                }
                 break;
             }
             case "weight": {
                 returnStyle.fontWeight = options.weight;
+                break;
+            }
+            case "wrap": {
+                returnStyle.textWrap = options.wrap;
                 break;
             }
             case "margin": {
@@ -136,17 +144,24 @@ export function AVATextStyle(options = {}) {
                 }
                 break;
             }
-            case "marginLeft":
-            case "marginRight":
             case "marginTop":
-            case "paddingLeft":
-            case "paddingRight":
             case "paddingTop": {
+                returnStyle.marginTop = options[optionKey] * 16;
+                break;
+            }
+            case "paddingBottom":
+            case "marginBottom": {
+                returnStyle.marginBottom = (options.marginBottom * 16) - (2 * user_fontSize * (options.size || 1));;
+                break;
+            }
+            case "paddingLeft":
+            case "marginLeft": {
                 returnStyle.marginLeft = options[optionKey] * 16;
                 break;
             }
-            case "marginBottom": {
-                returnStyle.marginBottom = (options.marginBottom * 16) - (2 * user_fontSize * (options.size || 1));;
+            case "paddingRight":
+            case "marginRight": {
+                returnStyle.marginRight = options[optionKey] * 16;
                 break;
             }
             case "padding": {

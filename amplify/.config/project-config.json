@@ -1,6 +1,6 @@
 {
     "projectName": "AVA",
-    "version": "24.01.08",
+    "version": "24.02.23",
     "frontend": "javascript",
     "javascript": {
         "framework": "react",

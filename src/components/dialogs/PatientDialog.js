@@ -613,13 +613,13 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     sessionRec.session_id = localData.patient_id;
     sessionRec.person_id = localData.patient_id;
     sessionRec.user_id = localData.patient_id;
-    sessionRec.status = JSON.stringify({
+    sessionRec.status = {
       'version': `v${process.env.REACT_APP_AVA_VERSION}`,
       'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
       'time': new Date().toString(),
       'action': 'Updated Person record',
       'source': 'patient_dialog'
-    });
+    };
     if (proxy) {
       sessionRec.patient_id = proxy;
     }
@@ -639,7 +639,10 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     if (responsibleArray) {
       sessionRec.responsible_for = responsibleArray;
     }
-    if ((localData.sessionClient !== myClient) || (localData.sessionPatient !== patient.person_id)) {
+    if ((localData.sessionClient !== myClient)
+      || (localData.sessionPatient !== putPerson.person_id)
+      || !sessionRec.client_id
+      || (sessionRec.client_id === '')) {
       sessionRec.client_id = myClient;
     }
     if (fontFactorChanged) {

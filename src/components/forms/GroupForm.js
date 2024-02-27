@@ -219,9 +219,40 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [showSuperSize, setshowSuperSize] = React.useState(false);
   const [superSizeData, setSuperSizeData] = React.useState(false);
+  const [singlePersonMode, setsinglePersonMode] = React.useState(false);
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
   const [choiceList, setChoiceList] = React.useState([]);
+
+  if (peopleList && !showSuperSize) {
+    let singlePerson;
+    if (Array.isArray(peopleList) && (peopleList.length === 1)) {
+      if (typeof (peopleList[0]) === 'string') {
+        singlePerson = peopleList[0];
+      }
+      else if (peopleList[0].hasOwnProperty('person_id')) {
+        singlePerson = peopleList[0].person_id;
+      }
+    }
+    else if (typeof (peopleList) === 'string') { 
+      singlePerson = peopleList;
+    }
+    if (singlePerson && !singlePerson.startsWith('~')) {
+      let this_item = workingMemberList.find((pObj) => {
+        return (pObj.person_id === singlePerson);
+      })
+      if (this_item) {
+        this_item.role = 'member';    // await getRole(pGroup, singlePerson);
+        this_item.public_groups = [];   //  await getPublicGroupList(state.session.client_id, singlePerson);
+        if (!this_item.account_class) {
+          this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
+        }
+        setSuperSizeData(this_item);
+        setshowSuperSize(true);
+        setsinglePersonMode(true);
+      }
+    }
+  }
 
   const [overrideRole, setOverrideRole] = React.useState();
 
@@ -984,8 +1015,13 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   size='small'
                   startIcon={<CloseIcon size="small" />}
                   onClick={() => {
-                    setshowSuperSize(false);
-                    setForceRedisplay(!forceRedisplay);
+                    if (singlePersonMode) {
+                      onReset();
+                    }
+                    else {
+                      setshowSuperSize(false);
+                      setForceRedisplay(!forceRedisplay);
+                    }
                   }}
                 >
                   {'Back'}

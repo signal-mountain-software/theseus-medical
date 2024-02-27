@@ -1,4 +1,4 @@
-import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient, parseNumeric } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations } from './AVAUtilities';
@@ -426,10 +426,10 @@ export async function formatRequestDetails(body, summaryType) {
   }
 
   if (pRec.location) {
-    let locNum = parseNumeric(pRec.location);
-    if (locNum.hasNumbers) {
-      pRec.location = `Apt ${locNum.value}`;
-    }
+ //   let locNum = parseNumeric(pRec.location);
+ //   if (locNum.hasNumbers) {
+ //     pRec.location = `Apt ${locNum.value}`;
+ //   }
     htmlMessage += `<br />${pRec.location}`;
     rawMessage += `${pRec.location}\n`;
     pdfLine(pRec.location, { align: 'center' });

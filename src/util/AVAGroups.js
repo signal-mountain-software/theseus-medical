@@ -298,7 +298,7 @@ export async function getGroupsResponsibleFor(client_id, person_id, options) {
       });
     });
   if (!recordExists(everyGroup)) {
-    return returnObject;
+    return [returnObject, rejectObject];
   }
   // one at a time, determine if you are responsible for this group or not
   // to do this, we'll need the session record for this person
@@ -441,16 +441,25 @@ export async function getGroup(pGroup_id, pClient_id) {
 
 export async function getRole(pGroup, pPerson) {
   let pSession = await getSession(pPerson);
-  if ((('responsible_for' in pSession) && (pSession.responsible_for.some(g => g.split('~')[0].trim() === pGroup)))
-    || (('groups_managed' in pSession) && (pSession.groups_managed.some(g => g.split('~')[0].trim() === pGroup)))) {
-    return 'responsible';
+  if (!Array.isArray(pGroup)) {
+    if ((('responsible_for' in pSession) && (pSession.responsible_for.some(g => g.split('~')[0].trim() === pGroup)))
+      || (('groups_managed' in pSession) && (pSession.groups_managed.some(g => g.split('~')[0].trim() === pGroup)))) {
+      return 'responsible';
+    }
+    else {
+      let gRec = await getGroup(pGroup, pSession.client_id);
+      if (gRec.admin_list && gRec.admin_list.includes(pPerson)) { return 'responsible'; }
+    }
+    if (await isMemberOf(pSession.client_id, pPerson, pGroup)) { return 'member'; }
+    else { return 'non-member'; }
   }
   else {
-    let gRec = await getGroup(pGroup, pSession.client_id);
-    if (gRec.admin_list && gRec.admin_list.includes(pPerson)) { return 'responsible'; }
+    if (pGroup.every(async n => {
+      return (await isMemberOf(pSession.client_id, pPerson, n))
+    })) { return 'member'; }
+    else { return 'non-member'; }
   }
-  if (await isMemberOf(pSession.client_id, pPerson, pGroup)) { return 'member'; }
-  else { return 'non-member'; }
+  
 }
 
 export function determineClass(gList, group_assignments) {

@@ -138,7 +138,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     columnList: [],
     loadProgress: [],
     attachmentList: [],
-    allowAttachments: false
+    allowAttachments: false,
+    errorOnScreen: false
   });
 
   const [records2Update, setRecords2Update] = React.useState([]);
@@ -190,11 +191,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   async function extractRequestType(aKey) {
-    let activityParts = aKey.split('//').pop();
+    let activityParts = aKey.split('//');
     let activityCode = activityParts.pop();
     let activityClient = ((activityParts.length > 0) ? activityParts[0] : state.session.client_id);
     let activityRec = await getActivity(activityClient, activityCode);
-    return activityRec.request_type;
+    return activityRec.request_type || activityRec.name;
   }
 
   async function initialLoad() {
@@ -204,6 +205,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     // eslint-disable-next-line
     {  // build defaultColumns object from passed in activities for this request
       if (!defaultValue || !defaultValue.hasOwnProperty('activities')) {
+        if (!fact.activity_code && fact.activity_key) {
+          fact.activity_code = fact.activity_key;
+        }
         let this_requestType = defaultValue.requestType || defaultValue.request_type || await extractRequestType(fact.activity_code) || 'noRType';
         let this_requestName = state.session.service_request_types.hasOwnProperty(this_requestType) ? state.session.service_request_types[this_requestType].description : titleCase(this_requestType);
         let this_foreignKey = defaultValue.foreignKey || defaultValue.foreign_key || 'noFKey';
@@ -496,13 +500,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       handleTextExit(vText, columnNumber, rowNumber);
     }
     else {
+      /*
       if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
         handleDateExit(vText, columnNumber, rowNumber);
       }
       else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
         handleTimeExit(vText, columnNumber, rowNumber);
       }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
+      else 
+      */
+      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
       else {
@@ -514,8 +521,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   function handleDateExit(vText, columnNumber, rowNumber) {
-    let AVAdate = makeDate(vText);
+    let AVAdate = makeDate(vText, 'noFuture');
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
+    reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
     updateReactData({ columnList: reactData.columnList }, true);
   };
 
@@ -558,10 +566,24 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   function handleOBOText(vText, columnNumber, rowNumber) {
+    let inactiveAssignment = state?.session?.group_assignments?.inactive;
+    let inactiveGroup;
+    if (!inactiveAssignment) {
+      inactiveGroup = 'inactive';
+    }
+    else if (Array.isArray(inactiveAssignment)) {
+      inactiveGroup = inactiveAssignment[0];
+    }
+    else {
+      inactiveGroup = inactiveAssignment;
+    }
     let typed_in_words = vText.toLowerCase().split(/\s+/);
     let hitCount = [];
     let hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
       if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
+        return false;
+      }
+      if (accessList_person.member_of === inactiveGroup) {
         return false;
       }
       // if any word in the display_name matches a typed in word, it is a "hit"
@@ -608,15 +630,29 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         );
       }
     }
-    if (winner) {
-      reactData.columnList[columnNumber].person_id = hits[winner_at].id;
-      let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
-      reactData.columnList[columnNumber].display_name = newDName;
-      reactData.columnList[columnNumber].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
-      vText = `${newDName} (${hits[winner_at].location})`;
-      resetTitleName();
+    let targetColumns = [];
+    if (!defaultValue.selectList) {
+      reactData.columnList.forEach((c, x) => {
+        targetColumns.push(x);
+      });
     }
-    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = titleCase(vText);
+    else {
+      targetColumns.push(columnNumber);
+    }
+    targetColumns.forEach(c => {
+      if (winner) {
+        reactData.columnList[c].person_id = hits[winner_at].id;
+        let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+        reactData.columnList[c].display_name = newDName;
+        reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
+        vText = `${newDName}`;
+        if (hits[winner_at].location) {
+          vText += ` (${hits[winner_at].location})`;
+        }
+        resetTitleName();
+      }
+      reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
+    });
     updateReactData({ columnList: reactData.columnList }, true);
   };
 
@@ -1606,7 +1642,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         helperText={this_item.text}
                         multiline
                         inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                        onChange={event => (handleChangeTextField(event.target.value, selectedColumn, this_index))}
+                      onChange={event => {
+                        if (!event.target.value) {
+                          reactData.errorOnScreen = false;
+                        }
+                        handleChangeTextField(event.target.value, selectedColumn, this_index);
+                        }}
                         FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                         onKeyPress={(event) => {
                           onCheckEnter(event, selectedColumn, this_index);
@@ -1909,8 +1950,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             {(!factType || (factType !== 'list')) &&
               <Button
                 className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
+                style={reactData.errorOnScreen ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
                 size='small'
+                disabled={reactData.errorOnScreen}
                 onClick={() => {
                   let [cStatus, response] = makeConfirm(reactData.columnList);
                   setConfirmPrompt(response);

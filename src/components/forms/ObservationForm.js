@@ -172,7 +172,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     textInput: {},
     initialLoadComplete: null,
     popupMenuOpen: false,
-    loadProgress: []
+    loadProgress: [],
+    errorOnScreen: false
   });
 
   const [dataRows, setDataRows] = React.useState();
@@ -359,7 +360,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       for (const key in defaultObj) {
         if (!key.startsWith('private~')) {
           if (!reactData.textInput) { reactData.textInput = {}; }
-          reactData.textInput[key] = defaultObj[key];
+          if (defaultObj[key]) {
+            reactData.textInput[key] = defaultObj[key];
+          }
         }
         else { delete fact?.value?.freeText[key]; }
       }
@@ -499,8 +502,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   const handleDateExit = async (event, this_item) => {
-    let AVAdate = makeDate(event.target.value);
+    let AVAdate = makeDate(event.target.value, 'noFuture');
     reactData.textInput[this_item.text] = AVAdate.absolute;
+    reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
     setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
   };
@@ -867,6 +871,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         onChange={(event) => {
                           if (!reactData.textInput) { reactData.textInput = {}; }
                           reactData.textInput[this_item.text] = event.target.value;
+                          if (!event.target.value) {
+                            reactData.errorOnScreen = false;
+                          }
                           setReactData(reactData);
                           setForceRedisplay(!forceRedisplay);
                         }}
@@ -1151,9 +1158,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   {(!factType || (factType !== 'list')) &&
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: (loadingInProgress() ? 'white' : 'green'), color: (loadingInProgress() ? 'green' : 'white') }}
+                      style={(loadingInProgress() || reactData.errorOnScreen) ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
                       size='small'
-                      disabled={loadingInProgress()}
+                      disabled={loadingInProgress() || reactData.errorOnScreen}
                       onClick={() => {
                         let [cStatus, response] = makeConfirm(dataRows.displayRows, dataRows.checked, reactData.textInput);
                         reactData.confirmPrompt = response;
