@@ -5,7 +5,7 @@ import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClien
 import { makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
-import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import { AVATextStyle, AVADefaults, hexToRgb } from '../../util/AVAStyles';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -1299,7 +1299,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                         <Paper ml={2} mr={2} mt={1.5} elevation={0} component={Box} key={this_row.activity_code + 'section' + index} >
                           <Box
                             display='flex'
-                            style={{ borderRadius: ((sectionOpen[this_row.section_name] || (currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'), backgroundColor: this_row.section_color, textDecoration: 'none' }}
+                            style={{
+                              borderRadius: ((sectionOpen[this_row.section_name] || (currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                              backgroundColor: hexToRgb(this_row.section_color, 1),
+                              textDecoration: 'none'
+                            }}
                             justifyContent='center'
                             flexDirection='column'
                             minHeight={80}
@@ -1343,7 +1347,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                           ml={2} mr={2} mt={.2} mb={.2} key={this_row.activity_code + 'detail' + index} >
                           <Box
                             display='flex'
-                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
+                            style={{
+                              borderRadius: '0px 0px 0px 0px',
+                              backgroundColor: hexToRgb(this_row.row_color, 0.4),
+                              textDecoration: 'none'
+                            }}
                             p={2}
                             justifyContent='center'
                             flexDirection='column'
@@ -1450,7 +1458,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                             display='flex'
                             style={{
                               borderRadius: '0px 0px 30px 30px',
-                              backgroundColor: this_row.row_color,
+                              backgroundColor: hexToRgb(this_row.row_color, 0.4),
                               textDecoration: 'none'
                             }}
                             ml={2} mr={2}
