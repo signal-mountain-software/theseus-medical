@@ -89,12 +89,14 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
   return (
     <Dialog
       key={`confirm-dialog`}
+      id={`confirm-dialog`}
       open={true}
       fullWidth
       p={2}
     >
       <Box
         key={`box-line`}
+        id={`box-line`}
         marginLeft={3 + (3 * Number(makeIndent(promptLines[0])))}
       >
         <Typography
