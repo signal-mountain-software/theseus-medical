@@ -182,95 +182,98 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
               style={AVATextStyle({
                 size: ((tx === 0) ? 1.3 : 1.0),
                 bold: (tx === 0),
-                italic: (t.includes('[italic]'))
+                italic: (t.includes('[italic]')),
+                marginTop: ((!t || t.trim() === '') ? 1.5 : 0)
               })}
               className={classes.titleRow}>
               {t.replace('[italic]', '')}
             </Typography>
           ))}
         </DialogContent>
-        <DialogContent className={classes.contentBox} id='dialog-content'>
-          <Box
-            display='flex'
-            grow={1}
-            pt={1}
-            mb={0}
-            id={`contentsColumn`}
-            key={`contentsColumn`}
-            flexDirection='column'
-            justifyContent='center'
-            alignItems='flex-start'
-          >
-            {promptArray.map((prompt, ndx) => (
-              <React.Fragment key={`frag-${ndx}`}>
-                {prompt && (prompt.toLowerCase().startsWith('[')) ?
-                  <Box display='flex'
-                    flexDirection='row'
-                    mt={0.5}
-                    mb={0.5}
-                    paddingLeft={2}
-                    paddingRight={2}
-                    alignItems={'center'}
-                    minWidth={'100%'}
-                    border={textInput[ndx] ? 1 : 0}
-                    borderRadius={'16px'}
-                    key={'fullRow' + ndx}
-                  >
-                    {prompt.toLowerCase().startsWith('[checkbox]') &&
-                      <Checkbox
-                        className={classes.radioButton}
-                        size="small"
-                        onClick={() => {
-                          toggleCheckbox(ndx);
+        {promptArray && (promptArray.length > 0) &&
+          <DialogContent className={classes.contentBox} id='dialog-content'>
+            <Box
+              display='flex'
+              grow={1}
+              pt={1}
+              mb={0}
+              id={`contentsColumn`}
+              key={`contentsColumn`}
+              flexDirection='column'
+              justifyContent='center'
+              alignItems='flex-start'
+            >
+              {promptArray.map((prompt, ndx) => (
+                <React.Fragment key={`frag-${ndx}`}>
+                  {prompt && (prompt.toLowerCase().startsWith('[')) ?
+                    <Box display='flex'
+                      flexDirection='row'
+                      mt={0.5}
+                      mb={0.5}
+                      paddingLeft={2}
+                      paddingRight={2}
+                      alignItems={'center'}
+                      minWidth={'100%'}
+                      border={textInput[ndx] ? 1 : 0}
+                      borderRadius={'16px'}
+                      key={'fullRow' + ndx}
+                    >
+                      {prompt.toLowerCase().startsWith('[checkbox]') &&
+                        <Checkbox
+                          className={classes.radioButton}
+                          size="small"
+                          onClick={() => {
+                            toggleCheckbox(ndx);
+                          }}
+                          checked={(textInput[ndx] === 'checked')}
+                        />
+                      }
+                      <Typography style={AVATextStyle({
+                        size: 1
+                      })}>
+                        {prompt.split(']').pop()}
+                      </Typography>
+                    </Box>
+                    :
+                    <Box display='flex'
+                      flexDirection='column'
+                      mt={0.5}
+                      mb={0.5}
+                      paddingLeft={2}
+                      paddingRight={2}
+                      minWidth={'100%'}
+                      justifyContent={'center'}
+                      minHeight={`${user_fontSize * 2}rem`}
+                      border={textInput[ndx] ? 1 : 0}
+                      borderRadius={'16px'}
+                      key={'fullRow' + ndx}
+                    >
+                      <TextField
+                        className={classes.idText}
+                        id={`prompt-${ndx}`}
+                        key={`prompt-${ndx}`}
+                        multiline
+                        autoFocus={(ndx === reactData.focusOn) ? true : null}
+                        inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                        FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                        error={!!(errorText && errorText[ndx])}
+                        value={textInput[ndx] || ''}
+                        onChange={(event) => {
+                          handleChangeTextInput(event, ndx);
                         }}
-                        checked={(textInput[ndx] === 'checked')}
+                        onKeyPress={(event) => {
+                          onCheckEnter(event);
+                        }}
+                        helperText={(errorText && errorText[ndx]) ? errorText[ndx] : ((prompt === titleText) ? '' : (prompt || ''))}
+                        autoComplete='off'
                       />
-                    }
-                    <Typography style={AVATextStyle({
-                      size: 1
-                    })}>
-                      {prompt.split(']').pop()}
-                    </Typography>
-                  </Box>
-                  :
-                  <Box display='flex'
-                    flexDirection='column'
-                    mt={0.5}
-                    mb={0.5}
-                    paddingLeft={2}
-                    paddingRight={2}
-                    minWidth={'100%'}
-                    justifyContent={'center'}
-                    minHeight={`${user_fontSize * 2}rem`}
-                    border={textInput[ndx] ? 1 : 0}
-                    borderRadius={'16px'}
-                    key={'fullRow' + ndx}
-                  >
-                    <TextField
-                      className={classes.idText}
-                      id={`prompt-${ndx}`}
-                      key={`prompt-${ndx}`}
-                      multiline
-                      autoFocus={(ndx === reactData.focusOn) ? true : null}
-                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                      error={!!(errorText && errorText[ndx])}
-                      value={textInput[ndx] || ''}
-                      onChange={(event) => {
-                        handleChangeTextInput(event, ndx);
-                      }}
-                      onKeyPress={(event) => {
-                        onCheckEnter(event);
-                      }}
-                      helperText={(errorText && errorText[ndx]) ? errorText[ndx] : ((prompt === titleText) ? '' : (prompt || ''))}
-                      autoComplete='off'
-                    />
-                  </Box>
-                }
-              </React.Fragment>
-            ))}
-          </Box>
-        </DialogContent>
+                    </Box>
+                  }
+                </React.Fragment>
+              ))}
+            </Box>
+          </DialogContent>
+        }
       </Box>
       <DialogActions style={{ justifyContent: 'center' }}>
         <Box display='flex' style={{ marginTop: '2em' }} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
