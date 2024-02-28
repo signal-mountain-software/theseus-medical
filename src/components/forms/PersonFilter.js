@@ -30,6 +30,12 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
+  dialogPaper: {
+    minHeight: '80vh',
+    maxHeight: '80vh',
+    minWidth: '600px',
+    marginTop: '8vh'
+  },
   freeInput: {
     marginLeft: '25px',
     marginRight: 2,
@@ -238,13 +244,14 @@ export default ({
   return (
     <Dialog
       open={true || forceRedisplay}
-      onScroll={onScroll}
+      onScroll={onScroll} fullWidth
+      variant={'elevation'} elevation={2}
+      id='person_filter-dialog'
       p={2}
-      fullScreen
     >
       <React.Fragment>
         <Typography
-          style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, bold: true, overflow: 'visible' })}
+          style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, width: '400px', bold: true, overflow: 'visible' })}
           id='scroll-dialog-title'
         >
           {prompt}
