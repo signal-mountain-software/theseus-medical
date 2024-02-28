@@ -191,7 +191,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   const { state } = useSession();
 
   const [user_fontSize, setUserFontSize] = React.useState(1);
-  const [fontFactor, setFontFactor] = React.useState(1);
+  const [fontFactor, ] = React.useState(1);
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
@@ -365,8 +365,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   };
 
   const getSessionData = async (pWho) => {
-    let sessionRec = getSession(pWho);
-    if (recordExists(sessionRec)) {
+    let sessionRec = await getSession(pWho);
+    if (sessionRec.session_id) {
       setPatientSession(sessionRec);
       setPatientPChange(sessionRec.password_change_date);
       return sessionRec;
@@ -1085,11 +1085,13 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     setChanges(true);
   };
 
+  /*
   function recordExists(recordId) {
     if (!recordId) { return false; }
     if (recordId.hasOwnProperty('Count')) { return (recordId.Count > 0); }
     else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
   }
+  */
 
   return (
     (localData.ready && (open || refreshTrigger)) ?
@@ -1375,9 +1377,10 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             >
               <Box width={300} >
                 <Slider
-                  value={fontFactor * user_fontSize}
+                  value={user_fontSize}
                   onChange={(event, newValue) => {
-                    setFontFactor(newValue / user_fontSize);
+                    // setFontFactor(newValue / user_fontSize);
+                    setUserFontSize(newValue);
                     setChanges(true);
                     setFontFactorChanged(true);
                   }}
