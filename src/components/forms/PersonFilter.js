@@ -351,7 +351,7 @@ export default ({
               </Box>
             </ListItem>
           }
-          {(rowsWritten === 0) && (!random_address) &&
+          {(rowsWritten === 0) && (!random_address) && (peopleList.length === 0) &&
             <ListItem
               key={'person-list_new'}
             >
@@ -361,6 +361,17 @@ export default ({
                 </Typography>
                 <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>
                   {'Please try again in a moment.'}
+                </Typography>
+              </Box>
+            </ListItem>
+          }
+          {(rowsWritten === 0) && (!random_address) && (peopleList.length > 0) &&
+            <ListItem
+              key={'person-list_new'}
+            >
+              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+                <Typography style={AVATextStyle({ bold: true })}>
+                  {'No names found'}
                 </Typography>
               </Box>
             </ListItem>
