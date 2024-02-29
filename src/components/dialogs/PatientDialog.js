@@ -207,6 +207,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     async function initialize() {
       if (patient) {
         if (patient.person_id.startsWith('*NEW~')) {
+          // every new account is automatically put in an inactive group, the groups name is
+          // designated in the customizations table's "group_assignments" key
           let inactiveAssignment = state?.session?.group_assignments?.inactive;
           let inactiveGroup;
           if (!inactiveAssignment) {
@@ -219,6 +221,11 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             inactiveGroup = inactiveAssignment;
           }
           groupData.selectedID = inactiveGroup;
+          // make sure this new person is not automatically put in any public or private groups
+          groupData.privateGroups = {};
+          for (let groupID in groupData.publicGroups) {
+            groupData.publicGroups[groupID].role = "non-member";
+          }
         }
         let localPersonRec = await getPersonRec(patient.person_id);
         setPatientGroups(localPersonRec.groups);
