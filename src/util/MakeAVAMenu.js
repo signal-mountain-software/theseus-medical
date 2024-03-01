@@ -158,7 +158,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         first: requestor.person_id
       };
     }
-    sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} favorites`;
+    sectionName = `${requestor.name.first.trim()}'${requestor.name.first.trim().slice(-1) === 's' ? '' : 's'} Favorites`;
     sectionColor = '#6bb44b';
     sectionIcon = 'https://ava-icons.s3.amazonaws.com/icons8-favorite-50.png';
     let aL = 0;
