@@ -328,7 +328,7 @@ export function makeDate(pInput, validation = null) {
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 100) {
+            if (Math.abs(resolvedYear - thisYear) < 5) {
                 return {
                     date: goodDate,
                     leftOver_text: null

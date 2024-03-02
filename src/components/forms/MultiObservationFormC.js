@@ -492,7 +492,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   const handleChangeTextField = (vText, columnNumber, rowNumber) => {
-    // reactData.columnList[columnNumber].rowDetails[rowNumber].textValue
     if (!reactData.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('textValue')) {
       reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = {};
     }
@@ -500,15 +499,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       handleTextExit(vText, columnNumber, rowNumber);
     }
     else {
-      /*
-      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
-        handleDateExit(vText, columnNumber, rowNumber);
-      }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
-        handleTimeExit(vText, columnNumber, rowNumber);
-      }
-      else 
-      */
       if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
@@ -521,7 +511,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   function handleDateExit(vText, columnNumber, rowNumber) {
-    let AVAdate = makeDate(vText, 'noFuture');
+    let AVAdate = makeDate(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].row_qualifier);
     reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
     reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
     updateReactData({ columnList: reactData.columnList }, true);
@@ -729,32 +719,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     reactData.columnList[columnNumber].rowDetails[rowNumber] = this_row;
     updateReactData({ columnList: reactData.columnList }, true);
   }
-  /*
-    async function getQualifierData(observationKey) {
-      // first time we've seen anybody check off this text in this session
-      if (observationKey) {
-        return (await getObservationOptions(observationKey));
-      }
-      else {
-        return [];
-      }
-    }
-  
-    async function getQualifierSelections(columnNumber, rowNumber) {
-      let keyText = reactData.columnList[columnNumber].rowDetails[rowNumber].text;
-      if (((reactData.qualData ? reactData.qualData[keyText] : null) || await getQualifierData(reactData.columnList[columnNumber].rowDetails[rowNumber].observationKey)).length > 0) {
-        if (!reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections) {     // no previous selections made
-          reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
-          if (reactData.defaultQualSelections[keyText]) {
-            reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = deepCopy(reactData.defaultQualSelections[keyText]);
-          }
-          else {
-            reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
-          }
-        }
-      }
-    }
-  */
+
   function getQualTextValue(rowData, qOpt, qChoice) {
     if (rowData.qualSelections && rowData.qualSelections[qOpt]) {
       return rowData.qualSelections[qOpt][qChoice] || '';
