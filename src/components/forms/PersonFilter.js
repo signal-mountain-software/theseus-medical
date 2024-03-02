@@ -355,8 +355,8 @@ export default ({
             <ListItem
               key={'person-list_new'}
             >
-              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
-                <Typography style={AVATextStyle({ bold: true })}>
+              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                <Typography style={AVATextStyle({ bold: true, margin: { left: 1 } })}>
                   {'AVA is still loading'}
                 </Typography>
                 <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>

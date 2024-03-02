@@ -2,8 +2,9 @@ import React from 'react';
 import { sentenceCase, deepCopy, makeArray, isMobile, cl, titleCase, dbClient, recordExists, listFromArray } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
+import { getMemberList } from '../../util/AVAGroups';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
-import { getMessages, messageHistory } from '../../util/AVAMessages';
+import { getMessages, messageHistory, sendMessages } from '../../util/AVAMessages';
 import MakeMessage from '../forms/MakeMessage';
 
 import AVA_AlertSound from '../../ava_alert.mp3';
@@ -14,7 +15,10 @@ import useSound from 'use-sound';
 import { useSnackbar } from 'notistack';
 
 import List from '@material-ui/core/List';
+import PersonFilter from '../forms/PersonFilter';
+import SelectFromList from '../forms/SelectFromList';
 
+import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/DoneSharp';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
@@ -196,7 +200,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   /*
     filter: {
-      person_id - only show this person
+      person_id - only show requests made by or assigned to this person
       request_type - (optional) only show requests of this type
       selection - (optional) pre-set filter criteria
       request_date - (optional)
@@ -206,6 +210,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     options: {
       shortForm - when true, don't show image, history, or message details
       textForm - when true, show only requestor and selections (in a text format)
+      allowAssign - when items are selected, the "assign" button will be shown.  allowAssign should contain an array (list) of groups that assignees can be selected from
       updateMode - preselect first item
     }
   */
@@ -231,7 +236,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     OGFilter: deepCopy(filter),
     pageTitle: title.split(/\(/).shift().trim(),
     requestIDs: [],
-    selectionsChanged: false
+    selectionsChanged: false,
+    selectAssignTo: false,
+    selectStatus: false,
+    choiceList: [],
+    statusList: [],
   });
 
   const [promptForMessage, setPromptForMessage] = React.useState(false);
@@ -290,52 +299,109 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           historyLine = `Marked complete by ${await getPerson(session.user_id, 'name')}`;
           break;
         }
+        case 'assigned': {
+          break;
+        }
         default: {
           historyLine = `${await getPerson(session.user_id, 'name')} changed status to ${pOptions.newStatus}`;
         }
       }
     }
+    if (pOptions.assigned_to) {
+      if (historyLine !== '') {
+        historyLine += ` and `;
+      }
+      historyLine += `Assigned to ${await getPerson(pOptions.assigned_to, 'name')}`;
+    }
     let AVAdate = makeDate(new Date());
     historyLine += ` on ${AVAdate.absolute}`;
     let updateRows = [];
     let rowChanged = [];
-    reactData.dataRows.forEach((r, x) => {
+    for (let x = 0; x < reactData.dataRows.length; x++) {
+      let r = reactData.dataRows[x];
       rowChanged[x] = false;
       if (r.workData.checked && OKToDisplay(r)) {
-        if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== 'complete')) {
+        if ((!pOptions.newStatus) || (r.last_status.toLowerCase() !== pOptions.newStatus)) {
+          if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
+            reactData.dataRows[x].history.unshift(historyLine);
+          }
+          else { reactData.dataRows[x].history = [historyLine]; }
+        }
+        if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== pOptions.newStatus)) {
           reactData.dataRows[x].last_status = pOptions.newStatus;
           rowChanged[x] = true;
         }
+        if (pOptions.assigned_to) {
+          reactData.dataRows[x].assigned_to = pOptions.assigned_to;
+        }
+        else {
+          if (!reactData.dataRows[x].assigned_to) {
+            reactData.dataRows[x].assigned_to = 'unassigned';
+          }
+        }
         reactData.dataRows[x].last_update = AVAdate.timestamp;
         reactData.dataRows[x].workData.update_date = AVAdate.relative;
-        if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
-          reactData.dataRows[x].history.unshift(historyLine);
-        }
-        else { reactData.dataRows[x].history = [historyLine]; }
         reactData.dataRows[x].workData.checked = false;
+        let newFormattedRequest = await buildRequestDetails(reactData.dataRows[x]);
+        reactData.dataRows[x].workData.formatted_request = newFormattedRequest.workData.formatted_request;
         updateRows.push(reactData.dataRows[x]);
       }
-    });
+    };
     await updateServiceRequest(updateRows.map(u => {
       let w = Object.assign({}, u);
       delete w.workData;
       return w;
     }));
     rowsDisplayed = [];
+    // if we assigned one or more requests to somebody, send them message(s) notifying them
+    if (pOptions.assigned_to) {
+      for (let this_index = 0; this_index < reactData.dataRows.length; this_index++) {
+        if (rowChanged[this_index]) {
+          let messageText = `A ${reactData.dataRows[this_index].workData.formatted_type},`;
+          messageText += ` entered by ${reactData.dataRows[this_index].workData.enteredBy_name}`;
+          messageText += ` on ${reactData.dataRows[this_index].workData.display_date}`;
+          messageText += ` has been assigned to you.  \r\n`;
+          if (reactData.dataRows[this_index].original_request.selections
+            && reactData.dataRows[this_index].original_request.selections.length > 0) {
+            messageText += `${reactData.dataRows[this_index].workData.enteredBy_name.split(' ').shift()} selected`;
+            messageText += ` ${listFromArray(reactData.dataRows[this_index].original_request.selections)}.  \r\n`;
+          }
+          for (let topic in reactData.dataRows[this_index].original_request.textInput) {
+            messageText += `${topic}: ${reactData.dataRows[this_index].original_request.textInput[topic]}  \r\n`;
+          }
+          let messageObj = {
+            client: session.client_id,
+            author: session.user_id,
+            messageText: messageText,
+            thread_id: `svc_${reactData.dataRows[this_index].request_type}/${reactData.dataRows[this_index].request_id}`,
+            recipientList: pOptions.assigned_to,
+            subject: `${reactData.dataRows[this_index].workData.formatted_type} assigned to you`
+          };
+          await sendMessages(messageObj);
+          reactData.dataRows[this_index].messages.unshift(messageObj);
+        }
+      }
+    }
     // have these rows now been disqualified based on the passed-in filter?
-    if ((filter.statusNot &&  filter.statusNot.includes(pOptions.newStatus.toLowerCase()))
+    if ((filter.statusNot && filter.statusNot.includes(pOptions.newStatus.toLowerCase()))
       || (filter['status'] && !(filter.status.includes(pOptions.newStatus.toLowerCase())))) {
+      // this set of changed rows IS disqualified as the newStatus violates the filter
+      // remove all rows that changed (the filter below actually works to KEEP all rows that DIDNT change)
       let revisedDataRows = reactData.dataRows.filter((r, x) => {
         return !rowChanged[x];
       });
+      // whatever row is left at the top... pre-select it
       if (revisedDataRows.length > 0) {
         revisedDataRows[0].workData.checked = true;
       }
+      // replace the dataRows with those that remain
       updateReactData({
         dataRows: revisedDataRows
       }, true);
     }
     else {
+      // none of the changed rows are disqualified
+      // update the reactData and move along
       updateReactData({
         dataRows: reactData.dataRows
       }, true);
@@ -393,16 +459,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     return reactData.dataRows.some(r => {
       return r.workData.checked;
     });
-  }
-
-  function allRowsSelected() {
-    let filtered =  reactData.dataRows.filter(f => { 
-      return OKToDisplay(f)
-    })
-    let allChecked = filtered.every(r => {
-      return r.workData.checked;
-    });
-    return {count: filtered.length, allChecked}
   }
 
   const firstSelectedRow = () => {
@@ -477,7 +533,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   const buildDashboard = async () => {
     let qList = [];
-    let selectedPersonName = await makeName(filter.person_id);
+    if (filter.assigned_to) {
+      updateReactData({
+        selectedPersonName: `Requests assigned to ${await makeName(filter.assigned_to)}`
+      }, true);
+    }
+    else if (filter.person_id) {
+      let pName = await makeName(filter.person_id);
+      updateReactData({
+        selectedPersonName: `${pName}'${pName.slice(-1) === 's' ? '' : 's'} Requests`
+      }, true);
+    }
     if ((!filter.hasOwnProperty('client_id') || !filter.client_id)) {
       filter.client_id = session.client_id;
     }
@@ -503,6 +569,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
       reactData.dataRows.push(await buildRequestDetails(qList[x]));
       reactData.requestIDs.push(qList[x].request_id);
+      if ((x % 5) === 0) {    // every 5th entry, commit to the screen
+        updateReactData({
+          lastTimeStamp: maxTimeStamp,
+          dataRows: reactData.dataRows,
+          requestIDs: reactData.requestIDs,
+          rebuilding: false,
+        }, true);
+      }
     }
     if (loading !== 'rebuild') {
       updateReactData({
@@ -510,7 +584,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         dataRows: reactData.dataRows,
         requestIDs: reactData.requestIDs,
         rebuilding: false,
-        selectedPersonName
       }, true);
     }
     if ((qList.length === 0) || (reactData.dataRows.length === 0)) {
@@ -758,6 +831,65 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     return [returnMessage, returnSearch, returnText];
   }
 
+  const setChoices = async (inList) => {
+    if (reactData.choiceList.length > 0) { return; }
+    let response = [];
+    let memberInfo = await getMemberList(inList, session.client_id, { "sort": true, "exclude": false });
+    /* getMemberList returns
+        {
+          peopleList: [<People records of the members>],
+          groupList: [<Group records for the selected groups>]
+        }
+    */
+    let mInfo;
+    let pLL = memberInfo.peopleList.length;
+    for (let e = 0; e < pLL; e++) {
+      let p = memberInfo.peopleList[e];
+      let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
+      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+      // list is of the form <name>:<id>:<search_string>
+      try {
+        mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+        response.push(mInfo);
+      }
+      catch (error) {
+        cl(`response push error at index ${e} with ${mInfo}`);
+      }
+    };
+    updateReactData({
+      choiceList: response
+    }, false);
+  };
+
+  const setStatusList = async (inList) => {
+    if (reactData.statusList.length > 0) { return; }
+    let response = [];
+    // get statusList from Customizations
+    // list is of the form <name>:<id>:<search_string>
+    response = [
+      {
+        display: 'Submitted',
+        value: 'submitted'
+      },
+      {
+        display: 'Complete/Closed',
+        value: 'complete'
+      },
+      {
+        display: 'In Process',
+        value: 'in_process'
+      },
+      {
+        display: 'Cancelled',
+        value: 'cancelled'
+      }
+    ];
+    updateReactData({
+      statusList: response
+    }, false);
+  };
+
+
   React.useEffect(() => {
     async function initialize() {
       setLoading('initial_load');
@@ -805,7 +937,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 className={classes.title}
                 style={AVATextStyle({ size: 2.5, bold: true })}
               >
-                {filter.person_id
+                {(filter.person_id || filter.assigned_to)
                   ? reactData.selectedPersonName
                   : reactData.pageTitle
                 }
@@ -937,7 +1069,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           ForeignKey={this_item.foreign_key}<br />
                           LastUpdate={makeDate(this_item.last_update).absolute}<br />
                           ReqTime={makeDate(this_item.workData.requestTime).absolute}<br />
-                          OrderFor={this_item.workData.orderForDate.absolute}
+                          ForDate={this_item.workData.orderForDate.absolute}<br />
+                          ID={this_item.request_id}
                         </div>, { variant: 'info', persist: true });
                       }}>
                       <Box
@@ -962,7 +1095,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                   />
                                 }
                                 <Box display='flex' flexDirection='column' marginBottom={1.5}>
-                                  {filter.request_type && (filter.request_type.length > 1) &&
+                                  {(!filter.request_type || (filter.request_type.length !== 1)) &&
                                     <Typography
                                       variant='h5'
                                       style={AVATextStyle({ size: 1, italic: true })}
@@ -986,17 +1119,32 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                       {this_item.workData.updated}
                                     </Typography>
                                   }
-                                    <React.Fragment>
-                                      {(this_item.requestor !== this_item.workData.enteredBy) &&
-                                        <Typography variant='h5' className={classes.firstName}>{`By ${this_item.workData.enteredBy_name}`}</Typography>
-                                      }
-                                      <Typography variant='h5' className={classes.firstName}>{this_item.workData.display_date}</Typography>
-                                    {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey ) 
+                                  <React.Fragment>
+                                    {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                      <Typography
+                                        variant='h5'
+                                        style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                      >
+                                        {`By ${this_item.workData.enteredBy_name}`}
+                                      </Typography>
+                                    }
+                                    <Typography
+                                      variant='h5'
+                                      style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                    >
+                                      {this_item.workData.display_date}
+                                    </Typography>
+                                    {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey)
                                       && !(this_item?.workData?.orderForDate.error)
                                       &&
-                                        <Typography variant='h5' className={classes.firstName}>{`For ${this_item?.workData?.orderForDate.relative}`}</Typography>
-                                      }
-                                    </React.Fragment>
+                                      <Typography
+                                        variant='h5'
+                                        style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                      >
+                                        {`For ${this_item?.workData?.orderForDate.relative}`}
+                                      </Typography>
+                                    }
+                                  </React.Fragment>
                                 </Box>
                               </Box>
                               {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
@@ -1103,6 +1251,54 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               allowCancel={true}
             />
           }
+          {reactData.selectAssignTo &&
+            <PersonFilter
+              prompt={'Assign to whom?'}
+              peopleList={reactData.choiceList}
+              multiSelect={false}
+              onCancel={() => {
+                updateReactData({
+                  selectAssignTo: false
+                }, true);
+              }}
+              onSelect={async (selectedPerson) => {
+                let printList = [];
+                reactData.dataRows.forEach(r => {
+                  if (r.workData.checked) { printList.push(r); }
+                  return;
+                });
+                await handleUpdates({
+                  newStatus: 'Assigned',
+                  assigned_to: selectedPerson.split(':')[1]
+                });
+                updateReactData({
+                  selectAssignTo: false
+                }, true);
+              }}
+            />
+          }
+          {reactData.selectStatus &&
+            <SelectFromList
+              prompt={'Select the new Status'}
+              selectionsList={reactData.statusList}
+              options={{
+                'multiSelect': false
+              }}
+              onCancel={() => {
+                updateReactData({
+                  selectStatus: false
+                }, true);
+              }}
+              onSelect={async (selectedStatus) => {
+                await handleUpdates({
+                  newStatus: selectedStatus.value
+                });
+                updateReactData({
+                  selectStatus: false
+                }, true);
+              }}
+            />
+          }
 
           {/* Buttons */}
           {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
@@ -1136,7 +1332,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     </Button>
                   }
                   {(!filter.hasOwnProperty('statusNot') && !filter.hasOwnProperty('status')
-                    && ((reactData.OGFilter.hasOwnProperty('statusNot')) || (reactData.OGFilter.hasOwnProperty('status'))) )
+                    && ((reactData.OGFilter.hasOwnProperty('statusNot')) || (reactData.OGFilter.hasOwnProperty('status'))))
                     &&
                     < Button
                       className={AVAClass.AVAButton}
@@ -1168,6 +1364,23 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {'Message'}
                     </Button>
                   }
+                  {anyRowsSelected() && options.allowAssign &&
+                    (!filter.person_id) &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        await setChoices(options.allowAssign);
+                        updateReactData({
+                          selectAssignTo: true
+                        }, true);
+                      }}
+                      startIcon={<PersonAddIcon size="small" />}
+                    >
+                      {'Assign'}
+                    </Button>
+                  }
                   {anyRowsSelected()
                     &&
                     <Button
@@ -1187,6 +1400,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                             if (m.attachments) {
                               window.open(m.attachments.Location);
                             }
+                            else if (m.pdfInfo && m.pdfInfo.s3Location) {
+                              window.open(m.pdfInfo.s3Location);
+                            }
                           });
                           await handleUpdates({
                             newStatus: 'Printed',
@@ -1198,20 +1414,20 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {'Print'}
                     </Button>
                   }
-                  {anyRowsSelected()
-                    &&
+                  {anyRowsSelected() &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'brown', color: 'white' }}
                       size='small'
                       onClick={async () => {
-                        await handleUpdates({
-                          newStatus: 'Complete',
-                        });
+                        await setStatusList();
+                        updateReactData({
+                          selectStatus: true
+                        }, true);
                       }}
                       startIcon={<CheckIcon size="small" />}
                     >
-                      {'Complete'}
+                      {'Update status'}
                     </Button>
                   }
                 </Box>
@@ -1274,7 +1490,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     }
                     <Button
                       className={AVAClass.AVAButton}
-                      style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
+                      style={{ backgroundColor: 'green', color: 'white' }}
                       size='small'
                       onClick={() => {
                         rowsDisplayed.forEach((r, x) => {
@@ -1287,7 +1503,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       }}
                       startIcon={<DoneAllIcon size="small" />}
                     >
-                      {`All ${allRowsSelected().count}`}
+                      {`All ${rowsDisplayed.length}`}
                     </Button>
                     <IconButton
                       className={AVAClass.AVAButton}
