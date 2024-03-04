@@ -217,12 +217,11 @@ export default ({ open, roles, onClose }) => {
                 key={`client_master_line_${c}`}
                 onClick={() => {
                   setSelectedClient(client);
-
                   setRowLimit(scrollValue);
                   setForceRedisplay(!forceRedisplay);
                 }}
               >
-                <Box display='flex' height={50} flexDirection='row' ml={1} justifyContent='flex-start' alignItems='center'>
+                <Box display='flex' height={50} flexDirection='row' my='16px' justifyContent='flex-start' alignItems='center'>
                   <Box
                     component="img"
                     mr={1}
@@ -269,14 +268,14 @@ export default ({ open, roles, onClose }) => {
                       src={getImage(listEntry.id)}
                     />
                     <Box key={'name_line_' + x} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                      <Typography variant='h5' className={classes.lastName}>{listEntry.last}</Typography>
-                      <Typography variant='h5' className={classes.firstName}>{listEntry.first}</Typography>
+                      <Typography variant='h5' style={{ lineHeight: 0.9 }} className={classes.lastName}>{listEntry.last}</Typography>
+                      <Typography variant='h5' style={{ lineHeight: 0.9 }} className={classes.firstName}>{listEntry.first}</Typography>
                       {(x > 0) && (x < (accessList[selectedClient].list.length - 1)) &&
                         ((accessList[selectedClient].list[x - 1].first === listEntry.first)
                           || (accessList[selectedClient].list[x + 1].first === listEntry.first)) &&
                         ((accessList[selectedClient].list[x - 1].last === listEntry.last)
                           || (accessList[selectedClient].list[x + 1].last === listEntry.last)) &&
-                        <Typography variant='h5' className={classes.idText}>({listEntry.id})</Typography>
+                        <Typography variant='h5' style={{ paddingTop: '0px' }} className={classes.idText}>({listEntry.id})</Typography>
                       }
                     </Box>
                   </Box>
