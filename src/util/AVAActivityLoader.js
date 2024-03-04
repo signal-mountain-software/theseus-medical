@@ -345,7 +345,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       }
       displayRowList.push({
         checkbox: false,
-        required: false,
+        required,
         multiColumn: false,
         text: this_instruction,
         textValue: defaults[this_instruction],

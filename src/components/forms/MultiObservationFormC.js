@@ -1190,7 +1190,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function makeConfirm(pData) {  // assumes you've passed in a columnList
     let warningsExist = false;
     let dataExists = false;
-    let warningSection = [`[bold][italic]There are no selections for:`];
+    let confirmStatus = 'confirm';
+    let warningSection = [``];
     let responseArray = [`[bold][italic]AVA will send the following:`];
     pData.forEach(this_column => {
       /*
@@ -1213,53 +1214,45 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       ]
       */
       let selectionText = [];
+      let columnName = columnUniqueName(this_column).string;
+      /*  Check for errors */
+      this_column.rowDetails.forEach(this_row => {
+        if (this_row.required && !this_row.textValue) {
+          confirmStatus = 'error';
+          if (pData.length > 1) {
+            warningSection.push(`[bold]${columnName} is missing "${this_row.text}"`);
+          }
+          else {
+            warningSection.push(`[bold]"${this_row.text}" is required`);
+          }
+          warningsExist = true;
+        }
+      });
       for (const [this_selection, optionList] of Object.entries(formatServiceRequestDetails(this_column))) {
         selectionText.push(`[style={size:1}]${sentenceCase(this_selection)}`);
         optionList.forEach(option => {
           selectionText.push(`[indent=1][italic][style={size:0.4}]${option}`);
         });
       };
-      /*
-      this_column.rowDetails.forEach(this_row => {
-        if (this_row.isChecked) {
-          selectionText.push(`[style={size:1}]${titleCase(this_row.text)}`);
-          for (let this_option in this_row.qualSelections) {
-            for (let this_choice in this_row.qualSelections[this_option]) {
-              if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
-                if (this_row.qualSelections[this_option][this_choice]) {
-                  selectionText.push(`[indent=1][italic][style={size:0.4}]${this_choice}`);
-                }
-              }
-              else {
-                selectionText.push(`[indent=1][italic][style={size:0.4}]${this_row.qualSelections[this_option][this_choice]}`);
-              }
-            }
-          }
-        }
-        if (this_row.textValue) {
-          // special Values/
-          if (this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text)) {
-            inputText.push(`[style={size:1}]for ${sentenceCase(this_row.textValue)}`);
-          }
-          else {
-            inputText.push(`[style={size:1}]${this_row.textValue}`);
-          }
-        }
-      });
-                */
       // that's all the rows for this column
-      let columnName = columnUniqueName(this_column).string;
       if (selectionText.length === 0) {
-        warningSection.push(`[bold]${columnName}`);
+        if (pData.length > 1) {
+          warningSection.push(`[bold]${columnName} has no entries at all`);
+        }
+        else {
+          warningSection.push(`[bold]No entries were made`);
+        }
         warningsExist = true;
       }
       else {
-        if (columnName) {
-          responseArray.push(`[bold]${columnName}`);
-        };
-        responseArray.push(...selectionText);
-        responseArray.push('[style = { bottom: 3 }] ');
-        dataExists = true;
+        if (confirmStatus !== 'error') {
+          if (columnName) {
+            responseArray.push(`[bold]${columnName}`);
+          };
+          responseArray.push(...selectionText);
+          responseArray.push('[style = { bottom: 3 }] ');
+          dataExists = true;
+        }
       }
     });
     let returnArray = ['Selection summary'];
@@ -1275,7 +1268,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
       returnArray.push(...responseArray);
     }
-    return ['confirm', returnArray];
+    return [confirmStatus, returnArray];
   };
 
   return (
@@ -1608,11 +1601,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         helperText={this_item.text}
                         multiline
                         inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                      onChange={event => {
-                        if (!event.target.value) {
-                          reactData.errorOnScreen = false;
-                        }
-                        handleChangeTextField(event.target.value, selectedColumn, this_index);
+                        onChange={event => {
+                          if (!event.target.value) {
+                            reactData.errorOnScreen = false;
+                          }
+                          handleChangeTextField(event.target.value, selectedColumn, this_index);
                         }}
                         FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                         onKeyPress={(event) => {
