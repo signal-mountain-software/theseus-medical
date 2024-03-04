@@ -238,7 +238,7 @@ export async function putServiceRequest(body) {
     "original_request": body.request,
     "history": historyArray,
     "local_key": body.local_key,
-    "assigned_to": body.assigned_to || '',
+    "assigned_to": body.assigned_to || body.assign_to || 'unassigned',
     "foreign_key": body.foreign_key || '',
     "last_update": body.update_time || now,
     "type_date": `${body.requestType}~${body.update_time || now}`,

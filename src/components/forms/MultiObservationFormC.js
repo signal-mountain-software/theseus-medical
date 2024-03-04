@@ -1075,6 +1075,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           activity_key: this_column.activity_key,
           onBehalfOf: oBo,
           foreign_key: this_column.foreignKey,
+          assign_to: (fact?.value?.freeText?.assign_to || 'unassigned'),
           request: {
             selections,
             options,
