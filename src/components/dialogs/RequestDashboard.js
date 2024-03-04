@@ -84,7 +84,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(1),
   },
   buttonArea: {
-    maxWidth: 1000,
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
@@ -241,6 +240,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     selectStatus: false,
     choiceList: [],
     statusList: [],
+    isMobile: isMobile()
   });
 
   const [promptForMessage, setPromptForMessage] = React.useState(false);
@@ -418,6 +418,93 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
     });
     return { selectedIDs, selectedName };
+  }
+
+  async function handleClearFilter() {
+    delete filter['status'];
+    delete filter.statusNot;
+    await buildDashboard();
+  }
+
+  async function handleRestoreFilter() {
+    filter['status'] = reactData.OGFilter['status'];
+    filter.statusNot = reactData.OGFilter.statusNot;
+    await buildDashboard();
+  }
+
+  async function handlePrintRequest() {
+    let printList = [];
+    reactData.dataRows.forEach(r => {
+      if (r.workData.checked) { printList.push(r); }
+      return;
+    });
+    let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
+    enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
+    if (result.success) {
+      result.preparedMessages.forEach(m => {
+        if (m.attachments) {
+          window.open(m.attachments.Location);
+        }
+        else if (m.pdfInfo && m.pdfInfo.s3Location) {
+          window.open(m.pdfInfo.s3Location);
+        }
+      });
+      await handleUpdates({
+        newStatus: 'Printed',
+      });
+    }
+  }
+
+  function handleJumpToFirst() {
+    rowsDisplayed.forEach((r, x) => {
+      reactData.dataRows[r].workData.checked = (x === 0);
+    });
+    updateReactData({
+      dataRows: reactData.dataRows,
+      selectionsChanged: !reactData.selectionsChanged
+    }, true);
+  }
+
+  function handleUnselectAll() {
+    rowsDisplayed.forEach((r) => {
+      reactData.dataRows[r].workData.checked = false;
+    });
+    updateReactData({
+      dataRows: reactData.dataRows,
+      selectionsChanged: !reactData.selectionsChanged
+    }, true);
+  }
+
+  function handleSelectAll() {
+    rowsDisplayed.forEach((r, x) => {
+      reactData.dataRows[r].workData.checked = true;
+    });
+    updateReactData({
+      dataRows: reactData.dataRows,
+      selectionsChanged: !reactData.selectionsChanged
+    }, true);
+  }
+
+  function handleSelectPrevious() {
+    let firstRow = firstSelectedRow();
+    reactData.dataRows[firstRow].workData.checked = false;
+    let newSelectedRow = rowsDisplayed.findIndex(d => { return d === firstRow; }) - 1;
+    reactData.dataRows[newSelectedRow].workData.checked = true;
+    updateReactData({
+      dataRows: reactData.dataRows,
+      selectionsChanged: !reactData.selectionsChanged
+    }, true);
+  }
+
+  function handleSelectNext() {
+    let lastRow = lastSelectedRow();
+    reactData.dataRows[lastRow].workData.checked = false;
+    let newSelectedRow = rowsDisplayed.findLastIndex(d => { return d === lastRow; }) + 1;
+    reactData.dataRows[newSelectedRow].workData.checked = true;
+    updateReactData({
+      dataRows: reactData.dataRows,
+      selectionsChanged: !reactData.selectionsChanged
+    }, true);
   }
 
   let filterTimeOut;
@@ -820,10 +907,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           returnSearch += ` ${req.textInput[k]}`;
           if (['description', 'summary', 'details'].some(w => { return kLow.includes(w); })) {
             returnMessage.unshift(['text', req.textInput[k]]);
+            returnText += `${textLink} ${req.textInput[k]}`;
           }
           else {
             returnMessage.push(['text', `${k} - ${req.textInput[k]}`]);
-            returnText += `${textLink} ${req.textInput[k]}`;
+            returnText += `${textLink} ${k} - ${req.textInput[k]}`;
           }
         }
       }
@@ -1029,7 +1117,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             id='List Filter'
             onChange={event => (handleChangeFilter(event.target.value))}
             className={classes.freeInput}
-            helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+            helperText={reactData.isMobile ? 'Filter' : 'Type a few letters to filter the list'}
             inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
             FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
             variant={'standard'}
@@ -1305,7 +1393,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
                   <Button
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'red', color: 'white' }}
@@ -1313,7 +1401,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     onClick={onClose}
                     startIcon={<CloseIcon size="small" />}
                   >
-                    {'Close'}
+                    {reactData.isMobile ? 'Exit' : 'Close'}
                   </Button>
                   {(filter.hasOwnProperty('statusNot') || filter.hasOwnProperty('status'))
                     &&
@@ -1322,13 +1410,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       style={{ backgroundColor: 'blue', color: 'white' }}
                       size='small'
                       onClick={async () => {
-                        delete filter['status'];
-                        delete filter.statusNot;
-                        await buildDashboard();
+                        await handleClearFilter();
                       }}
                       startIcon={<BlockIcon size="small" />}
                     >
-                      {'Clear Filter'}
+                      {'Filter off'}
                     </Button>
                   }
                   {(!filter.hasOwnProperty('statusNot') && !filter.hasOwnProperty('status')
@@ -1339,29 +1425,30 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       style={{ backgroundColor: 'blue', color: 'white' }}
                       size='small'
                       onClick={async () => {
+                        await handleRestoreFilter();
                         filter['status'] = reactData.OGFilter['status'];
                         filter.statusNot = reactData.OGFilter.statusNot;
                         await buildDashboard();
                       }}
                       startIcon={<FilterListIcon size="small" />}
                     >
-                      {'Restore Filter'}
+                      {'Filter on'}
                     </Button>
                   }
                 </Box>
-                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
                   {anyRowsSelected() &&
                     (!filter.person_id) &&
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'orange', color: 'black' }}
+                      style={{ backgroundColor: 'orange', color: 'black', paddingRight: (reactData.isMobile ? '4px' : '')  }}
                       size='small'
                       onClick={() => {
                         setPromptForMessage(getSelectedDetails());
                       }}
                       startIcon={<SendIcon size="small" />}
                     >
-                      {'Message'}
+                      {reactData.isMobile ? null : 'Message'}
                     </Button>
                   }
                   {anyRowsSelected() && options.allowAssign &&
@@ -1381,39 +1468,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {'Assign'}
                     </Button>
                   }
-                  {anyRowsSelected()
-                    &&
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'blue', color: 'white' }}
-                      size='small'
-                      onClick={async () => {
-                        let printList = [];
-                        reactData.dataRows.forEach(r => {
-                          if (r.workData.checked) { printList.push(r); }
-                          return;
-                        });
-                        let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
-                        enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
-                        if (result.success) {
-                          result.preparedMessages.forEach(m => {
-                            if (m.attachments) {
-                              window.open(m.attachments.Location);
-                            }
-                            else if (m.pdfInfo && m.pdfInfo.s3Location) {
-                              window.open(m.pdfInfo.s3Location);
-                            }
-                          });
-                          await handleUpdates({
-                            newStatus: 'Printed',
-                          });
-                        }
-                      }}
-                      startIcon={<PrintIcon size="small" />}
-                    >
-                      {'Print'}
-                    </Button>
-                  }
                   {anyRowsSelected() &&
                     <Button
                       className={AVAClass.AVAButton}
@@ -1427,102 +1481,88 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       }}
                       startIcon={<CheckIcon size="small" />}
                     >
-                      {'Update status'}
+                      {reactData.isMobile ? 'Status' : 'Update status'}
+                    </Button>
+                  }
+                  {anyRowsSelected()
+                    &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white', paddingRight: (reactData.isMobile ? '4px' : '') }}
+                      size='small'
+                      onClick={async () => {
+                        await handlePrintRequest();
+                      }}
+                      startIcon={<PrintIcon size="small" />}
+                    >
+                      {reactData.isMobile ? null : 'Print'}
                     </Button>
                   }
                 </Box>
                 {(rowsDisplayed.length > 0) &&
-                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                    <IconButton
-                      className={AVAClass.AVAButton}
-                      disabled={(firstSelectedRow() === rowsDisplayed[0]) || (firstSelectedRow() === -1)}
-                      style={{ backgroundColor: ((firstSelectedRow() === rowsDisplayed[0] || (firstSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
-                      size='small'
-                      onClick={() => {
-                        let firstRow = firstSelectedRow();
-                        reactData.dataRows[firstRow].workData.checked = false;
-                        let newSelectedRow = rowsDisplayed.findIndex(d => { return d === firstRow; }) - 1;
-                        reactData.dataRows[newSelectedRow].workData.checked = true;
-                        updateReactData({
-                          dataRows: reactData.dataRows,
-                          selectionsChanged: !reactData.selectionsChanged
-                        }, true);
-                      }}
-                    >
-                      {<ArrowBackIcon size="small" />}
-                    </IconButton>
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
-                      size='small'
-                      onClick={() => {
-                        rowsDisplayed.forEach((r, x) => {
-                          reactData.dataRows[r].workData.checked = (x === 0);
-                        });
-                        updateReactData({
-                          dataRows: reactData.dataRows,
-                          selectionsChanged: !reactData.selectionsChanged
-                        }, true);
-                      }}
-                      startIcon={
-                        <FirstPageIcon size="small" />}
-                    >
-                      {'First'}
-                    </Button>
-                    {anyRowsSelected() &&
+                  <React.Fragment>
+                    <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
                       <Button
                         className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'pink', color: 'black' }}
+                        style={{ backgroundColor: 'green', color: 'white' }}
                         size='small'
                         onClick={() => {
-                          rowsDisplayed.forEach((r) => {
-                            reactData.dataRows[r].workData.checked = false;
-                          });
-                          updateReactData({
-                            dataRows: reactData.dataRows,
-                            selectionsChanged: !reactData.selectionsChanged
-                          }, true);
+                          handleJumpToFirst();
                         }}
-                        startIcon={<ClearAllIcon size="small" />}
+                        startIcon={
+                          <FirstPageIcon size="small" />}
                       >
-                        {'Unselect all'}
+                        {'First'}
                       </Button>
-                    }
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
-                      size='small'
-                      onClick={() => {
-                        rowsDisplayed.forEach((r, x) => {
-                          reactData.dataRows[r].workData.checked = true;
-                        });
-                        updateReactData({
-                          dataRows: reactData.dataRows,
-                          selectionsChanged: !reactData.selectionsChanged
-                        }, true);
-                      }}
-                      startIcon={<DoneAllIcon size="small" />}
-                    >
-                      {`All ${rowsDisplayed.length}`}
-                    </Button>
-                    <IconButton
-                      className={AVAClass.AVAButton}
-                      disabled={(lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1))}
-                      style={{ backgroundColor: ((lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
-                      size='small'
-                      onClick={() => {
-                        let lastRow = lastSelectedRow();
-                        reactData.dataRows[lastRow].workData.checked = false;
-                        let newSelectedRow = rowsDisplayed.findLastIndex(d => { return d === lastRow; }) + 1;
-                        reactData.dataRows[newSelectedRow].workData.checked = true;
-                        updateReactData({
-                          dataRows: reactData.dataRows,
-                          selectionsChanged: !reactData.selectionsChanged
-                        }, true);
-                      }}>
-                      {<ArrowForwardIcon size="small" />}
-                    </IconButton>
-                  </Box>
+                      {anyRowsSelected() &&
+                        <Button
+                          className={AVAClass.AVAButton}
+                          style={{ backgroundColor: 'pink', color: 'black' }}
+                          size='small'
+                          onClick={() => {
+                            handleUnselectAll();
+                          }}
+                          startIcon={<ClearAllIcon size="small" />}
+                        >
+                          {reactData.isMobile ? 'Clear' : 'Unselect all'}
+                        </Button>
+                      }
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'green', color: 'white' }}
+                        size='small'
+                        onClick={() => {
+                          handleSelectAll();
+                        }}
+                        startIcon={<DoneAllIcon size="small" />}
+                      >
+                        {reactData.isMobile ? 'All' : `All ${rowsDisplayed.length}`}
+                      </Button>
+                    </Box>
+                    <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
+                      <IconButton
+                        className={AVAClass.AVAButton}
+                        disabled={(firstSelectedRow() === rowsDisplayed[0]) || (firstSelectedRow() === -1)}
+                        style={{ backgroundColor: ((firstSelectedRow() === rowsDisplayed[0] || (firstSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
+                        size='small'
+                        onClick={() => {
+                          handleSelectPrevious();
+                        }}
+                      >
+                        {<ArrowBackIcon size="small" />}
+                      </IconButton>
+                      <IconButton
+                        className={AVAClass.AVAButton}
+                        disabled={(lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1))}
+                        style={{ backgroundColor: ((lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
+                        size='small'
+                        onClick={() => {
+                          handleSelectNext();
+                        }}>
+                        {<ArrowForwardIcon size="small" />}
+                      </IconButton>
+                    </Box>
+                  </React.Fragment>
                 }
               </Box>
             </DialogActions>
