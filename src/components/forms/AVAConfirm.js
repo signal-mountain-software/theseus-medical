@@ -22,7 +22,7 @@ const useStyles = makeStyles(theme => ({
   },
   page: {
     paddingTop: theme.spacing(2),
-    paddingBottom: theme.spacing(2),
+    paddingBottom: theme.spacing(4),
   },
   notTitle: {
     marginRight: theme.spacing(2),
@@ -103,7 +103,8 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
           style={AVATextStyle({
             margin: { top: 3, right: 2 },
             size: 1.5,
-            bold: true
+            bold: true,
+            color: (promptLines[0].includes('[color:') ? promptLines[0].split(/.*\[color:/)[1].split(']')[0] : null)
           })}
           id='scroll-dialog-title'
           key={'promptConfirm'}
@@ -122,7 +123,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
               <Box
                 key={`blank-line${index}`}
                 id={`blank-line${index}`}
-                marginTop={'40px'}
+                marginTop={'25px'}
               />
               :
               <Box
@@ -135,12 +136,14 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
                     AVATextStyle({
                       margin: { top: 3, right: 2 },
                       size: 1.5,
-                      bold: true
+                      bold: true,
+                      color: (pLine.includes('[color:') ? pLine.split(/.*\[color:/)[1].split(']')[0] : null)
                     })
                     :
                     AVATextStyle({
                       margin: { top: (pLine.match(/(indent=.)/g) ? 0 : 0.5), right: 1 },
-                      size: (pLine.match(/(indent=.)/g) ? 0.8 : 1)
+                      size: (pLine.match(/(indent=.)/g) ? 0.8 : 1),
+                      color: (pLine.includes('[color:') ? pLine.split(/.*\[color:/)[1].split(']')[0] : null)
                     })
                   }
                   id='scroll-dialog-title'
