@@ -25,6 +25,8 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/DoneSharp';
 import BlockIcon from '@material-ui/icons/Block';
 import FilterListIcon from '@material-ui/icons/FilterList';
+import ClearAllIcon from '@material-ui/icons/ClearAll';
+import DoneAllIcon from '@material-ui/icons/DoneAll';
 
 import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -267,6 +269,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const handleClick = async (event) => {
     setAnchorEl(event.currentTarget);
   };
+
+  function allRowsSelected() {
+    let filtered = reactData.dataRows.filter(f => {
+      return OKToDisplay(f);
+    });
+    let allChecked = filtered.every(r => {
+      return r.workData.checked;
+    });
+    return { count: filtered.length, allChecked };
+  }
 
   const statusWords = {
     delivery: 'Delivered',
@@ -1486,6 +1498,46 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     >
                       {'Filter on'}
                     </Button>
+                  }
+                  {(rowsDisplayed.length > 0) &&
+                    <React.Fragment>
+                      {anyRowsSelected() &&
+                        <Button
+                          className={AVAClass.AVAButton}
+                          style={{ backgroundColor: 'pink', color: 'black' }}
+                          size='small'
+                          onClick={() => {
+                            rowsDisplayed.forEach((r) => {
+                              reactData.dataRows[r].workData.checked = false;
+                            });
+                            updateReactData({
+                              dataRows: reactData.dataRows,
+                              selectionsChanged: !reactData.selectionsChanged
+                            }, true);
+                          }}
+                          startIcon={<ClearAllIcon size="small" />}
+                        >
+                          {'None'}
+                        </Button>
+                      }
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
+                        size='small'
+                        onClick={() => {
+                          rowsDisplayed.forEach((r, x) => {
+                            reactData.dataRows[r].workData.checked = true;
+                          });
+                          updateReactData({
+                            dataRows: reactData.dataRows,
+                            selectionsChanged: !reactData.selectionsChanged
+                          }, true);
+                        }}
+                        startIcon={<DoneAllIcon size="small" />}
+                      >
+                        {`All ${allRowsSelected().count}`}
+                      </Button>
+                    </React.Fragment>
                   }
                 </Box>
                 <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
