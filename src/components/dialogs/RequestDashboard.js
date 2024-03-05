@@ -6,6 +6,7 @@ import { getMemberList } from '../../util/AVAGroups';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, messageHistory, sendMessages } from '../../util/AVAMessages';
 import MakeMessage from '../forms/MakeMessage';
+import AVATextInput from '../forms/AVATextInput';
 
 import AVA_AlertSound from '../../ava_alert.mp3';
 
@@ -13,6 +14,7 @@ import IdleTimer from 'react-idle-timer';
 import useSound from 'use-sound';
 
 import { useSnackbar } from 'notistack';
+import useSession from '../../hooks/useSession';
 
 import List from '@material-ui/core/List';
 import PersonFilter from '../forms/PersonFilter';
@@ -21,15 +23,10 @@ import SelectFromList from '../forms/SelectFromList';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/DoneSharp';
-import ArrowBackIcon from '@material-ui/icons/ArrowBack';
-import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
-import FirstPageIcon from '@material-ui/icons/FirstPage';
-import ClearAllIcon from '@material-ui/icons/ClearAll';
 import BlockIcon from '@material-ui/icons/Block';
 import FilterListIcon from '@material-ui/icons/FilterList';
 
 import Button from '@material-ui/core/Button';
-import IconButton from '@material-ui/core/IconButton';
 import Checkbox from '@material-ui/core/Checkbox';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -45,14 +42,13 @@ import SendIcon from '@material-ui/icons/Send';
 import PrintIcon from '@material-ui/icons/Print';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
-import DoneAllIcon from '@material-ui/icons/DoneAll';
 
 import Avatar from '@material-ui/core/Avatar';
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
 import MenuItem from '@material-ui/core/MenuItem';
 
-import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults, AVATextVariableStyle } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -217,6 +213,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
+  const { state } = useSession();
+
   const firstSelectedRowRef = React.useRef(null);
 
   const { enqueueSnackbar } = useSnackbar();
@@ -240,7 +238,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     selectStatus: false,
     choiceList: [],
     statusList: [],
-    isMobile: isMobile()
+    isMobile: isMobile(),
+    showStaffAccess: false,
+    statusObj: {}
   });
 
   const [promptForMessage, setPromptForMessage] = React.useState(false);
@@ -257,15 +257,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const msBeforeSleeping = (options.idle_delay || 5) * oneMinute;
 
   const updateReactData = (newData, force = false) => {
-    for (let oKey in newData) {
-      setReactData((prevValues) => ({
-        ...prevValues,
-        [oKey]: newData[oKey],
-      }));
-    }
-    if (force) {
-      setForceRedisplay(forceRedisplay => !forceRedisplay);
-    }
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
   const handleClick = async (event) => {
@@ -286,6 +282,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
   }, [reactData.selectionsChanged]);
 
+  function makeGreeting(pName) {
+    if (state.session?.custom_greeting) { return `${state.session.custom_greeting}${pName ? ', ' + pName : ''}!`; }
+    else { return `Good ${makeDate(new Date()).dayPart}${pName ? ', ' + pName : ''}!`; }
+  }
+
   async function handleUpdates(pOptions) {
     let historyLine = '';
     if (pOptions.newStatus) {
@@ -303,7 +304,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           break;
         }
         default: {
-          historyLine = `${await getPerson(session.user_id, 'name')} changed status to ${pOptions.newStatus}`;
+          historyLine = `${await getPerson(session.user_id, 'name')} changed status to ${titleCase(pOptions.newStatus.replace('_', ' '))}`;
         }
       }
     }
@@ -383,9 +384,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
     }
     // have these rows now been disqualified based on the passed-in filter?
-    if ((filter.statusNot && filter.statusNot.includes(pOptions.newStatus.toLowerCase()))
-      || (filter['status'] && !(filter.status.includes(pOptions.newStatus.toLowerCase())))) {
-      // this set of changed rows IS disqualified as the newStatus violates the filter
+    if (((filter.statusNot && filter.statusNot.includes(pOptions.newStatus.toLowerCase()))
+      || (filter['status'] && !(filter.status.includes(pOptions.newStatus.toLowerCase()))))
+      || (pOptions.assigned_to && filter.assigned_to && (pOptions.assigned_to !== filter.assigned_to))) {
+      // this set of changed rows IS disqualified as the newStatus or assigned_to violates the filter 
       // remove all rows that changed (the filter below actually works to KEEP all rows that DIDNT change)
       let revisedDataRows = reactData.dataRows.filter((r, x) => {
         return !rowChanged[x];
@@ -455,58 +457,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
   }
 
-  function handleJumpToFirst() {
-    rowsDisplayed.forEach((r, x) => {
-      reactData.dataRows[r].workData.checked = (x === 0);
-    });
-    updateReactData({
-      dataRows: reactData.dataRows,
-      selectionsChanged: !reactData.selectionsChanged
-    }, true);
-  }
-
-  function handleUnselectAll() {
-    rowsDisplayed.forEach((r) => {
-      reactData.dataRows[r].workData.checked = false;
-    });
-    updateReactData({
-      dataRows: reactData.dataRows,
-      selectionsChanged: !reactData.selectionsChanged
-    }, true);
-  }
-
-  function handleSelectAll() {
-    rowsDisplayed.forEach((r, x) => {
-      reactData.dataRows[r].workData.checked = true;
-    });
-    updateReactData({
-      dataRows: reactData.dataRows,
-      selectionsChanged: !reactData.selectionsChanged
-    }, true);
-  }
-
-  function handleSelectPrevious() {
-    let firstRow = firstSelectedRow();
-    reactData.dataRows[firstRow].workData.checked = false;
-    let newSelectedRow = rowsDisplayed.findIndex(d => { return d === firstRow; }) - 1;
-    reactData.dataRows[newSelectedRow].workData.checked = true;
-    updateReactData({
-      dataRows: reactData.dataRows,
-      selectionsChanged: !reactData.selectionsChanged
-    }, true);
-  }
-
-  function handleSelectNext() {
-    let lastRow = lastSelectedRow();
-    reactData.dataRows[lastRow].workData.checked = false;
-    let newSelectedRow = rowsDisplayed.findLastIndex(d => { return d === lastRow; }) + 1;
-    reactData.dataRows[newSelectedRow].workData.checked = true;
-    updateReactData({
-      dataRows: reactData.dataRows,
-      selectionsChanged: !reactData.selectionsChanged
-    }, true);
-  }
-
   let filterTimeOut;
   const handleChangeFilter = vCheck => {
     clearTimeout(filterTimeOut);
@@ -554,12 +504,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     });
   };
 
-  const lastSelectedRow = () => {
-    return reactData.dataRows.findLastIndex(this_row => {  // find last checked row
-      return this_row.workData.checked;
-    });
-  };
-
   async function toggleOpen(pI) {
     reactData.dataRows[pI].workData.open = !reactData.dataRows[pI].workData.open;
     if (!reactData.dataRows[pI].workData.messageRecs) {
@@ -568,6 +512,35 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     updateReactData({
       dataRows: reactData.dataRows
     }, true);
+  }
+
+  async function getCurrentStatus(client_id, person_id, mode) {
+    let reqArray = await getServiceRequests({ client_id, person_id, foreign_key: mode, request_type: "checkout" });
+    if (reqArray.length === 0) {
+      return {
+        last_status: 'none',
+        last_update: 0,
+        history: [],
+        last_visited_name: await makeName(state.patient.person_id)
+      };
+    }
+    else {
+      let returnObj = {
+        last_update: reqArray[0].last_update,
+        last_visited: reqArray[0].last_visited,
+        history: reqArray[0].history,
+        reqRec: reqArray[0]
+      };
+      if ((reqArray[0].last_visited && (reqArray[0].last_status === 'in'))) {
+        returnObj.last_status = 'in';
+        returnObj.last_visited_name = (reqArray[0].last_visited ? await makeName(reqArray[0].last_visited) : '');
+      }
+      else {
+        returnObj.last_status = 'out';
+        returnObj.last_visited_name = await makeName(state.patient.person_id);
+      }
+      return returnObj;
+    }
   }
 
   async function prepareMessageHistory(thread) {
@@ -783,7 +756,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
         i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
       }
-      i.workData.formatted_request.push(['head', `Current status: ${i.workData.this_status}`]);
+      i.workData.formatted_request.push(['head', `Current status: ${(titleCase(i.last_status.replace('_', ' ')))}`]);
       i.workData.formatted_request.push(['head', 'Details']);
     }
     if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
@@ -1023,7 +996,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             <Box display='flex' flexDirection='column' key={'titlesection'}>
               <Typography
                 className={classes.title}
-                style={AVATextStyle({ size: 2.5, bold: true })}
+                style={AVATextVariableStyle({ size: 2.5, bold: true })}
               >
                 {(filter.person_id || filter.assigned_to)
                   ? reactData.selectedPersonName
@@ -1033,7 +1006,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               {filter.foreign_key &&
                 <Typography
                   className={classes.subTitle}
-                  style={AVATextStyle({ size: 1.5 })}
+                  style={AVATextStyle({ size: 1 })}
                 >
                   {`For: ${makeDate(filter.foreign_key).absolute}`}
                 </Typography>
@@ -1041,7 +1014,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               {filter.statusNot &&
                 <Typography
                   className={classes.subTitle}
-                  style={AVATextStyle({ size: 1.5 })}
+                  style={AVATextStyle({ size: 1, margin: { top: 1 } })}
                 >
                   {`Status NOT: ${listFromArray(filter.statusNot, { sentenceCase: true, or: true })}`}
                 </Typography>
@@ -1049,7 +1022,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               {filter.status &&
                 <Typography
                   className={classes.subTitle}
-                  style={AVATextStyle({ size: 1.5 })}
+                  style={AVATextStyle({ size: 1, margin: { top: (filter.statusNot ? 0 : 1) } })}
                 >
                   {`Status: ${listFromArray(filter.status, { sentenceCase: true, or: true })}`}
                 </Typography>
@@ -1387,6 +1360,85 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }}
             />
           }
+          {reactData.showStaffAccess &&
+            (['in'].includes(reactData.statusObj.last_status) ?
+              <AVATextInput
+                titleText={[
+                  makeGreeting(state.session.patient_display_name),
+                  `[italic]You've been checked in with ${reactData.dataRows[reactData.statusObj.targetIndex].on_behalf_of} since ${makeDate(reactData.statusObj.last_update).relative}`,
+                  ' ',
+                  `Tap "Confirm" to check out`
+                ]}
+                promptText={[]}  // prompts go here (if any)
+                buttonText={['Confirm', 'Back']}
+                onCancel={() => {
+                  updateReactData({
+                    showStaffAccess: false
+                  }, true);
+                }}
+                onSave={async (responses) => {
+                  let now = makeDate(new Date());
+                  reactData.statusObj.reqRec.last_status = 'out';
+                  reactData.statusObj.reqRec.last_update = now.timestamp;
+                  reactData.statusObj.reqRec.type_date = `${reactData.statusObj.reqRec.request_type}~${now.timestamp}`;
+                  let hNote = `Checked out on ${now.absolute}`;
+                  /*  if we have other data to capture ("did you complete your task?", "issues to note", etc.)
+                      those notes would be captured in prompts and be saved here
+                  responses.forEach((r, x) => {
+                    if (r && reactData.residentPrompts) {
+                      hNote += ` ${reactData.residentPrompts[x]}: ${r}.`;
+                    }
+                  });
+                  */
+                  reactData.statusObj.reqRec.history.unshift(hNote);
+                  let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.statusObj.targetIndex]);
+                  reactData.dataRows[reactData.statusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
+                  await updateServiceRequest([reactData.statusObj.reqRec]);
+                  enqueueSnackbar(`Check-out successful!`, { variant: 'success', persist: false });
+                  updateReactData({
+                    showStaffAccess: false
+                  }, true);
+                }}
+                allowCancel={true}
+                options={{ save_on_enter: true }}
+              />
+              :
+              <AVATextInput
+                titleText={[
+                  makeGreeting(state.session.patient_display_name),
+                  `[italic]You are checking in with ${reactData.dataRows[reactData.statusObj.targetIndex].on_behalf_of}`,
+                  ' ',
+                  `Tap "Confirm" to check in`
+                ]}
+                promptText={[]}  // prompts go here (if any)
+                buttonText={['Confirm', 'Back']}
+                onCancel={() => {
+                  updateReactData({
+                    showStaffAccess: false
+                  }, true);
+                }}
+                onSave={async () => {
+                  let now = makeDate(new Date());
+                  Object.assign(reactData.statusObj.reqRec, reactData.dataRows[reactData.statusObj.targetIndex]);
+                  reactData.statusObj.reqRec.last_status = 'in';
+                  reactData.statusObj.reqRec.last_update = now.timestamp;
+                  reactData.statusObj.reqRec.type_date = `${reactData.statusObj.reqRec.request_type}~${now.timestamp}`;
+                  let hNote = `${state.session.patient_display_name} checked in on ${now.absolute}`;
+                  reactData.statusObj.reqRec.history.unshift(hNote);
+                  reactData.statusObj.reqRec.last_visited = reactData.dataRows[reactData.statusObj.targetIndex].requestor;
+                  let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.statusObj.targetIndex]);
+                  reactData.dataRows[reactData.statusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
+                  await updateServiceRequest([reactData.statusObj.reqRec]);
+                  enqueueSnackbar(`Check-in successful!`, { variant: 'success', persist: false });
+                  updateReactData({
+                    showStaffAccess: false,
+                    dataRows: reactData.dataRows
+                  }, true);
+                }}
+                allowCancel={true}
+              />
+            )
+          }
 
           {/* Buttons */}
           {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
@@ -1441,7 +1493,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     (!filter.person_id) &&
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'orange', color: 'black', paddingRight: (reactData.isMobile ? '4px' : '')  }}
+                      style={{ backgroundColor: 'orange', color: 'black', paddingRight: (reactData.isMobile ? '4px' : '') }}
                       size='small'
                       onClick={() => {
                         setPromptForMessage(getSelectedDetails());
@@ -1452,7 +1504,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     </Button>
                   }
                   {anyRowsSelected() && options.allowAssign &&
-                    (!filter.person_id) &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'green', color: 'white' }}
@@ -1466,6 +1517,27 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       startIcon={<PersonAddIcon size="small" />}
                     >
                       {'Assign'}
+                    </Button>
+                  }
+                  {anyRowsSelected() && false &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        let statusObj = await getCurrentStatus(session.client_id, session.patient_id, 'staff');
+                        statusObj.targetIndex =
+                          reactData.dataRows.findIndex(r => {
+                            return r.workData.checked;
+                          });
+                        updateReactData({
+                          showStaffAccess: true,
+                          statusObj: statusObj
+                        }, true);
+                      }}
+                      startIcon={<PersonAddIcon size="small" />}
+                    >
+                      {'Access'}
                     </Button>
                   }
                   {anyRowsSelected() &&
@@ -1499,71 +1571,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     </Button>
                   }
                 </Box>
-                {(rowsDisplayed.length > 0) &&
-                  <React.Fragment>
-                    <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'green', color: 'white' }}
-                        size='small'
-                        onClick={() => {
-                          handleJumpToFirst();
-                        }}
-                        startIcon={
-                          <FirstPageIcon size="small" />}
-                      >
-                        {'First'}
-                      </Button>
-                      {anyRowsSelected() &&
-                        <Button
-                          className={AVAClass.AVAButton}
-                          style={{ backgroundColor: 'pink', color: 'black' }}
-                          size='small'
-                          onClick={() => {
-                            handleUnselectAll();
-                          }}
-                          startIcon={<ClearAllIcon size="small" />}
-                        >
-                          {reactData.isMobile ? 'Clear' : 'Unselect all'}
-                        </Button>
-                      }
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'green', color: 'white' }}
-                        size='small'
-                        onClick={() => {
-                          handleSelectAll();
-                        }}
-                        startIcon={<DoneAllIcon size="small" />}
-                      >
-                        {reactData.isMobile ? 'All' : `All ${rowsDisplayed.length}`}
-                      </Button>
-                    </Box>
-                    <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
-                      <IconButton
-                        className={AVAClass.AVAButton}
-                        disabled={(firstSelectedRow() === rowsDisplayed[0]) || (firstSelectedRow() === -1)}
-                        style={{ backgroundColor: ((firstSelectedRow() === rowsDisplayed[0] || (firstSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
-                        size='small'
-                        onClick={() => {
-                          handleSelectPrevious();
-                        }}
-                      >
-                        {<ArrowBackIcon size="small" />}
-                      </IconButton>
-                      <IconButton
-                        className={AVAClass.AVAButton}
-                        disabled={(lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1))}
-                        style={{ backgroundColor: ((lastSelectedRow() === Math.max(...rowsDisplayed) || (lastSelectedRow() === -1)) ? 'white' : 'orange'), color: 'black' }}
-                        size='small'
-                        onClick={() => {
-                          handleSelectNext();
-                        }}>
-                        {<ArrowForwardIcon size="small" />}
-                      </IconButton>
-                    </Box>
-                  </React.Fragment>
-                }
               </Box>
             </DialogActions>
           }
