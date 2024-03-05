@@ -1133,6 +1133,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     <Box display='flex'
                       flexDirection='column'
                       bgcolor={(this_item.workData.checked) ? 'antiqueWhite' : null}
+                      color={(this_item.workData.checked) ? 'black' : null}
                       ref={((firstSelectedRow() === index) || ((firstSelectedRow() === -1) && (rowsDisplayed.length === 1))) ? firstSelectedRowRef : null}
                       onContextMenu={async (e) => {
                         e.preventDefault();
