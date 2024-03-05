@@ -323,8 +323,9 @@ export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/\s+/);
   let returnString = '';
-  words.forEach(w => {
-    if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
+  words.forEach((w, x) => {
+    if (x === 0) { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
+    else if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
     else if (w.toLowerCase() === 'ava') { returnString += 'AVA'; }
     else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     returnString += ' ';
