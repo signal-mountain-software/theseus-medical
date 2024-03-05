@@ -139,7 +139,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     loadProgress: [],
     attachmentList: [],
     allowAttachments: false,
-    errorOnScreen: false
+    errorOnScreen: false,
+    factName: factName
   });
 
   const [records2Update, setRecords2Update] = React.useState([]);
@@ -850,7 +851,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
     };
     reactData.columnList.push(...myDefaultColumns);
-    columnCommonName();
+    if (reactData.columnList.length > 1) {
+      columnCommonName();
+    }
   };
 
   async function applyExistingRequest(existingRequest, this_column) {
@@ -1191,7 +1194,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let warningsExist = false;
     let dataExists = false;
     let confirmStatus = 'confirm';
-    let warningSection = [``];
+    let warningSection = [];
     let responseArray = [`[bold][italic]AVA will send the following:`];
     pData.forEach(this_column => {
       /*
@@ -1220,10 +1223,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if (this_row.required && !this_row.textValue) {
           confirmStatus = 'error';
           if (pData.length > 1) {
-            warningSection.push(`[bold]${columnName} is missing "${this_row.text}"`);
+            warningSection.push(`[color:red][bold]${columnName} is missing "${this_row.text}"`);
           }
           else {
-            warningSection.push(`[bold]"${this_row.text}" is required`);
+            warningSection.push(`[color:red][bold]"${this_row.text}" is required`);
           }
           warningsExist = true;
         }
@@ -1237,10 +1240,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       // that's all the rows for this column
       if (selectionText.length === 0) {
         if (pData.length > 1) {
-          warningSection.push(`[bold]${columnName} has no entries at all`);
+          warningSection.push(`[color:red][bold]${columnName} has no entries at all`);
         }
         else {
-          warningSection.push(`[bold]No entries were made`);
+          warningSection.push(`[color:red][bold]No entries were made`);
         }
         warningsExist = true;
       }
@@ -1255,9 +1258,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       }
     });
-    let returnArray = ['Selection summary'];
+    let returnArray = [reactData.factName];
     if (reactData.commonText) {
-      returnArray.push(`[bold]${titleCase(reactData.commonText)}`);
+      returnArray = [titleCase(reactData.commonText)];
     }
     if (warningsExist) {
       returnArray.push(...warningSection);
