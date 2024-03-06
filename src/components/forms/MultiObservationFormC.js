@@ -390,8 +390,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   const onCheckEnter = (event, columnNumber, rowNumber) => {
     if (event.key === 'Enter' || event.type === 'blur') {
-      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') { handleDateExit(event.target.value, columnNumber, rowNumber); }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') { handleTimeExit(event.target.value, columnNumber, rowNumber); }
+      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
+        handleDateExit(event.target.value, columnNumber, rowNumber);
+      }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
+        handleTimeExit(event.target.value, columnNumber, rowNumber);
+      }
       else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(event.target.value, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
@@ -401,6 +405,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         else {
           handleTextExit(event.target.value, columnNumber, rowNumber);
+          if (reactData.columnList[columnNumber].rowDetails[rowNumber].required) {
+            if (!event.target.value) {
+              reactData.columnList[columnNumber].rowDetails[rowNumber].error = 'This information is required';
+            }
+            else {
+              reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
+            }
+          }
         }
       }
     }
@@ -558,23 +570,35 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   function handleOBOText(vText, columnNumber, rowNumber) {
     let inactiveAssignment = state?.session?.group_assignments?.inactive;
-    let inactiveGroup;
+    let inactiveGroup = [];
     if (!inactiveAssignment) {
-      inactiveGroup = 'inactive';
+      inactiveGroup = ['inactive'];
     }
     else if (Array.isArray(inactiveAssignment)) {
-      inactiveGroup = inactiveAssignment[0];
+      inactiveGroup.push(...inactiveAssignment);
     }
     else {
-      inactiveGroup = inactiveAssignment;
+      inactiveGroup = [inactiveAssignment];
+    }
+    let guestAssignment = state?.session?.group_assignments?.guest;
+    let guestGroups = [];
+    if (!guestAssignment) {
+      guestGroups = ['guest'];
+    }
+    else if (Array.isArray(guestAssignment)) {
+      guestGroups.push(...guestAssignment);
+    }
+    else {
+      guestGroups = [guestAssignment];
     }
     let typed_in_words = vText.toLowerCase().split(/\s+/);
     let hitCount = [];
+    let errorText = null;
     let hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
-      if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
-        return false;
-      }
-      if (accessList_person.member_of === inactiveGroup) {
+      // if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
+      //   return false;
+      // }
+      if (inactiveGroup.includes(accessList_person.member_of)) {
         return false;
       }
       // if any word in the display_name matches a typed in word, it is a "hit"
@@ -594,7 +618,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     });
     let winner = false;
     let winner_at;
-    if (hits.length === 1) {
+    if (hits.length === 0) {
+      errorText = `Nobody found to match that name`;
+    }
+    else if (hits.length === 1) {
       winner = true;
       winner_at = 0;
     }
@@ -615,10 +642,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       });
       if (!winner) {
-        enqueueSnackbar(
-          `AVA found ${maxHitCount} people to match that name.`,
-          { variant: 'info', persist: false }
-        );
+        errorText = `AVA found ${maxHitCount} people to match that name.`;
       }
     }
     let targetColumns = [];
@@ -631,6 +655,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       targetColumns.push(columnNumber);
     }
     targetColumns.forEach(c => {
+      reactData.columnList[c].rowDetails[rowNumber].error = '';
       if (winner) {
         reactData.columnList[c].person_id = hits[winner_at].id;
         let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
@@ -640,7 +665,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         // if (hits[winner_at].location) {
         //   vText += ` (${hits[winner_at].location})`;
         // }
+        if (guestGroups.includes(hits[winner_at].member_of)) {
+          vText += ` (Guest)`;
+        }
         resetTitleName();
+      }
+      else if (reactData.columnList[c].rowDetails[rowNumber].required) {
+        reactData.columnList[c].rowDetails[rowNumber].error = errorText;
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
     });
@@ -1202,7 +1233,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let confirmStatus = 'confirm';
     let warningSection = [];
     let responseArray = [`[bold][italic]AVA will send the following:`];
-    pData.forEach(this_column => {
+    pData.forEach((this_column, column_number) => {
       /*
       pData[
         {
@@ -1225,7 +1256,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let selectionText = [];
       let columnName = columnUniqueName(this_column).string;
       /*  Check for errors */
-      this_column.rowDetails.forEach(this_row => {
+      this_column.rowDetails.forEach((this_row, row_number) => {
         if (this_row.required && !this_row.textValue) {
           confirmStatus = 'error';
           if (pData.length > 1) {
@@ -1233,6 +1264,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
           else {
             warningSection.push(`[color:red][bold]"${this_row.text}" is required`);
+          }
+          warningsExist = true;
+          reactData.columnList[column_number].rowDetails[row_number].error = "This information is required";  
+          updateReactData({
+            columnList: reactData.columnList
+          }, false);
+        }
+        if (this_row.error) {
+          confirmStatus = 'error';
+          if (pData.length > 1) {
+            warningSection.push(`[color:red][bold]${columnName} has an error on "${this_row.text}".  The error is: ${this_row.error}.`);
+          }
+          else {
+            warningSection.push(`[color:red][bold]Error on "${this_row.text}".  The error is: ${this_row.error}.`);
           }
           warningsExist = true;
         }
@@ -1542,9 +1587,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   paddingBottom={(this_item.header ? 0 : 1)}
                   marginTop={(this_item.header ? 0 : 0.5)}
                   paddingTop={(this_item.header ? 0 : 1)}
-                  border={(this_item.isChecked || (this_item.textValue && (this_item.textValue !== ''))) ? 1 : 'none'}
-                  key={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                  id={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                  border={(!!this_item.error || this_item.isChecked || (this_item.textValue && (this_item.textValue !== ''))) ? (!!this_item.error ? 4 : 1) : 'none'}
+                  borderColor={!!this_item.error ? 'red' : 'black'}
+                  key={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
+                  id={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
                 >
                   <Box
                     display='flex'
@@ -1607,7 +1653,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         variant={'standard'}
                         key={`inputtextprompt_${selectedColumn}.${this_index}`}
                         id={`inputtextprompt_${selectedColumn}.${this_index}`}
-                        helperText={this_item.text}
+                        helperText={(this_item.error ? (`${this_item.error} - `) : '') + this_item.text}
                         multiline
                         inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
                         onChange={event => {
