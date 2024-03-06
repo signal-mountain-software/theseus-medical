@@ -637,9 +637,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         reactData.columnList[c].display_name = newDName;
         reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
         vText = `${newDName}`;
-        if (hits[winner_at].location) {
-          vText += ` (${hits[winner_at].location})`;
-        }
+        // if (hits[winner_at].location) {
+        //   vText += ` (${hits[winner_at].location})`;
+        // }
         resetTitleName();
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
@@ -839,15 +839,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           maxDName: myDefaultColumns[c].dName.length
         }, false);
       }
-      let existingRequest = await checkExistingRequests({
-        client_id: state.session.client_id,
-        foreign_key: myDefaultColumns[c].foreign_key || myDefaultColumns[c].foreignKey,
-        request_type: defaultValue.importTypes || myDefaultColumns[c].request_type || myDefaultColumns[c].requestType,
-        requestor: this_id,
-        requestor_name: `${this_person.name.first} ${this_person.name.last}`
-      });
-      if (existingRequest.status === 'use existing') {
-        await applyExistingRequest(existingRequest, myDefaultColumns[c]);
+      if (!defaultValue.suppressDuplicateCheck) {
+        let existingRequest = await checkExistingRequests({
+          client_id: state.session.client_id,
+          foreign_key: myDefaultColumns[c].foreign_key || myDefaultColumns[c].foreignKey,
+          request_type: defaultValue.importTypes || myDefaultColumns[c].request_type || myDefaultColumns[c].requestType,
+          requestor: this_id,
+          requestor_name: `${this_person.name.first} ${this_person.name.last}`
+        });
+        if (existingRequest.status === 'use existing') {
+          await applyExistingRequest(existingRequest, myDefaultColumns[c]);
+        }
       }
     };
     reactData.columnList.push(...myDefaultColumns);
@@ -857,7 +859,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   async function applyExistingRequest(existingRequest, this_column) {
-    existingRequest.requestToUse.original_request.selections.forEach(s => {
+    for (let sX = 0; sX < existingRequest.requestToUse.original_request.selections.length; sX++) {
+      let s = existingRequest.requestToUse.original_request.selections[sX];
       let selection = s.split('(').shift().trim();
       let rowNumber = this_column.rowDetails.findIndex(r => {
         return (r.text === selection);
@@ -866,6 +869,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         this_column.rowDetails[rowNumber].isChecked = true;
         if ((existingRequest.requestToUse.original_request.hasOwnProperty('options'))
           && (existingRequest.requestToUse.original_request.options.hasOwnProperty(selection))) {
+          if (!this_column.rowDetails[rowNumber].qualData) {
+            [this_column.rowDetails[rowNumber].defaultSelections, this_column.rowDetails[rowNumber].qualData] = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
+          }
           this_column.rowDetails[rowNumber].qualSelections = deepCopy(existingRequest.requestToUse.original_request.options[selection]);
         }
         if ((existingRequest.requestToUse?.original_request.hasOwnProperty('textInput'))
@@ -873,7 +879,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
         }
       }
-    });
+    };
     if (existingRequest.requestToUse.original_request.hasOwnProperty('textInput')) {
       for (let selection in existingRequest.requestToUse.original_request.textInput) {
         let rowNumber = this_column.rowDetails.findIndex(r => {
@@ -915,7 +921,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       }
     }
-  }
+  };
 
   async function checkExistingRequests(request_key) {
     // Does this person already have a request for this requestype and foreignkey?
