@@ -525,12 +525,19 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   function handleDateExit(vText, columnNumber, rowNumber) {
     let AVAdate = makeDate(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].row_qualifier);
-    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
-    reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
+    if (AVAdate.error) {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].error = AVAdate.absolute;
+    }
+    else {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
+      reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
+    }
+    // reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
     updateReactData({ columnList: reactData.columnList }, true);
   };
 
   function handleTimeExit(vText, columnNumber, rowNumber) {
+    reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
     let ampm = null;
     if (vText.includes('p')) { ampm = 'pm'; }
     else if (vText.includes('a')) { ampm = 'am'; };
@@ -662,15 +669,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         reactData.columnList[c].display_name = newDName;
         reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
         vText = `${newDName}`;
-        // if (hits[winner_at].location) {
-        //   vText += ` (${hits[winner_at].location})`;
-        // }
         if (guestGroups.includes(hits[winner_at].member_of)) {
           vText += ` (Guest)`;
         }
         resetTitleName();
       }
-      else if (reactData.columnList[c].rowDetails[rowNumber].required) {
+      else if (errorText) {
         reactData.columnList[c].rowDetails[rowNumber].error = errorText;
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
@@ -1271,7 +1275,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             columnList: reactData.columnList
           }, false);
         }
-        if (this_row.error) {
+        else if (this_row.error) {
           confirmStatus = 'error';
           if (pData.length > 1) {
             warningSection.push(`[color:red][bold]${columnName} has an error on "${this_row.text}".  The error is: ${this_row.error}.`);
