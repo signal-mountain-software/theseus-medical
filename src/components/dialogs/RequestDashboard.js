@@ -42,13 +42,6 @@ import TextField from '@material-ui/core/TextField';
 
 import SendIcon from '@material-ui/icons/Send';
 import PrintIcon from '@material-ui/icons/Print';
-import HomeIcon from '@material-ui/icons/Home';
-import AutorenewIcon from '@material-ui/icons/Autorenew';
-
-import Avatar from '@material-ui/core/Avatar';
-import Menu from '@material-ui/core/Menu';
-import MenuList from '@material-ui/core/MenuList';
-import MenuItem from '@material-ui/core/MenuItem';
 
 import { AVAclasses, AVATextStyle, AVADefaults, AVATextVariableStyle } from '../../util/AVAStyles';
 
@@ -63,7 +56,7 @@ const useStyles = makeStyles(theme => ({
     minWidth: '100%',
   },
   freeInput: {
-    marginLeft: '25px',
+    marginLeft: '16px',
     marginRight: 2,
     marginBottom: theme.spacing(2),
     paddingLeft: 0,
@@ -159,12 +152,12 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(-0.75),
   },
   messageArea: {
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: theme.spacing(2),
+    alignItems: 'start',
+    justifyContent: 'flex-start',
+    marginTop: theme.spacing(1),
     marginBottom: theme.spacing(0),
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
+    marginLeft: theme.spacing(0),
+    marginRight: theme.spacing(0),
   },
   title: {
     marginTop: theme.spacing(2),
@@ -247,9 +240,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   const [promptForMessage, setPromptForMessage] = React.useState(false);
 
-  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
-  const [anchorEl, setAnchorEl] = React.useState(null);
-
   const [play] = useSound(AVA_AlertSound, { volume: 1 });
 
   let rowsDisplayed = [];
@@ -266,18 +256,18 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
-  const handleClick = async (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
   function allRowsSelected() {
+    let selectedCount = 0;
     let filtered = reactData.dataRows.filter(f => {
-      return OKToDisplay(f);
+      if (OKToDisplay(f)) {
+        if (f.workData.checked) {
+          selectedCount++;
+        }
+        return true;
+      }
+      return false;
     });
-    let allChecked = filtered.every(r => {
-      return r.workData.checked;
-    });
-    return { count: filtered.length, allChecked };
+    return { count: filtered.length, allChecked: (selectedCount === filtered.length) };
   }
 
   const statusWords = {
@@ -478,12 +468,12 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (vCheck.length === 0) {
         updateReactData({
           filterTextLower: ''
-        });
+        }, true);
       }
       else {
         updateReactData({
           filterTextLower: vCheck.toLowerCase()
-        });
+        }, true);
       }
     }, 500);
   };
@@ -493,7 +483,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       return true;
     }
     else {
-      return JSON.stringify(this_item).includes(reactData.filterTextLower);
+      return Object.values(this_item.workData).join(' ').toLowerCase().includes(reactData.filterTextLower);
     }
   }
 
@@ -1002,112 +992,78 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           {/* Header with Avatar, Message, and VertMenu */}
           <Box
             display='flex' flexDirection='row'
-            className={classes.messageArea}
             key={'topBox'}
           >
-            <Box display='flex' flexDirection='column' key={'titlesection'}>
+            <Box display='flex' flexDirection='column' flexGrow={1} key={'titlesection'}>
               <Typography
                 className={classes.title}
-                style={AVATextVariableStyle({ size: 2.5, bold: true })}
+                style={AVATextVariableStyle(((filter.person_id || filter.assigned_to)
+                  ? reactData.selectedPersonName
+                  : reactData.pageTitle), { size: 2.5, bold: true })}
               >
                 {(filter.person_id || filter.assigned_to)
                   ? reactData.selectedPersonName
                   : reactData.pageTitle
                 }
               </Typography>
-              {filter.foreign_key &&
-                <Typography
-                  className={classes.subTitle}
-                  style={AVATextStyle({ size: 1 })}
-                >
-                  {`For: ${makeDate(filter.foreign_key).absolute}`}
-                </Typography>
-              }
-              {filter.statusNot &&
-                <Typography
-                  className={classes.subTitle}
-                  style={AVATextStyle({ size: 1, margin: { top: 1 } })}
-                >
-                  {`Status NOT: ${listFromArray(filter.statusNot, { sentenceCase: true, or: true })}`}
-                </Typography>
-              }
-              {filter.status &&
-                <Typography
-                  className={classes.subTitle}
-                  style={AVATextStyle({ size: 1, margin: { top: (filter.statusNot ? 0 : 1) } })}
-                >
-                  {`Status: ${listFromArray(filter.status, { sentenceCase: true, or: true })}`}
-                </Typography>
-              }
+              <Box
+                display='flex' flexDirection='row'
+                className={classes.messageArea}
+                key={'midBox'}
+              >
+                <Box display='flex' flexDirection='column' width='50%' key={'midLeft'}>
+                  <Typography
+                    className={classes.title}
+                    style={AVATextStyle({ size: 1, bold: true })}
+                  >
+                    {'Search'}
+                  </Typography>
+                  <TextField
+                    id='List Filter'
+                    onChange={event => (handleChangeFilter(event.target.value))}
+                    className={classes.freeInput}
+                    inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                    variant={'standard'}
+                    autoComplete='off'
+                  />
+                </Box>
+                <Box display='flex' flexDirection='column' key={'midRight'}>
+                  {(filter.foreign_key || filter.statusNot || filter.status) &&
+                    <Typography
+                      className={classes.title}
+                      style={AVATextStyle({ size: 1, bold: true, margin: { bottom: 0.5 } })}
+                    >
+                      {'Filters'}
+                    </Typography>
+                  }
+                  {filter.foreign_key &&
+                    <Typography
+                      className={classes.subTitle}
+                      style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
+                    >
+                      {`For ${makeDate(filter.foreign_key).absolute}`}
+                    </Typography>
+                  }
+                  {filter.statusNot &&
+                    <Typography
+                      className={classes.subTitle}
+                      style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
+                    >
+                      {`Status not ${listFromArray(filter.statusNot, { sentenceCase: true, or: true })}`}
+                    </Typography>
+                  }
+                  {filter.status &&
+                    <Typography
+                      className={classes.subTitle}
+                      style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
+                    >
+                      {`Status is ${listFromArray(filter.status, { sentenceCase: true, or: true })}`}
+                    </Typography>
+                  }
+                </Box>
+              </Box>
             </Box>
-            <Box
-              paddingRight={2}
-              marginTop={1}
-              aria-controls='hidden-menu'
-              aria-haspopup='true'
-              onClick={(event) => {
-                handleClick(event);
-                setPopupMenuOpen(true);
-              }}>
-              <Avatar src={process.env.REACT_APP_AVA_LOGO} />
-            </Box>
-            <Menu
-              id='hidden-menu'
-              anchorEl={anchorEl}
-              open={popupMenuOpen}
-              onClose={() => { setPopupMenuOpen(false); }}
-              keepMounted>
-              <MenuList className={classes.popUpMenu}>
-                <MenuItem
-                  onClick={() => {
-                    onClose();
-                  }}>
-                  <Box
-                    display='flex' flexDirection='row' alignItems={'center'}
-                    key={'vRowHome'}
-                  >
-                    <HomeIcon />
-                    <Typography className={classes.popUpMenuRow} >{'Go to AVA Menu'}</Typography>
-                  </Box>
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    let jumpTo = window.location.origin;
-                    window.location.replace(jumpTo);
-                  }}>
-                  <Box
-                    display='flex' flexDirection='row' alignItems={'center'}
-                    key={'vRowRefresh'}
-                  >
-                    <AutorenewIcon />
-                    <Typography className={classes.popUpMenuRow} >{'Restart AVA'}</Typography>
-                  </Box>
-                </MenuItem>
-                <MenuItem>
-                  <Box
-                    display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
-                    key={'vRowRefresh'}
-                  >
-                    <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                    <Typography className={classes.popUpFooter} >{`User ${session.user_id}${session.patient_id !== session.user_id ? (' (' + session.patient_id + ')') : ''}`}</Typography>
-                    <Typography className={classes.popUpFooter} >{`Function: RequestDashboard`}</Typography>
-                  </Box>
-                </MenuItem>
-              </MenuList>
-            </Menu>
           </Box>
-
-          {/* Text Filter */}
-          <TextField
-            id='List Filter'
-            onChange={event => (handleChangeFilter(event.target.value))}
-            className={classes.freeInput}
-            helperText={reactData.isMobile ? 'Filter' : 'Type a few letters to filter the list'}
-            inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-            FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-            variant={'standard'}
-            autoComplete='off'
-          />
 
           {/* Main List */}
           <Paper
@@ -1116,7 +1072,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             overflow='auto'
             square
           >
-            <List  >
+            <List sx={{ paddingTop: '0px' }}  >
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsDisplayed = []}
               </Typography>
