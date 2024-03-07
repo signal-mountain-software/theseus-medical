@@ -336,6 +336,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       if (splitInstruction.length > 1) {
         this_qualifier = splitInstruction[1].replace(']', '');
       }
+      /*
       let proxyOK = true;
       if (sessionState.accessList) {
         proxyOK =
@@ -343,13 +344,15 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
             sessionState.accessList?.[sessionState.session.client_id]?.count.proxy +
             sessionState.accessList?.[sessionState.session.client_id]?.count.view) > 0);
       }
+      */
       displayRowList.push({
         checkbox: false,
         required,
         multiColumn: false,
         text: this_instruction,
         textValue: defaults[this_instruction],
-        obo_line: (proxyOK && ((defaults.obo || defaults.onBehalfOf) === this_instruction)),
+        //    obo_line: (proxyOK && ((defaults.obo || defaults.onBehalfOf) === this_instruction)),
+        obo_line: ((defaults.obo || defaults.onBehalfOf) === this_instruction),
         observationKey: instruction[3] || getKey(this_instruction),
         desc: getDescription(this_instruction),
         input: instruction[1].trim().toLowerCase(),
