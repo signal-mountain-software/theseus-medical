@@ -301,7 +301,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const onIdle = async () => {
     cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
     let now = new Date();
-    if ((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) {
+    if (((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
     else if (!reactData.menu_reloaded) {
