@@ -1,4 +1,4 @@
-import { clt, cl, s3, recordExists, titleCase, uuid, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations } from './AVAUtilities';
@@ -76,11 +76,27 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       inBody.original_request,
       inBody.request);
     if (inBody.hasOwnProperty('attachments')) {
-      requestInfo.attachments = inBody.attachments.map(a => { return a.Location; });
+      requestInfo.attachments = inBody.attachments.map(a => {
+        if (typeof (a) === 'string') {
+          return a;
+        }
+        else if (isObject(a)) {
+          return a.Location;
+        }
+        else {
+          return '';
+        }
+      });
     }
     let needMultiPrint = (messageList.length > 1);
     let firstDoc = true;
-      
+    // if multi print, put types that need to be bundled together at the bottom of the list 
+    messageList.sort((a, b) => {
+      if (!a.format || ['mealOrder', 'checklist', 'factForm'].includes(a.format.type)) {
+        return 1;
+      }
+      return -1;
+    })  
     do {
       let this_request = Object.assign({}, requestInfo, messageList.shift());   // this removes the message from the messageList
       if (needMultiPrint) {
@@ -109,6 +125,7 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
         case 'checklist':
         case 'factForm': {
           [results.htmlText, results.messageText, results.pdfInfo] = await formatRequestDetails(this_request, this_request.format.type);
+          firstDoc = false;
           /*
           let SRPrint_response = await makeSRPrint(this_request);
           let pdfInfo = {
@@ -168,7 +185,6 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       }
 
       returnResults.push(results);
-      firstDoc = false;
     } while (messageList.length > 0);
   } while (bodyList.length > 0);
 
@@ -187,7 +203,13 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       let thenArray = [];
       let passedTest = false;
       if (!t.test) {   // No test condition?  Testing to see if the t.check was selected
-        if (requestToTest.selections && requestToTest.selections.includes(t.check)) { passedTest = true; }
+        if (requestToTest.selections) {
+          if (makeArray(requestToTest.selections).some(s => {
+            return s.includes(t.check);
+          })) {
+            passedTest = true;
+          }
+        }
         else if (requestToTest.textInput && requestToTest.textInput.hasOwnProperty(t.check)) { passedTest = true; }
       }
       // there is a test condition
@@ -381,6 +403,9 @@ export async function resolveMessageVariables(inString, body) {
         }
         else {
           let [dDate, dType] = variable.split(':');
+          if (body.hasOwnProperty(dDate)) {
+            dDate = body[dDate];
+          }
           let keyDate = makeDate(dDate);
           if (!keyDate.error) { workString = `${front}${keyDate[dType || 'absolute']}${back}`; }
           else { workString = `${front}"${variable}"${back}`; }
@@ -449,7 +474,7 @@ export async function formatRequestDetails(body, summaryType) {
   pdfLine(`created: ${pDateTime}`, { size: 'medium', align: 'center' });
   
   for (let cTyp in pRec.messaging) {
-    if ((cTyp in pRec) && (pRec[cTyp].trim() !== '')) {
+    if ((pRec[cTyp]) && (pRec[cTyp].trim() !== '')) {
       let cLab;
       switch (cTyp) {
         case 'sms': { cLab = 'cell'; break; }
@@ -633,8 +658,10 @@ export async function savePDF(doc, pdfInfo, options = {}) {
         responseStatus = 401;
         responseData.message = err.message;
       });
-    if (goodS3 && options.onSave === 'print') {
-      window.open(s3Resp.Location);
+    if (goodS3) {
+      if (options.onSave === 'print') {
+        window.open(s3Resp.Location);
+      }
       responseStatus = 200;
       responseData.message.push(`S3 saved at ${s3Resp.Location}`);
       responseData.s3Resp = s3Resp;

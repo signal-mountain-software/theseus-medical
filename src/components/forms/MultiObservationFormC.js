@@ -39,7 +39,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 import Radio from '@material-ui/core/Radio';
 
 import AVAConfirm from './AVAConfirm';
-import { mealTicketFormat, prepareMessage, sendMessages } from '../../util/AVAMessages';
+import { mealTicketFormat, prepareMessage, sendMessages, resolveMessageVariables } from '../../util/AVAMessages';
 
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 
@@ -1118,7 +1118,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           requestType: this_column.requestType,
           activity_key: this_column.activity_key,
           onBehalfOf: oBo,
-          foreign_key: this_column.foreignKey,
+          foreign_key: await resolveMessageVariables(this_column.foreignKey, textInput),
           assign_to: (fact?.value?.freeText?.assign_to || 'unassigned'),
           request: {
             selections,
