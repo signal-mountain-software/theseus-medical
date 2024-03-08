@@ -9,6 +9,7 @@ import MakeMessage from '../forms/MakeMessage';
 import AVATextInput from '../forms/AVATextInput';
 
 import AVA_AlertSound from '../../ava_alert.mp3';
+import SearchIcon from '@material-ui/icons/Search';
 
 import IdleTimer from 'react-idle-timer';
 import useSound from 'use-sound';
@@ -56,9 +57,10 @@ const useStyles = makeStyles(theme => ({
     minWidth: '100%',
   },
   freeInput: {
-    marginLeft: '16px',
+    marginLeft: '2px',
     marginRight: 2,
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
+    marginTop: theme.spacing(1),
     paddingLeft: 0,
     paddingRight: 0,
     paddingBottom: theme.spacing(1),
@@ -67,11 +69,10 @@ const useStyles = makeStyles(theme => ({
     fontSize: theme.typography.fontSize * 0.4,
   },
   imageArea: {
-    minWidth: '100px',
-    maxWidth: '100px',
-    minHeight: '100px',
-    maxHeight: '100px',
-    marginBottom: theme.spacing(1),
+    minWidth: '80px',
+    maxWidth: '80px',
+    minHeight: '80px',
+    maxHeight: '80px',
     marginRight: theme.spacing(1),
   },
   buttonArea: {
@@ -95,7 +96,6 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'space-between',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
-    marginLeft: theme.spacing(2),
     marginRight: theme.spacing(1),
   },
   noDisplay: {
@@ -154,7 +154,7 @@ const useStyles = makeStyles(theme => ({
   messageArea: {
     alignItems: 'start',
     justifyContent: 'flex-start',
-    marginTop: theme.spacing(1),
+    marginTop: theme.spacing(1.5),
     marginBottom: theme.spacing(0),
     marginLeft: theme.spacing(0),
     marginRight: theme.spacing(0),
@@ -749,6 +749,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.requestor_location = requestorRec.location;
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
+    i.workData.summary_request = [];
     i.workData.textBased_request = '';
     i.workData.update_date = AVAupdateDate.relative;
     i.workData.requestTime = AVArequestDate.timestamp;
@@ -789,7 +790,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       i.workData.requestor_image = null;
     }
     i.workData.search_data += i.workData.requestor_name;
-    if ((!options.shortForm) && (!options.textForm)) {
+    i.workData.summary_request = i.workData.formatted_request;
+    if ((!options.textForm)) {
+      i.workData.formatted_request = [];
       if ('history' in i) {
         i.workData.formatted_request.push(['head', 'History']);
         if (typeof (i.history) === 'string') { i.workData.formatted_request.push(['detail', i.history]); }
@@ -997,11 +1000,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             <Box display='flex' flexDirection='column' flexGrow={1} key={'titlesection'}>
               <Typography
                 className={classes.title}
-                style={AVATextVariableStyle(((filter.person_id || filter.assigned_to)
+                style={AVATextVariableStyle((((filter.person_id || filter.assigned_to) && reactData.selectedPersonName)
                   ? reactData.selectedPersonName
                   : reactData.pageTitle), { size: 2.5, bold: true })}
               >
-                {(filter.person_id || filter.assigned_to)
+                {((filter.person_id || filter.assigned_to) && reactData.selectedPersonName)
                   ? reactData.selectedPersonName
                   : reactData.pageTitle
                 }
@@ -1017,15 +1020,13 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   borderRadius={'32px'}
                   border={1}
                   borderColor={'black'}
+                  paddingBottom={0.5}
+                  paddingLeft={1}
+                  alignItems={'center'}
                   marginBottom={0.5}
-                  flexDirection='column' width='85%' key={'midLeft'}
+                  flexDirection='row' width='85%' key={'midLeft'}
                 >
-                  <Typography
-                    className={classes.title}
-                    style={AVATextStyle({ size: 1, bold: true })}
-                  >
-                    {'Search'}
-                  </Typography>
+                  <SearchIcon size="small" />
                   <TextField
                     id='List Filter'
                     onChange={event => (handleChangeFilter(event.target.value))}
@@ -1091,7 +1092,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             overflow='auto'
             square
           >
-            <List sx={{ paddingTop: '0px' }}  >
+            <List>
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsDisplayed = []}
               </Typography>
@@ -1127,22 +1128,27 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         key={this_item.message_id + 'r' + index}
                         className={classes.listItem}
                       >
+                        <Box display='flex' flexDirection='row'>
+                          <Checkbox
+                            checked={this_item.workData.checked || false}
+                            disableRipple
+                            key={'checkbox' + index}
+                            onClick={() => { toggleCheck(index); }}
+                          />
+                          {!options.textForm && !filter.person_id &&
+                            <Box
+                              className={classes.imageArea}
+                              component="img"
+                              border={1}
+                              alt=' '
+                              src={this_item.workData.requestor_image}
+                            />
+                          }
+                        </Box>
                         {!options.textForm &&
                           <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
                             <Box display='flex' flexDirection='column'>
                               <Box display='flex' flexDirection='row'>
-                                {!options.shortForm && !filter.person_id &&
-                                  <Box
-                                    className={classes.imageArea}
-                                    component="img"
-                                    minWidth={50}
-                                    minHeight={50}
-                                    maxWidth={50}
-                                    border={1}
-                                    alt=' '
-                                    src={this_item.workData.requestor_image}
-                                  />
-                                }
                                 <Box display='flex' flexDirection='column' marginBottom={1.5}>
                                   {(!filter.request_type || (filter.request_type.length !== 1)) &&
                                     <Typography
@@ -1196,7 +1202,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                   </React.Fragment>
                                 </Box>
                               </Box>
-                              {this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                              {!options.textForm &&
+                                this_item?.workData?.summary_request &&
+                                this_item.workData.summary_request.map((mSumLine, mSumIndex) => (
+                                  < Typography
+                                    key={`prefLine-${mSumIndex}`}
+                                    className={(`mrow${mSumLine[0]}` in classes) ? classes[`mrow${mSumLine[0]}`] : classes.mrowdetail}
+                                  >
+                                    {typeof mSumLine[1] === 'string' ? mSumLine[1] : (alert(mSumIndex, mSumLine))}
+                                  </Typography>
+                              ))}
+                              {this_item.workData.open && this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
                                 (mLine[0].startsWith('href=')
                                   ?
                                   <a
@@ -1234,28 +1250,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                             </Box>
                           </Box>
                         }
-                        <Box display='flex' flexDirection='row'>
-                          <Checkbox
-                            checked={this_item.workData.checked || false}
-                            disableRipple
-                            key={'checkbox' + index}
-                            onClick={() => { toggleCheck(index); }}
-                          />
-                        </Box>
                         {options.textForm &&
                           <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                            <Box display='flex' flexDirection='row'>
-                              <Box
-                                className={classes.imageArea}
-                                component="img"
-                                minWidth={50}
-                                minHeight={50}
-                                maxWidth={50}
-                                border={1}
-                                alt=' '
-                                src={this_item.workData.requestor_image}
-                              />
-                            </Box>
                             < Typography
                               key={`singleTextLine-${index}`}
                               className={classes.mrowdetail}
@@ -1445,7 +1441,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   </Button>
                   {(filter.hasOwnProperty('statusNot') || filter.hasOwnProperty('status'))
                     &&
-                    < Button
+                    <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'blue', color: 'white' }}
                       size='small'
@@ -1460,7 +1456,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   {(!filter.hasOwnProperty('statusNot') && !filter.hasOwnProperty('status')
                     && ((reactData.OGFilter.hasOwnProperty('statusNot')) || (reactData.OGFilter.hasOwnProperty('status'))))
                     &&
-                    < Button
+                    <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'blue', color: 'white' }}
                       size='small'
