@@ -1011,7 +1011,15 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 className={classes.messageArea}
                 key={'midBox'}
               >
-                <Box display='flex' flexDirection='column' width='50%' key={'midLeft'}>
+                <Box display='flex'
+                  marginLeft={2}
+                  paddingRight={2}
+                  borderRadius={'32px'}
+                  border={1}
+                  borderColor={'black'}
+                  marginBottom={0.5}
+                  flexDirection='column' width='85%' key={'midLeft'}
+                >
                   <Typography
                     className={classes.title}
                     style={AVATextStyle({ size: 1, bold: true })}
@@ -1021,46 +1029,57 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   <TextField
                     id='List Filter'
                     onChange={event => (handleChangeFilter(event.target.value))}
+                    width={'100%'}
                     className={classes.freeInput}
                     inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
                     variant={'standard'}
                     autoComplete='off'
                   />
                 </Box>
-                <Box display='flex' flexDirection='column' key={'midRight'}>
-                  {(filter.foreign_key || filter.statusNot || filter.status) &&
+                {(filter.foreign_key || filter.statusNot || filter.status) &&
+                  <Box display='flex'
+                    width={'100%'}
+                    marginLeft={2}
+                    marginRight={2}
+                    marginBottom={0.5}
+                    paddingBottom={2}
+                    borderRadius={'32px'}
+                    border={1}
+                    borderColor={'black'}
+                    flexDirection='column' key={'midRight'}
+                  >
                     <Typography
                       className={classes.title}
                       style={AVATextStyle({ size: 1, bold: true, margin: { bottom: 0.5 } })}
                     >
                       {'Filters'}
                     </Typography>
-                  }
-                  {filter.foreign_key &&
-                    <Typography
-                      className={classes.subTitle}
-                      style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
-                    >
-                      {`For ${makeDate(filter.foreign_key).absolute}`}
-                    </Typography>
-                  }
-                  {filter.statusNot &&
-                    <Typography
-                      className={classes.subTitle}
-                      style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
-                    >
-                      {`Status not ${listFromArray(filter.statusNot, { sentenceCase: true, or: true })}`}
-                    </Typography>
-                  }
-                  {filter.status &&
-                    <Typography
-                      className={classes.subTitle}
-                      style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
-                    >
-                      {`Status is ${listFromArray(filter.status, { sentenceCase: true, or: true })}`}
-                    </Typography>
-                  }
-                </Box>
+                    {filter.foreign_key &&
+                      <Typography
+                        className={classes.subTitle}
+                        style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
+                      >
+                        {`For ${makeDate(filter.foreign_key).absolute}`}
+                      </Typography>
+                    }
+                    {filter.statusNot &&
+                      <Typography
+                        className={classes.subTitle}
+                        style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
+                      >
+                        {`Status not ${listFromArray(filter.statusNot, { sentenceCase: true, or: true })}`}
+                      </Typography>
+                    }
+                    {filter.status &&
+                      <Typography
+                        className={classes.subTitle}
+                        style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
+                      >
+                        {`Status is ${listFromArray(filter.status, { sentenceCase: true, or: true })}`}
+                      </Typography>
+                    }
+                  </Box>
+                }
               </Box>
             </Box>
           </Box>
