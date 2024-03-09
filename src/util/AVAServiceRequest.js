@@ -392,8 +392,8 @@ export async function updateServiceRequest(body) {
   // body is a single, or an array of, service request records
   let unProcessed = [];
   let logRec = [];
+  let x = 0;
   for (let r of makeArray(body)) {
-    let x = 0;
     unProcessed.push({
       "PutRequest": {
         "Item": r
@@ -438,13 +438,19 @@ export async function updateServiceRequest(body) {
         'ServiceRequests': this_Request_group,
         'ServiceRequestLog': this_Log_group
       }
-    };
+    };  
     let goodWrite = true;
     let writeResponse = await dbClient
       .batchWrite(requestObject)
       .promise()
       .catch(error => {
         clt({ 'Bad batch write on ServiceRequests - caught error is': error });
+        this_Request_group.forEach(k => {
+          clt(`request_id = ${k.PutRequest.Item.request_id}`);
+        })
+        this_Log_group.forEach(k => {
+          clt(`log_time = ${k.PutRequest.Item.log_time}`);
+        })
         goodWrite = false;
       });
     if (writeResponse
