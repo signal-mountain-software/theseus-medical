@@ -244,7 +244,9 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                       minWidth={'100%'}
                       justifyContent={'center'}
                       minHeight={`${user_fontSize * 2}rem`}
-                      border={textInput[ndx] ? 1 : 0}
+                      // border={textInput[ndx] ? 1 : 0}
+                      border={!!(errorText && errorText[ndx]) ? 4 : (textInput[ndx] ? 1 : 'none')}
+                      borderColor={!!(errorText && errorText[ndx]) ? 'red' : 'black'}
                       borderRadius={'16px'}
                       key={'fullRow' + ndx}
                     >
