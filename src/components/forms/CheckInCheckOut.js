@@ -79,11 +79,11 @@ export default ({ onSave, onClose }) => {
       }
     }
     for (let p = 0; p < personRecs.length; p++) {
-      personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);      
+      personRecs[p].account_class = determineClass(personRecs[p].groups, state.session.group_assignments);
       if (personRecs[p].messaging.voice) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.voice.slice(-4)}`; }
       else if (personRecs[p].messaging.sms) { personRecs[p].phone_key = `(xxx) xxx-${personRecs[p].messaging.sms.slice(-4)}`; }
     }
-    personRecs = personRecs.filter(p => { return (p.account_class !== 'inactive'); })
+    personRecs = personRecs.filter(p => { return (p.account_class !== 'inactive'); });
     switch (personRecs.length) {
       case 0: {
         return { result: 'invalid', error_field: 1, reason: `That information doesn't match any ${nonRes ? titleCase(nonRes) : 'Resident'} accounts that we can find` };
@@ -290,47 +290,49 @@ export default ({ onSave, onClose }) => {
                       setReactData(reactData);
                       setForceRedisplay(!forceRedisplay);
                     }
-                    if (!enteredID) {
-                      reactData.errorText[0] = `Please enter your name or AVA ID so we can properly identify you!`;
-                    }
-                    else if (enteredID === 'exit') {
+                    if (enteredID && (enteredID === 'exit')) {
                       onClose();
                     }
-                    if (enteredID) {
-                      let validation = {};
-                      if (enteredID === reactData.residentName) {
-                        validation = {
-                          result: 'match',
-                          person_id: reactData.personRec.person_id,
-                          personRec: reactData.personRec,
-                        };
-                        validation.personRec.account_class = determineClass(reactData.personRec.groups, state.session.group_assignments);
+                    else {
+                      if (!enteredID) {
+                        reactData.errorText[0] = `Please enter your name or AVA ID so we can properly identify you!`;
                       }
                       else {
-                        validation = await validateUser(enteredID.toLowerCase(), state.session.client_id);
+                        let validation = {};
+                        if (enteredID === reactData.residentName) {
+                          validation = {
+                            result: 'match',
+                            person_id: reactData.personRec.person_id,
+                            personRec: reactData.personRec,
+                          };
+                          validation.personRec.account_class = determineClass(reactData.personRec.groups, state.session.group_assignments);
+                        }
+                        else {
+                          validation = await validateUser(enteredID.toLowerCase(), state.session.client_id);
+                        }
+                        reactData.errorText = [];
+                        reactData.enteredID = enteredID;
+                        if ((validation.result === 'match') && (validation.personRec.person_id === state.patient.person_id)) {  // Found myself
+                          reactData.validated_user = true;
+                          reactData.personRec = validation.personRec;
+                          let mode = determineMode(validation.personRec);
+                          reactData.currentStatus = await getCurrentStatus(state.session.client_id, validation.personRec.person_id, mode);
+                          reactData.select_user = false;
+                        }
+                        else if ((validation.result === 'match') || (validation.result === 'ambiguous')) {
+                          reactData.select_user = true;
+                          reactData.candidates = validation.candidates || [validation.personRec];
+                        }
+                        else {
+                          // put AVA in "add a new guest" mode
+                          reactData.select_user = false;
+                          reactData.add_guest_mode = true;
+                          reactData.add_try_number = 1;
+                        }
                       }
-                      reactData.errorText = [];
-                      reactData.enteredID = enteredID;
-                      if ((validation.result === 'match') && (validation.personRec.person_id === state.patient.person_id)) {  // Found myself
-                        reactData.validated_user = true;
-                        reactData.personRec = validation.personRec;
-                        let mode = determineMode(validation.personRec);
-                        reactData.currentStatus = await getCurrentStatus(state.session.client_id, validation.personRec.person_id, mode);
-                        reactData.select_user = false;
-                      }
-                      else if ((validation.result === 'match') || (validation.result === 'ambiguous')) {
-                        reactData.select_user = true;
-                        reactData.candidates = validation.candidates || [validation.personRec];
-                      }
-                      else {
-                        // put AVA in "add a new guest" mode
-                        reactData.select_user = false;
-                        reactData.add_guest_mode = true;
-                        reactData.add_try_number = 1;
-                      }
+                      setReactData(reactData);
+                      setForceRedisplay(!forceRedisplay);
                     }
-                    setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
                   }}
                   allowCancel={!reactData.kiosk_mode}
                   options={{ save_on_enter: true }}
@@ -339,8 +341,8 @@ export default ({ onSave, onClose }) => {
               :
               <Dialog open={forceRedisplay || true} fullWidth >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
-                    <Typography style={AVATextStyle({ size: 1.3, bold: true })} id='dialog-title'>{makeGreeting()}</Typography>
-                    <Typography style={AVATextStyle({ size: 0.8 })} id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
+                  <Typography style={AVATextStyle({ size: 1.3, bold: true })} id='dialog-title'>{makeGreeting()}</Typography>
+                  <Typography style={AVATextStyle({ size: 0.8 })} id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
                 </Box>
                 <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
                   {reactData.candidates.map((candidate, cIndex) => (
@@ -413,11 +415,11 @@ export default ({ onSave, onClose }) => {
             &&
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
               <AVATextInput
-                  titleText={[
-                    makeGreeting(reactData.personRec.name.first),
-                    `[italic]You are currently checked in`,
-                    `Tap below to check out`
-                  ]}
+                titleText={[
+                  makeGreeting(reactData.personRec.name.first),
+                  `[italic]You are currently checked in`,
+                  `Tap below to check out`
+                ]}
                 promptText={reactData.residentPrompts || []}
                 buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
                 onCancel={() => {
@@ -448,11 +450,11 @@ export default ({ onSave, onClose }) => {
               />
               :
               <AVAConfirm
-                  promptText={[
-                    `Welcome home, ${reactData.personRec.name.first}!`,
-                    `[italic]You've been checked out since ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`,
-                    `Tap below to check in`
-                  ]}
+                promptText={[
+                  `Welcome home, ${reactData.personRec.name.first}!`,
+                  `[italic]You've been checked out since ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`,
+                  `Tap below to check in`
+                ]}
                 cancelText={`Cancel`}
                 confirmText={`Check-in`}
                 onCancel={() => {
