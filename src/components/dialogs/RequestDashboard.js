@@ -401,7 +401,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           }
           else { reactData.dataRows[x].history = [historyLine]; }
         }
-        if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== pOptions.newStatus)) {
+        if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== pOptions.newStatus)
+          && reactData.statusList.some(v => {
+            return (v.value.toLowerCase() === pOptions.newStatus.toLowerCase());
+          })) {
           reactData.dataRows[x].last_status = pOptions.newStatus;
           rowChanged[x] = true;
         }
@@ -456,6 +459,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         }
       }
     }
+    updateReactData({
+      dataRows: reactData.dataRows
+    }, true);
   }
 
   function getSelectedDetails() {

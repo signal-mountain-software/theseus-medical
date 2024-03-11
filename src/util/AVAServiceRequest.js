@@ -203,6 +203,7 @@ export async function putServiceRequest(body) {
               onBehalfOf: <optional - defaults to author's name>
               request: <object> (required)
               messaging: <optional messaging object>
+              history: <array of history data>
               attachments: <optional attachments to add to the request>
               local_key: <optional AVA key>
               foreign_key: <optional external key>
@@ -267,7 +268,9 @@ export async function putServiceRequest(body) {
           rMsg = `Failed to send ${rTime.oaDate}`;
         }
         else {
-          serviceRequestRec.last_status = 'Sent';
+          if (validRequestStatus(body.requestType, 'sent')) {
+            serviceRequestRec.last_status = 'Sent';
+          }
           rMsg = `Sent for processing ${rTime.oaDate}`;
         }
       }
@@ -814,4 +817,16 @@ export async function formatServiceRequest(inboundRequest) {
     final_result.push(result);
   }
   return final_result;
+}
+
+export function validRequestStatus(pRequestType, pStatus) {
+  let rType = JSON.parse(sessionStorage.AVASessionData).currentSession?.service_request_types[pRequestType];
+  if (!rType || !rType.statusList) {
+    return false;
+  }
+  else {
+    return rType.statusList.some(v => {
+      return (v.value.toLowerCase() === pStatus.toLowerCase());
+    });
+  }
 }
