@@ -2,10 +2,10 @@ import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
 import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
-import { makeTime } from '../../util/AVADateTime';
+import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
-import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import { AVATextStyle, AVADefaults, hexToRgb } from '../../util/AVAStyles';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -301,7 +301,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const onIdle = async () => {
     cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
     let now = new Date();
-    if ((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) {
+    if (((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
     else if (!reactData.menu_reloaded) {
@@ -309,7 +309,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
     updateReactData({
       idleState: true,
-    }, false);
+    }, true);
     reset();
   };
 
@@ -336,7 +336,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         loadedMenuVersion: menuRec.Item.menu_version
       }, true);
     }
-  }
+  };
 
   const onAction = async () => {
     let now = new Date();
@@ -1033,13 +1033,13 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               overflow='auto'
               flexDirection='column'>
               <Typography
-                style={AVATextStyle({ size: 1.5, margin: { left: 1, right: 1 } })}
+                style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
                 id='scroll-dialog-title'
               >
                 {`${greetingWords},`}
               </Typography>
               <Typography
-                style={AVATextStyle({ size: 1.5, margin: { left: 1, right: 1 } })}
+                style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
                 id='scroll-dialog-title'
               >
                 {`${greetingName}!`}
@@ -1047,7 +1047,33 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             </Box>
           </Box>
           <Box
-            flexGrow={1}
+            display='flex'
+            overflow='auto'
+            justifySelf='flex-end'
+            alignContent={'end'}
+          >
+            <Box
+              display='flex'
+              overflow='auto'
+              justifySelf='flex-end'
+              flexDirection='column'
+            >
+              <Typography
+                style={AVATextStyle({ align: 'right', wrap: 'nowrap', size: 1.1, margin: { right: 0 } })}
+                id='scroll-dialog-title'
+              >
+                {`${makeDate(new Date()).dateOnly.split(',').pop().trim()}`}
+              </Typography>
+              <Typography
+                style={AVATextStyle({ align: 'right', size: 1.1, margin: { right: 0 } })}
+                id='scroll-dialog-title'
+              >
+                {`${makeDate(new Date()).timeOnly.split(' ').join('').toLowerCase()}`}
+              </Typography>
+            </Box>
+          </Box>
+          <Box
+            flexShrink={1}
             display='flex'
             overflow='auto'
             flexDirection='column'
@@ -1060,7 +1086,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               aria-haspopup='true'
               minWidth={50}
               maxWidth={50}
-              alignSelf='flex-end'  
+              alignSelf='flex-end'
               onClick={(event) => {
                 handleClick(event);
                 setPopupMenuOpen(true);
@@ -1246,228 +1272,243 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         {/* AVA Menu */}
         {mainMenu && mainMenu.length > 0 &&
           <Paper component={Box} variant='outlined' overflow={'auto'} >
-            <List >
-              {currentMenu !== 'main' &&
-                <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
-                  <Box
-                    display='flex'
-                    style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: '#d25958', textDecoration: 'none' }}
-                    ml={2} mr={2}
-                    justifyContent='center'
-                    flexDirection='column'
-                    minHeight={80}
-                    onClick={async () => {
-                      menuArray.pop();
-                      setCurrentMenu(menuArray[menuArray.length - 1]);
-                      setMenuArray(menuArray);
-                      menuNames.pop();
-                      setMenuNames(menuNames);
-                      setForceRedisplay(!forceRedisplay);
-                    }}
-                  >
-                    <Box
-                      display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                      key={'goback row'}
-                      className={classes.sectionHeader}
-                    >
-                      <Avatar
-                        src={`https://ava-icons.s3.amazonaws.com/back.png`}
-                        sx={{ width: 30, height: 30 }}
-                        alt=""
-                        variant="square"
-                      />
-                      <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
-                        <Box display='flex' flexDirection='column'>
-                          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' overflow='hidden'>
-                            <Typography style={AVATextStyle({ size: 1.5 })} ref={subMenuHead}>{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
+            <Box
+              display='flex' flexDirection='row'
+              key={'vRowRefresh'}
+            >
+              <Box flex={2} overflow={'hidden'} >
+                <List >
+                  {currentMenu !== 'main' &&
+                    <Paper mt={1.5} component={Box} elevation={0} key={'gobacksection'} >
+                      <Box
+                        display='flex'
+                        style={{ borderRadius: '30px 30px 30px 30px', backgroundColor: '#d25958', textDecoration: 'none' }}
+                        ml={2} mr={2}
+                        justifyContent='center'
+                        flexDirection='column'
+                        minHeight={80}
+                        onClick={async () => {
+                          menuArray.pop();
+                          setCurrentMenu(menuArray[menuArray.length - 1]);
+                          setMenuArray(menuArray);
+                          menuNames.pop();
+                          setMenuNames(menuNames);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                      >
+                        <Box
+                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                          key={'goback row'}
+                          className={classes.sectionHeader}
+                        >
+                          <Avatar
+                            src={`https://ava-icons.s3.amazonaws.com/back.png`}
+                            sx={{ width: 30, height: 30 }}
+                            alt=""
+                            variant="square"
+                          />
+                          <Box display='flex' ml={2} mr={5} flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center'>
+                            <Box display='flex' flexDirection='column'>
+                              <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' overflow='hidden'>
+                                <Typography style={AVATextStyle({ size: 1.5 })} ref={subMenuHead}>{`Return to ${menuNames[menuNames.length - 1]}`}</Typography>
+                              </Box>
+                            </Box>
                           </Box>
                         </Box>
                       </Box>
-                    </Box>
-                  </Box>
-                </Paper>
-              }
-              {mainMenu.map((this_row, index) => (
-                ((this_row.menu_name === currentMenu) &&
-                  <React.Fragment
-                    key={this_row.activity_code + 'fragment' + index}
-                  >
-                    {currentSection !== this_row.section_name &&
+                    </Paper>
+                  }
+                  {mainMenu.map((this_row, index) => (
+                    ((this_row.menu_name === currentMenu) &&
                       <React.Fragment
-                        key={'on-section-break' + index}
+                        key={this_row.activity_code + 'fragment' + index}
                       >
-                        <Paper ml={2} mr={2} mt={1.5} elevation={0} component={Box} key={this_row.activity_code + 'section' + index} >
-                          <Box
-                            display='flex'
-                            style={{ borderRadius: ((sectionOpen[this_row.section_name] || (currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'), backgroundColor: this_row.section_color, textDecoration: 'none' }}
-                            justifyContent='center'
-                            flexDirection='column'
-                            minHeight={80}
-                            onClick={async () => {
-                              sectionOpen[this_row.section_name] = !sectionOpen[this_row.section_name];
-                              setSectionOpen(sectionOpen);
-                              await updateAVA(sectionOpen, mainMenu);
-                              setForceRedisplay(!forceRedisplay);
-                            }}
+                        {currentSection !== this_row.section_name &&
+                          <React.Fragment
+                            key={'on-section-break' + index}
                           >
-                            <Box
-                              display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                              key={this_row.activity_code + 'r' + index}
-                              className={classes.sectionHeader}
-                            >
-                              <Box flex={1} justifyContent='flex-start' alignItems='center'>
-                                <Avatar
-                                  src={this_row.section_icon}
-                                  style={avatarStyle}
-                                  alt=""
-                                  variant="square"
-                                />
-                              </Box>
-                              <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
-                                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                                  {(currentSection = this_row.section_name)}
-                                </Typography>
-                                <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >{this_row.section_name.trim()}</Typography>
-                              </Box>
-                              <Box flex={1} display='flex' justifyContent='flex-end' alignItems='center'>
-                                {(currentMenu !== 'main') ? null : (!sectionOpen[this_row.section_name] ? 'Show' : 'Hide')}
-                              </Box>
-                            </Box>
-                          </Box>
-                        </Paper>
-                      </React.Fragment>
-                    }
-                    {rowIsOpen(this_row) &&
-                      <React.Fragment>
-                        <Paper component={Box} elevation={0}
-                          ml={2} mr={2} mt={.2} mb={.2} key={this_row.activity_code + 'detail' + index} >
-                          <Box
-                            display='flex'
-                            style={{ borderRadius: '0px 0px 0px 0px', backgroundColor: this_row.row_color, textDecoration: 'none' }}
-                            p={2}
-                            justifyContent='center'
-                            flexDirection='column'
-                            minHeight={60}
-                          >
-                            <Box
-                              display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                              key={this_row.activity_code + 'detailrow' + index}
-                              className={classes.listItem}
-                              onContextMenu={async (e) => {
-                                e.preventDefault();
-                                enqueueSnackbar(<div>
-                                  1. Func {this_row.activity_code}<br />
-                                  2. Type {this_row.row_type}<br />
-                                  3. Reas {this_row.reason}<br />
-                                  4. Defs {isObject(this_row.default_value) ? JSON.stringify(this_row.default_value) : this_row.default_value}</div>,
-                                  { variant: 'info', persist: true });
-                              }}
-                            >
+                            <Paper ml={2} mr={2} mt={1.5} elevation={0} component={Box} key={this_row.activity_code + 'section' + index} overflow={'auto'}>
                               <Box
                                 display='flex'
-                                mr={2}
-                                flexGrow={1}
-                                flexDirection='row'
-                                justifyContent='space-between'
-                                alignItems='center'
-                                overflow={'hidden'}
-                                onClick={async () => {
-                                  await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
-                                  if (!toggleClick && (this_row.row_type !== 'document')) {
-                                    if (this_row.subMenu_data) {
-                                      let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
-                                      delete mainMenu[index].subMenu_data;
-                                      mainMenu.push(...subMenu);
-                                      setMainMenu(mainMenu);
-                                    }
-                                    if (this_row.child_menu) {
-                                      setCurrentMenu(this_row.child_menu);
-                                      menuArray.push(this_row.child_menu);
-                                      setMenuArray(menuArray);
-                                      menuNames.push((currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
-                                      setMenuNames(menuNames);
-                                      setForceRedisplay(!forceRedisplay);
-                                    }
-                                    else {
-                                      setLoading('Loading');
-                                      setForceRedisplay(!forceRedisplay);
-                                      let gad_response = await getActivityDetail(this_row, state);
-                                      setSelected(gad_response.activityRec);
-                                      setLoading(false);
-                                      if (gad_response.loadError) {
-                                        enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
-                                      }
-                                      else {
-                                        setShowNewFactDialog(index);
-                                      }
-                                    }
-                                  }
-                                  setToggleClick(false);
-                                }}
-                              >
-                                {this_row.row_type === 'document' ?
-                                  <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
-                                    <Typography style={AVATextStyle({ size: 1.5 })}>{this_row.activity_name}</Typography>
-                                  </a>
-                                  :
-                                  <Typography style={AVATextStyle({ size: 1.5 })}>{this_row.activity_name}</Typography>
-                                }
-                              </Box>
-                              <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
-                                {(this_row.is_favorite) ?
-                                  ((['Favorite', 'History'].includes(this_row.reason)) &&
-                                    <IconButton
-                                      aria-label='showActivities'
-                                      size='small'
-                                      onClick={async () => {
-                                        await updateFavorites('remove', index);
-                                        setForceRedisplay(!forceRedisplay);
-                                      }}
-                                    >
-                                      <NotFavorite fontSize="small" />
-                                    </IconButton>)
-                                  :
-                                  <IconButton
-                                    aria-label='showActivities'
-                                    size='small'
-                                    onClick={async () => {
-                                      await updateFavorites('add', index);
-                                      setForceRedisplay(!forceRedisplay);
-                                    }}
-                                  >
-                                    <FavoriteIcon fontSize="small" />
-                                  </IconButton>
-                                }
-                              </Box>
-                            </Box>
-                          </Box>
-                        </Paper>
-                        {((index === (mainMenu.length - 1))
-                          || (this_row.menu_name !== mainMenu[index + 1].menu_name)
-                          || (this_row.section_name !== mainMenu[index + 1].section_name)
-                        ) &&
-                          <Box
-                            display='flex'
-                            style={{
-                              borderRadius: '0px 0px 30px 30px',
-                              backgroundColor: this_row.row_color,
+                                style={{
+                              borderRadius: ((sectionOpen[this_row.section_name] || (currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                              backgroundColor: hexToRgb(this_row.section_color, 1),
                               textDecoration: 'none'
                             }}
-                            ml={2} mr={2}
-                            justifyContent='center'
-                            flexDirection='column'
-                            height={30}
-                          />}
+                                justifyContent='center'
+                                flexDirection='column'
+                                minHeight={80}
+                                onClick={async () => {
+                                  sectionOpen[this_row.section_name] = !sectionOpen[this_row.section_name];
+                                  setSectionOpen(sectionOpen);
+                                  await updateAVA(sectionOpen, mainMenu);
+                                  setForceRedisplay(!forceRedisplay);
+                                }}
+                              >
+                                <Box
+                                  display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                                  key={this_row.activity_code + 'r' + index}
+                                  className={classes.sectionHeader}
+                                >
+                                  <Box flex={1} justifyContent='flex-start' alignItems='center'>
+                                    <Avatar
+                                      src={this_row.section_icon}
+                                      style={avatarStyle}
+                                      alt=""
+                                      variant="square"
+                                    />
+                                  </Box>
+                                  <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
+                                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                                      {(currentSection = this_row.section_name)}
+                                    </Typography>
+                                    <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >{this_row.section_name.trim()}</Typography>
+                                  </Box>
+                                  <Box flex={1} display='flex' justifyContent='flex-end' alignItems='center'>
+                                    {(currentMenu !== 'main') ? null : (!sectionOpen[this_row.section_name] ? 'Show' : 'Hide')}
+                                  </Box>
+                                </Box>
+                              </Box>
+                            </Paper>
+                          </React.Fragment>
+                        }
+                        {rowIsOpen(this_row) &&
+                          <React.Fragment>
+                            <Paper component={Box} elevation={0}
+                              ml={2} mr={2} mt={.2} mb={.2} key={this_row.activity_code + 'detail' + index} >
+                              <Box
+                                display='flex'
+                                style={{
+                              borderRadius: '0px 0px 0px 0px',
+                              backgroundColor: hexToRgb(this_row.row_color, 0.4),
+                              textDecoration: 'none'
+                            }}
+                                p={2}
+                                justifyContent='center'
+                                flexDirection='column'
+                                minHeight={60}
+                              >
+                                <Box
+                                  display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                                  key={this_row.activity_code + 'detailrow' + index}
+                                  className={classes.listItem}
+                                  onContextMenu={async (e) => {
+                                    e.preventDefault();
+                                    enqueueSnackbar(<div>
+                                      1. Func {this_row.activity_code}<br />
+                                      2. Type {this_row.row_type}<br />
+                                      3. Reas {this_row.reason}<br />
+                                      4. Defs {isObject(this_row.default_value) ? `OBJ -> ${JSON.stringify(this_row.default_value)}` : this_row.default_value}</div>,
+                                      { variant: 'info', persist: true });
+                                  }}
+                                >
+                                  <Box
+                                    display='flex'
+                                    mr={2}
+                                    flexGrow={1}
+                                    flexDirection='row'
+                                    justifyContent='space-between'
+                                    alignItems='center'
+                                    overflow={'hidden'}
+                                    onClick={async () => {
+                                      await activityLog(pPerson, this_row.activity_code, this_row.activity_name, index);
+                                      if (!toggleClick && (this_row.row_type !== 'document')) {
+                                        if (this_row.subMenu_data) {
+                                          let subMenu = await MakeAVAMenu(patient, defaultClient, screenQuiet, this_row.subMenu_data);
+                                          delete mainMenu[index].subMenu_data;
+                                          mainMenu.push(...subMenu);
+                                          setMainMenu(mainMenu);
+                                        }
+                                        if (this_row.child_menu) {
+                                          setCurrentMenu(this_row.child_menu);
+                                          menuArray.push(this_row.child_menu);
+                                          setMenuArray(menuArray);
+                                          menuNames.push((currentMenu === 'main') ? 'AVA Main Menu' : this_row.section_name);
+                                          setMenuNames(menuNames);
+                                          setForceRedisplay(!forceRedisplay);
+                                        }
+                                        else {
+                                          setLoading('Loading');
+                                          setForceRedisplay(!forceRedisplay);
+                                          let gad_response = await getActivityDetail(this_row, state);
+                                          setSelected(gad_response.activityRec);
+                                          setLoading(false);
+                                          if (gad_response.loadError) {
+                                            enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+                                          }
+                                          else {
+                                            setShowNewFactDialog(index);
+                                          }
+                                        }
+                                      }
+                                      setToggleClick(false);
+                                    }}
+                                  >
+                                    {this_row.row_type === 'document' ?
+                                      <a href={this_row.default_value + (!this_row.default_value?.includes('?') ? ('?a=' + new Date().getTime()) : '')} style={{ color: 'inherit', textDecoration: 'none' }} target="_blank" rel="noopener noreferrer">
+                                        <Typography style={AVATextStyle({ size: 1.5 })}>{this_row.activity_name}</Typography>
+                                      </a>
+                                      :
+                                      <Typography style={AVATextStyle({ size: 1.5 })}>{this_row.activity_name}</Typography>
+                                    }
+                                  </Box>
+                                  <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
+                                    {(this_row.is_favorite) ?
+                                      ((['Favorite', 'History'].includes(this_row.reason)) &&
+                                        <IconButton
+                                          aria-label='showActivities'
+                                          size='small'
+                                          onClick={async () => {
+                                            await updateFavorites('remove', index);
+                                            setForceRedisplay(!forceRedisplay);
+                                          }}
+                                        >
+                                          <NotFavorite fontSize="small" />
+                                        </IconButton>)
+                                      :
+                                      <IconButton
+                                        aria-label='showActivities'
+                                        size='small'
+                                        onClick={async () => {
+                                          await updateFavorites('add', index);
+                                          setForceRedisplay(!forceRedisplay);
+                                        }}
+                                      >
+                                        <FavoriteIcon fontSize="small" />
+                                      </IconButton>
+                                    }
+                                  </Box>
+                                </Box>
+                              </Box>
+                            </Paper>
+                            {((index === (mainMenu.length - 1))
+                              || (this_row.menu_name !== mainMenu[index + 1].menu_name)
+                              || (this_row.section_name !== mainMenu[index + 1].section_name)
+                            ) &&
+                              <Box
+                                display='flex'
+                                style={{
+                                  borderRadius: '0px 0px 30px 30px',
+                                  backgroundColor: hexToRgb(this_row.row_color, 0.4),
+                                  textDecoration: 'none'
+                                }}
+                                ml={2} mr={2}
+                                justifyContent='center'
+                                flexDirection='column'
+                                height={30}
+                              />}
+                          </React.Fragment>
+                        }
                       </React.Fragment>
-                    }
-                  </React.Fragment>
-                )
-              ))}
-            </List>
+                    )
+                  ))}
+                </List>
+              </Box>
+            </Box>
           </Paper>
         }
 
-        {/* Loading Box */}
+        {/* Message Box */}
         {mainMenu && mainMenu.length > 0 &&
           <Box
             display='flex' flexDirection='column' justifyContent='center' alignItems='center'

@@ -208,7 +208,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
       let [slotRec] = await getCalendarEntries({
         client_id: checkClient,
         event_id: occRec.event_key,
-        person_id: patient.patient_id,
+        person_id: patient.patient_id || patient.person_id,
         type: ['slot']
       });
       let tCal = {

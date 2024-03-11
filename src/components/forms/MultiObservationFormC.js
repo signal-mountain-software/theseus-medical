@@ -39,7 +39,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 import Radio from '@material-ui/core/Radio';
 
 import AVAConfirm from './AVAConfirm';
-import { mealTicketFormat, prepareMessage, sendMessages } from '../../util/AVAMessages';
+import { mealTicketFormat, prepareMessage, sendMessages, resolveMessageVariables } from '../../util/AVAMessages';
 
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 
@@ -139,7 +139,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     loadProgress: [],
     attachmentList: [],
     allowAttachments: false,
-    errorOnScreen: false
+    errorOnScreen: false,
+    factName: factName
   });
 
   const [records2Update, setRecords2Update] = React.useState([]);
@@ -389,8 +390,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   const onCheckEnter = (event, columnNumber, rowNumber) => {
     if (event.key === 'Enter' || event.type === 'blur') {
-      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') { handleDateExit(event.target.value, columnNumber, rowNumber); }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') { handleTimeExit(event.target.value, columnNumber, rowNumber); }
+      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
+        handleDateExit(event.target.value, columnNumber, rowNumber);
+      }
+      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
+        handleTimeExit(event.target.value, columnNumber, rowNumber);
+      }
       else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(event.target.value, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
@@ -400,6 +405,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         else {
           handleTextExit(event.target.value, columnNumber, rowNumber);
+          if (reactData.columnList[columnNumber].rowDetails[rowNumber].required) {
+            if (!event.target.value) {
+              reactData.columnList[columnNumber].rowDetails[rowNumber].error = 'This information is required';
+            }
+            else {
+              reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
+            }
+          }
         }
       }
     }
@@ -492,7 +505,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   const handleChangeTextField = (vText, columnNumber, rowNumber) => {
-    // reactData.columnList[columnNumber].rowDetails[rowNumber].textValue
     if (!reactData.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('textValue')) {
       reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = {};
     }
@@ -500,15 +512,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       handleTextExit(vText, columnNumber, rowNumber);
     }
     else {
-      /*
-      if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'date') {
-        handleDateExit(vText, columnNumber, rowNumber);
-      }
-      else if (reactData.columnList[columnNumber].rowDetails[rowNumber].input === 'time') {
-        handleTimeExit(vText, columnNumber, rowNumber);
-      }
-      else 
-      */
       if (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'promptall') {
         handleTextAll(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
@@ -521,13 +524,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   function handleDateExit(vText, columnNumber, rowNumber) {
-    let AVAdate = makeDate(vText, 'noFuture');
-    reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
-    reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
+    let AVAdate = makeDate(vText, reactData.columnList[columnNumber].rowDetails[rowNumber].row_qualifier);
+    if (AVAdate.error) {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].error = AVAdate.absolute;
+    }
+    else {
+      reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
+      reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
+    }
+    // reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
     updateReactData({ columnList: reactData.columnList }, true);
   };
 
   function handleTimeExit(vText, columnNumber, rowNumber) {
+    reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
     let ampm = null;
     if (vText.includes('p')) { ampm = 'pm'; }
     else if (vText.includes('a')) { ampm = 'am'; };
@@ -567,23 +577,35 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   function handleOBOText(vText, columnNumber, rowNumber) {
     let inactiveAssignment = state?.session?.group_assignments?.inactive;
-    let inactiveGroup;
+    let inactiveGroup = [];
     if (!inactiveAssignment) {
-      inactiveGroup = 'inactive';
+      inactiveGroup = ['inactive'];
     }
     else if (Array.isArray(inactiveAssignment)) {
-      inactiveGroup = inactiveAssignment[0];
+      inactiveGroup.push(...inactiveAssignment);
     }
     else {
-      inactiveGroup = inactiveAssignment;
+      inactiveGroup = [inactiveAssignment];
+    }
+    let guestAssignment = state?.session?.group_assignments?.guest;
+    let guestGroups = [];
+    if (!guestAssignment) {
+      guestGroups = ['guest'];
+    }
+    else if (Array.isArray(guestAssignment)) {
+      guestGroups.push(...guestAssignment);
+    }
+    else {
+      guestGroups = [guestAssignment];
     }
     let typed_in_words = vText.toLowerCase().split(/\s+/);
     let hitCount = [];
+    let errorText = null;
     let hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
-      if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
-        return false;
-      }
-      if (accessList_person.member_of === inactiveGroup) {
+      // if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
+      //   return false;
+      // }
+      if (inactiveGroup.includes(accessList_person.member_of)) {
         return false;
       }
       // if any word in the display_name matches a typed in word, it is a "hit"
@@ -603,7 +625,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     });
     let winner = false;
     let winner_at;
-    if (hits.length === 1) {
+    if (hits.length === 0) {
+      errorText = `Nobody found to match that name`;
+    }
+    else if (hits.length === 1) {
       winner = true;
       winner_at = 0;
     }
@@ -624,10 +649,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       });
       if (!winner) {
-        enqueueSnackbar(
-          `AVA found ${maxHitCount} people to match that name.`,
-          { variant: 'info', persist: false }
-        );
+        errorText = `AVA found ${maxHitCount} people to match that name.`;
       }
     }
     let targetColumns = [];
@@ -640,16 +662,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       targetColumns.push(columnNumber);
     }
     targetColumns.forEach(c => {
+      reactData.columnList[c].rowDetails[rowNumber].error = '';
       if (winner) {
         reactData.columnList[c].person_id = hits[winner_at].id;
         let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
         reactData.columnList[c].display_name = newDName;
         reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(newDName.split(/\s+/).splice(-3))));
         vText = `${newDName}`;
-        if (hits[winner_at].location) {
-          vText += ` (${hits[winner_at].location})`;
+        if (guestGroups.includes(hits[winner_at].member_of)) {
+          vText += ` (Guest)`;
         }
         resetTitleName();
+      }
+      else if (errorText) {
+        reactData.columnList[c].rowDetails[rowNumber].error = errorText;
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
     });
@@ -729,32 +755,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     reactData.columnList[columnNumber].rowDetails[rowNumber] = this_row;
     updateReactData({ columnList: reactData.columnList }, true);
   }
-  /*
-    async function getQualifierData(observationKey) {
-      // first time we've seen anybody check off this text in this session
-      if (observationKey) {
-        return (await getObservationOptions(observationKey));
-      }
-      else {
-        return [];
-      }
-    }
-  
-    async function getQualifierSelections(columnNumber, rowNumber) {
-      let keyText = reactData.columnList[columnNumber].rowDetails[rowNumber].text;
-      if (((reactData.qualData ? reactData.qualData[keyText] : null) || await getQualifierData(reactData.columnList[columnNumber].rowDetails[rowNumber].observationKey)).length > 0) {
-        if (!reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections) {     // no previous selections made
-          reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
-          if (reactData.defaultQualSelections[keyText]) {
-            reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = deepCopy(reactData.defaultQualSelections[keyText]);
-          }
-          else {
-            reactData.columnList[columnNumber].rowDetails[rowNumber].qualSelections = {};
-          }
-        }
-      }
-    }
-  */
+
   function getQualTextValue(rowData, qOpt, qChoice) {
     if (rowData.qualSelections && rowData.qualSelections[qOpt]) {
       return rowData.qualSelections[qOpt][qChoice] || '';
@@ -873,23 +874,28 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           maxDName: myDefaultColumns[c].dName.length
         }, false);
       }
-      let existingRequest = await checkExistingRequests({
-        client_id: state.session.client_id,
-        foreign_key: myDefaultColumns[c].foreign_key || myDefaultColumns[c].foreignKey,
-        request_type: defaultValue.importTypes || myDefaultColumns[c].request_type || myDefaultColumns[c].requestType,
-        requestor: this_id,
-        requestor_name: `${this_person.name.first} ${this_person.name.last}`
-      });
-      if (existingRequest.status === 'use existing') {
-        await applyExistingRequest(existingRequest, myDefaultColumns[c]);
+      if (!defaultValue.suppressDuplicateCheck) {
+        let existingRequest = await checkExistingRequests({
+          client_id: state.session.client_id,
+          foreign_key: myDefaultColumns[c].foreign_key || myDefaultColumns[c].foreignKey,
+          request_type: defaultValue.importTypes || myDefaultColumns[c].request_type || myDefaultColumns[c].requestType,
+          requestor: this_id,
+          requestor_name: `${this_person.name.first} ${this_person.name.last}`
+        });
+        if (existingRequest.status === 'use existing') {
+          await applyExistingRequest(existingRequest, myDefaultColumns[c]);
+        }
       }
     };
     reactData.columnList.push(...myDefaultColumns);
-    columnCommonName();
+    if (reactData.columnList.length > 1) {
+      columnCommonName();
+    }
   };
 
   async function applyExistingRequest(existingRequest, this_column) {
-    existingRequest.requestToUse.original_request.selections.forEach(s => {
+    for (let sX = 0; sX < existingRequest.requestToUse.original_request.selections.length; sX++) {
+      let s = existingRequest.requestToUse.original_request.selections[sX];
       let selection = s.split('(').shift().trim();
       let rowNumber = this_column.rowDetails.findIndex(r => {
         return (r.text === selection);
@@ -898,6 +904,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         this_column.rowDetails[rowNumber].isChecked = true;
         if ((existingRequest.requestToUse.original_request.hasOwnProperty('options'))
           && (existingRequest.requestToUse.original_request.options.hasOwnProperty(selection))) {
+          if (!this_column.rowDetails[rowNumber].qualData) {
+            [this_column.rowDetails[rowNumber].defaultSelections, this_column.rowDetails[rowNumber].qualData] = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
+          }
           this_column.rowDetails[rowNumber].qualSelections = deepCopy(existingRequest.requestToUse.original_request.options[selection]);
         }
         if ((existingRequest.requestToUse?.original_request.hasOwnProperty('textInput'))
@@ -905,7 +914,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
         }
       }
-    });
+    };
     if (existingRequest.requestToUse.original_request.hasOwnProperty('textInput')) {
       for (let selection in existingRequest.requestToUse.original_request.textInput) {
         let rowNumber = this_column.rowDetails.findIndex(r => {
@@ -947,7 +956,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
       }
     }
-  }
+  };
 
   async function checkExistingRequests(request_key) {
     // Does this person already have a request for this requestype and foreignkey?
@@ -1109,7 +1118,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           requestType: this_column.requestType,
           activity_key: this_column.activity_key,
           onBehalfOf: oBo,
-          foreign_key: this_column.foreignKey,
+          foreign_key: await resolveMessageVariables(this_column.foreignKey, textInput),
+          assign_to: (fact?.value?.freeText?.assign_to || 'unassigned'),
           request: {
             selections,
             options,
@@ -1224,9 +1234,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   function makeConfirm(pData) {  // assumes you've passed in a columnList
     let warningsExist = false;
     let dataExists = false;
-    let warningSection = [`[bold][italic]There are no selections for:`];
+    let confirmStatus = 'confirm';
+    let warningSection = [];
     let responseArray = [`[bold][italic]AVA will send the following:`];
-    pData.forEach(this_column => {
+    pData.forEach((this_column, column_number) => {
       /*
       pData[
         {
@@ -1247,58 +1258,64 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       ]
       */
       let selectionText = [];
+      let columnName = columnUniqueName(this_column).string;
+      /*  Check for errors */
+      this_column.rowDetails.forEach((this_row, row_number) => {
+        if (this_row.required && !this_row.textValue) {
+          confirmStatus = 'error';
+          if (pData.length > 1) {
+            warningSection.push(`[color:red][bold]${columnName} is missing "${this_row.text}"`);
+          }
+          else {
+            warningSection.push(`[color:red][bold]"${this_row.text}" is required`);
+          }
+          warningsExist = true;
+          reactData.columnList[column_number].rowDetails[row_number].error = "This information is required";  
+          updateReactData({
+            columnList: reactData.columnList
+          }, false);
+        }
+        else if (this_row.error) {
+          confirmStatus = 'error';
+          if (pData.length > 1) {
+            warningSection.push(`[color:red][bold]${columnName} has an error on "${this_row.text}".  The error is: ${this_row.error}.`);
+          }
+          else {
+            warningSection.push(`[color:red][bold]Error on "${this_row.text}".  The error is: ${this_row.error}.`);
+          }
+          warningsExist = true;
+        }
+      });
       for (const [this_selection, optionList] of Object.entries(formatServiceRequestDetails(this_column))) {
         selectionText.push(`[style={size:1}]${sentenceCase(this_selection)}`);
         optionList.forEach(option => {
           selectionText.push(`[indent=1][italic][style={size:0.4}]${option}`);
         });
       };
-      /*
-      this_column.rowDetails.forEach(this_row => {
-        if (this_row.isChecked) {
-          selectionText.push(`[style={size:1}]${titleCase(this_row.text)}`);
-          for (let this_option in this_row.qualSelections) {
-            for (let this_choice in this_row.qualSelections[this_option]) {
-              if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
-                if (this_row.qualSelections[this_option][this_choice]) {
-                  selectionText.push(`[indent=1][italic][style={size:0.4}]${this_choice}`);
-                }
-              }
-              else {
-                selectionText.push(`[indent=1][italic][style={size:0.4}]${this_row.qualSelections[this_option][this_choice]}`);
-              }
-            }
-          }
-        }
-        if (this_row.textValue) {
-          // special Values/
-          if (this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text)) {
-            inputText.push(`[style={size:1}]for ${sentenceCase(this_row.textValue)}`);
-          }
-          else {
-            inputText.push(`[style={size:1}]${this_row.textValue}`);
-          }
-        }
-      });
-                */
       // that's all the rows for this column
-      let columnName = columnUniqueName(this_column).string;
       if (selectionText.length === 0) {
-        warningSection.push(`[bold]${columnName}`);
+        if (pData.length > 1) {
+          warningSection.push(`[color:red][bold]${columnName} has no entries at all`);
+        }
+        else {
+          warningSection.push(`[color:red][bold]No entries were made`);
+        }
         warningsExist = true;
       }
       else {
-        if (columnName) {
-          responseArray.push(`[bold]${columnName}`);
-        };
-        responseArray.push(...selectionText);
-        responseArray.push('[style = { bottom: 3 }] ');
-        dataExists = true;
+        if (confirmStatus !== 'error') {
+          if (columnName) {
+            responseArray.push(`[bold]${columnName}`);
+          };
+          responseArray.push(...selectionText);
+          responseArray.push('[style = { bottom: 3 }] ');
+          dataExists = true;
+        }
       }
     });
-    let returnArray = ['Selection summary'];
+    let returnArray = [reactData.factName];
     if (reactData.commonText) {
-      returnArray.push(`[bold]${titleCase(reactData.commonText)}`);
+      returnArray = [titleCase(reactData.commonText)];
     }
     if (warningsExist) {
       returnArray.push(...warningSection);
@@ -1309,7 +1326,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
       returnArray.push(...responseArray);
     }
-    return ['confirm', returnArray];
+    return [confirmStatus, returnArray];
   };
 
   return (
@@ -1574,9 +1591,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   paddingBottom={(this_item.header ? 0 : 1)}
                   marginTop={(this_item.header ? 0 : 0.5)}
                   paddingTop={(this_item.header ? 0 : 1)}
-                  border={(this_item.isChecked || (this_item.textValue && (this_item.textValue !== ''))) ? 1 : 'none'}
-                  key={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                  id={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}`}
+                  border={(!!this_item.error || this_item.isChecked || (this_item.textValue && (this_item.textValue !== ''))) ? (!!this_item.error ? 4 : 1) : 'none'}
+                  borderColor={!!this_item.error ? 'red' : 'black'}
+                  key={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
+                  id={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
                 >
                   <Box
                     display='flex'
@@ -1639,14 +1657,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         variant={'standard'}
                         key={`inputtextprompt_${selectedColumn}.${this_index}`}
                         id={`inputtextprompt_${selectedColumn}.${this_index}`}
-                        helperText={this_item.text}
+                        helperText={(this_item.error ? (`${this_item.error} - `) : '') + this_item.text}
                         multiline
                         inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                      onChange={event => {
-                        if (!event.target.value) {
-                          reactData.errorOnScreen = false;
-                        }
-                        handleChangeTextField(event.target.value, selectedColumn, this_index);
+                        onChange={event => {
+                          if (!event.target.value) {
+                            reactData.errorOnScreen = false;
+                          }
+                          handleChangeTextField(event.target.value, selectedColumn, this_index);
                         }}
                         FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                         onKeyPress={(event) => {

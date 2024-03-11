@@ -8,22 +8,38 @@ import { prepareMessage, sendMessages, resolveMessageVariables, messageHistory }
 
 export function putServiceRequest_nonAsync(body) {
   const goFunction = async () => {
-    returnArray = await putServiceRequest(...arguments);
+    return await putServiceRequest(...arguments);
   };
-  let returnArray = [];
-  goFunction();
+  let returnArray = goFunction();
   return returnArray;
 }
 
 export async function getServiceRequests(body) {
+  /*
+    --- body can contain a sort key; if present, sortInstructions is prepared and results sorted per these instructions 
+    sort: <string> OR object in the form {
+        sort: true
+        order: 'asc' or 'des' 
+        key: the field in the ServiceRequest record on which to sort
+      }
+    --- The following keys can be in the request body itself OR in a body.filter object
+    request_id: <highest priority  
+    person_id OR person OR requestor: select only records where requestor = person_id
+
+    }
+  */
   let sortInstructions = {
     sort: false
   };
   if (body.sort) {
     if (isObject(body.sort)) {
+      // if body.sort is an object, use its keys
       sortInstructions = deepCopy(body.sort);
     }
     else {
+      // if body.sort is not an object, assume it's a string
+      // use the string as the "order" key's value if the first 3 characters are 'asc' or 'des'
+      // otherwise, use the string as the "key" key's value
       let checkSort = body.sort.toLowerCase().slice(0, 3);
       if (['asc', 'des'].includes(checkSort)) {
         sortInstructions.order = checkSort;
@@ -33,17 +49,23 @@ export async function getServiceRequests(body) {
       }
     }
     sortInstructions.sort = true;
-    if (!sortInstructions.hasOwnProperty('order')) {
+    if (!sortInstructions.hasOwnProperty('order')) {   // default is no sort order is present
       sortInstructions.order = 'des';
     }
-    if (!sortInstructions.hasOwnProperty('key')) {
+    if (!sortInstructions.hasOwnProperty('key')) {   // default is no key is present
       sortInstructions.key = 'request_date';
     }
   }
 
   if (body.filter) { Object.assign(body, body.filter); };
   let rP = body.person_id || body.person || body.requestor;
-  let rT = body.request_type;
+  let rT;
+  if (body.request_type) {
+    if (Array.isArray(body.request_type) && (body.request_type.length === 0)) {}
+    else {
+      rT = body.request_type;
+    }
+  }
   let qQ = { TableName: 'ServiceRequests' };
   if (body.request_id) {
     qQ.KeyConditionExpression = 'client_id = :c and request_id = :r';
@@ -77,6 +99,29 @@ export async function getServiceRequests(body) {
     else if (rP) {
       qQ.FilterExpression += 'requestor = :p';
       qQ.ExpressionAttributeValues[':p'] = rP;
+    }
+  }
+  else if (body.assigned_to) {
+    qQ.IndexName = 'assigned_to-index';
+    qQ.KeyConditionExpression = 'client_id = :c and assigned_to = :rA';
+    qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rA': body.assigned_to };
+    if (rT) {
+      let rTarray = makeArray(rT);
+      if (rTarray.length === 1) {
+        qQ.FilterExpression = 'request_type = :rT';
+        qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rT': rTarray[0] };
+      }
+      else {
+        qQ.FilterExpression = '(request_type = :t';
+        qQ.ExpressionAttributeValues = { ':c': body.client_id, ':t': rTarray[0] };
+        if (rTarray.length > 1) {
+          for (let x = 1; x < rTarray.length; x++) {
+            qQ.FilterExpression += ` or request_type = :t${x}`;
+            qQ.ExpressionAttributeValues[`:t${x}`] = rTarray[x];
+          };
+        }
+        qQ.FilterExpression += ')';
+      }
     }
   }
   else if (rP) {
@@ -193,8 +238,10 @@ export async function putServiceRequest(body) {
     "original_request": body.request,
     "history": historyArray,
     "local_key": body.local_key,
+    "assigned_to": body.assigned_to || body.assign_to || 'unassigned',
     "foreign_key": body.foreign_key || '',
     "last_update": body.update_time || now,
+    "type_date": `${body.requestType}~${body.update_time || now}`,
     "last_status": body.requestStatus || 'submitted',
     "last_note": body.notes
   };
@@ -250,7 +297,9 @@ export async function putServiceRequest(body) {
   let requestLogRec = {
     "client_id": serviceRequestRec.client_id,
     "log_time": serviceRequestRec.last_update,
-    "activity": serviceRequestRec.history[0].replace(makeDate(serviceRequestRec.last_update).oaDate, '##'),
+    "activity": serviceRequestRec.history[0],
+    "assigned_to": serviceRequestRec.assigned_to,
+    "last_status": serviceRequestRec.last_status,
     "request_id": serviceRequestRec.request_id,
     "person": await makeName(serviceRequestRec.requestor),
     "requestor": serviceRequestRec.requestor,
@@ -325,7 +374,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
   if (requestList.length > 0) {
     let preparedMessages = await prepareMessage(requestList);
     if (preparedMessages.length > 0) {
-      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${requestList[x].requestType}/${requestList[x].requestID}`; });
+      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${requestList[0].request_type || requestList[0].requestType}/${requestList[0].request_id || requestList[0].requestID}`; });
       return {
         success,
         preparedMessages,   // ***** RAY ***** this is where we could merge output to a single document for later printing
@@ -343,49 +392,30 @@ export async function updateServiceRequest(body) {
   // body is a single, or an array of, service request records
   let unProcessed = [];
   let logRec = [];
-  if (Array.isArray(body)) {
-    for (let x = 0; x < body.length; x++) {
-      let r = body[x];
-      unProcessed.push({
-        "PutRequest": {
-          "Item": r
-        }
-      });
-      logRec.push({
-        "PutRequest": {
-          "Item": {
-            "client_id": r.client_id,
-            "log_time": r.last_update + x,
-            "activity": r.history[0].replace(makeDate(r.last_update).oaDate, '##'),
-            "request_id": r.request_id,
-            "person": await makeName(r.requestor),
-            "requestor": r.requestor,
-            "request_type": r.request_type
-          }
-        }
-      });
-    };
-  }
-  else {
-    unProcessed[0] = {
+  let x = 0;
+  for (let r of makeArray(body)) {
+    unProcessed.push({
       "PutRequest": {
-        "Item": body
+        "Item": r
       }
-    };
-    logRec[0] = {
+    });
+    logRec.push({
       "PutRequest": {
         "Item": {
-          "client_id": body.client_id,
-          "log_time": body.last_update,
-          "activity": body.history[0].replace(makeDate(body.last_update).oaDate, '##'),
-          "request_id": body.request_id,
-          "person": await makeName(body.requestor),
-          "requestor": body.requestor,
-          "request_type": body.request_type
+          "client_id": r.client_id,
+          "log_time": r.last_update + x++,
+          "activity": r.history[0],
+          "assigned_to": r.assigned_to,
+          "last_status": r.last_status,
+          "request_id": r.request_id,
+          "person": await makeName(r.requestor),
+          "requestor": r.requestor,
+          "request_type": r.request_type,
+          "last_visited": r.last_visited
         }
       }
-    };
-  }
+    });
+  };
   let initialCount = unProcessed.length;
   let finalCount = 0;
   let retryNeeded;
@@ -408,13 +438,19 @@ export async function updateServiceRequest(body) {
         'ServiceRequests': this_Request_group,
         'ServiceRequestLog': this_Log_group
       }
-    };
+    };  
     let goodWrite = true;
     let writeResponse = await dbClient
       .batchWrite(requestObject)
       .promise()
       .catch(error => {
         clt({ 'Bad batch write on ServiceRequests - caught error is': error });
+        this_Request_group.forEach(k => {
+          clt(`request_id = ${k.PutRequest.Item.request_id}`);
+        })
+        this_Log_group.forEach(k => {
+          clt(`log_time = ${k.PutRequest.Item.log_time}`);
+        })
         goodWrite = false;
       });
     if (writeResponse
@@ -635,7 +671,7 @@ export async function formatServiceRequest(inboundRequest) {
       }
     }
     */
-    
+
     // what we find inside this_request could be a string, an array of stuff, or an object
     if (this_request.original_request || this_request.history || this_request.messages) {
       // assume that a good SR record was passed in
@@ -653,11 +689,11 @@ export async function formatServiceRequest(inboundRequest) {
         return { error: true };
       }
       else if (returnedRequests.length === 1) {
-        this_request = deepCopy(returnedRequests[0]);  
+        this_request = deepCopy(returnedRequests[0]);
       }
       else {
         requestList.splice(rN, 1, ...returnedRequests);
-        this_request = deepCopy(returnedRequests[0]);  
+        this_request = deepCopy(returnedRequests[0]);
       }
     }
 
@@ -753,7 +789,7 @@ export async function formatServiceRequest(inboundRequest) {
     }
 
     result.print.data.requestDetails = formatServiceRequestDetails(this_request);
-    
+
     result.print.format = [];
     makeArray(this_request.activityRec.messaging).forEach(m => {
       if (!result.print.format.includes(m.format.type)) {

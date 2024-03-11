@@ -620,7 +620,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 ?
                                 <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
                                   <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
-                                  <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{this_item.name.first}</Typography>
+                                  <Typography style={AVATextStyle({ size: 1.5 })}>{this_item.name.first}</Typography>
                                 </Box>
                                 :
                                 <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
@@ -636,7 +636,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                                 </Box>
                               }
                               {(pStyle !== 'short') && multiGroups && this_item.hasOwnProperty('member_of') &&
-                                <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 1, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
+                                <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 0.5, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
                               }
                               {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
                                 <Typography key={`locationLine-${index}.${locIndex}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{locLine.trim()}</Typography>

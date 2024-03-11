@@ -30,6 +30,12 @@ const useStyles = makeStyles(theme => ({
     display: 'none',
     visibility: 'hidden'
   },
+  dialogPaper: {
+    minHeight: '80vh',
+    maxHeight: '80vh',
+    minWidth: '600px',
+    marginTop: '8vh'
+  },
   freeInput: {
     marginLeft: '25px',
     marginRight: 2,
@@ -238,13 +244,14 @@ export default ({
   return (
     <Dialog
       open={true || forceRedisplay}
-      onScroll={onScroll}
+      onScroll={onScroll} fullWidth
+      variant={'elevation'} elevation={2}
+      id='person_filter-dialog'
       p={2}
-      fullScreen
     >
       <React.Fragment>
         <Typography
-          style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, bold: true, overflow: 'visible' })}
+          style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, width: '400px', bold: true, overflow: 'visible' })}
           id='scroll-dialog-title'
         >
           {prompt}
@@ -344,16 +351,27 @@ export default ({
               </Box>
             </ListItem>
           }
-          {(rowsWritten === 0) && (!random_address) &&
+          {(rowsWritten === 0) && (!random_address) && (peopleList.length === 0) &&
+            <ListItem
+              key={'person-list_new'}
+            >
+              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                <Typography style={AVATextStyle({ bold: true, margin: { left: 1 } })}>
+                  {'AVA is still loading'}
+                </Typography>
+                <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>
+                  {'Please try again in a moment.'}
+                </Typography>
+              </Box>
+            </ListItem>
+          }
+          {(rowsWritten === 0) && (!random_address) && (peopleList.length > 0) &&
             <ListItem
               key={'person-list_new'}
             >
               <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
                 <Typography style={AVATextStyle({ bold: true })}>
-                  {'AVA is still loading'}
-                </Typography>
-                <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>
-                  {'Please try again in a moment.'}
+                  {'No names found'}
                 </Typography>
               </Box>
             </ListItem>

@@ -182,7 +182,7 @@ export function makeDate(pInput, validation = null) {
     // Make absolute date
     absDate = `${targetDate.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
     absFull = `${targetDate.toLocaleString([], { weekday: 'long', month: 'long', year: 'numeric', day: 'numeric' })}`;
-    dateOnly = `${targetDate.toLocaleString([], { month: 'long', day: 'numeric' })}`;
+    dateOnly = `${targetDate.toLocaleString([], { month: 'short', day: 'numeric' })}`;
     if (!relDate) { relDate = absDate; }
     if (targetDate.getFullYear() !== currentDate.getFullYear()) {
         absDate += ` ${targetDate.getFullYear()}`;
@@ -328,7 +328,7 @@ export function makeDate(pInput, validation = null) {
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 100) {
+            if (Math.abs(resolvedYear - thisYear) < 5) {
                 return {
                     date: goodDate,
                     leftOver_text: null

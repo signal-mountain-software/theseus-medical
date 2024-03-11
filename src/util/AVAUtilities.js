@@ -231,9 +231,16 @@ export function sentenceCase(pString) {
 export function makeArray(input, delimiter = null) {
   let response = [];
   if (!input) { return []; };
-  if (Array.isArray(input)) { response.push(...input); }
-  else if (typeof input === 'object') { response = Object.keys(input); }
-  else if (typeof input === 'number') { response.push(input); }
+  if (Array.isArray(input)) {
+    response.push(...input);
+  }
+  else if (typeof input === 'object') {
+    // response = Object.keys(input);
+    response.push(input);
+  }
+  else if (typeof input === 'number') {
+    response.push(input);
+  }
   else if ((input.charAt(0) === '{') && (input.charAt(input.length - 1) === '}')) {
     try {
       let rObj = JSON.parse(input);
@@ -323,8 +330,9 @@ export function titleCase(pString) {
   if (!pString) { return ''; }
   let words = pString.split(/\s+/);
   let returnString = '';
-  words.forEach(w => {
-    if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
+  words.forEach((w, x) => {
+    if (x === 0) { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
+    else if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
     else if (w.toLowerCase() === 'ava') { returnString += 'AVA'; }
     else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     returnString += ' ';

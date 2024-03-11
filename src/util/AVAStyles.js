@@ -129,6 +129,10 @@ export function AVATextStyle(options = {}) {
                 returnStyle.textWrap = options.wrap;
                 break;
             }
+            case "color": {
+                returnStyle.color = options.color;
+                break;
+            }
             case "margin": {
                 if (Array.isArray(options.margin)) {
                     if (options[0]) { returnStyle.marginLeft = options[0] * 16; }
@@ -196,4 +200,17 @@ export function AVATextVariableStyle(outText, options = {}) {
     let user_fontSize = AVADefaults({ fontSize: 'get' }) * (options.size || 1);
     returnStyle.fontSize = `${user_fontSize * (50 / Math.max(50, outText.length * user_fontSize * (600 / window.innerWidth)))}rem`;
     return returnStyle;
+}
+
+export function hexToRgb(hex, opacity = 1) {
+    var c;
+    if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
+        c = hex.substring(1).split('');
+        if (c.length === 3) {
+            c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+        }
+        c = '0x' + c.join('');
+        return `rgba(${[(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',')},${opacity})`;
+    }
+    throw new Error('Bad Hex');
 }

@@ -324,12 +324,19 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
 
     // Dropping through to here means that instruction[0] was null/blank
     //    (ie. there was nothing before the first "~"; the row started with "~")
-    // This handles rows in the form "~<instruction[1]>:<instruction[2]>", for example
+    // This handles rows in the form "~<instruction[1]>:<instruction[2]>[row_qualifier]", for example
     //     "~lambda:<instruction[2]>" or 
     //     "~prompt:Who is this order for?"
     //     "~promptAll:Table Number"
+    //     "~date:What date[noFuture]"
     if (instruction[2]) {
-      let this_instruction = instruction[2].trim();
+      let splitInstruction = instruction[2].split('[');
+      let this_instruction = splitInstruction[0].trim();
+      let this_qualifier;
+      if (splitInstruction.length > 1) {
+        this_qualifier = splitInstruction[1].replace(']', '');
+      }
+      /*
       let proxyOK = true;
       if (sessionState.accessList) {
         proxyOK =
@@ -337,17 +344,20 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
             sessionState.accessList?.[sessionState.session.client_id]?.count.proxy +
             sessionState.accessList?.[sessionState.session.client_id]?.count.view) > 0);
       }
+      */
       displayRowList.push({
         checkbox: false,
-        required: false,
+        required,
         multiColumn: false,
         text: this_instruction,
         textValue: defaults[this_instruction],
-        obo_line: (proxyOK && ((defaults.obo || defaults.onBehalfOf) === this_instruction)),
+        //    obo_line: (proxyOK && ((defaults.obo || defaults.onBehalfOf) === this_instruction)),
+        obo_line: ((defaults.obo || defaults.onBehalfOf) === this_instruction),
         observationKey: instruction[3] || getKey(this_instruction),
         desc: getDescription(this_instruction),
         input: instruction[1].trim().toLowerCase(),
-        header: false
+        header: false,
+        row_qualifier: this_qualifier
       });
       if (observationDefaultValue) {
         defaults[this_instruction] = observationDefaultValue;
