@@ -411,7 +411,7 @@ export default ({ onSave, onClose }) => {
                We are checking in/out a Resident
                ********************************** */
             reactData.validated_user
-            && (reactData.resident_mode || reactData.staff_mode)
+            && (reactData.resident_mode)
             &&
             (['in', 'none'].includes(reactData.currentStatus.last_status) ?
               <AVATextInput
@@ -464,6 +464,61 @@ export default ({ onSave, onClose }) => {
                     setReactData(reactData);
                     setForceRedisplay(!forceRedisplay);
                   }
+                }}
+                onConfirm={async () => {
+                  let now = makeDate(new Date());
+                  reactData.currentStatus.reqRec.last_status = 'in';
+                  reactData.currentStatus.reqRec.last_update = now.timestamp;
+                  let hNote = `Checked in on ${now.absolute}`;
+                  reactData.currentStatus.reqRec.history.unshift(hNote);
+                  await updateServiceRequest(reactData.currentStatus.reqRec);
+                  enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
+                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  else { reset(); }
+                }}
+                allowCancel={true}
+              />
+            )
+          }
+          { /* **********************************
+               We are checking in/out Staff
+               ********************************** */
+            reactData.validated_user
+            && reactData.staff_mode
+            &&
+            (['in', 'none'].includes(reactData.currentStatus.last_status) ?
+              <AVAConfirm
+                promptText={[`Have a great day ${reactData.personRec.name.first}!`, `[italic]${reactData.currentStatus.reqRec.history[0]}`]}
+                cancelText={`Cancel`}
+                confirmText={`Check-out`}
+                onCancel={() => {
+                  reactData.validated_user = false;
+                  setReactData(reactData);
+                  setForceRedisplay(!forceRedisplay);
+                }}
+                onConfirm={async () => {
+                  let now = makeDate(new Date());
+                  reactData.currentStatus.reqRec.last_status = 'out';
+                  reactData.currentStatus.reqRec.last_update = now.timestamp;
+                  let hNote = `Checked out on ${now.absolute}`;
+                  reactData.currentStatus.reqRec.history.unshift(hNote);
+                  await updateServiceRequest(reactData.currentStatus.reqRec);
+                  enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
+                  if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
+                  else { reset(); }
+                }}
+                allowCancel={true}
+              />
+              :
+              <AVAConfirm
+                promptText={[`Welcome back, ${reactData.personRec.name.first}!`]}
+                cancelText={`Cancel`}
+                confirmText={`Check-in`}
+                onCancel={() => {
+                  reactData.errorText = [];
+                  reactData.validated_user = false;
+                  setReactData(reactData);
+                  setForceRedisplay(!forceRedisplay);
                 }}
                 onConfirm={async () => {
                   let now = makeDate(new Date());
