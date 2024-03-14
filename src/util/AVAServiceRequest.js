@@ -267,7 +267,7 @@ export async function putServiceRequest(body) {
           rMsg = `Failed to send ${rTime.oaDate}`;
         }
         else {
-          serviceRequestRec.last_status = 'Sent';
+          // serviceRequestRec.last_status = 'Sent';
           rMsg = `Sent for processing ${rTime.oaDate}`;
         }
       }
