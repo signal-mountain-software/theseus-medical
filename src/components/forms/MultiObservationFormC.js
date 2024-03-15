@@ -5,7 +5,7 @@ import { deepCopy, titleCase, sentenceCase, makeArray, s3 } from '../../util/AVA
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
-import { putServiceRequest, getServiceRequests, updateServiceRequest, formatServiceRequestDetails } from '../../util/AVAServiceRequest';
+import { putServiceRequest, getServiceRequests, updateServiceRequest, formatServiceRequestDetails, validRequestStatus } from '../../util/AVAServiceRequest';
 import PersonFilter from './PersonFilter';
 import { useSnackbar } from 'notistack';
 
@@ -972,8 +972,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       switch (requestAction) {
         case 'use': {
           let lastRec = records2Update.push(existingRequest[0]) - 1;
-          records2Update[lastRec].history.unshift(`Imported to another order by ${state.session.user_id} on ${rTime.oaDate}`);
-          records2Update[lastRec].last_status = 'Imported';
+          records2Update[lastRec].history.unshift(`Imported by ${state.session.user_id} on ${rTime.oaDate}`);
+          //  records2Update[lastRec].last_status = 'Imported';
           records2Update[lastRec].last_update = rTime.timestamp;
           setRecords2Update(records2Update);
           return {
@@ -983,8 +983,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         case 'delete': {
           let lastRec = records2Update.push(existingRequest[0]) - 1;
-          records2Update[lastRec].history.unshift(`Replaced by another order on ${rTime.oaDate}`);
-          records2Update[lastRec].last_status = 'replaced with new order';
+          records2Update[lastRec].history.unshift(`Replaced on ${rTime.oaDate}`);
           records2Update[lastRec].last_update = rTime.timestamp;
           setRecords2Update(records2Update);
           break;
@@ -1055,6 +1054,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let message_body;
 
     for (let columnNumber = 0; columnNumber < pData.length; columnNumber++) {
+      let currentTime = makeDate(new Date());
       let selections = [];
       let options = {};
       let textInput = {};
@@ -1119,7 +1119,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           activity_key: this_column.activity_key,
           onBehalfOf: oBo,
           foreign_key: await resolveMessageVariables(this_column.foreignKey, textInput),
-          assign_to: (fact?.value?.freeText?.assign_to || 'unassigned'),
+          history: [`Request submitted ${currentTime.oaDate}`],
+          assign_to: 'unassigned',      // see a few lines below; this may be overridden
           request: {
             selections,
             options,
@@ -1128,6 +1129,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           messaging: svc_messaging,
           local_key
         };
+        if (fact?.value?.freeText?.assign_to) {
+          putSR.assign_to = fact?.value?.freeText?.assign_to;
+          putSR.history.unshift(`Auto-Assigned to ${await getPerson(fact?.value?.freeText?.assign_to, 'name')}`)
+          if (validRequestStatus(this_column.requestType, 'assigned')) {
+            putSR.requestStatus = 'assigned';
+          }
+        }
         if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
           putSR.attachments = reactData.attachmentList;
         }
@@ -1210,7 +1218,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 rMsg = `Failed to send ${rTime.oaDate}`;
               }
               else {
-                last_status = 'Sent';
+                if (validRequestStatus(message_body.requestType, 'sent')) {
+                  last_status = 'Sent';
+                }
                 rMsg = `Sent for processing ${rTime.oaDate}`;
               }
             }
@@ -1270,7 +1280,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             warningSection.push(`[color:red][bold]"${this_row.text}" is required`);
           }
           warningsExist = true;
-          reactData.columnList[column_number].rowDetails[row_number].error = "This information is required";  
+          reactData.columnList[column_number].rowDetails[row_number].error = "This information is required";
           updateReactData({
             columnList: reactData.columnList
           }, false);
