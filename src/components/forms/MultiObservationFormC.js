@@ -1131,7 +1131,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         };
         if (fact?.value?.freeText?.assign_to) {
           putSR.assign_to = fact?.value?.freeText?.assign_to;
-          putSR.history.unshift(`Auto-Assigned to ${await getPerson(fact?.value?.freeText?.assign_to, 'name')}`)
+          let this_name = await getPerson(fact?.value?.freeText?.assign_to, 'name');
+          putSR.history.unshift(`Auto-Assigned to ${this_name}`)
           if (validRequestStatus(this_column.requestType, 'assigned')) {
             putSR.requestStatus = 'assigned';
           }
