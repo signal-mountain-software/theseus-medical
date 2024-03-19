@@ -141,7 +141,17 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
           [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request, requestRec);
           if (results.attachments) {
             requestInfo.attachments = results.attachments;
-          }
+            if (this_request.messaging.hasOwnProperty('attachment_method')
+              && (this_request.messaging.attachment_method === 'file')) {
+                results.attachment_data = {
+                  filename: `MealTicket-${this_request.local_key}.pdf`,
+                  content: results.attachments.data,
+                  type: 'application/pdf',
+                  disposition: 'attachment',
+                  content_id: this_request.local_key
+                };
+              }
+            }
           break;
         }
         case 'inBody': {
@@ -722,7 +732,7 @@ export async function mealTicketFormat(body, requestRec = {}) {
   let plainText = [];
   if (!body.margin) { body.margin = {}; }
   let page = {
-    width: body.pageWidth || 175,
+    width: body.pageWidth || 160,
     border: body.border || true,
     font: {
       family: 'Helvetica',
