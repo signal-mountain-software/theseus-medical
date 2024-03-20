@@ -213,6 +213,9 @@ export default ({ pClient, showUpload, handleClose }) => {
           item: values[1],
           type: values[2]
         };
+        if (values[3]) {
+          resultObj[useKey].observation_key = values[3]
+        }
       }
     });
     let results = Object.keys(resultObj).map(o => {

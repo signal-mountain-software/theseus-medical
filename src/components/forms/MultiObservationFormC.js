@@ -1110,6 +1110,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if ((Array.isArray(fact.messaging) && (fact.messaging.every(m => { return (m.format && (m.format.type !== 'mealTicket')); })))
           || (!Array.isArray(fact.messaging) && (fact.messaging.format && (fact.messaging.format.type !== 'mealTicket')))) {
           svc_messaging = fact.messaging;
+          local_key = null;
         }
         let putSR = {
           client: state.session.client_id,

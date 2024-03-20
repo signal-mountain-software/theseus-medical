@@ -138,6 +138,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
           let gL = p.groups.length;
           for (let x = 0; x < gL; x++) {
             let g = p.groups[x];
+            if ((g === 'ALL') || (g === "__TOP__")) {
+              continue;
+            }
             // am I specificaly responsible for this person?
             if (session.hasOwnProperty('responsible_for')
               && session.responsible_for.includes(p.person_id)

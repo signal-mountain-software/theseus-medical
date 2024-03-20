@@ -96,7 +96,7 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
         return 1;
       }
       return -1;
-    })  
+    });
     do {
       let this_request = Object.assign({}, requestInfo, messageList.shift());   // this removes the message from the messageList
       if (needMultiPrint) {
@@ -136,11 +136,22 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
           */
           break;
         }
+        case 'singleTicket':
         case 'mealTicket': {
           [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request, requestRec);
           if (results.attachments) {
             requestInfo.attachments = results.attachments;
-          }
+            if (this_request.messaging.hasOwnProperty('attachment_method')
+              && (this_request.messaging.attachment_method === 'file')) {
+                results.attachment_data = {
+                  filename: `MealTicket-${this_request.local_key}.pdf`,
+                  content: results.attachments.data,
+                  type: 'application/pdf',
+                  disposition: 'attachment',
+                  content_id: this_request.local_key
+                };
+              }
+            }
           break;
         }
         case 'inBody': {
@@ -451,10 +462,10 @@ export async function formatRequestDetails(body, summaryType) {
   }
 
   if (pRec.location) {
- //   let locNum = parseNumeric(pRec.location);
- //   if (locNum.hasNumbers) {
- //     pRec.location = `Apt ${locNum.value}`;
- //   }
+    //   let locNum = parseNumeric(pRec.location);
+    //   if (locNum.hasNumbers) {
+    //     pRec.location = `Apt ${locNum.value}`;
+    //   }
     htmlMessage += `<br />${pRec.location}`;
     rawMessage += `${pRec.location}\n`;
     pdfLine(pRec.location, { align: 'center' });
@@ -467,12 +478,12 @@ export async function formatRequestDetails(body, summaryType) {
   // get creator info - most reliable spot is first characters of the request id
   let creator_id = (body.request_id || body.requestID || body.author).split('~')[0];
   if (creator_id !== body.author) {
-    pDateTime += ` by ${await makeName(creator_id)}`; 
+    pDateTime += ` by ${await makeName(creator_id)}`;
   }
   htmlMessage += `<p style = "color: black;">created: <strong>${pDateTime}</strong>`;
   rawMessage += `${pDateTime}\n\r`;
   pdfLine(`created: ${pDateTime}`, { size: 'medium', align: 'center' });
-  
+
   for (let cTyp in pRec.messaging) {
     if ((pRec[cTyp]) && (pRec[cTyp].trim() !== '')) {
       let cLab;
@@ -501,7 +512,7 @@ export async function formatRequestDetails(body, summaryType) {
       if (['Dinner', 'Lunch', 'Pick-up', 'Deliver'].includes(aVal.split(/\s+/)[0])) {
         htmlMessage += `<h2 style="color: black;">${aVal.trim()}</h2>`;
         rawMessage += `${aVal}\r\n`;
-        pdfLine(aVal); 
+        pdfLine(aVal);
         body.selections.splice(x, 1);
         x--;
       }
@@ -667,7 +678,7 @@ export async function savePDF(doc, pdfInfo, options = {}) {
       responseData.s3Resp = s3Resp;
     }
   }
-  if (options.local) {    
+  if (options.local) {
     doc.save(pdfInfo.s3Key);
     responseStatus++;
     responseData.message.push(`Locally saved as ${pdfInfo.s3Key}`);
@@ -721,7 +732,7 @@ export async function mealTicketFormat(body, requestRec = {}) {
   let plainText = [];
   if (!body.margin) { body.margin = {}; }
   let page = {
-    width: body.pageWidth || 175,
+    width: body.pageWidth || 160,
     border: body.border || true,
     font: {
       family: 'Helvetica',
@@ -742,7 +753,8 @@ export async function mealTicketFormat(body, requestRec = {}) {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "px",
-    format: [page.width, page.width * 3]
+    // format: [page.width, page.width * 3]
+    format: [page.width, page.width * Math.max(3, requestList.length * 1.15)]
   });
 
   htmlText.push(`<body style=${style}>`);
@@ -927,31 +939,27 @@ export async function mealTicketFormat(body, requestRec = {}) {
     if (before) { yPos += before * size; }
     let i = 0;
     if (indent) { i = indent * page.font.size.medium; }
-    let nextLine;
-    if (doc.getTextWidth(text) > page.printableArea) {
-      let tWords = text.split(/\s+/);
-      nextLine = tWords.pop();
-      text = tWords.join(' ');
+    do {
+      let nextLine;
       if (doc.getTextWidth(text) > page.printableArea) {
-        let t2Words = text.split(/\s+/);
-        nextLine += ' ' + t2Words.pop();
-        text = t2Words.join(' ');
+        let OGtext = text;
+        let tWords = text.split(/\s+/);
+        let firstLine = text;
+        do {
+          tWords.pop();
+          firstLine = tWords.join(' ');
+        } while (doc.getTextWidth(firstLine) > (page.printableArea - 15));
+        text = firstLine;
+        nextLine = OGtext.slice(text.length + 1);
       }
-    }
-    if (options) {
-      if (options.align === 'center') { doc.text(text, page.width / 2, yPos, options); }
-      else { doc.text(text, page.margin.left + i, yPos, options); }
-    }
-    else { doc.text(text, page.margin.left + i, yPos); }
-    yPos += lastSize;
-    if (nextLine) {
       if (options) {
-        if (options.align === 'center') { doc.text(nextLine, page.width / 2, yPos, options); }
-        else { doc.text(nextLine, page.margin.left + i, yPos, options); }
+        if (options.align === 'center') { doc.text(text, page.width / 2, yPos, options); }
+        else { doc.text(text, page.margin.left + i, yPos, options); }
       }
-      else { doc.text(nextLine, page.margin.left + i, yPos); }
+      else { doc.text(text, page.margin.left + i, yPos); }
       yPos += lastSize;
-    }
+      text = nextLine;
+    } while (text)
     if (after) { yPos += (after * size); }
     return;
   }
@@ -995,7 +1003,7 @@ async function pdfLaunch(body) {
   page.right = page.width - page.margin.right;
   page.centerPoint = page.width / 2;
   page.printableArea = page.width - page.margin.left - page.margin.right;
-  
+
   if (body.pdf?.title) {
     page.title = (await resolveMessageVariables(body.pdf.title, body)).replace(/\(.+\)/g, '').trim();
   }
@@ -1016,7 +1024,7 @@ async function pdfLaunch(body) {
   };
   page.info.title = page.title;
   clt({ page });
-  
+
   let nowTime = makeDate(new Date());
   pdfCurrent = {
     yPos: page.margin.top,
