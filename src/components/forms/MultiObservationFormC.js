@@ -750,7 +750,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let this_row = reactData.columnList[columnNumber].rowDetails[rowNumber];
     this_row.isChecked = !this_row.isChecked;
     if (this_row.isChecked && this_row.observationKey && !this_row.qualData) {
-      [this_row.qualSelections, this_row.qualData] = await buildQualifiers(this_row.observationKey);
+      let [myQualSelections, myQualData] = await buildQualifiers(this_row.observationKey);
+      if (Object.keys(myQualSelections).length > 0) {
+        this_row.qualSelections = deepCopy(myQualSelections);
+      }
+      if (Object.keys(myQualData).length > 0) {
+        this_row.qualData = deepCopy(myQualData);
+      }
     }
     reactData.columnList[columnNumber].rowDetails[rowNumber] = this_row;
     updateReactData({ columnList: reactData.columnList }, true);

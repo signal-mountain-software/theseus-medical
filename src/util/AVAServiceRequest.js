@@ -219,7 +219,7 @@ export async function putServiceRequest(body) {
   body.requestID = `${body.proxy_user || body.author}~${body.requestDate}`;
   if (!body.local_key) {
     let sDate = now.toString();
-    body.local_key = sDate.slice(2, 6) + '-' + sDate.slice(6, 10);
+    body.local_key = sDate.slice(2, 6) + '-' + sDate.slice(6, 13);
   }
   if (!body.onBehalfOf) { body.onBehalfOf = await getPerson(body.author, 'name'); }
   let historyArray = [];
