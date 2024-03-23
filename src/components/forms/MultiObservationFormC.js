@@ -587,6 +587,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     else {
       inactiveGroup = [inactiveAssignment];
     }
+    let prohibitedGroups = inactiveGroup;
+    if (defaultValue.obo_prohibited) {
+      let prohibitedList = makeArray(defaultValue.obo_prohibited);
+      prohibitedList.forEach(p => { 
+        prohibitedGroups.push(...makeArray(state?.session?.group_assignments?.[p]))
+      })
+    };
     let guestAssignment = state?.session?.group_assignments?.guest;
     let guestGroups = [];
     if (!guestAssignment) {
@@ -602,10 +609,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let hitCount = [];
     let errorText = null;
     let hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
-      // if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
-      //   return false;
-      // }
-      if (inactiveGroup.includes(accessList_person.member_of)) {
+      if (prohibitedGroups.includes(accessList_person.member_of)) {
         return false;
       }
       // if any word in the display_name matches a typed in word, it is a "hit"
@@ -625,12 +629,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     });
     let winner = false;
     let winner_at;
+    let winnerList = [];
     if (hits.length === 0) {
       errorText = `Nobody found to match that name`;
     }
     else if (hits.length === 1) {
       winner = true;
       winner_at = 0;
+      let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+      winnerList = [{
+        person_id: hits[winner_at].id,
+        dName: newDName,
+        display: `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`,
+        type: 'checkbox'
+      }];
     }
     else if (hits.length > 1) {
       // is there a clear winner in the hit_count array?
@@ -642,15 +654,35 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           winner = true;
           maxHits = h;
           maxHitCount = 1;
+          let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+          let dText = `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`;
+          winnerList = [{
+            default: dText,
+            max_allowed: 1,
+            min_required: 1,
+            option: [{
+              person_id: hits[winner_at].id,
+              dName: newDName,
+              display: dText,
+              type: 'checkbox'
+            }],
+          }];
         }
         else if (h === maxHits) {
           winner = false;
           maxHitCount++;
+          let newDName = `${hits[x].name?.first} ${hits[x].name?.last}`.trim() || hits[x].display_name;
+          winnerList[0].option.push({
+            person_id: hits[x].id,
+            dName: newDName,
+            display: `${newDName}${guestGroups.includes(hits[x].member_of) ? ' (Guest)' : ' (' + hits[x].location + ')'}`,
+            type: 'checkbox'
+          });
         }
       });
-      if (!winner) {
-        errorText = `AVA found ${maxHitCount} people to match that name.`;
-      }
+           if (!winner) {
+             winnerList[0].title = `AVA found ${maxHitCount} people to match that name.`;
+           }
     }
     let targetColumns = [];
     if (!defaultValue.selectList) {
@@ -663,6 +695,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     targetColumns.forEach(c => {
       reactData.columnList[c].rowDetails[rowNumber].error = '';
+      reactData.columnList[c].rowDetails[rowNumber].qualData = [];
+      reactData.columnList[c].rowDetails[rowNumber].qualSelections = {};
       if (winner) {
         reactData.columnList[c].person_id = hits[winner_at].id;
         let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
@@ -676,6 +710,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
       else if (errorText) {
         reactData.columnList[c].rowDetails[rowNumber].error = errorText;
+      }
+      else {
+        reactData.columnList[c].person_id = winnerList[0].option[0].person_id;
+        reactData.columnList[c].display_name = winnerList[0].option[0].dName;
+        reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(winnerList[0].option[0].dName.split(/\s+/).splice(-3))));
+        resetTitleName();
+        reactData.columnList[c].rowDetails[rowNumber].isChecked = true;
+        reactData.columnList[c].rowDetails[rowNumber].qualData = winnerList;
+        reactData.columnList[c].rowDetails[rowNumber].qualSelections = {
+          [winnerList[0].title]: {
+            [winnerList[0].option[0].display]: true
+          }
+        }
+        vText = winnerList[0].option[0].dName;
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
     });
@@ -1139,7 +1187,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if (fact?.value?.freeText?.assign_to) {
           putSR.assign_to = fact?.value?.freeText?.assign_to;
           let this_name = await getPerson(fact?.value?.freeText?.assign_to, 'name');
-          putSR.history.unshift(`Auto-Assigned to ${this_name}`)
+          putSR.history.unshift(`Auto-Assigned to ${this_name}`);
           if (validRequestStatus(this_column.requestType, 'assigned')) {
             putSR.requestStatus = 'assigned';
           }
@@ -1754,6 +1802,23 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       size="small"
                                       onClick={() => {
                                         optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
+                                        if (reactData.columnList[selectedColumn].rowDetails[this_index].obo_line) { 
+                                          console.log('There I am Gary!')
+                                          // which qualSelection is true?
+                                          let allPossibilitiesObj = Object.values(reactData.columnList[selectedColumn].rowDetails[this_index].qualSelections)[0];
+                                          let selectedOBOkey = Object.keys(allPossibilitiesObj).find((k) => {
+                                            return allPossibilitiesObj[k];
+                                          })
+                                          let allQualsList = reactData.columnList[selectedColumn].rowDetails[this_index].qualData[0].option;
+                                          let qualPicked = allQualsList.findIndex((i) => {
+                                            return (i.display === selectedOBOkey);
+                                          })
+                                          reactData.columnList[selectedColumn].person_id = allQualsList[qualPicked].person_id;
+                                          reactData.columnList[selectedColumn].display_name = allQualsList[qualPicked].dName;
+                                          reactData.columnList[selectedColumn].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(allQualsList[qualPicked].dName.split(/\s+/).splice(-3))));
+                                          resetTitleName();
+                                          reactData.columnList[selectedColumn].rowDetails[this_index].textValue = titleCase(allQualsList[qualPicked].dName);
+                                        }
                                         updateReactData({
                                           columnList: reactData.columnList
                                         }, true);
