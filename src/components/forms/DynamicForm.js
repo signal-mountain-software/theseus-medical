@@ -423,9 +423,11 @@ export default ({
         <RequestDashboard
           session={session}
           title={factName}
-          filter={Object.assign(filter, defaultObject, {options: null})}
+          filter={Object.assign(filter, defaultObject, { options: null })}
           options={defaultObject.options}
-          onClose={onClose}
+          onClose={(response) => {
+              onClose(response);
+          }}
         />
       );
     }
@@ -528,6 +530,7 @@ export default ({
         />
       );
     case 'carousel':
+    case 'in_home':
       return (
         <AVACarousel
           onClose={onSave}

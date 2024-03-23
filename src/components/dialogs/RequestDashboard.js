@@ -12,6 +12,7 @@ import AVA_AlertSound from '../../ava_alert.mp3';
 import SearchIcon from '@material-ui/icons/Search';
 
 import IdleTimer from 'react-idle-timer';
+
 import useSound from 'use-sound';
 
 import { useSnackbar } from 'notistack';
@@ -175,7 +176,7 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'start',
     justifyContent: 'flex-start',
     marginTop: theme.spacing(1.5),
-    marginBottom: theme.spacing(0),
+    marginBottom: theme.spacing(2),
     marginLeft: theme.spacing(0),
     marginRight: theme.spacing(0),
   },
@@ -222,6 +223,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       textForm - when true, show only requestor and selections (in a text format)
       allowAssign - when items are selected, the "assign" button will be shown.  allowAssign should contain an array (list) of groups that assignees can be selected from
       updateMode - preselect first item
+      viewMode - no search field; no changes allowed; show "add new request"; onClose carries instruction for next step
     }
   */
 
@@ -235,7 +237,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const { enqueueSnackbar } = useSnackbar();
 
   const [loading, setLoading] = React.useState('no_value');
-
+  const [unmount, setUnmount] = React.useState();
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
@@ -275,6 +277,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     showStaffAccess: false,
     statusObj: {},
     filter: deepCopy(filterIn),
+    filterTextLower: (filter.filterText ? filter.filterText.toLowerCase() : null)
   });
 
   const [promptForMessage, setPromptForMessage] = React.useState(false);
@@ -462,6 +465,12 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     updateReactData({
       dataRows: reactData.dataRows
     }, true);
+  }
+
+  function exitModule(instruction) {
+    onClose(instruction);
+    setUnmount(true);
+    return;
   }
 
   function getSelectedDetails() {
@@ -1035,7 +1044,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   return (
     <Dialog
-      open={true || forceRedisplay}
+      open={(true || forceRedisplay) && !unmount}
       p={2}
       fullScreen
     >
@@ -1074,92 +1083,62 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   : reactData.pageTitle
                 }
               </Typography>
-              <Box
-                display='flex' flexDirection='row'
-                className={classes.messageArea}
-                key={'midBox'}
-              >
-                <Box display='flex'
-                  marginLeft={2}
-                  paddingRight={2}
-                  borderRadius={'32px'}
-                  border={1}
-                  borderColor={'black'}
-                  paddingBottom={0.5}
-                  paddingLeft={2}
-                  alignItems={'center'}
-                  marginBottom={0.5}
-                  flexDirection='row' width='85%' key={'midLeft'}
+              {!options.viewMode &&
+                <Box
+                  display='flex' flexDirection='row'
+                  className={classes.messageArea}
+                  key={'midBox'}
                 >
-                  <SearchIcon size="small" />
-                  <TextField
-                    id='List Filter'
-                    onChange={event => (handleChangeFilter(event.target.value))}
-                    width={'100%'}
-                    className={classes.freeInput}
-                    inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                    variant={'standard'}
-                    autoComplete='off'
-                  />
-                </Box>
-                {(filter.foreign_key || filter.statusNot || filter.status) &&
                   <Box display='flex'
-                    width={'100%'}
                     marginLeft={2}
-                    marginRight={2}
-                    marginBottom={0.5}
-                    paddingBottom={2}
+                    paddingRight={2}
                     borderRadius={'32px'}
                     border={1}
                     borderColor={'black'}
-                    flexDirection='column' key={'midRight'}
+                    paddingBottom={0.5}
+                    paddingLeft={2}
+                    alignItems={'center'}
+                    marginBottom={0.5}
+                    flexDirection='row' width='85%' key={'midLeft'}
                   >
-                    <Box display='flex' alignItems={'center'} flexDirection='row' justifyContent={'space-between'}>
-                      <Typography
-                        className={classes.title}
-                        style={AVATextStyle({ size: 1, bold: true, margin: { bottom: 0.5 } })}
-                      >
-                        {'Filters'}
-                      </Typography>
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        onChange={handleStatusNot}
-                        control={
-                          <Checkbox
-                            disableRipple
-                            checked={!!reactData.filter.statusNot}
-                            className={classes.radioButton}
-                            size='small'
-                          />}
-                        label={
-                          <Typography
-                            className={classes.radioText}
-                          >
-                            {'Not...'}
-                          </Typography>}
-                      />
-                    </Box>
-                    {filter.foreign_key &&
-                      <Typography
-                        className={classes.subTitle}
-                        style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
-                      >
-                        {`For ${makeDate(filter.foreign_key).absolute}`}
-                      </Typography>
-                    }
-                    <Box display='flex' flexDirection='column'>
-                      {reactData.statusList.map((this_status, this_status_index) => (
+                    <SearchIcon size="small" />
+                    <TextField
+                      id='List Filter'
+                      defaultValue={reactData.filterTextLower}
+                      onChange={event => (handleChangeFilter(event.target.value))}
+                      width={'100%'}
+                      className={classes.freeInput}
+                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                      variant={'standard'}
+                      autoComplete='off'
+                    />
+                  </Box>
+                  {(filter.foreign_key || filter.statusNot || filter.status) &&
+                    <Box display='flex'
+                      width={'100%'}
+                      marginLeft={2}
+                      marginRight={2}
+                      marginBottom={0.5}
+                      paddingBottom={2}
+                      borderRadius={'32px'}
+                      border={1}
+                      borderColor={'black'}
+                      flexDirection='column' key={'midRight'}
+                    >
+                      <Box display='flex' alignItems={'center'} flexDirection='row' justifyContent={'space-between'}>
+                        <Typography
+                          className={classes.title}
+                          style={AVATextStyle({ size: 1, bold: true, margin: { bottom: 0.5 } })}
+                        >
+                          {'Filters'}
+                        </Typography>
                         <FormControlLabel
                           className={classes.formControlLbl}
-                          onChange={() => {
-                            handleChangeEmailPrivacy(this_status.value);
-                          }}
-                          key={`status_selector_${this_status_index}`}
-                          id={`status_selector_${this_status_index}`}
+                          onChange={handleStatusNot}
                           control={
                             <Checkbox
                               disableRipple
-                              checked={!!reactData.filter.fields.status[this_status.value]}
+                              checked={!!reactData.filter.statusNot}
                               className={classes.radioButton}
                               size='small'
                             />}
@@ -1167,22 +1146,57 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                             <Typography
                               className={classes.radioText}
                             >
-                              {titleCase(this_status.display)}
+                              {'Not...'}
                             </Typography>}
                         />
-                      ))}
+                      </Box>
+                      {filter.foreign_key &&
+                        <Typography
+                          className={classes.subTitle}
+                          style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
+                        >
+                          {`For ${makeDate(filter.foreign_key).absolute}`}
+                        </Typography>
+                      }
+                      <Box display='flex' flexDirection='column'>
+                        {reactData.statusList.map((this_status, this_status_index) => (
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            onChange={() => {
+                              handleChangeEmailPrivacy(this_status.value);
+                            }}
+                            key={`status_selector_${this_status_index}`}
+                            id={`status_selector_${this_status_index}`}
+                            control={
+                              <Checkbox
+                                disableRipple
+                                checked={!!reactData.filter.fields.status[this_status.value]}
+                                className={classes.radioButton}
+                                size='small'
+                              />}
+                            label={
+                              <Typography
+                                className={classes.radioText}
+                              >
+                                {titleCase(this_status.display)}
+                              </Typography>}
+                          />
+                        ))}
+                      </Box>
                     </Box>
-                  </Box>
-                }
-              </Box>
+                  }
+                </Box>
+              }
             </Box>
           </Box>
 
           {/* Main List */}
           <Paper
             component={Box}
-            variant='outlined'
             overflow='auto'
+            elevation={0}
+            pt={3}
+            pb={2}
             square
           >
             <List>
@@ -1521,6 +1535,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
           {/* Buttons */}
           {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            (!options.viewMode) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
@@ -1657,6 +1672,38 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {reactData.isMobile ? null : 'Print'}
                     </Button>
                   }
+                </Box>
+              </Box>
+            </DialogActions>
+          }
+          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            (options.viewMode) &&
+            // Command Area
+            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+              <Box display='flex' flexDirection='column'>
+                <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
+                    onClick={() => {
+                      onClose('exit');
+                    }}
+                    startIcon={<CloseIcon size="small" />}
+                  >
+                    {reactData.isMobile ? 'Exit' : 'Close'}
+                  </Button>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
+                    onClick={() => {
+                      exitModule('continue');
+                    }}
+                    startIcon={<DoneAllIcon size="small" />}
+                  >
+                    {reactData.isMobile ? 'Add New' : 'Add a New Request'}
+                  </Button>
                 </Box>
               </Box>
             </DialogActions>
