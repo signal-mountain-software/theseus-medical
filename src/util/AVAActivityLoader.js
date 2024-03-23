@@ -27,7 +27,7 @@ export async function getActivityDetail(pActRec, state) {
       })
       .promise()
       .catch(error => {
-        console.log({ 'Bad get on Customizations - caught error is': error });
+        console.log({ 'Bad get on PreLoads - caught error is': error });
       });
     if (recordExists(preLoaded)) {
       return preLoaded.Item.preLoad_data;
