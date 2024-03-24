@@ -331,7 +331,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     else { return `Good ${makeDate(new Date()).dayPart}${pName ? ', ' + pName : ''}!`; }
   }
 
-  const handleChangeEmailPrivacy = statusIn => {
+  const handleChangeStatusSelection = statusIn => {
     let statusWord = statusIn.toLowerCase();
     if (!reactData.filter.fields.status.hasOwnProperty(statusWord)
       || !reactData.filter.fields.status[statusWord]) {
@@ -1163,14 +1163,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           <FormControlLabel
                             className={classes.formControlLbl}
                             onChange={() => {
-                              handleChangeEmailPrivacy(this_status.value);
+                              handleChangeStatusSelection(this_status.value);
                             }}
                             key={`status_selector_${this_status_index}`}
                             id={`status_selector_${this_status_index}`}
                             control={
                               <Checkbox
                                 disableRipple
-                                checked={!!reactData.filter.fields.status[this_status.value]}
+                                checked={!!reactData.filter.fields.status[this_status.value.toLowerCase()]}
                                 className={classes.radioButton}
                                 size='small'
                               />}
