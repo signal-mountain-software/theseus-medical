@@ -549,7 +549,8 @@ export function formatServiceRequestDetails(pInput) {
     this_request = {
       selections: [],
       options: {},
-      textInput: {}
+      textInput: {},
+      rowType: {}
     };
     pInput.rowDetails.forEach(row => {
       if (row.isChecked || row.textValue) {
@@ -557,6 +558,7 @@ export function formatServiceRequestDetails(pInput) {
         this_request.selections.push(selection);
         this_request.options[selection] = row.qualSelections;
         this_request.textInput[selection] = row.textValue;
+        this_request.rowType[selection] = row.input;
       }
     });
   }
@@ -607,7 +609,9 @@ export function formatServiceRequestDetails(pInput) {
       if (!requestDetailsObj[selection]) {
         requestDetailsObj[selection] = [];
       };
-      requestDetailsObj[selection].push(this_request.textInput[selection]);
+      if (this_request.rowType[selection] !== 'obo') {
+        requestDetailsObj[selection].push(this_request.textInput[selection]);
+      }
     }
   }
   return requestDetailsObj;

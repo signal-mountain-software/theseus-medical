@@ -326,8 +326,10 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     //    (ie. there was nothing before the first "~"; the row started with "~")
     // This handles rows in the form "~<instruction[1]>:<instruction[2]>[row_qualifier]", for example
     //     "~lambda:<instruction[2]>" or 
-    //     "~prompt:Who is this order for?"
+    //     "~prompt:Notes for the server"
+    //     "~other:Notes for the server"
     //     "~promptAll:Table Number"
+    //     "~obo:Request is for whom?"
     //     "~date:What date[noFuture]"
     if (instruction[2]) {
       let splitInstruction = instruction[2].split('[');
@@ -336,22 +338,12 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       if (splitInstruction.length > 1) {
         this_qualifier = splitInstruction[1].replace(']', '');
       }
-      /*
-      let proxyOK = true;
-      if (sessionState.accessList) {
-        proxyOK =
-          ((sessionState.accessList?.[sessionState.session.client_id]?.count.full +
-            sessionState.accessList?.[sessionState.session.client_id]?.count.proxy +
-            sessionState.accessList?.[sessionState.session.client_id]?.count.view) > 0);
-      }
-      */
       displayRowList.push({
         checkbox: false,
         required,
         multiColumn: false,
         text: this_instruction,
         textValue: defaults[this_instruction],
-        //    obo_line: (proxyOK && ((defaults.obo || defaults.onBehalfOf) === this_instruction)),
         obo_line: ((defaults.obo || defaults.onBehalfOf) === this_instruction),
         observationKey: instruction[3] || getKey(this_instruction),
         desc: getDescription(this_instruction),

@@ -400,7 +400,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         handleTextAll(event.target.value, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
       else {
-        if (reactData.columnList[columnNumber].rowDetails[rowNumber].obo_line) {
+        if ((reactData.columnList[columnNumber].rowDetails[rowNumber].obo_line)
+        || (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'obo')) {
           handleOBOText(event.target.value, columnNumber, rowNumber);
         }
         else {
@@ -606,83 +607,89 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       guestGroups = [guestAssignment];
     }
     let typed_in_words = vText.toLowerCase().split(/\s+/);
+    let hits = [];
     let hitCount = [];
     let errorText = null;
-    let hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
-      if (prohibitedGroups.includes(accessList_person.member_of)) {
-        return false;
-      }
-      // if any word in the display_name matches a typed in word, it is a "hit"
-      let wordsMatched = accessList_person.display_name.toLowerCase().split(/\s+/).reduce((total_matches, name_word) => {  // for every word in the display_name...
-        if (typed_in_words.some(typed_in_word => {   // check for any typed in word that exactly matches
-          return (typed_in_word === name_word);
-        })) {
-          total_matches++;
-        };
-        return total_matches;
-      }, 0);
-      if (wordsMatched > 0) {
-        hitCount.push(wordsMatched);
-        return true;
-      }
-      return false;
-    });
     let winner = false;
     let winner_at;
     let winnerList = [];
-    if (hits.length === 0) {
-      errorText = `Nobody found to match that name`;
+    if (!state?.accessList?.[state.session.client_id]?.list) {
+      errorText = `AVA is still loading names.  Please wait a few seconds and try again.`;
     }
-    else if (hits.length === 1) {
-      winner = true;
-      winner_at = 0;
-      let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
-      winnerList = [{
-        person_id: hits[winner_at].id,
-        dName: newDName,
-        display: `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`,
-        type: 'checkbox'
-      }];
-    }
-    else if (hits.length > 1) {
-      // is there a clear winner in the hit_count array?
-      let maxHits = 0;
-      let maxHitCount = 0;
-      hitCount.forEach((h, x) => {
-        if (h > maxHits) {
-          winner_at = x;
-          winner = true;
-          maxHits = h;
-          maxHitCount = 1;
-          let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
-          let dText = `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`;
-          winnerList = [{
-            default: dText,
-            max_allowed: 1,
-            min_required: 1,
-            option: [{
-              person_id: hits[winner_at].id,
-              dName: newDName,
-              display: dText,
-              type: 'checkbox'
-            }],
-          }];
+    else {
+      hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
+        if (prohibitedGroups.includes(accessList_person.member_of)) {
+          return false;
         }
-        else if (h === maxHits) {
-          winner = false;
-          maxHitCount++;
-          let newDName = `${hits[x].name?.first} ${hits[x].name?.last}`.trim() || hits[x].display_name;
-          winnerList[0].option.push({
-            person_id: hits[x].id,
-            dName: newDName,
-            display: `${newDName}${guestGroups.includes(hits[x].member_of) ? ' (Guest)' : ' (' + hits[x].location + ')'}`,
-            type: 'checkbox'
-          });
+        // if any word in the display_name matches a typed in word, it is a "hit"
+        let wordsMatched = accessList_person.display_name.toLowerCase().split(/\s+/).reduce((total_matches, name_word) => {  // for every word in the display_name...
+          if (typed_in_words.some(typed_in_word => {   // check for any typed in word that exactly matches
+            return (typed_in_word === name_word);
+          })) {
+            total_matches++;
+          };
+          return total_matches;
+        }, 0);
+        if (wordsMatched > 0) {
+          hitCount.push(wordsMatched);
+          return true;
         }
+        return false;
       });
-           if (!winner) {
-             winnerList[0].title = `AVA found ${maxHitCount} people to match that name.`;
-           }
+      if (hits.length === 0) {
+        errorText = `Nobody found to match that name`;
+      }
+      else if (hits.length === 1) {
+        winner = true;
+        winner_at = 0;
+        let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+        winnerList = [{
+          person_id: hits[winner_at].id,
+          dName: newDName,
+          display: `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`,
+          type: 'checkbox'
+        }];
+      }
+      else if (hits.length > 1) {
+        // is there a clear winner in the hit_count array?
+        let maxHits = 0;
+        let maxHitCount = 0;
+        hitCount.forEach((h, x) => {
+          if (h > maxHits) {
+            winner_at = x;
+            winner = true;
+            maxHits = h;
+            maxHitCount = 1;
+            let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+            let dText = `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`;
+            winnerList = [{
+              default: dText,
+              max_allowed: 1,
+              min_required: 1,
+              option: [{
+                person_id: hits[winner_at].id,
+                dName: newDName,
+                display: dText,
+                type: 'checkbox'
+              }],
+            }];
+          }
+          else if (h === maxHits) {
+            winner = false;
+            maxHitCount++;
+            let newDName = `${hits[x].name?.first} ${hits[x].name?.last}`.trim() || hits[x].display_name;
+            winnerList[0].option.push({
+              person_id: hits[x].id,
+              dName: newDName,
+              display: `${newDName}${guestGroups.includes(hits[x].member_of) ? ' (Guest)' : ' (' + hits[x].location + ')'}`,
+              type: 'checkbox'
+            });
+          }
+        });
+        if (!winner) {
+          winnerList[0].title = `AVA found ${maxHitCount} people to match that name.`;
+        }
+      }
     }
     let targetColumns = [];
     if (!defaultValue.selectList) {
@@ -1151,7 +1158,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         if (this_row.textValue) {
           // special Values/
-          if (this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text)) {
+          if ((this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text))
+          || (this_row.input === 'obo'))
+          {
             oBo = this_row.textValue;
           }
           else {
