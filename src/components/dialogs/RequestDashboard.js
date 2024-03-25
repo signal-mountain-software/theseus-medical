@@ -491,15 +491,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (r.workData.checked) { printList.push(r); }
       return;
     });
-    let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
+    let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF', request_type: "force_print" });
     enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
     if (result.success) {
       result.preparedMessages.forEach(m => {
-        if (m.attachments) {
-          window.open(m.attachments.Location);
-        }
-        else if (m.pdfInfo && m.pdfInfo.s3Location) {
-          window.open(m.pdfInfo.s3Location);
+        if (m.preferred_method !== 'email') {
+          if (m.attachments) {
+            window.open(m.attachments.Location);
+          }
+          else if (m.pdfInfo && m.pdfInfo.s3Location) {
+            window.open(m.pdfInfo.s3Location);
+          }
         }
       });
       await handleUpdates({

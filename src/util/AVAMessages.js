@@ -6,7 +6,6 @@ import { getServiceRequests } from './AVAServiceRequest';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
-// import { makeSRPrint, savePDFBlob } from './AVAPrintServiceRequest';
 
 let page = {};
 let pdfCurrent = {};
@@ -126,14 +125,6 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
         case 'factForm': {
           [results.htmlText, results.messageText, results.pdfInfo] = await formatRequestDetails(this_request, this_request.format.type);
           firstDoc = false;
-          /*
-          let SRPrint_response = await makeSRPrint(this_request);
-          let pdfInfo = {
-            s3Key: `AVA_RayTest.pdf`, size: 'medium',
-            s3Bucket: 'theseus-medical-storage'
-          };
-          await savePDFBlob(SRPrint_response[0].mealOrder.output, pdfInfo, { S3: true, onSave: 'print' }); 
-          */
           break;
         }
         case 'singleTicket':
@@ -324,7 +315,7 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
 
 }
 
-export async function resolveMessageVariables(inString, body) {
+export async function resolveMessageVariables(inString = '', body) {
   // extract first variable
   let workString = inString;
   let loopCount = 0;

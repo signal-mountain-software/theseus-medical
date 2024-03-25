@@ -249,19 +249,19 @@ export async function putServiceRequest(body) {
   if (body.attachments && (body.attachments.length > 0)) {
     serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; });
   }
+  let rTime = makeDate(new Date().getTime());
+  let rMsg;
   if (body.messaging) {
-    let preparedMessages = await prepareMessage(body, serviceRequestRec);
-    if (preparedMessages.length > 0) {
-      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
-      let rTime = makeDate(new Date().getTime());
-      let rMsg;
-      serviceRequestRec.messages = preparedMessages;
-      serviceRequestRec.last_update = rTime.timestamp;
-      if (body.messaging?.format?.method === 'hold') {
-        serviceRequestRec.last_status = 'Prepared & Held';
-        rMsg = `Held for future processing ${rTime.oaDate}`;
-      }
-      else {
+    if (body.messaging?.format?.method === 'hold') {
+      serviceRequestRec.last_status = 'Prepared & Held';
+      rMsg = `Held for future processing ${rTime.oaDate}`;
+    }
+    else {
+      let preparedMessages = await prepareMessage(body, serviceRequestRec);
+      if (preparedMessages.length > 0) {
+        preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
+        serviceRequestRec.messages = preparedMessages;
+        serviceRequestRec.last_update = rTime.timestamp;
         let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
         if (!sendResults.sent) {
           serviceRequestRec.last_status = 'Failed to send';
@@ -271,11 +271,11 @@ export async function putServiceRequest(body) {
           // serviceRequestRec.last_status = 'Sent';
           rMsg = `Sent for processing ${rTime.oaDate}`;
         }
+        if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
+          serviceRequestRec.history.unshift(rMsg);
+        }
+        else { serviceRequestRec.history = [rMsg]; }
       }
-      if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
-        serviceRequestRec.history.unshift(rMsg);
-      }
-      else { serviceRequestRec.history = [rMsg]; }
     }
   }
   serviceRequestRec.composite_key = '';
@@ -358,6 +358,9 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
       };
     }
     let body = Object.assign({}, activityRec, serviceRequestRec, serviceRequestRec.original_request);
+    if (body.alternate_messaging && options.request_type && body.alternate_messaging.hasOwnProperty(options.request_type)) {
+      body.messaging = deepCopy(body.alternate_messaging[options.request_type]);
+    }
     if (body.messaging) {
       requestList.push(Object.assign({}, body, options));
     }
@@ -375,7 +378,13 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
   if (requestList.length > 0) {
     let preparedMessages = await prepareMessage(requestList);
     if (preparedMessages.length > 0) {
-      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${requestList[0].request_type || requestList[0].requestType}/${requestList[0].request_id || requestList[0].requestID}`; });
+      for (let x = 0; x < preparedMessages.length; x++) {
+        let this_message = preparedMessages[x];
+        this_message.thread_id = `svc_${requestList[0].request_type || requestList[0].requestType}/${requestList[0].request_id || requestList[0].requestID}`;
+        if (this_message.preferred_method === 'email') {
+          await sendMessages(this_message);
+        }
+      };
       return {
         success,
         preparedMessages,   // ***** RAY ***** this is where we could merge output to a single document for later printing

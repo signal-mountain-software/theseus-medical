@@ -1216,7 +1216,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       client_id: pClient,
       client_name: state.session.client_name
     };
-    if (fact.messaging) {
+    if (fact.messaging && (fact.messaging?.format?.method !== 'hold')) {
       let factMessagingList = [];
       if (Array.isArray(fact.messaging)) {
         factMessagingList.push(...fact.messaging);
@@ -1225,7 +1225,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         factMessagingList.push(fact.messaging);
       }
       for (let m = 0; m < factMessagingList.length; m++) {
-
         if (!factMessagingList[m].format.hasOwnProperty('logo') || factMessagingList[m].format.logo) {
           formatCallObj.logo = state.session.client_logo;
           formatCallObj.logo_dimensions = state.session.logo_dimensions;
