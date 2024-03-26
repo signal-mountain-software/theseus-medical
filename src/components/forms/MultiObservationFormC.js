@@ -401,7 +401,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
       else {
         if ((reactData.columnList[columnNumber].rowDetails[rowNumber].obo_line)
-        || (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'obo')) {
+          || (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'obo')) {
           handleOBOText(event.target.value, columnNumber, rowNumber);
         }
         else {
@@ -591,9 +591,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let prohibitedGroups = inactiveGroup;
     if (defaultValue.obo_prohibited) {
       let prohibitedList = makeArray(defaultValue.obo_prohibited);
-      prohibitedList.forEach(p => { 
-        prohibitedGroups.push(...makeArray(state?.session?.group_assignments?.[p]))
-      })
+      prohibitedList.forEach(p => {
+        prohibitedGroups.push(...makeArray(state?.session?.group_assignments?.[p]));
+      });
     };
     let guestAssignment = state?.session?.group_assignments?.guest;
     let guestGroups = [];
@@ -729,7 +729,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           [winnerList[0].title]: {
             [winnerList[0].option[0].display]: true
           }
-        }
+        };
         vText = winnerList[0].option[0].dName;
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
@@ -924,6 +924,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let myDefaultColumns = deepCopy(reactData.defaultColumns);
     for (let c = 0; c < myDefaultColumns.length; c++) {              // for each column
       let column = myDefaultColumns[c];
+      for (let dKey in column.defaultValues) {
+        if (column.defaultValues[dKey] === '[person.location]') {
+          myDefaultColumns[c].defaultValues[dKey] = this_person.location;
+        }
+      }
+      myDefaultColumns[c].rowDetails.forEach((dRow, r) => {
+        if (dRow.textValue === '[person.location]') {
+          myDefaultColumns[c].rowDetails[r].textValue = this_person.location;
+        }
+      });
       myDefaultColumns[c].person_id = this_id;
       myDefaultColumns[c].column_id = `${column.column_id}_${this_id}`;
       myDefaultColumns[c].display_name = this_name;
@@ -1159,8 +1169,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if (this_row.textValue) {
           // special Values/
           if ((this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text))
-          || (this_row.input === 'obo'))
-          {
+            || (this_row.input === 'obo')) {
             oBo = this_row.textValue;
           }
           else {
@@ -1763,7 +1772,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   }
                   {this_item.isChecked
                     && this_item.qualData
-                    && this_item.qualData.map((qR, qRndx) => (
+                    && makeArray(this_item.qualData).map((qR, qRndx) => (
                       <Box
                         key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
                         id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
@@ -1810,17 +1819,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       size="small"
                                       onClick={() => {
                                         optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
-                                        if (reactData.columnList[selectedColumn].rowDetails[this_index].obo_line) { 
-                                          console.log('There I am Gary!')
+                                        if (reactData.columnList[selectedColumn].rowDetails[this_index].obo_line) {
+                                          console.log('There I am Gary!');
                                           // which qualSelection is true?
                                           let allPossibilitiesObj = Object.values(reactData.columnList[selectedColumn].rowDetails[this_index].qualSelections)[0];
                                           let selectedOBOkey = Object.keys(allPossibilitiesObj).find((k) => {
                                             return allPossibilitiesObj[k];
-                                          })
+                                          });
                                           let allQualsList = reactData.columnList[selectedColumn].rowDetails[this_index].qualData[0].option;
                                           let qualPicked = allQualsList.findIndex((i) => {
                                             return (i.display === selectedOBOkey);
-                                          })
+                                          });
                                           reactData.columnList[selectedColumn].person_id = allQualsList[qualPicked].person_id;
                                           reactData.columnList[selectedColumn].display_name = allQualsList[qualPicked].dName;
                                           reactData.columnList[selectedColumn].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(allQualsList[qualPicked].dName.split(/\s+/).splice(-3))));
@@ -1953,7 +1962,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             setMorePeople(false);
           }}
           allowRandom={false}
-          multiSelect={true}
+          multiSelect={(defaultValue.selectOne ? !defaultValue.selectOne : true)}
           returnValue={'id'}
         />
       }

@@ -371,7 +371,7 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
         firstDoc: (x === 0),
         lastDoc: (x === (requestList.length - 1))
       };
-      requestList[x].overrideMethod = 'print';
+      // requestList[x].overrideMethod = 'print';
     });
   }
   let success = true;
@@ -618,7 +618,7 @@ export function formatServiceRequestDetails(pInput) {
       if (!requestDetailsObj[selection]) {
         requestDetailsObj[selection] = [];
       };
-      if (this_request.rowType[selection] !== 'obo') {
+      if ((this_request.rowType[selection] !== 'obo') || (requestDetailsObj[selection].length === 0)) {
         requestDetailsObj[selection].push(this_request.textInput[selection]);
       }
     }

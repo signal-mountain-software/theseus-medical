@@ -116,6 +116,9 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
       if (!('format' in this_request)) {
         this_request.format = { 'type': 'factForm' };
       }
+      if (this_request.format.method === 'hold') {
+        continue;
+      }
       if ('subject' in this_request.format) {
         results.subject = this_request.format.subject;
       }
@@ -788,6 +791,7 @@ export async function mealTicketFormat(body, requestRec = {}) {
   let [author_id, order_timestamp] = this_request.request_id.split('~');
   let author_name = await makeName(author_id);
   let table_key = body.tableNumberKey || 'Table Number';
+  let location_key = body.locationKey || 'Room Number';
   style = `"text-align:center; font-size: ${page.font.size.small};"`;
   let outAuthor = titleCase(author_name);
   pdfLineMealTicket(`Created by: ${outAuthor}`, page.font.size.small, 'normal', 0, -0.2, 0, { align: 'center' });
@@ -801,6 +805,11 @@ export async function mealTicketFormat(body, requestRec = {}) {
     pdfLineMealTicket(`Table: ${this_request.original_request.textInput[table_key]}`, page.font.size.small, 'bold', 0, 0, 0, { align: 'center' });
     htmlText.push(`<dt style=${style}><b>Table: ${this_request.original_request.textInput[table_key]}</b></dt>`);
     plainText.push(`Table: ${this_request.original_request.textInput[table_key]}`);
+  }
+  if (this_request.original_request.textInput && this_request.original_request.textInput[location_key]) {
+    pdfLineMealTicket(`Room: ${this_request.original_request.textInput[location_key]}`, page.font.size.small, 'bold', 0, 0, 0, { align: 'center' });
+    htmlText.push(`<dt style=${style}><b>Room: ${this_request.original_request.textInput[location_key]}</b></dt>`);
+    plainText.push(`Room: ${this_request.original_request.textInput[location_key]}`);
   }
 
   htmlText.push(`</p>`);
@@ -852,17 +861,9 @@ export async function mealTicketFormat(body, requestRec = {}) {
       }
     });
     for (let field in this_request.original_request.textInput) {
-      if ((field !== table_key) && (field !== seat_key)) {
-        /*
-        pdfLineMealTicket(field, page.font.size.medium, 'normal');
-        style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
-        htmlText.push(`<div style=${style}>${field}</div>`);
-        plainText.push(field);
-        */
+      if ((field !== table_key) && (field !== seat_key) && (field !== location_key)) {
         let tLine = `>>> ${this_request.original_request.textInput[field]} <<<`;
-        // pdfLineMealTicket(tLine, page.font.size.small, 'normal', 1, -0.5);
-        pdfLineMealTicket(tLine, page.font.size.medium, 'normal');
-        // style = `"font-size: ${page.font.size.medium}; padding-left: 2em;"`;
+        pdfLineMealTicket(tLine, page.font.size.medium, 'normal', 0, 1);
         style = `"font-size: ${page.font.size.medium}; padding-top: 0.5em;"`;
         htmlText.push(`<div style=${style}><i>${tLine}</i></div>`);
         plainText.push(`--${tLine}`);
