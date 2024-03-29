@@ -368,6 +368,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         text: this_instruction,
         textValue: defaults[this_instruction],
         obo_line: ((defaults.obo || defaults.onBehalfOf) === this_instruction),
+        location_line: (defaults[this_instruction] && (defaults[this_instruction] === '[person.location]')),
         observationKey: instruction[3] || getKey(this_instruction),
         desc: getDescription(this_instruction),
         input: instruction[1].trim().toLowerCase(),

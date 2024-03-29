@@ -672,6 +672,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               min_required: 1,
               option: [{
                 person_id: hits[winner_at].id,
+                location: hits[winner_at].location,
                 dName: newDName,
                 display: dText,
                 type: 'checkbox'
@@ -684,6 +685,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             let newDName = `${hits[x].name?.first} ${hits[x].name?.last}`.trim() || hits[x].display_name;
             winnerList[0].option.push({
               person_id: hits[x].id,
+              location: hits[x].location,
               dName: newDName,
               display: `${newDName}${guestGroups.includes(hits[x].member_of) ? ' (Guest)' : ' (' + hits[x].location + ')'}`,
               type: 'checkbox'
@@ -718,6 +720,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           vText += ` (Guest)`;
         }
         resetTitleName();
+        reactData.columnList[c].rowDetails.forEach((checkRow, r) => {
+          if (checkRow.location_line) {
+            reactData.columnList[c].rowDetails[r].textValue = hits[winner_at].location || '';
+          }
+        })
       }
       else if (errorText) {
         reactData.columnList[c].rowDetails[rowNumber].error = errorText;
@@ -735,6 +742,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
         };
         vText = winnerList[0].option[0].dName;
+        reactData.columnList[c].rowDetails.forEach((checkRow, r) => {
+          if (checkRow.location_line) {
+            reactData.columnList[c].rowDetails[r].textValue = winnerList[0].option[0].location || '';
+          }
+        })
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
     });
@@ -1893,6 +1905,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                           reactData.columnList[selectedColumn].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(allQualsList[qualPicked].dName.split(/\s+/).splice(-3))));
                                           resetTitleName();
                                           reactData.columnList[selectedColumn].rowDetails[this_index].textValue = titleCase(allQualsList[qualPicked].dName);
+                                          reactData.columnList[selectedColumn].rowDetails.forEach((checkRow, r) => {
+                                            if (checkRow.location_line) {
+                                              reactData.columnList[selectedColumn].rowDetails[r].textValue = allQualsList[qualPicked].location || '';
+                                            }
+                                          })
                                         }
                                         updateReactData({
                                           columnList: reactData.columnList
