@@ -36,13 +36,13 @@ const useStyles = makeStyles(theme => ({
     marginTop: '8vh'
   },
   freeInput: {
-    marginLeft: '25px',
-    marginRight: 2,
-    marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(2),
+    marginRight: 1,
+    marginBottom: 0,
     paddingLeft: 0,
     paddingRight: 0,
-    paddingBottom: theme.spacing(1),
-    width: '60%',
+    paddingBottom: 0,
+    width: '95%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
   },
@@ -74,7 +74,7 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'flex-start',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
-    marginLeft: theme.spacing(2),
+    marginLeft: theme.spacing(6),
     marginRight: theme.spacing(1),
   },
   idText: {
@@ -87,6 +87,8 @@ const useStyles = makeStyles(theme => ({
 export default ({
   prompt,
   selectionsList,
+  allowNote = false,
+  allowNotify = false,
   onCancel,
   onSelect,
   options
@@ -113,6 +115,7 @@ export default ({
 
   const [reactData, setReactData] = React.useState({
     choiceList: selectionsList,
+    enteredNote: ''
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -128,12 +131,30 @@ export default ({
     }
   };
 
-  async function toggleCheck(pX) {
+  const handleChangeTextField = (vText) => {
+    updateReactData({
+      enteredNote: vText
+    }, true);
+  };
+
+  function toggleCheck(pX) {
     if (!reactData.choiceList[pX].checked) {
       reactData.choiceList[pX].checked = true;
+      if (!options.multiSelect) {
+        reactData.choiceList.forEach((c, x) => {
+          if (x !== pX) {
+            reactData.choiceList[x].checked = false;
+          }
+        });
+      }
     }
     else {
-      reactData.choiceList[pX].checked = false;
+      let somethingElseIsChecked = reactData.choiceList.some((c, x) => {
+        return ((x !== pX) && reactData.choiceList[x].checked);
+      });
+      if (somethingElseIsChecked) {
+        reactData.choiceList[pX].checked = false;
+      }
     }
     updateReactData({
       choiceList: reactData.choiceList
@@ -162,7 +183,7 @@ export default ({
   const buildList = async () => {
     reactData.choiceList.forEach((c, x) => {
       reactData.choiceList[x].checked = false;
-    })
+    });
     if (options.alreadyChecked) {
       let preCheck = makeArray(options.alreadyChecked);
       preCheck.forEach(valueToPreCheck => {
@@ -222,16 +243,18 @@ export default ({
           {prompt}
         </Typography>
         {/* Text Filter */}
-        <TextField
-          id='List Filter'
-          onChange={event => (handleChangeFilter(event.target.value))}
-          className={classes.freeInput}
-          helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
-          inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-          FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-          variant={'standard'}
-          autoComplete='off'
-        />
+        {options.allowFilter &&
+          <TextField
+            id='List Filter'
+            onChange={event => (handleChangeFilter(event.target.value))}
+            className={classes.freeInput}
+            helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+            inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+            FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+            variant={'standard'}
+            autoComplete='off'
+          />
+        }
       </React.Fragment>
       <Paper component={Box} overflow='auto' variant={'elevation'} elevation={0} mb={2}>
         <List>
@@ -243,15 +266,10 @@ export default ({
               <Paper
                 key={'person-list_' + x}
                 onClick={async () => {
-                  if (!options.multiSelect) {
-                    onSelect(listEntry);                    
+                  if (!toggling) {
+                    toggleCheck(x);
                   }
-                  else {
-                    if (!toggling) {
-                      toggleCheck(x);
-                    }
-                    toggling = false;
-                  }
+                  toggling = false;
                 }}
                 variant={'elevation'} elevation={0} overflow='auto' square
               >
@@ -292,6 +310,39 @@ export default ({
               </Paper>
             )
           ))}
+          {allowNote &&
+            <Box display='flex'
+              marginLeft={2}
+              marginTop={2}
+              paddingRight={0.5}
+              borderRadius={'32px'}
+              border={(reactData.enteredNote ? 1 : 0)}
+              borderColor={'black'}
+              paddingBottom={1}
+              paddingTop={1.5}
+              paddingLeft={0.5}
+              alignItems={'center'}
+              marginBottom={0.5}
+              flexBasis={'content'}
+              flexDirection='row' width='95%' key={'midLeft'}
+            >
+              <TextField
+                className={classes.freeInput}
+                variant={'standard'}
+                key={`inputtextprompt_`}
+                id={`inputtextprompt_`}
+                helperText={allowNote}
+                multiline
+                inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                onChange={event => {
+                  handleChangeTextField(event.target.value);
+                }}
+                FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                autoComplete='off'
+                value={reactData.enteredNote}
+              />
+            </Box>
+          }
           {(rowsWritten === 0) && (reactData.choiceList.length > 0) &&
             <ListItem
               key={'person-list_new'}
@@ -304,7 +355,7 @@ export default ({
             </ListItem>
           }
         </List>
-      </Paper>
+      </Paper >
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
           className={AVAClass.AVAButton}
@@ -317,16 +368,19 @@ export default ({
         >
           {'Close/Exit'}
         </Button>
-        {options.multiSelect && (rowsWritten > 0) &&
+        {(rowsWritten > 0) &&
           <Button
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'green', color: 'white' }}
             size='small'
             onClick={() => {
               onSelect(
-                reactData.choiceList.filter(c => {
-                  return c.checked;
-                })
+                {
+                  selections: (reactData.choiceList.filter(c => {
+                    return c.checked;
+                  }) || []),
+                  enteredNote: reactData.enteredNote
+                }
               );
             }}
             startIcon={<CheckIcon fontSize="small" />}
@@ -335,6 +389,6 @@ export default ({
           </Button>
         }
       </DialogActions>
-    </Dialog>
+    </Dialog >
   );
 };

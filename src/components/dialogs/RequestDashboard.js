@@ -243,15 +243,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   let filterIn = { filtering: false };
-  if (filter.status) {
+  if (filter.status || ((filter.statusNot && !filter.showNotBox))) {
     filterIn.statusNot = false;
     filterIn.filtering = true;
     filterIn.fields = { status: {} };
-    filter.statusNot.forEach(f => {
+    filter.status = (filter.status || []).concat((filter.statusNot || []));
+    filter.status.forEach(f => {
       filterIn.fields.status[f] = true;
     });
   }
-  else if (filter.statusNot) {
+  else if (filter.statusNot && filter.showNotBox) {
     filterIn.statusNot = true;
     filterIn.filtering = true;
     filterIn.fields = { status: {} };
@@ -364,7 +365,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   };
 
   async function handleUpdates(pOptions) {
-    let historyLine = '';
+    let historyLine;
     if (pOptions.newStatus) {
       switch (pOptions.newStatus.toLowerCase()) {
         case 'printed': {
@@ -385,24 +386,36 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
     }
     if (pOptions.assigned_to) {
-      if (historyLine !== '') {
+      if (historyLine) {
         historyLine += ` and `;
+      }
+      else {
+        historyLine = '';
       }
       historyLine += `Assigned to ${await getPerson(pOptions.assigned_to, 'name')}`;
     }
     let AVAdate = makeDate(new Date());
-    historyLine += ` on ${AVAdate.absolute}`;
+    if (historyLine) {
+      historyLine += ` on ${AVAdate.absolute}`;
+    }
     let updateRows = [];
     let rowChanged = [];
     for (let x = 0; x < reactData.dataRows.length; x++) {
       let r = reactData.dataRows[x];
       rowChanged[x] = false;
       if (r.workData.checked && OKToDisplay(r)) {
-        if ((!pOptions.newStatus) || (r.last_status.toLowerCase() !== pOptions.newStatus)) {
+        if (historyLine) {
           if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
             reactData.dataRows[x].history.unshift(historyLine);
           }
           else { reactData.dataRows[x].history = [historyLine]; }
+        }
+        if (pOptions.enteredNote) {
+          let myNote = `Note added by ${await getPerson(session.user_id, 'name')} on ${AVAdate.absolute}: ${pOptions.enteredNote}`
+          if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
+            reactData.dataRows[x].history.unshift(myNote);
+          }
+          else { reactData.dataRows[x].history = [myNote]; }
         }
         if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== pOptions.newStatus)
           && reactData.statusList.some(v => {
@@ -560,6 +573,26 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     updateReactData({
       dataRows: reactData.dataRows
     }, true);
+  }
+
+  function commonStatus() {
+    let commonStatus;
+    let multipleStatuses = reactData.dataRows.some(row => {
+      if (row.workData.checked) {
+        if (!commonStatus) {
+          commonStatus = row.last_status;
+          return false;
+        }
+        return (row.last_status !== commonStatus)
+      }
+      return false;
+    });
+    if (multipleStatuses) {
+      return null
+    }
+    else {
+      return commonStatus;
+    }
   }
 
   function anyRowsSelected() {
@@ -1101,6 +1134,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     paddingLeft={2}
                     alignItems={'center'}
                     marginBottom={0.5}
+                    flexBasis={'content'}
                     flexDirection='row' width='85%' key={'midLeft'}
                   >
                     <SearchIcon size="small" />
@@ -1134,23 +1168,25 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         >
                           {'Filters'}
                         </Typography>
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          onChange={handleStatusNot}
-                          control={
-                            <Checkbox
-                              disableRipple
-                              checked={!!reactData.filter.statusNot}
-                              className={classes.radioButton}
-                              size='small'
-                            />}
-                          label={
-                            <Typography
-                              className={classes.radioText}
-                            >
-                              {'Not...'}
-                            </Typography>}
-                        />
+                        {filter.showNotBox &&
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            onChange={handleStatusNot}
+                            control={
+                              <Checkbox
+                                disableRipple
+                                checked={!!reactData.filter.statusNot}
+                                className={classes.radioButton}
+                                size='small'
+                              />}
+                            label={
+                              <Typography
+                                className={classes.radioText}
+                              >
+                                {'Not...'}
+                              </Typography>}
+                          />
+                        }
                       </Box>
                       {filter.foreign_key &&
                         <Typography
@@ -1160,7 +1196,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           {`For ${makeDate(filter.foreign_key).absolute}`}
                         </Typography>
                       }
-                      <Box display='flex' flexDirection='column'>
+                      <Box display='flex' flexDirection='row' flexWrap='wrap'>
                         {reactData.statusList.map((this_status, this_status_index) => (
                           <FormControlLabel
                             className={classes.formControlLbl}
@@ -1433,21 +1469,24 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           }
           {reactData.selectStatus &&
             <SelectFromList
-              prompt={'Select the new Status'}
+            prompt={'Change Status and add Notes'}
+            allowNote={'Add a note'}
               selectionsList={reactData.statusList.filter(s => {
                 return !s.hasOwnProperty('selectable') || s.selectable;
               })}
               options={{
-                'multiSelect': false
+                'multiSelect': false,
+                'alreadyChecked': commonStatus()
               }}
               onCancel={() => {
                 updateReactData({
                   selectStatus: false
                 }, true);
               }}
-              onSelect={async (selectedStatus) => {
+              onSelect={async (response) => {
                 await handleUpdates({
-                  newStatus: selectedStatus.value
+                  newStatus: ((response.selections && (response.selections.length > 0)) ? response.selections[0].value : null),
+                  enteredNote: response.enteredNote
                 });
                 updateReactData({
                   selectStatus: false
