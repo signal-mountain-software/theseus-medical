@@ -1,11 +1,14 @@
 import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
-import { getCustomizations } from './AVAUtilities';
+import { getCustomizations, getObject64 } from './AVAUtilities';
 import { getServiceRequests } from './AVAServiceRequest';
+import { getObservationItems } from './AVAObservations';
 import { makeDate } from './AVADateTime';
 
 import { jsPDF } from "jspdf";
+
+import htmlToFormattedText from "html-to-formatted-text";
 
 let page = {};
 let pdfCurrent = {};
@@ -130,6 +133,10 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
           firstDoc = false;
           break;
         }
+        case 'document': {
+          let response = await buildDocument(this_request);
+          break;
+        }
         case 'singleTicket':
         case 'mealTicket': {
           [results.htmlText, results.messageText, results.attachments] = await mealTicketFormat(this_request, requestRec);
@@ -137,15 +144,15 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
             requestInfo.attachments = results.attachments;
             if (this_request.messaging.hasOwnProperty('attachment_method')
               && (this_request.messaging.attachment_method === 'file')) {
-                results.attachment_data = {
-                  filename: `MealTicket-${this_request.local_key}.pdf`,
-                  content: results.attachments.data,
-                  type: 'application/pdf',
-                  disposition: 'attachment',
-                  content_id: this_request.local_key
-                };
-              }
+              results.attachment_data = {
+                filename: `MealTicket-${this_request.local_key}.pdf`,
+                content: results.attachments.data,
+                type: 'application/pdf',
+                disposition: 'attachment',
+                content_id: this_request.local_key
+              };
             }
+          }
           break;
         }
         case 'inBody': {
@@ -386,6 +393,15 @@ export async function resolveMessageVariables(inString = '', body) {
         if (body.hasOwnProperty(variable)) {
           workString = `${front}${body[variable]}${back}`;
         }
+        else if (variable.trim().toLowerCase().startsWith('date=')) {
+          let [dDate, dType] = variable.split('=')[1].split(':');
+          if (body.hasOwnProperty(dDate)) {
+            dDate = body[dDate];
+          }
+          let keyDate = makeDate(dDate);
+          if (!keyDate.error) { workString = `${front}${keyDate[dType || 'absolute']}${back}`; }
+          else { workString = `${front}"${variable}"${back}`; }
+        }
         else if (variable.trim().toLowerCase().startsWith('if ')) {
           let [if$, then$] = variable.trim().slice(2).split(':');
           if (body.selections.includes(if$.trim())) { workString = then$.trim(); }
@@ -546,14 +562,21 @@ export async function formatRequestDetails(body, summaryType) {
     if ((body.options) && (body.options.hasOwnProperty(aVal_raw))) {
       sVal = sentenceCase(aVal_raw);
     }
-    htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[aVal] || ''}</dt>`;
-    rawMessage += `\n${sVal}\n`;
-    pdfStyle('reset');
-    pdfLine(sVal, { before: 1 });
-    if (textInput[aVal]) {
-      pdfLine(textInput[aVal], { noNewLine: true, before: 1, indent: 15, size: 'small' });
-      rawMessage += `${textInput[aVal]}\n`;
-      delete textInput[aVal];
+    if ((body.images) && (body.images.hasOwnProperty(aVal_raw))) {
+      pdfLine(' ', { align: 'left', image: body.images[aVal_raw] });
+      rawMessage += `<Signature Captured>\n`;
+      htmlMessage += `<img src="${body.images[aVal_raw]}" />`;
+    }
+    else {
+      htmlMessage += `<dt style="margin-top: ${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[aVal] || ''}</dt>`;
+      rawMessage += `\n${sVal}\n`;
+      pdfStyle('reset');
+      pdfLine(sVal, { before: 1 });
+      if (textInput[aVal]) {
+        pdfLine(textInput[aVal], { noNewLine: true, before: 1, indent: 15, size: 'small' });
+        rawMessage += `${textInput[aVal]}\n`;
+        delete textInput[aVal];
+      }
     }
     /* Check for qualifiers */
     if ((body.qualifiers) && (body.qualifiers.hasOwnProperty(aVal))) {
@@ -589,13 +612,15 @@ export async function formatRequestDetails(body, summaryType) {
 
   if (textInput && (Object.keys(textInput).length > 0)) {
     for (let topic in textInput) {
-      let sVal = sentenceCase(topic.trim());
-      htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[topic]}</dt>`;
-      rawMessage += `\n${sVal}\n${textInput[topic]}\n`;
-      pdfStyle('reset');
-      pdfLine(sVal, { before: 1 });
-      pdfLine(textInput[topic], { noNewLine: true, before: 1, indent: 15, size: 'small' });
-      lineSpacing = `${spaceBetweenLines}px`;
+      if (!body.images || !body.images.hasOwnProperty(topic)) {
+        let sVal = sentenceCase(topic.trim());
+        htmlMessage += `<dt style="padding-top:${lineSpacing}; font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sVal}&nbsp;&nbsp;&nbsp;</strong>${textInput[topic]}</dt>`;
+        rawMessage += `\n${sVal}\n${textInput[topic]}\n`;
+        pdfStyle('reset');
+        pdfLine(sVal, { before: 1 });
+        pdfLine(textInput[topic], { noNewLine: true, before: 1, indent: 15, size: 'small' });
+        lineSpacing = `${spaceBetweenLines}px`;
+      }
     }
   }
 
@@ -641,6 +666,169 @@ export async function formatRequestDetails(body, summaryType) {
   }
   return [htmlMessage, rawMessage, pdfInfo];
 }
+
+export async function buildDocument(body) {
+  // instructions for the document lines are in body.format.source
+  let printInstructions = body.format.source;
+  if (printInstructions.length === 0) {
+    return [];
+  }
+  // Standard 8.5 x 11 output for a Request of any type
+  // Prep the PDF output
+  if (!body.margin) { body.margin = {}; }
+  let callBody = Object.assign({}, body, body.selections, body.images);
+
+  await pdfLaunch(Object.assign({}, body, { client_id: (body.client || body.client_id) }));
+
+  let htmlMessage = '';
+  let rawMessage = '';
+
+  if (body.format.logo) {
+    htmlMessage += `<div style="text-align:center">`;
+    let logo_dimensions = [150, 100];
+    if (body.logo_dimensions) {
+      logo_dimensions = body.logo_dimensions;
+    }
+    htmlMessage += `<img src="${pdfCurrent.logo}" width="${logo_dimensions[0]}px" height="${logo_dimensions[1]}px" />`;
+    htmlMessage += `</div>`;
+    let image64 = await getObject64(pdfCurrent.logo);
+    pdfLine(' ', { image: image64, align: 'center' });
+    pdfStyle('reset');
+  }
+
+  if (body.format.title) {
+    htmlMessage += `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${body.format.title}</span></h1>`;
+    rawMessage = `${body.format.title}\n\r`;
+    pdfLine(pdfLine(body.format.title, { size: 'medium', bold: true }));
+  }
+  
+  let ignoreNextLine = false;
+  do {
+    let this_instruction = printInstructions.shift();
+    if (this_instruction.charAt(0) === '~') {
+      let [instruction_type, instruction_key] = this_instruction.substring(1).split('=');
+      if (instruction_type === 'if') {
+        ignoreNextLine = true;
+        if (body.request.selections.includes(instruction_key)) {
+          // test is true, so respect the next lines (don't ignore)
+          ignoreNextLine = false;
+        }
+        else {
+          for (let selection in body.request.options) {
+            for (let option in body.request.options[selection]) {
+              if (body.request.options[selection][option][instruction_key]) {
+                ignoreNextLine = false;
+              }
+            }
+          }
+          if (body.textInput[instruction_key]) {
+            ignoreNextLine = false;
+          }
+        }
+      }
+      else if (instruction_type === 'else') {
+        ignoreNextLine = !ignoreNextLine;
+      }
+      else if (instruction_type === 'end') {
+        ignoreNextLine = false;
+      }
+      else if (!ignoreNextLine) {
+        switch (instruction_type) {
+          case 'includeObservationItems': {
+            let lines = await getObservationItems(instruction_key);
+            if (lines) {
+              let lineKeys = Object.keys(lines).sort((a, b) => {
+                if (Number(a.split(":")[1]) > Number(b.split(":")[1])) {
+                  return 1;
+                }
+                else {
+                  return -1;
+                }
+              });
+              lineKeys.forEach(lineKey => {
+                htmlMessage += `<div>${lines[lineKey].display_value}</div>`;
+                rawMessage += lines[lineKey].display_value;
+                pdfLine(lines[lineKey].display_value, { html: true, size: 'medium' });
+              });
+            }
+            break;
+          }
+          case 'down': {
+            pdfDown(Number(instruction_key));
+            break;
+          }
+          case 'if': {
+            let testSucceeded = false;
+            if (body.request.selections.includes(instruction_key)) {
+              // test is true, so respect the next lines (don't ignore)
+              testSucceeded = true;
+            }
+            else {
+              for (let selection in body.request.options) {
+                for (let option in body.request.options[selection]) {
+                  if (body.request.options[selection][option][instruction_key]) {
+                    testSucceeded = true;
+                  }
+                }
+              }
+              if (body.textInput[instruction_key]) {
+                testSucceeded = true;
+              }
+            }
+            // all tests failed; this test is false;  ignore subsequent lines
+            ignoreNextLine = !testSucceeded;
+            break;
+          }
+          case 'image': {
+            let outImage = await resolveMessageVariables(instruction_key, callBody);
+            pdfLine(' ', { image: outImage });
+            break;
+          }
+          default: { }
+        }
+      }
+    }
+    else if (!ignoreNextLine) {
+      let outText = await resolveMessageVariables(this_instruction, callBody);
+      pdfLine(outText, { size: 'medium' });
+    }
+  } while (printInstructions.length > 0);
+
+  // Finish
+
+  let refText = `AVA reference: ${body.client || body.client_id}/${body.requestID} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})`;
+  if (body.local_key) {
+    htmlMessage += `<div>AVA request number: <strong>${body.local_key}</strong></div>`;
+    rawMessage += `\n\rAVA request number: ${body.local_key}`;
+    pdfLine(`AVA request number: ${body.local_key}`, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    pdfLine(refText, { noNewPage: true, noNewLine: true, before: 1, align: 'center' });
+  }
+  else {
+    pdfLine(refText, { noNewPage: true, yPos: 'footer', align: 'center' });
+  }
+
+  htmlMessage += `<div>${refText}</div>`;
+  htmlMessage += `<div>***** END *****</div></p>`;
+  rawMessage += `\n\r${refText}\n***** END *****`;
+
+  if (body.fileName && body.fileName.slice(-4) !== '.pdf') {
+    body.fileName += '.pdf';
+  }
+  let pdfInfo = {
+    s3Key: (body.fileName || `AVA_${body.requestID.replace('~', '_')}.pdf`),
+    s3Bucket: (body.S3_bucket || 'theseus-medical-storage')
+  };
+  if (!body.multiPrint || body.multiPrint.lastDoc) {
+    pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
+    let this_method = body.overrideMethod || body.messaging?.format?.method;
+    let pdfResp = await savePDF(doc, pdfInfo, { local: !body.PDF, S3: true, onSave: this_method });
+    if (pdfResp.responseData.s3Resp) {
+      pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+    }
+  }
+  return [htmlMessage, rawMessage, pdfInfo];
+}
+
 
 export async function savePDF(doc, pdfInfo, options = {}) {
   let s3Resp;
@@ -951,7 +1139,7 @@ export async function mealTicketFormat(body, requestRec = {}) {
       else { doc.text(text, page.margin.left + i, yPos); }
       yPos += lastSize;
       text = nextLine;
-    } while (text)
+    } while (text);
     if (after) { yPos += (after * size); }
     return;
   }
@@ -1143,11 +1331,16 @@ function pdfLine(text, options = {}) {
       }
       default: {
         xOffset = pdfCurrent.xPos + pdfCurrent.indent;
-        doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+        // doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos, imageSize, imageSize);
+        doc.addImage(options.image, 'JPEG', xOffset, pdfCurrent.yPos);
         pdfCurrent.xPos = xOffset + imageSize;
       }
     }
     pdfCurrent.yPos += imageSize;
+  }
+  else if (options.html) {
+    delete options.html;
+    pdfLine(htmlToFormattedText(text), options);
   }
   else {
     // this little chunk deals with text overflow

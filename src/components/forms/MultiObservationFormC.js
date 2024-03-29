@@ -9,6 +9,8 @@ import { putServiceRequest, getServiceRequests, updateServiceRequest, formatServ
 import PersonFilter from './PersonFilter';
 import { useSnackbar } from 'notistack';
 
+import SignatureCanvas from 'react-signature-canvas';
+
 import useSession from '../../hooks/useSession';
 import TextField from '@material-ui/core/TextField';
 
@@ -99,7 +101,7 @@ const useStyles = makeStyles(theme => ({
     width: '100%',
   },
   page: {
-    height: 950,
+   // height: 950,
   },
   buttonArea: {
     maxWidth: 1000,
@@ -419,6 +421,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     setForceRedisplay(!forceRedisplay);
   };
+
+  const signatureRef = React.useRef(null);
 
   const hiddenFileInput = React.useRef(null);
   const handleFileUpload = event => {
@@ -1129,6 +1133,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let selections = [];
       let options = {};
       let textInput = {};
+      let images = {};
       let oBo;
       let this_column = pData[columnNumber];
       if (this_column.person_id) {
@@ -1141,22 +1146,27 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         let this_row = this_column.rowDetails[rowNumber];
         if (this_row.isChecked) {
           let choices_list = [];
-          for (let this_option in this_row.qualSelections) {
-            for (let this_choice in this_row.qualSelections[this_option]) {
-              if (!options.hasOwnProperty(this_row.text)) {
-                options[this_row.text] = {};
-              }
-              if (!options[this_row.text].hasOwnProperty(this_option)) {
-                options[this_row.text][this_option] = {};
-              }
-              options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
-              if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
-                if (this_row.qualSelections[this_option][this_choice]) {
-                  choices_list.push(this_choice);
+          if (this_row.input === 'signature') {
+            images[this_row.text] = this_row.image;
+          }
+          else {
+            for (let this_option in this_row.qualSelections) {
+              for (let this_choice in this_row.qualSelections[this_option]) {
+                if (!options.hasOwnProperty(this_row.text)) {
+                  options[this_row.text] = {};
                 }
-              }
-              else {
-                choices_list.push(this_row.qualSelections[this_option][this_choice]);
+                if (!options[this_row.text].hasOwnProperty(this_option)) {
+                  options[this_row.text][this_option] = {};
+                }
+                options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
+                if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
+                  if (this_row.qualSelections[this_option][this_choice]) {
+                    choices_list.push(this_choice);
+                  }
+                }
+                else {
+                  choices_list.push(this_row.qualSelections[this_option][this_choice]);
+                }
               }
             }
           }
@@ -1197,7 +1207,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           request: {
             selections,
             options,
-            textInput
+            textInput,
+            images
           },
           messaging: svc_messaging,
           local_key
@@ -1344,6 +1355,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let columnName = columnUniqueName(this_column).string;
       /*  Check for errors */
       this_column.rowDetails.forEach((this_row, row_number) => {
+        if (this_row.input === 'signature') {
+          if (signatureRef.current.isEmpty() && this_row.required) {
+            this_row.textValue = false;
+          }
+          else {
+            reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
+            this_row.textValue = 'Signature captured';
+          }
+        }
         if (this_row.required && !this_row.textValue) {
           confirmStatus = 'error';
           if (pData.length > 1) {
@@ -1734,7 +1754,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       </Box>
                     }
                     { /* Text prompt line for this row - headers don't have this */}
-                    {this_item.input &&
+                    {this_item.input && (this_item.input !== 'signature') && (this_item.input !== 'docLines') &&
                       <TextField
                         className={classes.freeInput}
                         variant={'standard'}
@@ -1759,6 +1779,44 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         autoComplete='off'
                         value={this_item.textValue || ''}
                       />
+                    }
+                    {this_item.input && (this_item.input === 'docLines') &&
+                      <div
+                        dangerouslySetInnerHTML={{ '__html': this_item.text }}
+                      />
+                    }
+                    {this_item.input && (this_item.input === 'signature') &&
+                      <Box
+                        display='flex'
+                        flexDirection='column'
+                        key={`sigbox_${selectedColumn}.${this_index}`}
+                        id={`sigbox_${selectedColumn}.${this_index}`}
+                        justifyContent='flex-start'
+                        alignItems='flex-start'
+                        width='97%'
+                        height='110px'
+                      >
+                        <SignatureCanvas
+                          ref={signatureRef}
+                          canvasProps={{
+                            style: {
+                              backgroundColor: 'beige',
+                              width: '100%',
+                              marginLeft: '10px',
+                              marginRight: '10px',
+                              marginTop: '2px',
+                              height: '88px'
+                            }
+                          }}
+                        />
+                        <Typography
+                          key={`sigboxtxt_${selectedColumn}.${this_index}`}
+                          id={`sigboxtxt_${selectedColumn}.${this_index}`}
+                          style={AVATextStyle({ size: 0.6, margin: { left: 1 } })}
+                        >
+                          {this_item.text}
+                        </Typography>
+                      </Box>
                     }
                   </Box>
                   {this_item.isChecked && this_item.desc &&

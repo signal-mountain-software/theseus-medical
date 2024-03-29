@@ -240,6 +240,10 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           checkbox = (oValue.toLowerCase() === 'on');
           break;
         }
+        case 'noOp': {
+          doneWithTopBox = true;
+          break;
+        }
         case 'display': {
           ignore = (oValue.toLowerCase() === 'off');
           break;
@@ -293,6 +297,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     // This handles any row without a leading "~"
     // These are checkboxes UNLESS a previous [checkbox=off] instruction is still in effect
     if (instruction[0]) {
+      let docRows;
       let rObj = {
         checkbox,
         isChecked: false,
@@ -314,11 +319,28 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         //   a passed in default for this item instructs AVA to set the checkbox ON
         if ((defaults.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaults[instruction[0]])) // this item is checked off by default
           || (defaultCheckedWords.includes(observationDefaultValue))) {  // this item is checked off because this instruction had a modifier such as [default=checked]
-          rObj.isChecked = true;
-          [rObj.qualSelections, rObj.qualData] = await buildQualifiers(rObj.observationKey);  // see if there any any qualifiers for this item
+          [rObj.qualSelections, rObj.qualData, docRows] = await buildQualifiers(rObj.observationKey);  // see if there any any qualifiers for this item
+          if (!docRows) {
+            rObj.isChecked = true;
+          }
         }
       }
       displayRowList.push(rObj);
+      if (docRows) {
+        displayRowList.push({
+          checkbox: false,
+          isChecked: false,
+          required: false,
+          multiColumn,
+          text: docRows,
+          observationKey: null,
+          desc: null,
+          input: 'docLines',
+          bold: false,
+          style: false,
+          italic: false
+        });
+      }
       continue;
     }
 
@@ -330,6 +352,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     //     "~other:Notes for the server"
     //     "~promptAll:Table Number"
     //     "~obo:Request is for whom?"
+    //     "~signature:Sign here"
     //     "~date:What date[noFuture]"
     if (instruction[2]) {
       let splitInstruction = instruction[2].split('[');
@@ -338,7 +361,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       if (splitInstruction.length > 1) {
         this_qualifier = splitInstruction[1].replace(']', '');
       }
-      displayRowList.push({
+      let rObj = {
         checkbox: false,
         required,
         multiColumn: false,
@@ -350,7 +373,12 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         input: instruction[1].trim().toLowerCase(),
         header: false,
         row_qualifier: this_qualifier
-      });
+      };
+      if (instruction[1].trim().toLowerCase() === 'signature') {
+        rObj.isChecked = true;
+        rObj.required = true;
+      }
+      displayRowList.push(rObj);
       if (observationDefaultValue) {
         defaults[this_instruction] = observationDefaultValue;
       }
@@ -404,18 +432,27 @@ export async function buildQualifiers(qKey) {
       selections: {},
       data: {}
     };
+    let docLineList = [];
     let oItem = await getObservationItems(qKey);
-    if (oItem && oItem.hasOwnProperty('options')) {
-      rememberedQualifiers[qKey].data = await getObservationOptions(oItem.options.observation_key);
-      oItem.options.display_value.forEach(v => {
-        if (v.default) {
-          rememberedQualifiers[qKey].selections[v.title] = {};
-          makeArray(v.default).forEach(dVal => {
-            rememberedQualifiers[qKey].selections[v.title][dVal] = true;
+    if (oItem) {
+      for (let prop in oItem) {
+        if (prop === 'options') {
+          rememberedQualifiers[qKey].data = await getObservationOptions(oItem.options.observation_key);
+          oItem.options.display_value.forEach(v => {
+            if (v.default) {
+              rememberedQualifiers[qKey].selections[v.title] = {};
+              makeArray(v.default).forEach(dVal => {
+                rememberedQualifiers[qKey].selections[v.title][dVal] = true;
+              });
+            }
           });
         }
-      });
+        else if (prop.startsWith('doc_line')) {
+          docLineList[Number(prop.split(':')[1])] = oItem[prop].display_value;
+        }
+      }
     }
+    rememberedQualifiers[qKey].docLines = docLineList.join('');
   }
-  return [rememberedQualifiers[qKey].selections, rememberedQualifiers[qKey].data];
+  return [rememberedQualifiers[qKey].selections, rememberedQualifiers[qKey].data, rememberedQualifiers[qKey].docLines];
 }

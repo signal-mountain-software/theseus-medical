@@ -388,6 +388,40 @@ export async function getIcon(pIcon) {
   }
 };
 
+
+export async function getObject64(pObj) {
+  let imageBucket = 'theseus-medical-storage';
+  let oPieces = pObj.toLowerCase().split('/');
+  let oFile = oPieces.pop();
+  let myPiece = oPieces.findIndex(x => {
+    return (x.includes('.s3'));
+  });
+  if (myPiece > -1) {
+    imageBucket = oPieces[myPiece].substring(0, oPieces[myPiece].indexOf('.s3'))
+  }
+  let oData;
+  try {
+    await s3.getObject({
+      Bucket: imageBucket,
+      Key: oFile,
+    }, function (error, data) {
+      if (data) { oData = data; };
+    })
+      .promise();
+    if (!oData || (oData.ContentLength === 0)) {
+      return;
+    }
+    else {
+      let base64String = oData.Body.toString('base64');
+      return "data:image/jpeg;base64," + base64String;
+    }    
+  }
+  catch (e) {
+    console.log(`error getting S3 image is ${e}`);
+    return null;
+  }
+};
+
 export function getObject(pObjIn, pTyp) {
   let imageBucket, imageURI;
   let [pObj, fExt] = pObjIn.split(/\.(.*)/);
