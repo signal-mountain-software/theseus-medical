@@ -16,7 +16,6 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import CloseIcon from '@material-ui/icons/Close';
 
 import List from '@material-ui/core/List';
-import ListItem from '@material-ui/core/ListItem';
 
 import { AVAclasses, AVATextStyle, AVATextVariableStyle, AVADefaults } from '../../util/AVAStyles';
 
@@ -87,8 +86,6 @@ const useStyles = makeStyles(theme => ({
 export default ({
   prompt,
   selectionsList,
-  allowNote = false,
-  allowNotify = false,
   onCancel,
   onSelect,
   options
@@ -115,7 +112,8 @@ export default ({
 
   const [reactData, setReactData] = React.useState({
     choiceList: selectionsList,
-    enteredNote: ''
+    enteredNote: '',
+    requestor_checked: {}
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -240,7 +238,7 @@ export default ({
           style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, width: '400px', bold: true, overflow: 'visible' })}
           id='scroll-dialog-title'
         >
-          {prompt}
+          {prompt[0]}
         </Typography>
         {/* Text Filter */}
         {options.allowFilter &&
@@ -265,7 +263,7 @@ export default ({
             ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
               <Paper
                 key={'person-list_' + x}
-                onClick={async () => {
+                onClick={() => {
                   if (!toggling) {
                     toggleCheck(x);
                   }
@@ -283,9 +281,9 @@ export default ({
                     checked={(listEntry.checked ? true : false)}
                     disableRipple
                     key={'checkbox' + x}
-                    onClick={async () => {
+                    onClick={() => {
                       toggling = true;
-                      await toggleCheck(x);
+                      toggleCheck(x);
                     }}
                   />
                   {listEntry.image &&
@@ -310,49 +308,99 @@ export default ({
               </Paper>
             )
           ))}
-          {allowNote &&
-            <Box display='flex'
-              marginLeft={2}
-              marginTop={2}
-              paddingRight={0.5}
-              borderRadius={'32px'}
-              border={(reactData.enteredNote ? 1 : 0)}
-              borderColor={'black'}
-              paddingBottom={1}
-              paddingTop={1.5}
-              paddingLeft={0.5}
-              alignItems={'center'}
-              marginBottom={0.5}
-              flexBasis={'content'}
-              flexDirection='row' width='95%' key={'midLeft'}
-            >
-              <TextField
-                className={classes.freeInput}
-                variant={'standard'}
-                key={`inputtextprompt_`}
-                id={`inputtextprompt_`}
-                helperText={allowNote}
-                multiline
-                inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                onChange={event => {
-                  handleChangeTextField(event.target.value);
-                }}
-                FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                autoComplete='off'
-                value={reactData.enteredNote}
-              />
-            </Box>
-          }
-          {(rowsWritten === 0) && (reactData.choiceList.length > 0) &&
-            <ListItem
-              key={'person-list_new'}
-            >
-              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
-                <Typography style={AVATextStyle({ bold: true })}>
-                  {'No selections available'}
+          {options.allowNote &&
+            <React.Fragment>
+              {prompt[1] &&
+                <Typography
+                  style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, width: '400px', bold: true, overflow: 'visible' })}
+                  id='scroll-dialog-title'
+                >
+                  {prompt[1]}
                 </Typography>
+              }
+              <Box display='flex'
+                marginLeft={2}
+                marginTop={2}
+                paddingRight={0.5}
+                borderRadius={'32px'}
+                border={(reactData.enteredNote ? 1 : 0)}
+                borderColor={'black'}
+                paddingBottom={1}
+                paddingTop={1.5}
+                paddingLeft={0.5}
+                alignItems={'center'}
+                marginBottom={0.5}
+                flexBasis={'content'}
+                flexDirection='row' width='95%' key={'midLeft'}
+              >
+                <TextField
+                  className={classes.freeInput}
+                  variant={'standard'}
+                  key={`inputtextprompt_`}
+                  id={`inputtextprompt_`}
+                  helperText={options.allowNote}
+                  multiline
+                  inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                  onChange={event => {
+                    handleChangeTextField(event.target.value);
+                  }}
+                  FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                  autoComplete='off'
+                  value={reactData.enteredNote}
+                />
               </Box>
-            </ListItem>
+            </React.Fragment>
+          }
+          {options.allowNotify &&
+            <React.Fragment>
+              {(prompt[2] || prompt[1]) &&
+                <Typography
+                  style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, width: '400px', bold: true, overflow: 'visible' })}
+                  id='scroll-dialog-title'
+                >
+                  {(prompt[2] || prompt[1])}
+                </Typography>
+              }
+              <Paper
+                key={'notifyList'}
+                variant={'elevation'} elevation={0} overflow='auto' square
+              >
+                {Object.keys(options.allowNotify).map((notifyID, x) => (
+                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' className={classes.listItem}>
+                    <Checkbox
+                      edge='start'
+                      mr={1}
+                      checked={reactData.requestor_checked[notifyID] || false}
+                      disableRipple
+                      key={`checkbox_requestor_${x}`}
+                      onClick={() => {
+                        if (reactData.requestor_checked.hasOwnProperty[notifyID]) {
+                          reactData.requestor_checked[notifyID] = !reactData.requestor_checked[notifyID];
+                        }
+                        else {
+                          reactData.requestor_checked[notifyID] = true;
+                        }
+                        updateReactData({
+                          requestor_checked: reactData.requestor_checked
+                        }, true);
+                      }}
+                    />
+                    <Box
+                      display='flex'
+                      flexWrap='wrap'
+                      flexDirection='column'
+                      justifyContent='center'
+                      alignItems='flex-start'
+                      key={`checkbox_rtext_${x}`}
+                    >
+                      <Typography style={(AVATextVariableStyle(options.allowNotify[notifyID].name), { bold: true })}>
+                        {`${options.allowNotify[notifyID].name} ${(options.allowNotify[notifyID].count > 1) ? '(' + options.allowNotify[notifyID].count + ')' : ''}`}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}                
+              </Paper>
+            </React.Fragment>
           }
         </List>
       </Paper >
@@ -379,7 +427,10 @@ export default ({
                   selections: (reactData.choiceList.filter(c => {
                     return c.checked;
                   }) || []),
-                  enteredNote: reactData.enteredNote
+                  enteredNote: reactData.enteredNote,
+                  notify: [...Object.keys(reactData.requestor_checked).filter(k => {
+                    return reactData.requestor_checked[k]
+                  })]
                 }
               );
             }}

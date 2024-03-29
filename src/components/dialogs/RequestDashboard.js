@@ -366,6 +366,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   async function handleUpdates(pOptions) {
     let historyLine;
+    let messageStatusText;
+    let assignedToName;
     if (pOptions.newStatus) {
       switch (pOptions.newStatus.toLowerCase()) {
         case 'printed': {
@@ -375,6 +377,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         case 'completed':
         case 'complete': {
           historyLine = `Marked complete by ${await getPerson(session.user_id, 'name')}`;
+          messageStatusText = `marked it as complete`;
           break;
         }
         case 'assigned': {
@@ -382,6 +385,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         }
         default: {
           historyLine = `${await getPerson(session.user_id, 'name')} changed status to ${titleCase(pOptions.newStatus.replace('_', ' '))}`;
+          messageStatusText = `changed the status to ${(pOptions.newStatus.replace('_', ' '))}`;
         }
       }
     }
@@ -392,7 +396,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       else {
         historyLine = '';
       }
-      historyLine += `Assigned to ${await getPerson(pOptions.assigned_to, 'name')}`;
+      assignedToName = await getPerson(pOptions.assigned_to, 'name');
+      historyLine += `Assigned to ${assignedToName}`;
     }
     let AVAdate = makeDate(new Date());
     if (historyLine) {
@@ -400,18 +405,28 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
     let updateRows = [];
     let rowChanged = [];
+    let rowSelected = [];
+    let statusChanged = [];
+    let assignmentChanged = [];
+    let myNote;
+    if (pOptions.enteredNote) {
+      myNote = `Note added by ${await getPerson(session.user_id, 'name')} on ${AVAdate.absolute}: ${pOptions.enteredNote}`;
+    }
     for (let x = 0; x < reactData.dataRows.length; x++) {
       let r = reactData.dataRows[x];
       rowChanged[x] = false;
+      rowSelected[x] = false;
+      statusChanged[x] = false;
+      assignmentChanged[x] = false;
       if (r.workData.checked && OKToDisplay(r)) {
+        rowSelected[x] = true;
         if (historyLine) {
           if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
             reactData.dataRows[x].history.unshift(historyLine);
           }
           else { reactData.dataRows[x].history = [historyLine]; }
         }
-        if (pOptions.enteredNote) {
-          let myNote = `Note added by ${await getPerson(session.user_id, 'name')} on ${AVAdate.absolute}: ${pOptions.enteredNote}`
+        if (myNote) {
           if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
             reactData.dataRows[x].history.unshift(myNote);
           }
@@ -422,10 +437,15 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             return (v.value.toLowerCase() === pOptions.newStatus.toLowerCase());
           })) {
           reactData.dataRows[x].last_status = pOptions.newStatus;
+          statusChanged[x] = true;
           rowChanged[x] = true;
         }
         if (pOptions.assigned_to) {
-          reactData.dataRows[x].assigned_to = pOptions.assigned_to;
+          if (reactData.dataRows[x].assigned_to !== pOptions.assigned_to) {
+            reactData.dataRows[x].assigned_to = pOptions.assigned_to;
+            assignmentChanged[x] = true;
+            rowChanged[x] = true;
+          }
         }
         else {
           if (!reactData.dataRows[x].assigned_to) {
@@ -472,6 +492,50 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           };
           await sendMessages(messageObj);
           reactData.dataRows[this_index].messages.unshift(messageObj);
+        }
+      }
+    }
+    // this section sends messages to those that were flagged to be notified
+    if (pOptions.notify && pOptions.notify.length > 0) {
+      let messageAuthor = await getPerson(session.user_id, 'name');
+      for (let this_index = 0; this_index < reactData.dataRows.length; this_index++) {
+        if (rowSelected[this_index]) {
+          let notifyMessage;
+          if (messageStatusText && statusChanged[this_index]) {
+            notifyMessage = `${messageAuthor} has updated your ${reactData.dataRows[this_index].workData.formatted_type} from ${reactData.dataRows[this_index].workData.display_date}.  They`;
+            notifyMessage += ` ${messageStatusText}`;
+          }
+          if (assignedToName && assignmentChanged[this_index]) {
+            if (notifyMessage) {
+              notifyMessage += ` and assigned it to ${assignedToName}.`;
+            }
+            else {
+              notifyMessage = `${messageAuthor} assigned your ${reactData.dataRows[this_index].workData.formatted_type} from ${reactData.dataRows[this_index].workData.display_date} to ${assignedToName}.`;
+            }
+          }
+          if (pOptions.enteredNote) {
+            if (notifyMessage) {
+              notifyMessage += `  They also added this note: "${pOptions.enteredNote}".`;
+            }
+            else {
+              notifyMessage = `${messageAuthor} added a note to your ${reactData.dataRows[this_index].workData.formatted_type} from ${reactData.dataRows[this_index].workData.display_date}.  It says "${pOptions.enteredNote}"`;
+            }
+          }
+          let recipientList = pOptions.notify.filter(n => {
+            return ((n === reactData.dataRows[this_index].workData.enteredBy) || (n = reactData.dataRows[this_index].requestor));
+          })
+          if (notifyMessage) {
+            let messageObj = {
+              client: session.client_id,
+              author: session.user_id,
+              messageText: notifyMessage,
+              thread_id: `svc_${reactData.dataRows[this_index].request_type}/${reactData.dataRows[this_index].request_id}`,
+              recipientList: recipientList,
+              subject: `Update to your ${reactData.dataRows[this_index].workData.formatted_type}`
+            };
+            await sendMessages(messageObj);
+            reactData.dataRows[this_index].messages.unshift(messageObj);
+          }
         }
       }
     }
@@ -583,16 +647,45 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           commonStatus = row.last_status;
           return false;
         }
-        return (row.last_status !== commonStatus)
+        return (row.last_status !== commonStatus);
       }
       return false;
     });
     if (multipleStatuses) {
-      return null
+      return null;
     }
     else {
       return commonStatus;
     }
+  }
+
+  function getRequestors() {
+    let response = {};
+    reactData.dataRows.forEach(r => {
+      if (r.workData.checked) {
+        if (response.hasOwnProperty(r.workData.enteredBy)) {
+          response[r.workData.enteredBy].count++
+        }
+        else {
+          response[r.workData.enteredBy] = {
+            name: r.workData.enteredBy_name,
+            count: 1
+          }
+        }
+        if (r.requestor !== r.workData.enteredBy) {
+          if (response.hasOwnProperty(r.requestor)) {
+            response[r.requestor].count++;
+          }
+          else {
+            response[r.requestor] = {
+              name: r.on_behalf_of,
+              count: 1
+            };
+          }
+        }
+      }
+    });
+    return response;
   }
 
   function anyRowsSelected() {
@@ -1469,14 +1562,15 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           }
           {reactData.selectStatus &&
             <SelectFromList
-            prompt={'Change Status and add Notes'}
-            allowNote={'Add a note'}
+              prompt={['Status', 'Notes', 'Notifications']}
               selectionsList={reactData.statusList.filter(s => {
                 return !s.hasOwnProperty('selectable') || s.selectable;
               })}
               options={{
                 'multiSelect': false,
-                'alreadyChecked': commonStatus()
+                'alreadyChecked': commonStatus(),
+                'allowNote': 'Add a note',
+                'allowNotify': getRequestors()
               }}
               onCancel={() => {
                 updateReactData({
@@ -1486,7 +1580,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               onSelect={async (response) => {
                 await handleUpdates({
                   newStatus: ((response.selections && (response.selections.length > 0)) ? response.selections[0].value : null),
-                  enteredNote: response.enteredNote
+                  enteredNote: response.enteredNote,
+                  notify: response.notify
                 });
                 updateReactData({
                   selectStatus: false
