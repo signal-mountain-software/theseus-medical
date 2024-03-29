@@ -1,4 +1,4 @@
-import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, makeArray, sentenceCase, dbClient } from './AVAUtilities';
+import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, makeArray, sentenceCase, dbClient, deepCopy } from './AVAUtilities';
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations, getObject64 } from './AVAUtilities';
@@ -134,7 +134,21 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
           break;
         }
         case 'document': {
-          let response = await buildDocument(this_request);
+          [results.htmlText, results.messageText, results.pdfInfo] = await buildDocument(this_request);
+          results.attachments = deepCopy(results.pdfInfo);
+          requestInfo.attachments = results.pdfInfo;
+          if ((this_request.messaging.hasOwnProperty('attachment_method')
+            && (this_request.messaging.attachment_method === 'file')) || 
+            (this_request.hasOwnProperty('attachment_method')
+              && (this_request.attachment_method === 'file'))) {
+            results.attachment_data = {
+              filename: results.pdfInfo.key,
+              content: results.pdfInfo.data,
+              type: 'application/pdf',
+              disposition: 'attachment',
+              content_id: this_request.local_key
+            };
+          }
           break;
         }
         case 'singleTicket':
@@ -745,6 +759,7 @@ export async function buildDocument(body) {
                   return -1;
                 }
               });
+              // eslint-disable-next-line
               lineKeys.forEach(lineKey => {
                 htmlMessage += `<div>${lines[lineKey].display_value}</div>`;
                 rawMessage += lines[lineKey].display_value;
@@ -782,6 +797,9 @@ export async function buildDocument(body) {
           case 'image': {
             let outImage = await resolveMessageVariables(instruction_key, callBody);
             pdfLine(' ', { image: outImage });
+            htmlMessage += `<div >`;
+            htmlMessage += `<img src="${instruction_key}"  />`;
+            htmlMessage += `</div>`;
             break;
           }
           default: { }
@@ -814,19 +832,43 @@ export async function buildDocument(body) {
   if (body.fileName && body.fileName.slice(-4) !== '.pdf') {
     body.fileName += '.pdf';
   }
+  /*
   let pdfInfo = {
     s3Key: (body.fileName || `AVA_${body.requestID.replace('~', '_')}.pdf`),
     s3Bucket: (body.S3_bucket || 'theseus-medical-storage')
   };
+  */
+  let s3Resp
   if (!body.multiPrint || body.multiPrint.lastDoc) {
     pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
+    
+    /*
     let this_method = body.overrideMethod || body.messaging?.format?.method;
     let pdfResp = await savePDF(doc, pdfInfo, { local: !body.PDF, S3: true, onSave: this_method });
     if (pdfResp.responseData.s3Resp) {
       pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
     }
+    */
+
+    let pBlob = doc.output('blob');
+    let data64 = (doc.output('datauri')).split(';base64,')[1];
+    let fileName = `${body.client || body.client_id}_${body.local_key}_${body.fileName || 'document'}.pdf`;
+    s3Resp = await s3
+      .upload({
+        Bucket: 'theseus-medical-storage',
+        Key: fileName,
+        Body: pBlob,
+        ACL: 'public-read-write',
+        ContentType: 'application/pdf'
+      })
+      .promise()
+      .catch(err => {
+        cl(`PDF not saved by AVA.  The reason is ${err.message}`);
+      });
+    s3Resp.data = data64;
+
   }
-  return [htmlMessage, rawMessage, pdfInfo];
+  return [htmlMessage, rawMessage, s3Resp];
 }
 
 
