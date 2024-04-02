@@ -109,15 +109,15 @@ export async function getServiceRequests(body) {
       let rTarray = makeArray(rT);
       if (rTarray.length === 1) {
         qQ.FilterExpression = 'request_type = :rT';
-        qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rT': rTarray[0] };
+        qQ.ExpressionAttributeValues[':rT'] = rTarray[0];
       }
       else {
-        qQ.FilterExpression = '(request_type = :t';
-        qQ.ExpressionAttributeValues = { ':c': body.client_id, ':t': rTarray[0] };
+        qQ.FilterExpression = '(request_type = :rT';
+        qQ.ExpressionAttributeValues[':rT'] = rTarray[0];
         if (rTarray.length > 1) {
           for (let x = 1; x < rTarray.length; x++) {
-            qQ.FilterExpression += ` or request_type = :t${x}`;
-            qQ.ExpressionAttributeValues[`:t${x}`] = rTarray[x];
+            qQ.FilterExpression += ` or request_type = :rT${x}`;
+            qQ.ExpressionAttributeValues[`:rT${x}`] = rTarray[x];
           };
         }
         qQ.FilterExpression += ')';
@@ -172,8 +172,8 @@ export async function getServiceRequests(body) {
       });
     if (recordExists(qR)) {
       unSortedList = unSortedList.concat(qR.Items);
-    }
-    qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
+      qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
+    }   
     loopCount++;
   } while (qQ.ExclusiveStartKey && (loopCount < 10) && (unSortedList.length < (body.limit || 100)));
   if (!sortInstructions.sort) {
