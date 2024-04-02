@@ -1402,7 +1402,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                       style={AVATextStyle({ size: 1.5, bold: true })}
                                       className={classes.firstName}
                                     >
-                                      {`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}
+                                      {`${this_item.workData.requestor_name} (${this_item?.original_request?.textInput['Room Number'] || this_item.workData.requestor_location})`}
                                     </Typography>
                                   }
                                   {this_item.workData.updated &&
