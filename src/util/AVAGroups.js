@@ -645,6 +645,37 @@ export async function addMember(pPerson, pClient, pGroup) {
     });
 }
 
+export async function removeMember(pPerson, pClient, pGroup) {
+  let peopleRec = await getPerson(pPerson);
+  if (peopleRec?.person_id) {
+    let newGroupList = peopleRec.groups.filter(g => {
+      return !(g === pGroup)
+    })
+    let clientGroups = (Array.isArray(peopleRec.clients) ? peopleRec.clients : [peopleRec.clients]);
+    clientGroups.some((cG, ndx) => {
+      if (cG.id === pClient) {
+        clientGroups[ndx].groups = newGroupList;
+        return true;
+      }
+      else { return false; }
+    });
+    await dbClient
+      .update({
+        Key: { person_id: pPerson },
+        UpdateExpression: "set groups = :g, clients = :cg",
+        ExpressionAttributeValues: {
+          ":g": newGroupList,
+          ":cg": clientGroups
+        },
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        clt({ 'Bad update to People - caught error is': error });
+      });
+  }
+}
+
 export async function addAdministrator(pPerson, pGroup) {
   let sessionRec = await getSession(pPerson);
   if (sessionRec?.session_id) {

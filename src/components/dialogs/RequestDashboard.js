@@ -12,6 +12,7 @@ import AVA_AlertSound from '../../ava_alert.mp3';
 import SearchIcon from '@material-ui/icons/Search';
 
 import IdleTimer from 'react-idle-timer';
+
 import useSound from 'use-sound';
 
 import { useSnackbar } from 'notistack';
@@ -175,7 +176,7 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'start',
     justifyContent: 'flex-start',
     marginTop: theme.spacing(1.5),
-    marginBottom: theme.spacing(0),
+    marginBottom: theme.spacing(2),
     marginLeft: theme.spacing(0),
     marginRight: theme.spacing(0),
   },
@@ -222,6 +223,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       textForm - when true, show only requestor and selections (in a text format)
       allowAssign - when items are selected, the "assign" button will be shown.  allowAssign should contain an array (list) of groups that assignees can be selected from
       updateMode - preselect first item
+      viewMode - no search field; no changes allowed; show "add new request"; onClose carries instruction for next step
     }
   */
 
@@ -235,21 +237,22 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const { enqueueSnackbar } = useSnackbar();
 
   const [loading, setLoading] = React.useState('no_value');
-
+  const [unmount, setUnmount] = React.useState();
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   let filterIn = { filtering: false };
-  if (filter.status) {
+  if (filter.status || ((filter.statusNot && !filter.showNotBox))) {
     filterIn.statusNot = false;
     filterIn.filtering = true;
     filterIn.fields = { status: {} };
-    filter.statusNot.forEach(f => {
+    filter.status = (filter.status || []).concat((filter.statusNot || []));
+    filter.status.forEach(f => {
       filterIn.fields.status[f] = true;
     });
   }
-  else if (filter.statusNot) {
+  else if (filter.statusNot && filter.showNotBox) {
     filterIn.statusNot = true;
     filterIn.filtering = true;
     filterIn.fields = { status: {} };
@@ -275,6 +278,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     showStaffAccess: false,
     statusObj: {},
     filter: deepCopy(filterIn),
+    filterTextLower: (filter.filterText ? filter.filterText.toLowerCase() : null)
   });
 
   const [promptForMessage, setPromptForMessage] = React.useState(false);
@@ -328,7 +332,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     else { return `Good ${makeDate(new Date()).dayPart}${pName ? ', ' + pName : ''}!`; }
   }
 
-  const handleChangeEmailPrivacy = statusIn => {
+  const handleChangeStatusSelection = statusIn => {
     let statusWord = statusIn.toLowerCase();
     if (!reactData.filter.fields.status.hasOwnProperty(statusWord)
       || !reactData.filter.fields.status[statusWord]) {
@@ -361,7 +365,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   };
 
   async function handleUpdates(pOptions) {
-    let historyLine = '';
+    let historyLine;
+    let messageStatusText;
+    let assignedToName;
     if (pOptions.newStatus) {
       switch (pOptions.newStatus.toLowerCase()) {
         case 'printed': {
@@ -371,6 +377,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         case 'completed':
         case 'complete': {
           historyLine = `Marked complete by ${await getPerson(session.user_id, 'name')}`;
+          messageStatusText = `marked it as complete`;
           break;
         }
         case 'assigned': {
@@ -378,38 +385,67 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         }
         default: {
           historyLine = `${await getPerson(session.user_id, 'name')} changed status to ${titleCase(pOptions.newStatus.replace('_', ' '))}`;
+          messageStatusText = `changed the status to ${(pOptions.newStatus.replace('_', ' '))}`;
         }
       }
     }
     if (pOptions.assigned_to) {
-      if (historyLine !== '') {
+      if (historyLine) {
         historyLine += ` and `;
       }
-      historyLine += `Assigned to ${await getPerson(pOptions.assigned_to, 'name')}`;
+      else {
+        historyLine = '';
+      }
+      assignedToName = await getPerson(pOptions.assigned_to, 'name');
+      historyLine += `Assigned to ${assignedToName}`;
     }
     let AVAdate = makeDate(new Date());
-    historyLine += ` on ${AVAdate.absolute}`;
+    if (historyLine) {
+      historyLine += ` on ${AVAdate.absolute}`;
+    }
     let updateRows = [];
     let rowChanged = [];
+    let rowSelected = [];
+    let statusChanged = [];
+    let assignmentChanged = [];
+    let myNote;
+    if (pOptions.enteredNote) {
+      myNote = `Note added by ${await getPerson(session.user_id, 'name')} on ${AVAdate.absolute}: ${pOptions.enteredNote}`;
+    }
     for (let x = 0; x < reactData.dataRows.length; x++) {
       let r = reactData.dataRows[x];
       rowChanged[x] = false;
+      rowSelected[x] = false;
+      statusChanged[x] = false;
+      assignmentChanged[x] = false;
       if (r.workData.checked && OKToDisplay(r)) {
-        if ((!pOptions.newStatus) || (r.last_status.toLowerCase() !== pOptions.newStatus)) {
+        rowSelected[x] = true;
+        if (historyLine) {
           if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
             reactData.dataRows[x].history.unshift(historyLine);
           }
           else { reactData.dataRows[x].history = [historyLine]; }
+        }
+        if (myNote) {
+          if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
+            reactData.dataRows[x].history.unshift(myNote);
+          }
+          else { reactData.dataRows[x].history = [myNote]; }
         }
         if ((pOptions.newStatus) && (r.last_status.toLowerCase() !== pOptions.newStatus)
           && reactData.statusList.some(v => {
             return (v.value.toLowerCase() === pOptions.newStatus.toLowerCase());
           })) {
           reactData.dataRows[x].last_status = pOptions.newStatus;
+          statusChanged[x] = true;
           rowChanged[x] = true;
         }
         if (pOptions.assigned_to) {
-          reactData.dataRows[x].assigned_to = pOptions.assigned_to;
+          if (reactData.dataRows[x].assigned_to !== pOptions.assigned_to) {
+            reactData.dataRows[x].assigned_to = pOptions.assigned_to;
+            assignmentChanged[x] = true;
+            rowChanged[x] = true;
+          }
         }
         else {
           if (!reactData.dataRows[x].assigned_to) {
@@ -459,9 +495,59 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         }
       }
     }
+    // this section sends messages to those that were flagged to be notified
+    if (pOptions.notify && pOptions.notify.length > 0) {
+      let messageAuthor = await getPerson(session.user_id, 'name');
+      for (let this_index = 0; this_index < reactData.dataRows.length; this_index++) {
+        if (rowSelected[this_index]) {
+          let notifyMessage;
+          if (messageStatusText && statusChanged[this_index]) {
+            notifyMessage = `${messageAuthor} has updated your ${reactData.dataRows[this_index].workData.formatted_type} from ${reactData.dataRows[this_index].workData.display_date}.  They`;
+            notifyMessage += ` ${messageStatusText}`;
+          }
+          if (assignedToName && assignmentChanged[this_index]) {
+            if (notifyMessage) {
+              notifyMessage += ` and assigned it to ${assignedToName}.`;
+            }
+            else {
+              notifyMessage = `${messageAuthor} assigned your ${reactData.dataRows[this_index].workData.formatted_type} from ${reactData.dataRows[this_index].workData.display_date} to ${assignedToName}.`;
+            }
+          }
+          if (pOptions.enteredNote) {
+            if (notifyMessage) {
+              notifyMessage += `  They also added this note: "${pOptions.enteredNote}".`;
+            }
+            else {
+              notifyMessage = `${messageAuthor} added a note to your ${reactData.dataRows[this_index].workData.formatted_type} from ${reactData.dataRows[this_index].workData.display_date}.  It says "${pOptions.enteredNote}"`;
+            }
+          }
+          let recipientList = pOptions.notify.filter(n => {
+            return ((n === reactData.dataRows[this_index].workData.enteredBy) || (n = reactData.dataRows[this_index].requestor));
+          })
+          if (notifyMessage) {
+            let messageObj = {
+              client: session.client_id,
+              author: session.user_id,
+              messageText: notifyMessage,
+              thread_id: `svc_${reactData.dataRows[this_index].request_type}/${reactData.dataRows[this_index].request_id}`,
+              recipientList: recipientList,
+              subject: `Update to your ${reactData.dataRows[this_index].workData.formatted_type}`
+            };
+            await sendMessages(messageObj);
+            reactData.dataRows[this_index].messages.unshift(messageObj);
+          }
+        }
+      }
+    }
     updateReactData({
       dataRows: reactData.dataRows
     }, true);
+  }
+
+  function exitModule(instruction) {
+    onClose(instruction);
+    setUnmount(true);
+    return;
   }
 
   function getSelectedDetails() {
@@ -482,15 +568,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (r.workData.checked) { printList.push(r); }
       return;
     });
-    let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF' });
+    let result = await printServiceRequest(printList, { PDF: true, fileName: 'test_PDF', request_type: "force_print" });
     enqueueSnackbar(result.message, { variant: (result.success ? 'success' : 'error'), persist: false });
     if (result.success) {
       result.preparedMessages.forEach(m => {
-        if (m.attachments) {
-          window.open(m.attachments.Location);
-        }
-        else if (m.pdfInfo && m.pdfInfo.s3Location) {
-          window.open(m.pdfInfo.s3Location);
+        if (m.preferred_method !== 'email') {
+          if (m.attachments) {
+            window.open(m.attachments.Location);
+          }
+          else if (m.pdfInfo && m.pdfInfo.s3Location) {
+            window.open(m.pdfInfo.s3Location);
+          }
         }
       });
       await handleUpdates({
@@ -549,6 +637,55 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     updateReactData({
       dataRows: reactData.dataRows
     }, true);
+  }
+
+  function commonStatus() {
+    let commonStatus;
+    let multipleStatuses = reactData.dataRows.some(row => {
+      if (row.workData.checked) {
+        if (!commonStatus) {
+          commonStatus = row.last_status;
+          return false;
+        }
+        return (row.last_status !== commonStatus);
+      }
+      return false;
+    });
+    if (multipleStatuses) {
+      return null;
+    }
+    else {
+      return commonStatus;
+    }
+  }
+
+  function getRequestors() {
+    let response = {};
+    reactData.dataRows.forEach(r => {
+      if (r.workData.checked) {
+        if (response.hasOwnProperty(r.workData.enteredBy)) {
+          response[r.workData.enteredBy].count++
+        }
+        else {
+          response[r.workData.enteredBy] = {
+            name: r.workData.enteredBy_name,
+            count: 1
+          }
+        }
+        if (r.requestor !== r.workData.enteredBy) {
+          if (response.hasOwnProperty(r.requestor)) {
+            response[r.requestor].count++;
+          }
+          else {
+            response[r.requestor] = {
+              name: r.on_behalf_of,
+              count: 1
+            };
+          }
+        }
+      }
+    });
+    return response;
   }
 
   function anyRowsSelected() {
@@ -1035,7 +1172,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   return (
     <Dialog
-      open={true || forceRedisplay}
+      open={(true || forceRedisplay) && !unmount}
       p={2}
       fullScreen
     >
@@ -1074,115 +1211,123 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   : reactData.pageTitle
                 }
               </Typography>
-              <Box
-                display='flex' flexDirection='row'
-                className={classes.messageArea}
-                key={'midBox'}
-              >
-                <Box display='flex'
-                  marginLeft={2}
-                  paddingRight={2}
-                  borderRadius={'32px'}
-                  border={1}
-                  borderColor={'black'}
-                  paddingBottom={0.5}
-                  paddingLeft={2}
-                  alignItems={'center'}
-                  marginBottom={0.5}
-                  flexDirection='row' width='85%' key={'midLeft'}
+              {!options.viewMode &&
+                <Box
+                  display='flex' flexDirection='row'
+                  className={classes.messageArea}
+                  key={'midBox'}
                 >
-                  <SearchIcon size="small" />
-                  <TextField
-                    id='List Filter'
-                    onChange={event => (handleChangeFilter(event.target.value))}
-                    width={'100%'}
-                    className={classes.freeInput}
-                    inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                    variant={'standard'}
-                    autoComplete='off'
-                  />
-                </Box>
-                {(filter.foreign_key || filter.statusNot || filter.status) &&
                   <Box display='flex'
-                    width={'100%'}
                     marginLeft={2}
-                    marginRight={2}
-                    marginBottom={0.5}
-                    paddingBottom={2}
+                    paddingRight={2}
                     borderRadius={'32px'}
                     border={1}
                     borderColor={'black'}
-                    flexDirection='column' key={'midRight'}
+                    paddingBottom={0.5}
+                    paddingLeft={2}
+                    alignItems={'center'}
+                    marginBottom={0.5}
+                    flexBasis={'content'}
+                    flexDirection='row' width='85%' key={'midLeft'}
                   >
-                    <Box display='flex' alignItems={'center'} flexDirection='row' justifyContent={'space-between'}>
-                      <Typography
-                        className={classes.title}
-                        style={AVATextStyle({ size: 1, bold: true, margin: { bottom: 0.5 } })}
-                      >
-                        {'Filters'}
-                      </Typography>
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        onChange={handleStatusNot}
-                        control={
-                          <Checkbox
-                            disableRipple
-                            checked={!!reactData.filter.statusNot}
-                            className={classes.radioButton}
-                            size='small'
-                          />}
-                        label={
-                          <Typography
-                            className={classes.radioText}
-                          >
-                            {'Not...'}
-                          </Typography>}
-                      />
-                    </Box>
-                    {filter.foreign_key &&
-                      <Typography
-                        className={classes.subTitle}
-                        style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
-                      >
-                        {`For ${makeDate(filter.foreign_key).absolute}`}
-                      </Typography>
-                    }
-                    <Box display='flex' flexDirection='column'>
-                      {reactData.statusList.map((this_status, this_status_index) => (
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          onChange={() => {
-                            handleChangeEmailPrivacy(this_status.value);
-                          }}
-                          key={`status_selector_${this_status_index}`}
-                          id={`status_selector_${this_status_index}`}
-                          control={
-                            <Checkbox
-                              disableRipple
-                              checked={!!reactData.filter.fields.status[this_status.value]}
-                              className={classes.radioButton}
-                              size='small'
-                            />}
-                          label={
-                            <Typography
-                              className={classes.radioText}
-                            >
-                              {titleCase(this_status.display)}
-                            </Typography>}
-                        />
-                      ))}
-                    </Box>
+                    <SearchIcon size="small" />
+                    <TextField
+                      id='List Filter'
+                      defaultValue={reactData.filterTextLower}
+                      onChange={event => (handleChangeFilter(event.target.value))}
+                      width={'100%'}
+                      className={classes.freeInput}
+                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                      variant={'standard'}
+                      autoComplete='off'
+                    />
                   </Box>
-                }
-              </Box>
+                  {(filter.foreign_key || filter.statusNot || filter.status) &&
+                    <Box display='flex'
+                      width={'100%'}
+                      marginLeft={2}
+                      marginRight={2}
+                      marginBottom={0.5}
+                      paddingBottom={2}
+                      borderRadius={'32px'}
+                      border={1}
+                      borderColor={'black'}
+                      flexDirection='column' key={'midRight'}
+                    >
+                      <Box display='flex' alignItems={'center'} flexDirection='row' justifyContent={'space-between'}>
+                        <Typography
+                          className={classes.title}
+                          style={AVATextStyle({ size: 1, bold: true, margin: { bottom: 0.5 } })}
+                        >
+                          {'Filters'}
+                        </Typography>
+                        {filter.showNotBox &&
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            onChange={handleStatusNot}
+                            control={
+                              <Checkbox
+                                disableRipple
+                                checked={!!reactData.filter.statusNot}
+                                className={classes.radioButton}
+                                size='small'
+                              />}
+                            label={
+                              <Typography
+                                className={classes.radioText}
+                              >
+                                {'Not...'}
+                              </Typography>}
+                          />
+                        }
+                      </Box>
+                      {filter.foreign_key &&
+                        <Typography
+                          className={classes.subTitle}
+                          style={AVATextStyle({ size: 1, margin: { top: 0, left: 1 } })}
+                        >
+                          {`For ${makeDate(filter.foreign_key).absolute}`}
+                        </Typography>
+                      }
+                      <Box display='flex' flexDirection='row' flexWrap='wrap'>
+                        {reactData.statusList.map((this_status, this_status_index) => (
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            onChange={() => {
+                              handleChangeStatusSelection(this_status.value);
+                            }}
+                            key={`status_selector_${this_status_index}`}
+                            id={`status_selector_${this_status_index}`}
+                            control={
+                              <Checkbox
+                                disableRipple
+                                checked={!!reactData.filter.fields.status[this_status.value.toLowerCase()]}
+                                className={classes.radioButton}
+                                size='small'
+                              />}
+                            label={
+                              <Typography
+                                className={classes.radioText}
+                              >
+                                {titleCase(this_status.display)}
+                              </Typography>}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  }
+                </Box>
+              }
             </Box>
           </Box>
 
           {/* Main List */}
           <Paper
             component={Box}
-            variant='outlined'
             overflow='auto'
+            elevation={0}
+            pt={3}
+            pb={2}
             square
           >
             <List>
@@ -1257,7 +1402,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                       style={AVATextStyle({ size: 1.5, bold: true })}
                                       className={classes.firstName}
                                     >
-                                      {`${this_item.workData.requestor_name} ${this_item.workData.requestor_location ? '(' + this_item.workData.requestor_location + ')' : ''}`}
+                                      {`${this_item.workData.requestor_name} (${this_item?.original_request?.textInput['Room Number'] || this_item.workData.requestor_location})`}
                                     </Typography>
                                   }
                                   {this_item.workData.updated &&
@@ -1417,21 +1562,26 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           }
           {reactData.selectStatus &&
             <SelectFromList
-              prompt={'Select the new Status'}
+              prompt={['Status', 'Notes', 'Notifications']}
               selectionsList={reactData.statusList.filter(s => {
                 return !s.hasOwnProperty('selectable') || s.selectable;
               })}
               options={{
-                'multiSelect': false
+                'multiSelect': false,
+                'alreadyChecked': commonStatus(),
+                'allowNote': 'Add a note',
+                'allowNotify': getRequestors()
               }}
               onCancel={() => {
                 updateReactData({
                   selectStatus: false
                 }, true);
               }}
-              onSelect={async (selectedStatus) => {
+              onSelect={async (response) => {
                 await handleUpdates({
-                  newStatus: selectedStatus.value
+                  newStatus: ((response.selections && (response.selections.length > 0)) ? response.selections[0].value : null),
+                  enteredNote: response.enteredNote,
+                  notify: response.notify
                 });
                 updateReactData({
                   selectStatus: false
@@ -1521,6 +1671,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
           {/* Buttons */}
           {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            (!options.viewMode) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
@@ -1657,6 +1808,38 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {reactData.isMobile ? null : 'Print'}
                     </Button>
                   }
+                </Box>
+              </Box>
+            </DialogActions>
+          }
+          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            (options.viewMode) &&
+            // Command Area
+            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+              <Box display='flex' flexDirection='column'>
+                <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
+                    onClick={() => {
+                      onClose('exit');
+                    }}
+                    startIcon={<CloseIcon size="small" />}
+                  >
+                    {reactData.isMobile ? 'Exit' : 'Close'}
+                  </Button>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
+                    onClick={() => {
+                      exitModule('continue');
+                    }}
+                    startIcon={<DoneAllIcon size="small" />}
+                  >
+                    {reactData.isMobile ? 'Add New' : 'Add a New Request'}
+                  </Button>
                 </Box>
               </Box>
             </DialogActions>

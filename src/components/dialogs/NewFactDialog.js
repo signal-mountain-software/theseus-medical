@@ -159,7 +159,7 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     withNext = false;
     onSelected(fact.valid_values_list[3]);
     open = false;
-    onClose();
+    onClose('next');
   };
 
   /*
@@ -242,12 +242,12 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
     return badData;
   };
 
-  const handleClose = () => {
+  function handleClose(response) {
     if (newFact.value.recordingStatus === 'started') {
       enqueueSnackbar(`Warning!  You'll lose everything!  AVA is still recording.  Press the square button to stop recording, then Cancel or Save.`, { variant: 'warning', persist: true });
     }
     else {
-      onClose();
+      onClose(response);
     }
   };
 
@@ -481,7 +481,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
             observationKey={fact.observation_key}
             onError={disableSave}
             onSave={handleSave}
-            onClose={handleClose}
+            onClose={(response) => {
+              handleClose(response);
+            }}
           />
         ) : null}
       </DialogContent>
@@ -490,7 +492,9 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
           className={AVAClass.AVAButton}
           style={{ backgroundColor: 'red', color: 'white' }}
           size='small'
-          onClick={handleClose}
+          onClick={(response) => {
+            handleClose(response);
+          }}
         >
           {!factIOClass ? 'Done' : 'Cancel'}
         </Button>

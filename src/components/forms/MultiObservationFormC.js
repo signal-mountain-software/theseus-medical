@@ -9,6 +9,8 @@ import { putServiceRequest, getServiceRequests, updateServiceRequest, formatServ
 import PersonFilter from './PersonFilter';
 import { useSnackbar } from 'notistack';
 
+import SignatureCanvas from 'react-signature-canvas';
+
 import useSession from '../../hooks/useSession';
 import TextField from '@material-ui/core/TextField';
 
@@ -99,7 +101,7 @@ const useStyles = makeStyles(theme => ({
     width: '100%',
   },
   page: {
-    height: 950,
+    // height: 950,
   },
   buttonArea: {
     maxWidth: 1000,
@@ -400,7 +402,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         handleTextAll(event.target.value, reactData.columnList[columnNumber].rowDetails[rowNumber].text);
       }
       else {
-        if (reactData.columnList[columnNumber].rowDetails[rowNumber].obo_line) {
+        if ((reactData.columnList[columnNumber].rowDetails[rowNumber].obo_line)
+          || (reactData.columnList[columnNumber].rowDetails[rowNumber].input.toLowerCase() === 'obo')) {
           handleOBOText(event.target.value, columnNumber, rowNumber);
         }
         else {
@@ -418,6 +421,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     setForceRedisplay(!forceRedisplay);
   };
+
+  const signatureRef = React.useRef(null);
 
   const hiddenFileInput = React.useRef(null);
   const handleFileUpload = event => {
@@ -587,6 +592,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     else {
       inactiveGroup = [inactiveAssignment];
     }
+    let prohibitedGroups = inactiveGroup;
+    if (defaultValue.obo_prohibited) {
+      let prohibitedList = makeArray(defaultValue.obo_prohibited);
+      prohibitedList.forEach(p => {
+        prohibitedGroups.push(...makeArray(state?.session?.group_assignments?.[p]));
+      });
+    };
     let guestAssignment = state?.session?.group_assignments?.guest;
     let guestGroups = [];
     if (!guestAssignment) {
@@ -599,57 +611,90 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       guestGroups = [guestAssignment];
     }
     let typed_in_words = vText.toLowerCase().split(/\s+/);
+    let hits = [];
     let hitCount = [];
     let errorText = null;
-    let hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
-      // if (!(['view', 'proxy', 'full'].includes(accessList_person.access))) {
-      //   return false;
-      // }
-      if (inactiveGroup.includes(accessList_person.member_of)) {
-        return false;
-      }
-      // if any word in the display_name matches a typed in word, it is a "hit"
-      let wordsMatched = accessList_person.display_name.toLowerCase().split(/\s+/).reduce((total_matches, name_word) => {  // for every word in the display_name...
-        if (typed_in_words.some(typed_in_word => {   // check for any typed in word that exactly matches
-          return (typed_in_word === name_word);
-        })) {
-          total_matches++;
-        };
-        return total_matches;
-      }, 0);
-      if (wordsMatched > 0) {
-        hitCount.push(wordsMatched);
-        return true;
-      }
-      return false;
-    });
     let winner = false;
     let winner_at;
-    if (hits.length === 0) {
-      errorText = `Nobody found to match that name`;
+    let winnerList = [];
+    if (!state?.accessList?.[state.session.client_id]?.list) {
+      errorText = `AVA is still loading names.  Please wait a few seconds and try again.`;
     }
-    else if (hits.length === 1) {
-      winner = true;
-      winner_at = 0;
-    }
-    else if (hits.length > 1) {
-      // is there a clear winner in the hit_count array?
-      let maxHits = 0;
-      let maxHitCount = 0;
-      hitCount.forEach((h, x) => {
-        if (h > maxHits) {
-          winner_at = x;
-          winner = true;
-          maxHits = h;
-          maxHitCount = 1;
+    else {
+      hits = state.accessList[state.session.client_id].list.filter(accessList_person => {
+        if (prohibitedGroups.includes(accessList_person.member_of)) {
+          return false;
         }
-        else if (h === maxHits) {
-          winner = false;
-          maxHitCount++;
+        // if any word in the display_name matches a typed in word, it is a "hit"
+        let wordsMatched = accessList_person.display_name.toLowerCase().split(/\s+/).reduce((total_matches, name_word) => {  // for every word in the display_name...
+          if (typed_in_words.some(typed_in_word => {   // check for any typed in word that exactly matches
+            return (typed_in_word === name_word);
+          })) {
+            total_matches++;
+          };
+          return total_matches;
+        }, 0);
+        if (wordsMatched > 0) {
+          hitCount.push(wordsMatched);
+          return true;
         }
+        return false;
       });
-      if (!winner) {
-        errorText = `AVA found ${maxHitCount} people to match that name.`;
+      if (hits.length === 0) {
+        errorText = `Nobody found to match that name`;
+      }
+      else if (hits.length === 1) {
+        winner = true;
+        winner_at = 0;
+        let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+        winnerList = [{
+          person_id: hits[winner_at].id,
+          dName: newDName,
+          display: `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`,
+          type: 'checkbox'
+        }];
+      }
+      else if (hits.length > 1) {
+        // is there a clear winner in the hit_count array?
+        let maxHits = 0;
+        let maxHitCount = 0;
+        hitCount.forEach((h, x) => {
+          if (h > maxHits) {
+            winner_at = x;
+            winner = true;
+            maxHits = h;
+            maxHitCount = 1;
+            let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
+            let dText = `${newDName}${guestGroups.includes(hits[winner_at].member_of) ? ' (Guest)' : ' (' + hits[winner_at].location + ')'}`;
+            winnerList = [{
+              default: dText,
+              max_allowed: 1,
+              min_required: 1,
+              option: [{
+                person_id: hits[winner_at].id,
+                location: hits[winner_at].location,
+                dName: newDName,
+                display: dText,
+                type: 'checkbox'
+              }],
+            }];
+          }
+          else if (h === maxHits) {
+            winner = false;
+            maxHitCount++;
+            let newDName = `${hits[x].name?.first} ${hits[x].name?.last}`.trim() || hits[x].display_name;
+            winnerList[0].option.push({
+              person_id: hits[x].id,
+              location: hits[x].location,
+              dName: newDName,
+              display: `${newDName}${guestGroups.includes(hits[x].member_of) ? ' (Guest)' : ' (' + hits[x].location + ')'}`,
+              type: 'checkbox'
+            });
+          }
+        });
+        if (!winner) {
+          winnerList[0].title = `AVA found ${maxHitCount} people to match that name.`;
+        }
       }
     }
     let targetColumns = [];
@@ -663,6 +708,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     targetColumns.forEach(c => {
       reactData.columnList[c].rowDetails[rowNumber].error = '';
+      reactData.columnList[c].rowDetails[rowNumber].qualData = [];
+      reactData.columnList[c].rowDetails[rowNumber].qualSelections = {};
       if (winner) {
         reactData.columnList[c].person_id = hits[winner_at].id;
         let newDName = `${hits[winner_at].name?.first} ${hits[winner_at].name?.last}`.trim() || hits[winner_at].display_name;
@@ -673,9 +720,33 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           vText += ` (Guest)`;
         }
         resetTitleName();
+        reactData.columnList[c].rowDetails.forEach((checkRow, r) => {
+          if (checkRow.location_line) {
+            reactData.columnList[c].rowDetails[r].textValue = hits[winner_at].location || '';
+          }
+        });
       }
       else if (errorText) {
         reactData.columnList[c].rowDetails[rowNumber].error = errorText;
+      }
+      else {
+        reactData.columnList[c].person_id = winnerList[0].option[0].person_id;
+        reactData.columnList[c].display_name = winnerList[0].option[0].dName;
+        reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(winnerList[0].option[0].dName.split(/\s+/).splice(-3))));
+        resetTitleName();
+        reactData.columnList[c].rowDetails[rowNumber].isChecked = true;
+        reactData.columnList[c].rowDetails[rowNumber].qualData = winnerList;
+        reactData.columnList[c].rowDetails[rowNumber].qualSelections = {
+          [winnerList[0].title]: {
+            [winnerList[0].option[0].display]: true
+          }
+        };
+        vText = winnerList[0].option[0].dName;
+        reactData.columnList[c].rowDetails.forEach((checkRow, r) => {
+          if (checkRow.location_line) {
+            reactData.columnList[c].rowDetails[r].textValue = winnerList[0].option[0].location || '';
+          }
+        });
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
     });
@@ -869,6 +940,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let myDefaultColumns = deepCopy(reactData.defaultColumns);
     for (let c = 0; c < myDefaultColumns.length; c++) {              // for each column
       let column = myDefaultColumns[c];
+      for (let dKey in column.defaultValues) {
+        if (column.defaultValues[dKey] === '[person.location]') {
+          myDefaultColumns[c].defaultValues[dKey] = this_person.location;
+        }
+      }
+      myDefaultColumns[c].rowDetails.forEach((dRow, r) => {
+        if (dRow.textValue === '[person.location]') {
+          myDefaultColumns[c].rowDetails[r].textValue = this_person.location;
+        }
+      });
       myDefaultColumns[c].person_id = this_id;
       myDefaultColumns[c].column_id = `${column.column_id}_${this_id}`;
       myDefaultColumns[c].display_name = this_name;
@@ -918,6 +999,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if ((existingRequest.requestToUse?.original_request.hasOwnProperty('textInput'))
           && (existingRequest.requestToUse?.original_request?.options?.hasOwnProperty(selection))) {
           this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
+        }
+        if ((this_column.rowDetails[rowNumber].input === 'signature')
+          && (existingRequest.requestToUse.original_request.hasOwnProperty('images') || existingRequest.requestToUse?.original_request.hasOwnProperty('image_location'))) {
+          if (existingRequest.requestToUse.original_request.image_location?.[this_column.rowDetails[rowNumber].text]) {
+            
+            updateReactData({
+              storedSignature: existingRequest.requestToUse?.original_request.image_location[this_column.rowDetails[rowNumber].text]
+            }, false);
+          }
+          else {
+            updateReactData({
+              storedSignature: existingRequest.requestToUse?.original_request.images[this_column.rowDetails[rowNumber].text]
+            }, false);
+          }
         }
       }
     };
@@ -979,7 +1074,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         case 'use': {
           let lastRec = records2Update.push(existingRequest[0]) - 1;
           records2Update[lastRec].history.unshift(`Imported by ${state.session.user_id} on ${rTime.oaDate}`);
-          //  records2Update[lastRec].last_status = 'Imported';
           records2Update[lastRec].last_update = rTime.timestamp;
           setRecords2Update(records2Update);
           return {
@@ -1012,25 +1106,25 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               size='small'
               onClick={() => { response = 'use'; resolve(response); }}
             >
-              Use the order
+              Use the existing one
             </Button>
             <Button className={AVAClass.AVAButton}
               style={{ backgroundColor: 'red', color: 'white' }}
               size='small'
               onClick={() => { response = 'delete'; resolve(response); }}
             >
-              Delete the order
+              Delete the current one and replace it with a this one
             </Button>
             <Button className={AVAClass.AVAButton}
               style={{ backgroundColor: 'blue', color: 'white' }}
               size='small'
               onClick={() => { response = 'keep'; resolve(response); }}
             >
-              Keep the order and create another one, too
+              Keep this one and create another one, too
             </Button>
           </React-Fragment>
         );
-        let phrase = `AVA found an existing order for ${pKey.requestor_name}`;
+        let phrase = `${state.session.service_request_types[pKey.request_type]?.description || 'This'} already exists for ${pKey.requestor_name}`;
         if (pKey.foreign_key) {
           let fKdate = makeDate(pKey.foreign_key);
           if (!fKdate.error) {
@@ -1064,34 +1158,54 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let selections = [];
       let options = {};
       let textInput = {};
+      let images = {};
+      let image_location = {};
       let oBo;
       let this_column = pData[columnNumber];
       if (this_column.person_id) {
         oBo = await makeName(this_column.person_id);
       }
       else {
-        oBo = await makeName(reactData.defaultPerson ? reactData.defaultPerson.person_id : state.patient);
+        oBo = await makeName(reactData.defaultPerson ? reactData.defaultPerson.person_id : state.patient.person_id);
       }
       for (let rowNumber = 0; rowNumber < this_column.rowDetails.length; rowNumber++) {
         let this_row = this_column.rowDetails[rowNumber];
         if (this_row.isChecked) {
           let choices_list = [];
-          for (let this_option in this_row.qualSelections) {
-            for (let this_choice in this_row.qualSelections[this_option]) {
-              if (!options.hasOwnProperty(this_row.text)) {
-                options[this_row.text] = {};
-              }
-              if (!options[this_row.text].hasOwnProperty(this_option)) {
-                options[this_row.text][this_option] = {};
-              }
-              options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
-              if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
-                if (this_row.qualSelections[this_option][this_choice]) {
-                  choices_list.push(this_choice);
+          if (this_row.input === 'signature') {
+            let s3Response = await s3
+              .upload({
+                Bucket: 'theseus-medical-storage',
+                Key: `${this_column.person_id || reactData.defaultPerson.person_id || state.patient.person_id}_signature`,
+                Body: this_row.image,
+                ACL: 'public-read-write',
+                ContentType: 'image/png'
+              })
+              .promise()
+              .catch(err => {
+                enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+              });
+            image_location[this_row.text] = s3Response.Location;
+            images[this_row.text] = this_row.image;
+          }
+          else {
+            for (let this_option in this_row.qualSelections) {
+              for (let this_choice in this_row.qualSelections[this_option]) {
+                if (!options.hasOwnProperty(this_row.text)) {
+                  options[this_row.text] = {};
                 }
-              }
-              else {
-                choices_list.push(this_row.qualSelections[this_option][this_choice]);
+                if (!options[this_row.text].hasOwnProperty(this_option)) {
+                  options[this_row.text][this_option] = {};
+                }
+                options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
+                if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
+                  if (this_row.qualSelections[this_option][this_choice]) {
+                    choices_list.push(this_choice);
+                  }
+                }
+                else {
+                  choices_list.push(this_row.qualSelections[this_option][this_choice]);
+                }
               }
             }
           }
@@ -1103,7 +1217,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         if (this_row.textValue) {
           // special Values/
-          if (this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text)) {
+          if ((this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text))
+            || (this_row.input === 'obo')) {
             oBo = this_row.textValue;
           }
           else {
@@ -1131,7 +1246,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           request: {
             selections,
             options,
-            textInput
+            textInput,
+            image_location,
+            images
           },
           messaging: svc_messaging,
           local_key
@@ -1139,7 +1256,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if (fact?.value?.freeText?.assign_to) {
           putSR.assign_to = fact?.value?.freeText?.assign_to;
           let this_name = await getPerson(fact?.value?.freeText?.assign_to, 'name');
-          putSR.history.unshift(`Auto-Assigned to ${this_name}`)
+          putSR.history.unshift(`Auto-Assigned to ${this_name}`);
           if (validRequestStatus(this_column.requestType, 'assigned')) {
             putSR.requestStatus = 'assigned';
           }
@@ -1159,7 +1276,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       client_id: pClient,
       client_name: state.session.client_name
     };
-    if (fact.messaging) {
+    if (fact.messaging && (fact.messaging?.format?.method !== 'hold')) {
       let factMessagingList = [];
       if (Array.isArray(fact.messaging)) {
         factMessagingList.push(...fact.messaging);
@@ -1168,7 +1285,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         factMessagingList.push(fact.messaging);
       }
       for (let m = 0; m < factMessagingList.length; m++) {
-
         if (!factMessagingList[m].format.hasOwnProperty('logo') || factMessagingList[m].format.logo) {
           formatCallObj.logo = state.session.client_logo;
           formatCallObj.logo_dimensions = state.session.logo_dimensions;
@@ -1279,6 +1395,16 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let columnName = columnUniqueName(this_column).string;
       /*  Check for errors */
       this_column.rowDetails.forEach((this_row, row_number) => {
+        if (this_row.input === 'signature') {
+          if (signatureRef.current.isEmpty() && this_row.required) {
+            this_row.textValue = false;
+          }
+          else {
+            // reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.toDataURL('image/png');
+            reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
+            this_row.textValue = 'Signature captured';
+          }
+        }
         if (this_row.required && !this_row.textValue) {
           confirmStatus = 'error';
           if (pData.length > 1) {
@@ -1669,7 +1795,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       </Box>
                     }
                     { /* Text prompt line for this row - headers don't have this */}
-                    {this_item.input &&
+                    {this_item.input && (this_item.input !== 'signature') && (this_item.input !== 'docLines') &&
                       <TextField
                         className={classes.freeInput}
                         variant={'standard'}
@@ -1695,6 +1821,87 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         value={this_item.textValue || ''}
                       />
                     }
+                    {this_item.input && (this_item.input === 'docLines') &&
+                      <div
+                        dangerouslySetInnerHTML={{ '__html': this_item.text }}
+                      />
+                    }
+                    {this_item.input && (this_item.input === 'signature') &&
+                      <Box
+                        display='flex'
+                        flexDirection='column'
+                        key={`sigbox_${selectedColumn}.${this_index}`}
+                        id={`sigbox_${selectedColumn}.${this_index}`}
+                        justifyContent='flex-start'
+                        alignItems='flex-start'
+                        width='97%'
+                      >
+                        <SignatureCanvas
+                          ref={signatureRef}
+                          canvasProps={{
+                            style: {
+                              backgroundColor: 'beige',
+                              width: '35%',
+                              marginLeft: '10px',
+                              marginRight: '10px',
+                              marginTop: '2px',
+                              height: '88px'
+                            }
+                          }}
+                        />
+                        <Typography
+                          key={`sigboxtxt_${selectedColumn}.${this_index}`}
+                          id={`sigboxtxt_${selectedColumn}.${this_index}`}
+                          style={AVATextStyle({ size: 0.6, margin: { left: 1, bottom: 0.5 } })}
+                        >
+                          {this_item.text}
+                        </Typography>
+                        <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+                          {signatureRef.current && !signatureRef.current.isEmpty() &&
+                            <Button
+                              className={AVAClass.AVAMicroButton}
+                              style={{ backgroundColor: 'white', color: 'red' }}
+                              size='small'
+                              onClick={() => {
+                                signatureRef.current.clear();
+                                setForceRedisplay(!forceRedisplay);
+                              }}
+                            >
+                              {'Clear'}
+                            </Button>
+                          }
+                          {reactData.storedSignature &&
+                            <Button
+                              className={AVAClass.AVAMicroButton}
+                              style={{ backgroundColor: 'lightgreen', color: 'black', margin: { bottom: 0 } }}
+                              size='small'
+                              onClick={async () => {
+                                signatureRef.current.clear();
+                                var params = {
+                                  Bucket: 'theseus-medical-storage',
+                                  Key: reactData.storedSignature.split('/').pop()
+                                };
+                                let data = await s3
+                                  .getObject(params)
+                                  .promise()
+                                  .catch(err => {
+                                    console.log(`error at getS3Object is`, err);
+                                  });
+                                if (data) {
+                                  let s64 = data.Body.toString("base64");
+                                  console.log(s64);
+                                  let b64 = 'data:image/png;base64,' + data.Body.toString("base64");
+                                  signatureRef.current.fromDataURL(b64);
+                                }                                
+                                setForceRedisplay(!forceRedisplay);
+                              }}
+                            >
+                              {'Use Existing'}
+                            </Button>
+                          }
+                        </Box>
+                      </Box>
+                    }
                   </Box>
                   {this_item.isChecked && this_item.desc &&
                     <Typography
@@ -1707,7 +1914,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   }
                   {this_item.isChecked
                     && this_item.qualData
-                    && this_item.qualData.map((qR, qRndx) => (
+                    && makeArray(this_item.qualData).map((qR, qRndx) => (
                       <Box
                         key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
                         id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
@@ -1754,6 +1961,28 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       size="small"
                                       onClick={() => {
                                         optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
+                                        if (reactData.columnList[selectedColumn].rowDetails[this_index].obo_line) {
+                                          console.log('There I am Gary!');
+                                          // which qualSelection is true?
+                                          let allPossibilitiesObj = Object.values(reactData.columnList[selectedColumn].rowDetails[this_index].qualSelections)[0];
+                                          let selectedOBOkey = Object.keys(allPossibilitiesObj).find((k) => {
+                                            return allPossibilitiesObj[k];
+                                          });
+                                          let allQualsList = reactData.columnList[selectedColumn].rowDetails[this_index].qualData[0].option;
+                                          let qualPicked = allQualsList.findIndex((i) => {
+                                            return (i.display === selectedOBOkey);
+                                          });
+                                          reactData.columnList[selectedColumn].person_id = allQualsList[qualPicked].person_id;
+                                          reactData.columnList[selectedColumn].display_name = allQualsList[qualPicked].dName;
+                                          reactData.columnList[selectedColumn].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(allQualsList[qualPicked].dName.split(/\s+/).splice(-3))));
+                                          resetTitleName();
+                                          reactData.columnList[selectedColumn].rowDetails[this_index].textValue = titleCase(allQualsList[qualPicked].dName);
+                                          reactData.columnList[selectedColumn].rowDetails.forEach((checkRow, r) => {
+                                            if (checkRow.location_line) {
+                                              reactData.columnList[selectedColumn].rowDetails[r].textValue = allQualsList[qualPicked].location || '';
+                                            }
+                                          });
+                                        }
                                         updateReactData({
                                           columnList: reactData.columnList
                                         }, true);
@@ -1880,7 +2109,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             setMorePeople(false);
           }}
           allowRandom={false}
-          multiSelect={true}
+          multiSelect={(defaultValue.selectOne ? !defaultValue.selectOne : true)}
           returnValue={'id'}
         />
       }
@@ -1929,7 +2158,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           confirmText={'Save/Send'}
           onCancel={() => { setConfirmStatus(''); }}
           onConfirm={async () => {
-            await sendRequests(reactData.columnList);
+            if (!reactData.lockSend) {
+              updateReactData(
+                { lockSend: true },
+                false
+              );
+              await sendRequests(reactData.columnList);
+            }
             onSave();
           }}
         />

@@ -8,8 +8,7 @@ import NewCalendarEvent from '../dialogs/NewCalendarEvent';
 import MessageForm from '../forms/MessageForm';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
-import MultiObservationForm from '../forms/MultiObservationForm';
-import MultiObservationFormB from '../forms/MultiObservationFormB';
+
 import MultiObservationFormC from '../forms/MultiObservationFormC';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
 import RequestDashboard from '../dialogs/RequestDashboard';
@@ -362,33 +361,7 @@ export default ({
         />
       );
     case 'multi_observation':
-      return (
-        <MultiObservationForm
-          fact={newFact}
-          factName={factName}
-          defaultValue={defaultValue}
-          prompt={message}
-          pClient={session.client_id}
-          qualifiers={qualifierTable}
-          listValues={values}
-          onSave={onSave}
-          onClose={onClose}
-        />
-      );
     case 'multi_observation_type2':
-      return (
-        <MultiObservationFormB
-          fact={newFact}
-          factName={factName}
-          defaultValue={defaultObject}
-          prompt={message}
-          pClient={session.client_id}
-          qualifiers={qualifierTable}
-          listValues={values}
-          onSave={onSave}
-          onClose={onClose}
-        />
-      );
     case 'multi_observation_type3':
       return (
         <MultiObservationFormC
@@ -423,9 +396,11 @@ export default ({
         <RequestDashboard
           session={session}
           title={factName}
-          filter={Object.assign(filter, defaultObject, {options: null})}
+          filter={Object.assign(filter, defaultObject, { options: null })}
           options={defaultObject.options}
-          onClose={onClose}
+          onClose={(response) => {
+              onClose(response);
+          }}
         />
       );
     }
@@ -528,6 +503,7 @@ export default ({
         />
       );
     case 'carousel':
+    case 'in_home':
       return (
         <AVACarousel
           onClose={onSave}

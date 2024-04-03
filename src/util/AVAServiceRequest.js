@@ -109,15 +109,15 @@ export async function getServiceRequests(body) {
       let rTarray = makeArray(rT);
       if (rTarray.length === 1) {
         qQ.FilterExpression = 'request_type = :rT';
-        qQ.ExpressionAttributeValues = { ':c': body.client_id, ':rT': rTarray[0] };
+        qQ.ExpressionAttributeValues[':rT'] = rTarray[0];
       }
       else {
-        qQ.FilterExpression = '(request_type = :t';
-        qQ.ExpressionAttributeValues = { ':c': body.client_id, ':t': rTarray[0] };
+        qQ.FilterExpression = '(request_type = :rT';
+        qQ.ExpressionAttributeValues[':rT'] = rTarray[0];
         if (rTarray.length > 1) {
           for (let x = 1; x < rTarray.length; x++) {
-            qQ.FilterExpression += ` or request_type = :t${x}`;
-            qQ.ExpressionAttributeValues[`:t${x}`] = rTarray[x];
+            qQ.FilterExpression += ` or request_type = :rT${x}`;
+            qQ.ExpressionAttributeValues[`:rT${x}`] = rTarray[x];
           };
         }
         qQ.FilterExpression += ')';
@@ -172,8 +172,8 @@ export async function getServiceRequests(body) {
       });
     if (recordExists(qR)) {
       unSortedList = unSortedList.concat(qR.Items);
-    }
-    qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
+      qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
+    }   
     loopCount++;
   } while (qQ.ExclusiveStartKey && (loopCount < 10) && (unSortedList.length < (body.limit || 100)));
   if (!sortInstructions.sort) {
@@ -249,19 +249,19 @@ export async function putServiceRequest(body) {
   if (body.attachments && (body.attachments.length > 0)) {
     serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; });
   }
+  let rTime = makeDate(new Date().getTime());
+  let rMsg;
   if (body.messaging) {
-    let preparedMessages = await prepareMessage(body, serviceRequestRec);
-    if (preparedMessages.length > 0) {
-      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
-      let rTime = makeDate(new Date().getTime());
-      let rMsg;
-      serviceRequestRec.messages = preparedMessages;
-      serviceRequestRec.last_update = rTime.timestamp;
-      if (body.messaging?.format?.method === 'hold') {
-        serviceRequestRec.last_status = 'Prepared & Held';
-        rMsg = `Held for future processing ${rTime.oaDate}`;
-      }
-      else {
+    if (body.messaging?.format?.method === 'hold') {
+      serviceRequestRec.last_status = 'Prepared & Held';
+      rMsg = `Held for future processing ${rTime.oaDate}`;
+    }
+    else {
+      let preparedMessages = await prepareMessage(body, serviceRequestRec);
+      if (preparedMessages.length > 0) {
+        preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
+        serviceRequestRec.messages = preparedMessages;
+        serviceRequestRec.last_update = rTime.timestamp;
         let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
         if (!sendResults.sent) {
           serviceRequestRec.last_status = 'Failed to send';
@@ -271,11 +271,11 @@ export async function putServiceRequest(body) {
           // serviceRequestRec.last_status = 'Sent';
           rMsg = `Sent for processing ${rTime.oaDate}`;
         }
+        if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
+          serviceRequestRec.history.unshift(rMsg);
+        }
+        else { serviceRequestRec.history = [rMsg]; }
       }
-      if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
-        serviceRequestRec.history.unshift(rMsg);
-      }
-      else { serviceRequestRec.history = [rMsg]; }
     }
   }
   serviceRequestRec.composite_key = '';
@@ -283,8 +283,14 @@ export async function putServiceRequest(body) {
     serviceRequestRec.composite_key = serviceRequestRec.foreign_key + '%';
   }
   serviceRequestRec.composite_key += `${serviceRequestRec.request_type}%${serviceRequestRec.last_status}`;
-  cl({ 'adding ServiceRequestRec as': serviceRequestRec });
   let goodWrite = true;
+  if (serviceRequestRec.messages[0].hasOwnProperty('attachment_data')) {
+    serviceRequestRec.messages[0].htmlText = 'See attached';
+    serviceRequestRec.messages[0].messageText = 'See attached';
+    serviceRequestRec.messages[0].pdfInfo.data = null;
+    serviceRequestRec.original_request.images = null;
+  }
+  cl({ 'adding ServiceRequestRec as': serviceRequestRec });
   await dbClient
     .put({
       Item: serviceRequestRec,
@@ -358,6 +364,9 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
       };
     }
     let body = Object.assign({}, activityRec, serviceRequestRec, serviceRequestRec.original_request);
+    if (body.alternate_messaging && options.request_type && body.alternate_messaging.hasOwnProperty(options.request_type)) {
+      body.messaging = deepCopy(body.alternate_messaging[options.request_type]);
+    }
     if (body.messaging) {
       requestList.push(Object.assign({}, body, options));
     }
@@ -368,14 +377,20 @@ export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
         firstDoc: (x === 0),
         lastDoc: (x === (requestList.length - 1))
       };
-      requestList[x].overrideMethod = 'print';
+      // requestList[x].overrideMethod = 'print';
     });
   }
   let success = true;
   if (requestList.length > 0) {
     let preparedMessages = await prepareMessage(requestList);
     if (preparedMessages.length > 0) {
-      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${requestList[0].request_type || requestList[0].requestType}/${requestList[0].request_id || requestList[0].requestID}`; });
+      for (let x = 0; x < preparedMessages.length; x++) {
+        let this_message = preparedMessages[x];
+        this_message.thread_id = `svc_${requestList[0].request_type || requestList[0].requestType}/${requestList[0].request_id || requestList[0].requestID}`;
+        if (this_message.preferred_method === 'email') {
+          await sendMessages(this_message);
+        }
+      };
       return {
         success,
         preparedMessages,   // ***** RAY ***** this is where we could merge output to a single document for later printing
@@ -549,7 +564,8 @@ export function formatServiceRequestDetails(pInput) {
     this_request = {
       selections: [],
       options: {},
-      textInput: {}
+      textInput: {},
+      rowType: {}
     };
     pInput.rowDetails.forEach(row => {
       if (row.isChecked || row.textValue) {
@@ -557,6 +573,7 @@ export function formatServiceRequestDetails(pInput) {
         this_request.selections.push(selection);
         this_request.options[selection] = row.qualSelections;
         this_request.textInput[selection] = row.textValue;
+        this_request.rowType[selection] = row.input;
       }
     });
   }
@@ -607,7 +624,9 @@ export function formatServiceRequestDetails(pInput) {
       if (!requestDetailsObj[selection]) {
         requestDetailsObj[selection] = [];
       };
-      requestDetailsObj[selection].push(this_request.textInput[selection]);
+      if ((this_request.rowType[selection] !== 'obo') || (requestDetailsObj[selection].length === 0)) {
+        requestDetailsObj[selection].push(this_request.textInput[selection]);
+      }
     }
   }
   return requestDetailsObj;

@@ -1,9 +1,10 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda } from '../../util/AVAUtilities';
+import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda, deepCopy } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
+import { getActivity } from '../../util/AVAObservations';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
 import { AVATextStyle, AVADefaults, hexToRgb } from '../../util/AVAStyles';
 
@@ -1617,13 +1618,37 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             session={session}
             open={true}
             fromHome={false}
-            onClose={async (oopsieMessage = null) => {
-              oopsieMessage && (enqueueSnackbar(oopsieMessage, { variant: 'error' }));
-              setShowNewFactDialog(-1);
+            onClose={async (response) => {
               if (session?.url_parameters && ('activity' in session.url_parameters) && ('user' in session.url_parameters)) {
                 let jumpTo = window.location.href.replace('theseus', 'thankyou').split('?')[0];
                 jumpTo += `?user=${session.url_parameters.user}`;
                 window.location.replace(jumpTo);
+              }
+              else if ((['continue', 'next'].includes(response))
+                && (mainMenu[showNewFactDialog].raw_data.hasOwnProperty('nextActivity'))) {
+                let nextActivityList = makeArray(mainMenu[showNewFactDialog].raw_data.nextActivity);
+                let nextActivityRec;
+                if (isObject(nextActivityList[0])) {
+                  if (!nextActivityList[0].activity_code) {
+                    setShowNewFactDialog(-1);
+                  }
+                  else {
+                    let gotRec = await getActivity(state.session.client_id, nextActivityList[0].activity_code);
+                    // default values passed in through the nextActivity will drop in
+                    gotRec.default_value = Object.assign((gotRec.default_value || {}), nextActivityList[0].default_value);
+                    nextActivityRec = deepCopy(gotRec);
+                  }
+                }
+                else {
+                  nextActivityRec = await getActivity(state.session.client_id, nextActivityList[0]);
+                }
+                // the assign here "promotes" and default_value in the validation object up to the activityRec itself where getActivityDetails expects it to be
+                nextActivityRec.default_value = Object.assign({}, nextActivityRec.validation.default_value, nextActivityRec.default_value)
+                let gad_response = await getActivityDetail(nextActivityRec, state);
+                setSelected(gad_response.activityRec);
+              }
+              else {
+                setShowNewFactDialog(-1);
               }
             }}
             onSave={

@@ -16,7 +16,6 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import CloseIcon from '@material-ui/icons/Close';
 
 import List from '@material-ui/core/List';
-import ListItem from '@material-ui/core/ListItem';
 
 import { AVAclasses, AVATextStyle, AVATextVariableStyle, AVADefaults } from '../../util/AVAStyles';
 
@@ -36,13 +35,13 @@ const useStyles = makeStyles(theme => ({
     marginTop: '8vh'
   },
   freeInput: {
-    marginLeft: '25px',
-    marginRight: 2,
-    marginBottom: theme.spacing(2),
+    marginLeft: theme.spacing(2),
+    marginRight: 1,
+    marginBottom: 0,
     paddingLeft: 0,
     paddingRight: 0,
-    paddingBottom: theme.spacing(1),
-    width: '60%',
+    paddingBottom: 0,
+    width: '95%',
     verticalAlign: 'middle',
     fontSize: theme.typography.fontSize * 0.4,
   },
@@ -74,7 +73,7 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'flex-start',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
-    marginLeft: theme.spacing(2),
+    marginLeft: theme.spacing(6),
     marginRight: theme.spacing(1),
   },
   idText: {
@@ -113,6 +112,8 @@ export default ({
 
   const [reactData, setReactData] = React.useState({
     choiceList: selectionsList,
+    enteredNote: '',
+    requestor_checked: {}
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -128,12 +129,30 @@ export default ({
     }
   };
 
-  async function toggleCheck(pX) {
+  const handleChangeTextField = (vText) => {
+    updateReactData({
+      enteredNote: vText
+    }, true);
+  };
+
+  function toggleCheck(pX) {
     if (!reactData.choiceList[pX].checked) {
       reactData.choiceList[pX].checked = true;
+      if (!options.multiSelect) {
+        reactData.choiceList.forEach((c, x) => {
+          if (x !== pX) {
+            reactData.choiceList[x].checked = false;
+          }
+        });
+      }
     }
     else {
-      reactData.choiceList[pX].checked = false;
+      let somethingElseIsChecked = reactData.choiceList.some((c, x) => {
+        return ((x !== pX) && reactData.choiceList[x].checked);
+      });
+      if (somethingElseIsChecked) {
+        reactData.choiceList[pX].checked = false;
+      }
     }
     updateReactData({
       choiceList: reactData.choiceList
@@ -162,7 +181,7 @@ export default ({
   const buildList = async () => {
     reactData.choiceList.forEach((c, x) => {
       reactData.choiceList[x].checked = false;
-    })
+    });
     if (options.alreadyChecked) {
       let preCheck = makeArray(options.alreadyChecked);
       preCheck.forEach(valueToPreCheck => {
@@ -219,19 +238,21 @@ export default ({
           style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, width: '400px', bold: true, overflow: 'visible' })}
           id='scroll-dialog-title'
         >
-          {prompt}
+          {prompt[0]}
         </Typography>
         {/* Text Filter */}
-        <TextField
-          id='List Filter'
-          onChange={event => (handleChangeFilter(event.target.value))}
-          className={classes.freeInput}
-          helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
-          inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-          FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-          variant={'standard'}
-          autoComplete='off'
-        />
+        {options.allowFilter &&
+          <TextField
+            id='List Filter'
+            onChange={event => (handleChangeFilter(event.target.value))}
+            className={classes.freeInput}
+            helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+            inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+            FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+            variant={'standard'}
+            autoComplete='off'
+          />
+        }
       </React.Fragment>
       <Paper component={Box} overflow='auto' variant={'elevation'} elevation={0} mb={2}>
         <List>
@@ -242,16 +263,11 @@ export default ({
             ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
               <Paper
                 key={'person-list_' + x}
-                onClick={async () => {
-                  if (!options.multiSelect) {
-                    onSelect(listEntry);                    
+                onClick={() => {
+                  if (!toggling) {
+                    toggleCheck(x);
                   }
-                  else {
-                    if (!toggling) {
-                      toggleCheck(x);
-                    }
-                    toggling = false;
-                  }
+                  toggling = false;
                 }}
                 variant={'elevation'} elevation={0} overflow='auto' square
               >
@@ -265,9 +281,9 @@ export default ({
                     checked={(listEntry.checked ? true : false)}
                     disableRipple
                     key={'checkbox' + x}
-                    onClick={async () => {
+                    onClick={() => {
                       toggling = true;
-                      await toggleCheck(x);
+                      toggleCheck(x);
                     }}
                   />
                   {listEntry.image &&
@@ -292,19 +308,102 @@ export default ({
               </Paper>
             )
           ))}
-          {(rowsWritten === 0) && (reactData.choiceList.length > 0) &&
-            <ListItem
-              key={'person-list_new'}
-            >
-              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
-                <Typography style={AVATextStyle({ bold: true })}>
-                  {'No selections available'}
+          {options.allowNote &&
+            <React.Fragment>
+              {prompt[1] &&
+                <Typography
+                  style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, width: '400px', bold: true, overflow: 'visible' })}
+                  id='scroll-dialog-title'
+                >
+                  {prompt[1]}
                 </Typography>
+              }
+              <Box display='flex'
+                marginLeft={2}
+                marginTop={2}
+                paddingRight={0.5}
+                borderRadius={'32px'}
+                border={(reactData.enteredNote ? 1 : 0)}
+                borderColor={'black'}
+                paddingBottom={1}
+                paddingTop={1.5}
+                paddingLeft={0.5}
+                alignItems={'center'}
+                marginBottom={0.5}
+                flexBasis={'content'}
+                flexDirection='row' width='95%' key={'midLeft'}
+              >
+                <TextField
+                  className={classes.freeInput}
+                  variant={'standard'}
+                  key={`inputtextprompt_`}
+                  id={`inputtextprompt_`}
+                  helperText={options.allowNote}
+                  multiline
+                  inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                  onChange={event => {
+                    handleChangeTextField(event.target.value);
+                  }}
+                  FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                  autoComplete='off'
+                  value={reactData.enteredNote}
+                />
               </Box>
-            </ListItem>
+            </React.Fragment>
+          }
+          {options.allowNotify &&
+            <React.Fragment>
+              {(prompt[2] || prompt[1]) &&
+                <Typography
+                  style={AVATextStyle({ size: 1.3, margin: { top: 1.5, left: 2, right: 2 }, width: '400px', bold: true, overflow: 'visible' })}
+                  id='scroll-dialog-title'
+                >
+                  {(prompt[2] || prompt[1])}
+                </Typography>
+              }
+              <Paper
+                key={'notifyList'}
+                variant={'elevation'} elevation={0} overflow='auto' square
+              >
+                {Object.keys(options.allowNotify).map((notifyID, x) => (
+                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' className={classes.listItem}>
+                    <Checkbox
+                      edge='start'
+                      mr={1}
+                      checked={reactData.requestor_checked[notifyID] || false}
+                      disableRipple
+                      key={`checkbox_requestor_${x}`}
+                      onClick={() => {
+                        if (reactData.requestor_checked.hasOwnProperty[notifyID]) {
+                          reactData.requestor_checked[notifyID] = !reactData.requestor_checked[notifyID];
+                        }
+                        else {
+                          reactData.requestor_checked[notifyID] = true;
+                        }
+                        updateReactData({
+                          requestor_checked: reactData.requestor_checked
+                        }, true);
+                      }}
+                    />
+                    <Box
+                      display='flex'
+                      flexWrap='wrap'
+                      flexDirection='column'
+                      justifyContent='center'
+                      alignItems='flex-start'
+                      key={`checkbox_rtext_${x}`}
+                    >
+                      <Typography style={(AVATextVariableStyle(options.allowNotify[notifyID].name), { bold: true })}>
+                        {`${options.allowNotify[notifyID].name} ${(options.allowNotify[notifyID].count > 1) ? '(' + options.allowNotify[notifyID].count + ')' : ''}`}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}                
+              </Paper>
+            </React.Fragment>
           }
         </List>
-      </Paper>
+      </Paper >
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
           className={AVAClass.AVAButton}
@@ -317,16 +416,22 @@ export default ({
         >
           {'Close/Exit'}
         </Button>
-        {options.multiSelect && (rowsWritten > 0) &&
+        {(rowsWritten > 0) &&
           <Button
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'green', color: 'white' }}
             size='small'
             onClick={() => {
               onSelect(
-                reactData.choiceList.filter(c => {
-                  return c.checked;
-                })
+                {
+                  selections: (reactData.choiceList.filter(c => {
+                    return c.checked;
+                  }) || []),
+                  enteredNote: reactData.enteredNote,
+                  notify: [...Object.keys(reactData.requestor_checked).filter(k => {
+                    return reactData.requestor_checked[k]
+                  })]
+                }
               );
             }}
             startIcon={<CheckIcon fontSize="small" />}
@@ -335,6 +440,6 @@ export default ({
           </Button>
         }
       </DialogActions>
-    </Dialog>
+    </Dialog >
   );
 };
