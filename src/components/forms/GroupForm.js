@@ -4,7 +4,7 @@ import { lambda, cl, sentenceCase, switchActiveAccount, listFromArray, makeArray
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { getMemberList, addMember, getPublicGroupList, determineClass, getRole, getAllGroups, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
+import { getMemberList, addMember, getPublicGroupList, determineClass, getRole, getAllGroups, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import useSession from '../../hooks/useSession';
 
@@ -335,6 +335,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   };
 
   const handleRemoveGroupMember = async (pPerson, pIndex) => {
+    /*
     params.FunctionName = 'arn:aws:lambda:us-east-1:125549937716:function:GroupMemberMaintenance';
     params.Payload = JSON.stringify({
       action: "remove_person_from_group",
@@ -353,6 +354,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
           variant: 'error'
         });
       });
+    */
+    await removeMember(pPerson, pClient, pGroup);
     let tempMemberList = workingMemberList;
     tempMemberList.splice(pIndex, 1);
     setGroupMemberList(tempMemberList);
