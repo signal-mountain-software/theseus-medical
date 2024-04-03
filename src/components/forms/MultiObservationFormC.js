@@ -101,7 +101,7 @@ const useStyles = makeStyles(theme => ({
     width: '100%',
   },
   page: {
-   // height: 950,
+    // height: 950,
   },
   buttonArea: {
     maxWidth: 1000,
@@ -724,7 +724,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           if (checkRow.location_line) {
             reactData.columnList[c].rowDetails[r].textValue = hits[winner_at].location || '';
           }
-        })
+        });
       }
       else if (errorText) {
         reactData.columnList[c].rowDetails[rowNumber].error = errorText;
@@ -746,7 +746,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           if (checkRow.location_line) {
             reactData.columnList[c].rowDetails[r].textValue = winnerList[0].option[0].location || '';
           }
-        })
+        });
       }
       reactData.columnList[c].rowDetails[rowNumber].textValue = titleCase(vText);
     });
@@ -1000,6 +1000,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           && (existingRequest.requestToUse?.original_request?.options?.hasOwnProperty(selection))) {
           this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
         }
+        if ((this_column.rowDetails[rowNumber].input === 'signature')
+          && (existingRequest.requestToUse.original_request.hasOwnProperty('images') || existingRequest.requestToUse?.original_request.hasOwnProperty('image_location'))) {
+          if (existingRequest.requestToUse.original_request.image_location?.[this_column.rowDetails[rowNumber].text]) {
+            
+            updateReactData({
+              storedSignature: existingRequest.requestToUse?.original_request.image_location[this_column.rowDetails[rowNumber].text]
+            }, false);
+          }
+          else {
+            updateReactData({
+              storedSignature: existingRequest.requestToUse?.original_request.images[this_column.rowDetails[rowNumber].text]
+            }, false);
+          }
+        }
       }
     };
     if (existingRequest.requestToUse.original_request.hasOwnProperty('textInput')) {
@@ -1060,7 +1074,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         case 'use': {
           let lastRec = records2Update.push(existingRequest[0]) - 1;
           records2Update[lastRec].history.unshift(`Imported by ${state.session.user_id} on ${rTime.oaDate}`);
-          //  records2Update[lastRec].last_status = 'Imported';
           records2Update[lastRec].last_update = rTime.timestamp;
           setRecords2Update(records2Update);
           return {
@@ -1093,25 +1106,25 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               size='small'
               onClick={() => { response = 'use'; resolve(response); }}
             >
-              Use the order
+              Use the existing one
             </Button>
             <Button className={AVAClass.AVAButton}
               style={{ backgroundColor: 'red', color: 'white' }}
               size='small'
               onClick={() => { response = 'delete'; resolve(response); }}
             >
-              Delete the order
+              Delete the current one and replace it with a this one
             </Button>
             <Button className={AVAClass.AVAButton}
               style={{ backgroundColor: 'blue', color: 'white' }}
               size='small'
               onClick={() => { response = 'keep'; resolve(response); }}
             >
-              Keep the order and create another one, too
+              Keep this one and create another one, too
             </Button>
           </React-Fragment>
         );
-        let phrase = `AVA found an existing order for ${pKey.requestor_name}`;
+        let phrase = `${state.session.service_request_types[pKey.request_type]?.description || 'This'} already exists for ${pKey.requestor_name}`;
         if (pKey.foreign_key) {
           let fKdate = makeDate(pKey.foreign_key);
           if (!fKdate.error) {
@@ -1146,19 +1159,33 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let options = {};
       let textInput = {};
       let images = {};
+      let image_location = {};
       let oBo;
       let this_column = pData[columnNumber];
       if (this_column.person_id) {
         oBo = await makeName(this_column.person_id);
       }
       else {
-        oBo = await makeName(reactData.defaultPerson ? reactData.defaultPerson.person_id : state.patient);
+        oBo = await makeName(reactData.defaultPerson ? reactData.defaultPerson.person_id : state.patient.person_id);
       }
       for (let rowNumber = 0; rowNumber < this_column.rowDetails.length; rowNumber++) {
         let this_row = this_column.rowDetails[rowNumber];
         if (this_row.isChecked) {
           let choices_list = [];
           if (this_row.input === 'signature') {
+            let s3Response = await s3
+              .upload({
+                Bucket: 'theseus-medical-storage',
+                Key: `${this_column.person_id || reactData.defaultPerson.person_id || state.patient.person_id}_signature`,
+                Body: this_row.image,
+                ACL: 'public-read-write',
+                ContentType: 'image/png'
+              })
+              .promise()
+              .catch(err => {
+                enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+              });
+            image_location[this_row.text] = s3Response.Location;
             images[this_row.text] = this_row.image;
           }
           else {
@@ -1220,6 +1247,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             selections,
             options,
             textInput,
+            image_location,
             images
           },
           messaging: svc_messaging,
@@ -1372,6 +1400,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             this_row.textValue = false;
           }
           else {
+            // reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.toDataURL('image/png');
             reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
             this_row.textValue = 'Signature captured';
           }
@@ -1806,14 +1835,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         justifyContent='flex-start'
                         alignItems='flex-start'
                         width='97%'
-                        height='110px'
                       >
                         <SignatureCanvas
                           ref={signatureRef}
                           canvasProps={{
                             style: {
                               backgroundColor: 'beige',
-                              width: '100%',
+                              width: '35%',
                               marginLeft: '10px',
                               marginRight: '10px',
                               marginTop: '2px',
@@ -1824,10 +1852,54 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                         <Typography
                           key={`sigboxtxt_${selectedColumn}.${this_index}`}
                           id={`sigboxtxt_${selectedColumn}.${this_index}`}
-                          style={AVATextStyle({ size: 0.6, margin: { left: 1 } })}
+                          style={AVATextStyle({ size: 0.6, margin: { left: 1, bottom: 0.5 } })}
                         >
                           {this_item.text}
                         </Typography>
+                        <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+                          {signatureRef.current && !signatureRef.current.isEmpty() &&
+                            <Button
+                              className={AVAClass.AVAMicroButton}
+                              style={{ backgroundColor: 'white', color: 'red' }}
+                              size='small'
+                              onClick={() => {
+                                signatureRef.current.clear();
+                                setForceRedisplay(!forceRedisplay);
+                              }}
+                            >
+                              {'Clear'}
+                            </Button>
+                          }
+                          {reactData.storedSignature &&
+                            <Button
+                              className={AVAClass.AVAMicroButton}
+                              style={{ backgroundColor: 'lightgreen', color: 'black', margin: { bottom: 0 } }}
+                              size='small'
+                              onClick={async () => {
+                                signatureRef.current.clear();
+                                var params = {
+                                  Bucket: 'theseus-medical-storage',
+                                  Key: reactData.storedSignature.split('/').pop()
+                                };
+                                let data = await s3
+                                  .getObject(params)
+                                  .promise()
+                                  .catch(err => {
+                                    console.log(`error at getS3Object is`, err);
+                                  });
+                                if (data) {
+                                  let s64 = data.Body.toString("base64");
+                                  console.log(s64);
+                                  let b64 = 'data:image/png;base64,' + data.Body.toString("base64");
+                                  signatureRef.current.fromDataURL(b64);
+                                }                                
+                                setForceRedisplay(!forceRedisplay);
+                              }}
+                            >
+                              {'Use Existing'}
+                            </Button>
+                          }
+                        </Box>
                       </Box>
                     }
                   </Box>
@@ -1909,7 +1981,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                             if (checkRow.location_line) {
                                               reactData.columnList[selectedColumn].rowDetails[r].textValue = allQualsList[qualPicked].location || '';
                                             }
-                                          })
+                                          });
                                         }
                                         updateReactData({
                                           columnList: reactData.columnList
@@ -2086,7 +2158,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           confirmText={'Save/Send'}
           onCancel={() => { setConfirmStatus(''); }}
           onConfirm={async () => {
-            await sendRequests(reactData.columnList);
+            if (!reactData.lockSend) {
+              updateReactData(
+                { lockSend: true },
+                false
+              );
+              await sendRequests(reactData.columnList);
+            }
             onSave();
           }}
         />

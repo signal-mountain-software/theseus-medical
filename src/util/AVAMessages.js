@@ -143,11 +143,13 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
               && (this_request.attachment_method === 'file'))) {
             results.attachment_data = {
               filename: results.pdfInfo.key,
-              content: results.pdfInfo.data,
+              // content: results.pdfInfo.data,
               type: 'application/pdf',
               disposition: 'attachment',
               content_id: this_request.local_key
             };
+            results.htmlText = 'See attached';
+            results.messageText = 'See attached';
           }
           break;
         }
@@ -160,7 +162,7 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
               && (this_request.messaging.attachment_method === 'file')) {
               results.attachment_data = {
                 filename: `MealTicket-${this_request.local_key}.pdf`,
-                content: results.attachments.data,
+                // content: results.attachments.data,
                 type: 'application/pdf',
                 disposition: 'attachment',
                 content_id: this_request.local_key
