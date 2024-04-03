@@ -21,12 +21,17 @@ export const AVAclasses = makeStyles(theme => ({
     AVAMicroButton: {
         marginLeft: theme.spacing(1),
         marginRight: theme.spacing(1),
-        marginTop: theme.spacing(1),
-        marginBottom: theme.spacing(1),
+        marginTop: theme.spacing(0),
+        marginBottom: theme.spacing(0),
         borderRadius: '16px',
+        paddingLeft: '16px',
+        paddingRight: '16px',
         variant: 'outlined',
+        textTransform: 'none',
+        textDecoration: 'none',
         border: '0.75px solid gray',
         size: 'small',
+        fontSize: theme.typography.fontSize * 0.8
     },
     AVATitle: {
         marginTop: theme.spacing(3),
