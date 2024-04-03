@@ -685,7 +685,7 @@ export async function formatRequestDetails(body, summaryType) {
 
 export async function buildDocument(body) {
   // instructions for the document lines are in body.format.source
-  let printInstructions = body.format.source;
+  let printInstructions = deepCopy(body.format.source);
   if (printInstructions.length === 0) {
     return [];
   }
