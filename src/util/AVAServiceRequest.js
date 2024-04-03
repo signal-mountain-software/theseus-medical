@@ -284,12 +284,12 @@ export async function putServiceRequest(body) {
   }
   serviceRequestRec.composite_key += `${serviceRequestRec.request_type}%${serviceRequestRec.last_status}`;
   let goodWrite = true;
-  if (serviceRequestRec.messages[0].hasOwnProperty('attachment_data')) {
-    serviceRequestRec.messages[0].htmlText = 'See attached';
-    serviceRequestRec.messages[0].messageText = 'See attached';
-    serviceRequestRec.messages[0].pdfInfo.data = null;
-    serviceRequestRec.original_request.images = null;
-  }
+  //if (serviceRequestRec.messages[0].hasOwnProperty('attachment_data')) {
+   // serviceRequestRec.messages[0].htmlText = 'See attached';
+    //serviceRequestRec.messages[0].messageText = 'See attached';
+    //serviceRequestRec.messages[0].pdfInfo.data = null;
+   // serviceRequestRec.original_request.images = null;
+  //}
   cl({ 'adding ServiceRequestRec as': serviceRequestRec });
   await dbClient
     .put({
