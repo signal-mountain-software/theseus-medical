@@ -452,7 +452,7 @@ export default ({ myCalendar, person_id, peopleList, onClose }) => {
                                 { signup_type: cEntries[0].eventData.sign_up.type },
                                 cEntries[1],
                                 { date: cEntries[1].occurrence_date },
-                                { time$: `${cEntries[0].eventData.event_data.time.from}${(cEntries[0].eventData.event_data.time.to ? ' to ' + cEntries[0].eventData.event_data.time.to : '')}` },
+                                { time$: `${cEntries[0].eventData.event_data.time.from}${((cEntries[0].eventData.event_data.time.to && cEntries[0].eventData.event_data.time.to.trim() !== '') ? ' to ' + cEntries[0].eventData.event_data.time.to : '')}` },
                                 { time24: this_event.time24 }
                               );
                               this_event.index = index;

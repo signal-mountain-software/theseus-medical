@@ -1595,7 +1595,7 @@ export async function eventData(body) {
             returnObj.groups = ['*all'];
           }
           returnObj.time = this_rec.eventData.event_data.time.from;
-          if (this_rec.eventData.event_data.time.to) {
+          if (this_rec.eventData.event_data.time.to && (this_rec.eventData.event_data.time.to.trim() !== '')) {
             returnObj.time += ` to ${this_rec.eventData.event_data.time.to}`;
           };
           eventRec = this_rec;
@@ -1674,7 +1674,7 @@ export async function occurrenceData(body) {
       if (!returnObj.time) {
         if (rec.eventData.event_data.time) {
           returnObj.time = rec.eventData.event_data.time.from;
-          if (rec.eventData.event_data.time.to) {
+          if (rec.eventData.event_data.time.to && (rec.eventData.event_data.time.to.trim() !== '')) {
             returnObj.time += ' to ' + rec.eventData.event_data.time.to;
           }
         }
@@ -1691,7 +1691,7 @@ export async function occurrenceData(body) {
       Object.assign(returnObj, rec);
       if (rec.time) {
         returnObj.time = rec.time.from;
-        if (rec.time.to) {
+        if (rec.time.to && (rec.time.to.trim() !== '')) {
           returnObj.time += ' to ' + rec.time.to;
         }
       }
@@ -1709,7 +1709,7 @@ export async function occurrenceData(body) {
         }
         if ('time' in rec.occData.event_data) {
           returnObj.time = rec.occData.event_data.time.from;
-          if (rec.occData.event_data.time.to) {
+          if (rec.occData.event_data.time.to && (rec.occData.event_data.time.to.trim() !== '')) {
             returnObj.time += ' to ' + rec.occData.event_data.time.to;
           }
         }
@@ -1840,7 +1840,9 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     let oTime;
     if (occurrenceRec.time) {
       oTime = occurrenceRec.time.from;
-      if (occurrenceRec.time.to) { oTime = occurrenceRec.time.to; }
+      if (occurrenceRec.time.to && (occurrenceRec.time.to.trim() !== '')) {
+        oTime = occurrenceRec.time.to;
+      }
     }
     else { oTime = eventRec.time; }
     let occurrenceObj = {
@@ -1974,7 +1976,8 @@ export function occurrenceDateBuilder(eventRec, start_date, end_date) {
         });
         targetArray.sort();
       }
-      let from_date = makeDate(start_date).date.setMonth(1);
+      let from_date = makeDate(start_date).date;
+      from_date.setMonth(1);
       let to_date = makeDate(end_date).date;
       let yearToCheck;
       for (let candidate = from_date; ((candidate < to_date) && (responseArray.length < 10)); candidate.setFullYear(yearToCheck + 1)) {
