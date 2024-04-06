@@ -992,20 +992,49 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
     i.workData.search_data += i.workData.requestor_name;
     i.workData.summary_request = i.workData.formatted_request;
+    let historyList = [];
+    let noteList = [];
     if ((!options.textForm)) {
       i.workData.formatted_request = [];
       if ('history' in i) {
-        i.workData.formatted_request.push(['head', 'History']);
-        if (typeof (i.history) === 'string') { i.workData.formatted_request.push(['detail', i.history]); }
+        //i.workData.formatted_request.push(['head', 'History']);
+        if (typeof (i.history) === 'string') {
+          updateHistoryList(i.history);
+          //i.workData.formatted_request.push(['detail', i.history]);
+        }
         else if (Array.isArray(i.history)) {
           i.history.forEach(h => {
-            if (typeof h === 'string') { i.workData.formatted_request.push(['detail', h]); }
+            if (typeof h === 'string') {
+              updateHistoryList(h);
+              //i.workData.formatted_request.push(['detail', h]);
+            }
           });
         }
         else {
-          Object.values(i.history).forEach(h => { i.workData.formatted_request.push(['detail', h]); });
+          Object.values(i.history).forEach(h => {
+            updateHistoryList(h);
+            //i.workData.formatted_request.push(['detail', h]);
+          });
         }
       }
+      
+      i.workData.formatted_request.push(['head', 'History']);
+      if (historyList.length === 0) {
+        i.workData.formatted_request.push(['detail', '*** None ***']);
+      }
+      else {
+        historyList.forEach(hLine => {
+          i.workData.formatted_request.push(['detail', hLine]);
+        })
+      }
+
+      if (noteList.length > 0) { 
+        i.workData.formatted_request.push(['head', 'Notes']);
+        noteList.forEach(nLine => {
+          i.workData.formatted_request.push(['detail', nLine]);
+        })
+      }
+        
       let mHist = await messageHistory({
         thread_id: `svc_${i.request_type}/${i.request_id}`,
         type: 'delivery'
@@ -1023,6 +1052,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.checked = false;
     i.workData.open = false;
     return i;
+
+    function updateHistoryList(text) {
+      if (text.startsWith('Note added')) {
+        noteList.push(text.replace('Note added by ', ''));
+      }
+      else {
+        historyList.push(text);
+      }
+      return;
+    }
   }
 
   function formatRequest(i, req) {
