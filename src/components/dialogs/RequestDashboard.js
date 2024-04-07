@@ -25,6 +25,7 @@ import SelectFromList from '../forms/SelectFromList';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/DoneSharp';
+import SwapVertIcon from '@material-ui/icons/SwapVert';
 import ClearAllIcon from '@material-ui/icons/ClearAll';
 import DoneAllIcon from '@material-ui/icons/DoneAll';
 
@@ -176,7 +177,7 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'start',
     justifyContent: 'flex-start',
     marginTop: theme.spacing(1.5),
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
     marginLeft: theme.spacing(0),
     marginRight: theme.spacing(0),
   },
@@ -242,7 +243,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
-  let filterIn = { filtering: false };
+  let filterIn = Object.assign(filter, { filtering: false });
   if (filter.status || ((filter.statusNot && !filter.showNotBox))) {
     filterIn.statusNot = false;
     filterIn.filtering = true;
@@ -267,8 +268,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     displayVersion: 0,
     dataRows: [],
     OGFilter: deepCopy(filter),
-    pageTitle: title.split(/\(/).shift().trim(),
+    pageTitle: titleCase(title.split(/\(/).shift().toLowerCase().replace('list', '').trim()),
     requestIDs: [],
+    showDashboard: false,
     selectionsChanged: false,
     selectAssignTo: false,
     selectStatus: false,
@@ -277,6 +279,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     isMobile: isMobile(),
     showStaffAccess: false,
     statusObj: {},
+    checkInStatusObj: {},
     filter: deepCopy(filterIn),
     filterTextLower: (filter.filterText ? filter.filterText.toLowerCase() : null)
   });
@@ -523,7 +526,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           }
           let recipientList = pOptions.notify.filter(n => {
             return ((n === reactData.dataRows[this_index].workData.enteredBy) || (n = reactData.dataRows[this_index].requestor));
-          })
+          });
           if (notifyMessage) {
             let messageObj = {
               client: session.client_id,
@@ -632,6 +635,23 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
   }
 
+  function OKToDisplayStatus(this_status) {
+    if (!(reactData.statistics.count.hasOwnProperty(this_status))) {
+      return false;
+    }
+    if (reactData.filter.filtering) {
+      if (reactData.filter.fields.status[this_status]) {
+        // this status IS checked off
+        return !!!reactData.filter.statusNot;
+      }
+      else {
+        // this status IS NOT checked off
+        return !!reactData.filter.statusNot;
+      }
+    }
+    return true;
+  }
+
   function toggleCheck(pI) {
     reactData.dataRows[pI].workData.checked = !reactData.dataRows[pI].workData.checked;
     updateReactData({
@@ -664,13 +684,13 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     reactData.dataRows.forEach(r => {
       if (r.workData.checked) {
         if (response.hasOwnProperty(r.workData.enteredBy)) {
-          response[r.workData.enteredBy].count++
+          response[r.workData.enteredBy].count++;
         }
         else {
           response[r.workData.enteredBy] = {
             name: r.workData.enteredBy_name,
             count: 1
-          }
+          };
         }
         if (r.requestor !== r.workData.enteredBy) {
           if (response.hasOwnProperty(r.requestor)) {
@@ -806,9 +826,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
     filter.request_type = makeArray(filter.request_type, ',');
     if (!filter.hasOwnProperty('sort')) {
-      filter.sort = {
-        order: 'desc'
-      };
+      filter.sort = 'desc';
     };
     qList = await getServiceRequests(filter);
     let maxTimeStamp = 0;
@@ -818,14 +836,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (qList[x].request_date > maxTimeStamp) {
         maxTimeStamp = qList[x].request_date;
       }
-      /*
-      if (filter.statusNot && filter.statusNot.includes(qList[x].last_status.toLowerCase())) {
-        continue;
-      }
-      else if (filter['status'] && !(filter.status.includes(qList[x].last_status.toLowerCase()))) {
-        continue;
-      }
-      */
       reactData.dataRows.push(await buildRequestDetails(qList[x]));
       reactData.requestIDs.push(qList[x].request_id);
       if ((x % 5) === 0) {    // every 5th entry, commit to the screen
@@ -848,11 +858,145 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if ((qList.length === 0) || (reactData.dataRows.length === 0)) {
       enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
     }
+    else {
+      let nowTime = new Date().getTime();
+      const msInADay = 1000 * 60 * 60 * 24;
+      let count = {};
+      let open_closed = {
+        'closed': 'na',
+        'open': 'na'
+      };
+      let total_open_time = {};
+      let total_idle_time = {};   // time since last activity
+      let oldest_requests = {};   // track 5 oldest
+      qList.forEach(this_request => {
+        let row_status = this_request.last_status;
+        do {
+          if (count.hasOwnProperty(row_status)) {
+            count[row_status]++;
+            if (open_closed[row_status] === 'closed') {
+              total_open_time[row_status] += (this_request.last_update - this_request.request_date);
+              total_idle_time[row_status] += 0;
+            }
+            else {
+              total_open_time[row_status] += (nowTime - this_request.request_date);
+              total_idle_time[row_status] += (nowTime - this_request.last_update);
+            }
+            if (this_request.request_date < oldest_requests[row_status][4].request_date) {
+              let age = (nowTime - this_request.request_date) / msInADay;
+              oldest_requests[row_status][4] = {
+                request_date: this_request.request_date,
+                request_id: this_request.request_id,
+                age,
+              };
+              oldest_requests[row_status].sort((a, b) => {
+                if (a.request_date < b.request_date) {
+                  return -1;
+                }
+                else {
+                  return 1;
+                }
+              });
+            }
+          }
+          else {
+            if (!open_closed.hasOwnProperty(row_status)) {
+              // eslint-disable-next-line
+              if (reactData.statusObj.hasOwnProperty(row_status)) {
+                open_closed[row_status] = (!!reactData.statusObj[row_status].open ? 'open' : 'closed');
+              }
+              else {
+                open_closed[row_status] = 'closed';
+              }
+            }
+            count[row_status] = 1;
+            if (open_closed[row_status] === 'closed') {
+              total_open_time[row_status] = (this_request.last_update - this_request.request_date);
+              total_idle_time[row_status] = 0;
+            }
+            else {
+              total_open_time[row_status] = (nowTime - this_request.request_date);
+              total_idle_time[row_status] = (nowTime - this_request.last_update);
+            }
+            oldest_requests[row_status] = [{
+              request_date: this_request.request_date,
+              request_id: this_request.request_id,
+              age: (nowTime - this_request.request_date) / msInADay
+            }];
+            for (let x = 1; x <= 4; x++) {
+              oldest_requests[row_status][x] = {
+                request_date: Number.MAX_SAFE_INTEGER,
+                request_id: ''
+              };
+            }
+          };
+          row_status = open_closed[row_status];
+        } while (row_status !== 'na');
+      });
+      let average_open_time = {};
+      let average_time_since_last_activity = {};
+      let color = {};
+      let value_word = {};
+      for (let this_status in count) {
+        // will give average time in days
+        average_open_time[this_status] = (total_open_time[this_status] / count[this_status]) / msInADay;
+        if (reactData.statusObj.hasOwnProperty(this_status)) {
+          [color[this_status], value_word[this_status]] = setColor(average_open_time[this_status], (reactData.statusObj[this_status].age));
+        }
+        else {
+          color[this_status] = '#a7d2f8';
+        }
+        if (open_closed[this_status] === 'open') {
+          average_time_since_last_activity[this_status] = (total_idle_time[this_status] / count[this_status]) / msInADay;
+        }
+      }
+      updateReactData({
+        statistics: {
+          count,
+          total_open_time,
+          total_idle_time,   // time since last activity
+          oldest_requests,
+          average_open_time,
+          average_time_since_last_activity,
+          color,
+          value_word,
+          open_closed
+        }
+      }, false);
+
+    }
     if (dashboard_idleTimer && dashboard_idleTimer.current) {
       dashboard_idleTimer.current.start();
       cl(`Idle timer started in dashboard at ${new Date().toLocaleString()}.`);
     }
   };
+
+  function setColor(value, rangeObj) {
+    const color_gradient = ['#5ffb76', '#00fbbb', '#00f5ec', '#53ecff', '#9fe0ff', '#a7d2f8', '#b0c3ed', '#b8b5dd', '#c177bc', '#cb4f99', '#ce0e6a'];
+    const gradient_word = ['Excellent', 'Excellent', 'Good', 'Good', 'OK', 'OK', 'OK', 'Low', 'Low', 'Poor', 'Poor'];
+    let low = 0;
+    let med = 5;
+    let high = 10;
+    if (rangeObj) {
+      low = rangeObj.good || 0;
+      med = rangeObj.ok || 5;
+      high = rangeObj.bad || 10;
+    }
+    let x;
+    if (value <= low) {
+      x = 0;
+    }
+    else if (value >= high) {
+      x = 10;
+    }
+    else if (value < med) {
+      x = Math.round(((value - low) / (med - low)) * 5);
+    }
+    else {
+      x = Math.round(((high - value) / (high - med)) * 5) + 6;
+    }
+    return [color_gradient[x], gradient_word[x]];
+  }
 
   const extendDashboard = async () => {
     if (reactData.rebuilding) {
@@ -955,7 +1099,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.orderForDate = makeDate(i.foreign_key);
     i.workData.this_status = sentenceCase(i.last_status);
     if (!options.textForm) {
-      i.workData.formatted_request.push(['head', `Current status: ${(titleCase(i.last_status.replace('_', ' ')))}`]);
+      let aName = '';
+      if (i.assigned_to && (i.assigned_to !== 'unassigned') && (reactData.statusObj[i.last_status] && reactData.statusObj[i.last_status].open)) {
+        aName = await makeName(i.assigned_to);
+      }
+      i.workData.formatted_request.push(['head', `Current status: ${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
     }
     if ((!options.shortForm) && (!options.textForm)) {
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
@@ -997,27 +1145,23 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if ((!options.textForm)) {
       i.workData.formatted_request = [];
       if ('history' in i) {
-        //i.workData.formatted_request.push(['head', 'History']);
         if (typeof (i.history) === 'string') {
           updateHistoryList(i.history);
-          //i.workData.formatted_request.push(['detail', i.history]);
         }
         else if (Array.isArray(i.history)) {
           i.history.forEach(h => {
             if (typeof h === 'string') {
               updateHistoryList(h);
-              //i.workData.formatted_request.push(['detail', h]);
             }
           });
         }
         else {
           Object.values(i.history).forEach(h => {
             updateHistoryList(h);
-            //i.workData.formatted_request.push(['detail', h]);
           });
         }
       }
-      
+
       i.workData.formatted_request.push(['head', 'History']);
       if (historyList.length === 0) {
         i.workData.formatted_request.push(['detail', '*** None ***']);
@@ -1025,16 +1169,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       else {
         historyList.forEach(hLine => {
           i.workData.formatted_request.push(['detail', hLine]);
-        })
+        });
       }
 
-      if (noteList.length > 0) { 
+      if (noteList.length > 0) {
         i.workData.formatted_request.push(['head', 'Notes']);
         noteList.forEach(nLine => {
           i.workData.formatted_request.push(['detail', nLine]);
-        })
+        });
       }
-        
+
       let mHist = await messageHistory({
         thread_id: `svc_${i.request_type}/${i.request_id}`,
         type: 'delivery'
@@ -1170,10 +1314,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const setStatusList = async (inList) => {
     if (reactData.statusList.length > 0) { return; }
     let response = [];
+    let responseObj = {};
     if (filter.request_type
       && (state.session.service_request_types.hasOwnProperty(filter.request_type[0]))
       && state.session.service_request_types[filter.request_type[0]].statusList) {
       response = state.session.service_request_types[filter.request_type[0]].statusList;
+      state.session.service_request_types[filter.request_type[0]].statusList.forEach(s => {
+        responseObj[s.value] = s;
+      });
     }
     else {
       response = [
@@ -1190,9 +1338,24 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           value: 'complete'
         }
       ];
+      responseObj = {
+        'submitted': {
+          display: 'Submitted',
+          value: 'submitted'
+        },
+        'in_process': {
+          display: 'In Process',
+          value: 'in_process'
+        },
+        'complete': {
+          display: 'Complete/Closed',
+          value: 'complete'
+        }
+      };
     }
     updateReactData({
-      statusList: response
+      statusList: response,
+      statusObj: responseObj
     }, false);
   };
 
@@ -1256,30 +1419,99 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   className={classes.messageArea}
                   key={'midBox'}
                 >
-                  <Box display='flex'
-                    marginLeft={2}
-                    paddingRight={2}
-                    borderRadius={'32px'}
-                    border={1}
-                    borderColor={'black'}
-                    paddingBottom={0.5}
-                    paddingLeft={2}
-                    alignItems={'center'}
-                    marginBottom={0.5}
-                    flexBasis={'content'}
-                    flexDirection='row' width='85%' key={'midLeft'}
+                  <Box
+                    display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'
+                    key={`left_top_box`}
                   >
-                    <SearchIcon size="small" />
-                    <TextField
-                      id='List Filter'
-                      defaultValue={reactData.filterTextLower}
-                      onChange={event => (handleChangeFilter(event.target.value))}
-                      width={'100%'}
-                      className={classes.freeInput}
-                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                      variant={'standard'}
-                      autoComplete='off'
-                    />
+                    <Box display='flex'
+                      marginLeft={2}
+                      paddingRight={2}
+                      borderRadius={'32px'}
+                      border={1}
+                      borderColor={'black'}
+                      paddingBottom={0.5}
+                      paddingLeft={2}
+                      alignItems={'center'}
+                      marginBottom={0.5}
+                      flexBasis={'content'}
+                      flexDirection='row' width='85%' key={'midLeft'}
+                    >
+                      <SearchIcon size="small" />
+                      <TextField
+                        id='List Filter'
+                        defaultValue={reactData.filterTextLower}
+                        onChange={event => (handleChangeFilter(event.target.value))}
+                        width={'100%'}
+                        className={classes.freeInput}
+                        inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                        variant={'standard'}
+                        autoComplete='off'
+                      />
+                    </Box>
+                    {!reactData.showDashboard &&
+                      <Box display='flex'
+                        paddingRight={2}
+                        paddingBottom={0.5}
+                        paddingLeft={2}
+                        alignItems={'center'}
+                        marginBottom={0.5}
+                        marginTop={1}
+                        flexDirection='row'
+                        key={'sortbox'}
+                        onClick={() => {
+                          let sort_factor;
+                          if (reactData.filter.sort.startsWith('des')) {
+                            reactData.filter.sort = 'asc';
+                            sort_factor = 1;
+                          }
+                          else {
+                            reactData.filter.sort = 'des';
+                            sort_factor = -1;
+                          }
+                          reactData.dataRows.sort((a, b) => {
+                            if (!a.this_sort) {
+                              if (!a.workData.orderForDate.error) {
+                                a.this_sort = a.workData.orderForDate.timeStamp;
+                              }
+                              else {
+                                a.this_sort = a.request_date;
+                              }
+                            }
+                            if (!b.this_sort) {
+                              if (!b.workData.orderForDate.error) {
+                                b.this_sort = b.workData.orderForDate.timeStamp;
+                              }
+                              else {
+                                b.this_sort = b.request_date;
+                              }
+                            }
+                            if (a.this_sort < b.this_sort) {
+                              return -1 * sort_factor;
+                            }
+                            else if (a.this_sort > b.this_sort) {
+                              return 1 * sort_factor;
+                            }
+                            else if (a.request_date < b.request_date) {
+                              return -1 * sort_factor;
+                            }
+                            else {
+                              return 1 * sort_factor;
+                            }
+                          });
+                          updateReactData({
+                            dataRows: reactData.dataRows,
+                            filter: reactData.filter
+                          }, true)
+                        }}
+                      >
+                        <Typography
+                          style={AVATextStyle({ size: 0.75, bold: true, margin: { left: 1, right: 0 } })}
+                        >
+                          {`Showing ${reactData.filter.sort.startsWith('des') ? 'Newest' : 'Oldest'} first`}
+                        </Typography>
+                        <SwapVertIcon size="small" />
+                      </Box>
+                    }
                   </Box>
                   {(filter.foreign_key || filter.statusNot || filter.status) &&
                     <Box display='flex'
@@ -1361,196 +1593,277 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           </Box>
 
           {/* Main List */}
-          <Paper
-            component={Box}
-            overflow='auto'
-            elevation={0}
-            pt={3}
-            pb={2}
-            square
-          >
-            <List>
-              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                {rowsDisplayed = []}
-              </Typography>
-              {reactData.dataRows.map((this_item, index) => (
-                (OKToDisplay(this_item, index) &&
-                  <Paper
-                    component={Box}
-                    variant='outlined'
-                    key={`paper_row_${index}_${this_item.workData.checked}`}
-                  >
-                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                      {rowsDisplayed.push(index)}
-                    </Typography>
-                    <Box display='flex'
-                      flexDirection='column'
-                      bgcolor={(this_item.workData.checked) ? 'antiqueWhite' : null}
-                      color={(this_item.workData.checked) ? 'black' : null}
-                      ref={((firstSelectedRow() === index) || ((firstSelectedRow() === -1) && (rowsDisplayed.length === 1))) ? firstSelectedRowRef : null}
-                      onContextMenu={async (e) => {
-                        e.preventDefault();
-                        enqueueSnackbar(<div>
-                          Type={this_item.request_type}<br />
-                          Requestor={this_item.requestor}<br />
-                          ForeignKey={this_item.foreign_key}<br />
-                          LastUpdate={makeDate(this_item.last_update).absolute}<br />
-                          ReqTime={makeDate(this_item.workData.requestTime).absolute}<br />
-                          ForDate={this_item.workData.orderForDate.absolute}<br />
-                          ID={this_item.request_id}
-                        </div>, { variant: 'info', persist: true });
-                      }}>
-                      <Box
-                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                        key={this_item.message_id + 'r' + index}
-                        className={classes.listItem}
-                      >
-                        <Box display='flex' flexDirection='row'>
-                          <Checkbox
-                            checked={this_item.workData.checked || false}
-                            disableRipple
-                            key={'checkbox' + index}
-                            onClick={() => { toggleCheck(index); }}
-                          />
-                          {!filter.person_id &&
-                            <Box
-                              className={classes.imageArea}
-                              component="img"
-                              border={1}
-                              alt=' '
-                              src={this_item.workData.requestor_image}
+          {!reactData.showDashboard &&
+            <Paper
+              component={Box}
+              overflow='auto'
+              elevation={0}
+              pt={3}
+              pb={2}
+              square
+            >
+              <List>
+                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                  {rowsDisplayed = []}
+                </Typography>
+                {reactData.dataRows.map((this_item, index) => (
+                  (OKToDisplay(this_item, index) &&
+                    <Paper
+                      component={Box}
+                      variant='outlined'
+                      key={`paper_row_${index}_${this_item.workData.checked}`}
+                    >
+                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                        {rowsDisplayed.push(index)}
+                      </Typography>
+                      <Box display='flex'
+                        flexDirection='column'
+                        bgcolor={(this_item.workData.checked) ? 'antiqueWhite' : null}
+                        color={(this_item.workData.checked) ? 'black' : null}
+                        ref={((firstSelectedRow() === index) || ((firstSelectedRow() === -1) && (rowsDisplayed.length === 1))) ? firstSelectedRowRef : null}
+                        onContextMenu={async (e) => {
+                          e.preventDefault();
+                          enqueueSnackbar(<div>
+                            Type={this_item.request_type}<br />
+                            Requestor={this_item.requestor}<br />
+                            ForeignKey={this_item.foreign_key}<br />
+                            LastUpdate={makeDate(this_item.last_update).absolute}<br />
+                            ReqTime={makeDate(this_item.workData.requestTime).absolute}<br />
+                            ForDate={this_item.workData.orderForDate.absolute}<br />
+                            ID={this_item.request_id}
+                          </div>, { variant: 'info', persist: true });
+                        }}>
+                        <Box
+                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                          key={this_item.message_id + 'r' + index}
+                          className={classes.listItem}
+                        >
+                          <Box display='flex' flexDirection='row'>
+                            <Checkbox
+                              checked={this_item.workData.checked || false}
+                              disableRipple
+                              key={'checkbox' + index}
+                              onClick={() => { toggleCheck(index); }}
                             />
+                            {!filter.person_id &&
+                              <Box
+                                className={classes.imageArea}
+                                component="img"
+                                border={1}
+                                alt=' '
+                                src={this_item.workData.requestor_image}
+                              />
+                            }
+                          </Box>
+                          {!options.textForm &&
+                            <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
+                              <Box display='flex' flexDirection='column'>
+                                <Box display='flex' flexDirection='row'>
+                                  <Box display='flex' flexDirection='column' marginBottom={1.5}>
+                                    {(!filter.request_type || (filter.request_type.length !== 1)) &&
+                                      <Typography
+                                        variant='h5'
+                                        style={AVATextStyle({ size: 1, italic: true })}
+                                      >
+                                        {this_item.workData.formatted_type}
+                                      </Typography>
+                                    }
+                                    {!filter.person_id &&
+                                      <Typography
+                                        variant='h5'
+                                        style={AVATextStyle({ size: 1.5, bold: true })}
+                                        className={classes.firstName}
+                                      >
+                                        {`${this_item.workData.requestor_name} ${this_item?.original_request?.textInput['Room Number'] ? ('(' + this_item?.original_request?.textInput['Room Number'] + ')') : (
+                                          this_item.workData.requestor_location ? ('(' + this_item.workData.requestor_location + ')') : '')}`}
+                                      </Typography>
+                                    }
+                                    {this_item.workData.updated &&
+                                      <Typography
+                                        style={AVATextStyle({ size: 0.7 })}
+                                      >
+                                        {this_item.workData.updated}
+                                      </Typography>
+                                    }
+                                    <React.Fragment>
+                                      {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                        <Typography
+                                          variant='h5'
+                                          style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                        >
+                                          {`By ${this_item.workData.enteredBy_name}`}
+                                        </Typography>
+                                      }
+                                      <Typography
+                                        variant='h5'
+                                        style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                      >
+                                        {this_item.workData.display_date}
+                                      </Typography>
+                                      {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey)
+                                        && !(this_item?.workData?.orderForDate.error)
+                                        &&
+                                        <Typography
+                                          variant='h5'
+                                          style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                        >
+                                          {`For ${this_item?.workData?.orderForDate.relative}`}
+                                        </Typography>
+                                      }
+                                    </React.Fragment>
+                                  </Box>
+                                </Box>
+                                {!options.textForm &&
+                                  this_item?.workData?.summary_request &&
+                                  this_item.workData.summary_request.map((mSumLine, mSumIndex) => (
+                                    < Typography
+                                      key={`prefLine-${mSumIndex}`}
+                                      className={(`mrow${mSumLine[0]}` in classes) ? classes[`mrow${mSumLine[0]}`] : classes.mrowdetail}
+                                    >
+                                      {typeof mSumLine[1] === 'string' ? mSumLine[1] : (alert(mSumIndex, mSumLine))}
+                                    </Typography>
+                                  ))}
+                                {this_item.workData.open && this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                                  (mLine[0].startsWith('href=')
+                                    ?
+                                    <a
+                                      href={mLine[0].split('=')[1]}
+                                      key={`attach-${mIndex}-href`}
+                                      target='_blank'
+                                      rel='noopener noreferrer'
+                                      style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                      <Typography
+                                        key={`attach-${mIndex}`}
+                                        className={classes.mrowdetail}
+                                      >
+                                        {`Attachment: ${mLine[1]}`}
+                                      </Typography>
+                                    </a>
+                                    :
+                                    < Typography
+                                      key={`prefLine-${mIndex}`}
+                                      className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                    >
+                                      {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
+                                    </Typography>
+                                  )
+                                ))}
+                                {this_item.workData.open &&
+                                  this_item.workData.messageRecs.map((mLine, dX) => (
+                                    <Typography
+                                      key={('mrow_out' + dX)}
+                                      className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                    >
+                                      {mLine[1]}
+                                    </Typography>
+                                  ))
+                                }
+                              </Box>
+                            </Box>
+                          }
+                          {options.textForm &&
+                            <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                              < Typography
+                                key={`singleTextLine-${index}`}
+                                className={classes.mrowdetail}
+                              >
+                                {this_item.workData.textBased_request}
+                              </Typography>
+                            </Box>
                           }
                         </Box>
-                        {!options.textForm &&
-                          <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center'>
-                            <Box display='flex' flexDirection='column'>
-                              <Box display='flex' flexDirection='row'>
-                                <Box display='flex' flexDirection='column' marginBottom={1.5}>
-                                  {(!filter.request_type || (filter.request_type.length !== 1)) &&
-                                    <Typography
-                                      variant='h5'
-                                      style={AVATextStyle({ size: 1, italic: true })}
-                                    >
-                                      {this_item.workData.formatted_type}
-                                    </Typography>
-                                  }
-                                  {!filter.person_id &&
-                                    <Typography
-                                      variant='h5'
-                                      style={AVATextStyle({ size: 1.5, bold: true })}
-                                      className={classes.firstName}
-                                    >
-                                      {`${this_item.workData.requestor_name} (${this_item?.original_request?.textInput['Room Number'] || this_item.workData.requestor_location})`}
-                                    </Typography>
-                                  }
-                                  {this_item.workData.updated &&
-                                    <Typography
-                                      style={AVATextStyle({ size: 0.7 })}
-                                    >
-                                      {this_item.workData.updated}
-                                    </Typography>
-                                  }
-                                  <React.Fragment>
-                                    {(this_item.requestor !== this_item.workData.enteredBy) &&
-                                      <Typography
-                                        variant='h5'
-                                        style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
-                                      >
-                                        {`By ${this_item.workData.enteredBy_name}`}
-                                      </Typography>
-                                    }
-                                    <Typography
-                                      variant='h5'
-                                      style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
-                                    >
-                                      {this_item.workData.display_date}
-                                    </Typography>
-                                    {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey)
-                                      && !(this_item?.workData?.orderForDate.error)
-                                      &&
-                                      <Typography
-                                        variant='h5'
-                                        style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
-                                      >
-                                        {`For ${this_item?.workData?.orderForDate.relative}`}
-                                      </Typography>
-                                    }
-                                  </React.Fragment>
-                                </Box>
-                              </Box>
-                              {!options.textForm &&
-                                this_item?.workData?.summary_request &&
-                                this_item.workData.summary_request.map((mSumLine, mSumIndex) => (
-                                  < Typography
-                                    key={`prefLine-${mSumIndex}`}
-                                    className={(`mrow${mSumLine[0]}` in classes) ? classes[`mrow${mSumLine[0]}`] : classes.mrowdetail}
-                                  >
-                                    {typeof mSumLine[1] === 'string' ? mSumLine[1] : (alert(mSumIndex, mSumLine))}
-                                  </Typography>
-                                ))}
-                              {this_item.workData.open && this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
-                                (mLine[0].startsWith('href=')
-                                  ?
-                                  <a
-                                    href={mLine[0].split('=')[1]}
-                                    key={`attach-${mIndex}-href`}
-                                    target='_blank'
-                                    rel='noopener noreferrer'
-                                    style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                    <Typography
-                                      key={`attach-${mIndex}`}
-                                      className={classes.mrowdetail}
-                                    >
-                                      {`Attachment: ${mLine[1]}`}
-                                    </Typography>
-                                  </a>
-                                  :
-                                  < Typography
-                                    key={`prefLine-${mIndex}`}
-                                    className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                                  >
-                                    {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
-                                  </Typography>
-                                )
-                              ))}
-                              {this_item.workData.open &&
-                                this_item.workData.messageRecs.map((mLine, dX) => (
-                                  <Typography
-                                    key={('mrow_out' + dX)}
-                                    className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                                  >
-                                    {mLine[1]}
-                                  </Typography>
-                                ))
-                              }
-                            </Box>
-                          </Box>
-                        }
-                        {options.textForm &&
-                          <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                            < Typography
-                              key={`singleTextLine-${index}`}
-                              className={classes.mrowdetail}
-                            >
-                              {this_item.workData.textBased_request}
-                            </Typography>
-                          </Box>
-                        }
                       </Box>
-                    </Box>
-                  </Paper>
-                )
-              ))}
-              {(rowsDisplayed.length === 0) && (loading === 'load_complete') &&
-                <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
-                  <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >
-                    {`No requests match your criteria`}
-                  </Typography>
-                </Box>
-              }
-            </List>
-          </Paper>
+                    </Paper>
+                  )
+                ))}
+                {(rowsDisplayed.length === 0) && (loading === 'load_complete') &&
+                  <Box display='flex' flex={4} justifyContent='center' alignItems='center' overflow='hidden'>
+                    <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >
+                      {`No requests match your criteria`}
+                    </Typography>
+                  </Box>
+                }
+              </List>
+            </Paper>
+          }
+
+          {/* Main Dashboard */}
+          {reactData.showDashboard &&
+            <Paper
+              component={Box}
+              overflow='auto'
+              elevation={0}
+              pt={3}
+              pb={2}
+              square
+            >
+              <List>
+                {reactData.statusList.map((this_status, this_status_index) => (
+                  (OKToDisplayStatus(this_status.value) &&
+                    <Paper
+                      component={Box}
+                      elevation={0}
+                      key={`paper_row_${this_status_index}`}
+                    >
+                      <Box
+                        display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'
+                        key={`paper_row_box${this_status_index}`}
+                        className={classes.listItem}
+                        style={{ backgroundColor: reactData.statistics.color[this_status.value] }}
+                        marginBottom={1.5}
+                        marginLeft={2}
+                        padding={2}
+                        borderRadius={'32px'}
+                        border={1}
+                        borderColor={'black'}
+                      >
+                        <Box display='flex' flexDirection='row' width='100%' justifyContent='space-between' alignItems='center'>
+                          <Box display='flex' flexDirection='column' marginBottom={1.5}>
+                            <Typography
+                              variant='h5'
+                              style={AVATextStyle({ size: 1.5, bold: true })}
+                              className={classes.firstName}
+                            >
+                              {reactData.statusObj[this_status.value].display}
+                            </Typography>
+                            <Typography
+                              style={AVATextStyle({ margin: { left: 1 }, size: 1 })}
+                            >
+                              {`Count: ${reactData.statistics.count[this_status.value]}`}
+                            </Typography>
+                            <Typography
+                              style={AVATextStyle({ margin: { left: 1 }, size: 1 })}
+                            >
+                              {`Avg ${(reactData.statistics.open_closed[this_status.value] === 'open') ? 'Age' : 'Days to Close'}: ${reactData.statistics.average_open_time[this_status.value].toFixed(1)} days`}
+                            </Typography>
+                            {reactData.statistics.average_time_since_last_activity.hasOwnProperty(this_status.value) &&
+                              <React.Fragment>
+                                <Typography
+                                  style={AVATextStyle({ margin: { left: 1 }, size: 1 })}
+                                >
+                                  {`Avg Time Since Last Activity: ${reactData.statistics.average_time_since_last_activity[this_status.value].toFixed(1)} days`}
+                                </Typography>
+                                <Typography
+                                  style={AVATextStyle({ margin: { left: 1 }, size: 1 })}
+                                >
+                                  {`Age of Oldest: ${reactData.statistics.oldest_requests[this_status.value][0].age.toFixed(1)} days`}
+                                </Typography>
+                              </React.Fragment>
+                            }
+                          </Box>
+                          <Typography
+                            style={AVATextStyle({ margin: { right: 1 }, align: 'right', size: 4 })}
+                          >
+                            {reactData.statistics.value_word[this_status.value]}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Paper>
+                  )
+                ))}
+              </List>
+            </Paper>
+          }
 
           {/* Prompts */}
           {
@@ -1629,11 +1942,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             />
           }
           {reactData.showStaffAccess &&
-            (['in'].includes(reactData.statusObj.last_status) ?
+            (['in'].includes(reactData.checkInStatusObj.last_status) ?
               <AVATextInput
                 titleText={[
                   makeGreeting(state.session.patient_display_name),
-                  `[italic]You've been checked in with ${reactData.dataRows[reactData.statusObj.targetIndex].on_behalf_of} since ${makeDate(reactData.statusObj.last_update).relative}`,
+                  `[italic]You've been checked in with ${reactData.dataRows[reactData.checkInStatusObj.targetIndex].on_behalf_of} since ${makeDate(reactData.checkInStatusObj.last_update).relative}`,
                   ' ',
                   `Tap "Confirm" to check out`
                 ]}
@@ -1646,9 +1959,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 }}
                 onSave={async (responses) => {
                   let now = makeDate(new Date());
-                  reactData.statusObj.reqRec.last_status = 'out';
-                  reactData.statusObj.reqRec.last_update = now.timestamp;
-                  reactData.statusObj.reqRec.type_date = `${reactData.statusObj.reqRec.request_type}~${now.timestamp}`;
+                  reactData.checkInStatusObj.reqRec.last_status = 'out';
+                  reactData.checkInStatusObj.reqRec.last_update = now.timestamp;
+                  reactData.checkInStatusObj.reqRec.type_date = `${reactData.checkInStatusObj.reqRec.request_type}~${now.timestamp}`;
                   let hNote = `Checked out on ${now.absolute}`;
                   /*  if we have other data to capture ("did you complete your task?", "issues to note", etc.)
                       those notes would be captured in prompts and be saved here
@@ -1658,10 +1971,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                     }
                   });
                   */
-                  reactData.statusObj.reqRec.history.unshift(hNote);
-                  let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.statusObj.targetIndex]);
-                  reactData.dataRows[reactData.statusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
-                  await updateServiceRequest([reactData.statusObj.reqRec]);
+                  reactData.checkInStatusObj.reqRec.history.unshift(hNote);
+                  let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                  reactData.dataRows[reactData.checkInStatusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
+                  await updateServiceRequest([reactData.checkInStatusObj.reqRec]);
                   enqueueSnackbar(`Check-out successful!`, { variant: 'success', persist: false });
                   updateReactData({
                     showStaffAccess: false
@@ -1674,7 +1987,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               <AVATextInput
                 titleText={[
                   makeGreeting(state.session.patient_display_name),
-                  `[italic]You are checking in with ${reactData.dataRows[reactData.statusObj.targetIndex].on_behalf_of}`,
+                  `[italic]You are checking in with ${reactData.dataRows[reactData.checkInStatusObj.targetIndex].on_behalf_of}`,
                   ' ',
                   `Tap "Confirm" to check in`
                 ]}
@@ -1687,16 +2000,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 }}
                 onSave={async () => {
                   let now = makeDate(new Date());
-                  Object.assign(reactData.statusObj.reqRec, reactData.dataRows[reactData.statusObj.targetIndex]);
-                  reactData.statusObj.reqRec.last_status = 'in';
-                  reactData.statusObj.reqRec.last_update = now.timestamp;
-                  reactData.statusObj.reqRec.type_date = `${reactData.statusObj.reqRec.request_type}~${now.timestamp}`;
+                  Object.assign(reactData.checkInStatusObj.reqRec, reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                  reactData.checkInStatusObj.reqRec.last_status = 'in';
+                  reactData.checkInStatusObj.reqRec.last_update = now.timestamp;
+                  reactData.checkInStatusObj.reqRec.type_date = `${reactData.checkInStatusObj.reqRec.request_type}~${now.timestamp}`;
                   let hNote = `${state.session.patient_display_name} checked in on ${now.absolute}`;
-                  reactData.statusObj.reqRec.history.unshift(hNote);
-                  reactData.statusObj.reqRec.last_visited = reactData.dataRows[reactData.statusObj.targetIndex].requestor;
-                  let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.statusObj.targetIndex]);
-                  reactData.dataRows[reactData.statusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
-                  await updateServiceRequest([reactData.statusObj.reqRec]);
+                  reactData.checkInStatusObj.reqRec.history.unshift(hNote);
+                  reactData.checkInStatusObj.reqRec.last_visited = reactData.dataRows[reactData.checkInStatusObj.targetIndex].requestor;
+                  let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                  reactData.dataRows[reactData.checkInStatusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
+                  await updateServiceRequest([reactData.checkInStatusObj.reqRec]);
                   enqueueSnackbar(`Check-in successful!`, { variant: 'success', persist: false });
                   updateReactData({
                     showStaffAccess: false,
@@ -1724,6 +2037,21 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   >
                     {reactData.isMobile ? 'Exit' : 'Close'}
                   </Button>
+                  {reactData.statistics &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'purple', color: 'white' }}
+                      size='small'
+                      onClick={() => {
+                        updateReactData({
+                          showDashboard: !reactData.showDashboard
+                        }, true);
+                      }}
+                      startIcon={<CloseIcon size="small" />}
+                    >
+                      {reactData.showDashboard ? 'List' : 'Dashboard'}
+                    </Button>
+                  }
                   {(rowsDisplayed.length > 0) &&
                     <React.Fragment>
                       {anyRowsSelected() &&
@@ -1802,14 +2130,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       style={{ backgroundColor: 'green', color: 'white' }}
                       size='small'
                       onClick={async () => {
-                        let statusObj = await getCurrentStatus(session.client_id, session.patient_id, 'staff');
-                        statusObj.targetIndex =
+                        let checkInStatusObj = await getCurrentStatus(session.client_id, session.patient_id, 'staff');
+                        checkInStatusObj.targetIndex =
                           reactData.dataRows.findIndex(r => {
                             return r.workData.checked;
                           });
                         updateReactData({
                           showStaffAccess: true,
-                          statusObj: statusObj
+                          checkInStatusObj: checkInStatusObj
                         }, true);
                       }}
                       startIcon={<PersonAddIcon size="small" />}
@@ -1830,7 +2158,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       }}
                       startIcon={<CheckIcon size="small" />}
                     >
-                      {reactData.isMobile ? 'Status' : 'Update status'}
+                      {'Update'}
                     </Button>
                   }
                   {anyRowsSelected()
