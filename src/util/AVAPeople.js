@@ -1,4 +1,4 @@
-import { isPromise, cl, recordExists, sentenceCase, titleCase, isEmpty, dbClient } from '../util/AVAUtilities';
+import { isPromise, cl, recordExists, sentenceCase, titleCase, isEmpty, dbClient, getObject } from '../util/AVAUtilities';
 
 let foundPeople = {};
 let savedSession;
@@ -38,7 +38,9 @@ export function AVAname(pRec) {
 }
 
 export function getImage(pPerson) {
-    return `https://d3sds9ybtm36gy.cloudfront.net/${pPerson}.jpg`;
+    let imageLink = getObject(pPerson, 'image');
+    return imageLink;
+    // return `https://d3sds9ybtm36gy.cloudfront.net/${pPerson}.jpg`;
 };
 
 export async function getPersonFromPartialID(pClient, pID) {
