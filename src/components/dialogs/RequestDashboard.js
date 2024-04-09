@@ -2037,7 +2037,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   >
                     {reactData.isMobile ? 'Exit' : 'Close'}
                   </Button>
-                  {reactData.statistics &&
+                  {state.session.allow_request_dashboard && reactData.statistics &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'purple', color: 'white' }}
