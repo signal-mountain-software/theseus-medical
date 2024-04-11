@@ -1507,7 +1507,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         <Typography
                           style={AVATextStyle({ size: 0.75, bold: true, margin: { left: 1, right: 0 } })}
                         >
-                          {`Showing ${reactData.filter.sort.startsWith('des') ? 'Newest' : 'Oldest'} first`}
+                          {`Showing ${(reactData?.filter?.sort && reactData?.filter?.sort.startsWith('des')) ? 'Newest' : 'Oldest'} first`}
                         </Typography>
                         <SwapVertIcon size="small" />
                       </Box>
