@@ -19,7 +19,6 @@ import ShowEventActivity from '../dialogs/ShowEventActivity';
 import LoadWorkOrderSpreadsheet from '../forms/LoadWorkOrderSpreadsheet';
 import LoadNamesFromFile from '../forms/LoadNamesFromFile';
 import ShowGroup from '../dialogs/ShowGroup';
-import AVACarousel from '../dialogs/AVACarousel';
 import GroupForm from '../forms/GroupForm';
 import AVASubscription from '../forms/AVASubscription';
 import NumberForm from './NumberForm';
@@ -36,6 +35,7 @@ import Box from '@material-ui/core/Box';
 import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
 import DynamicSignup from './DynamicSignup';
+import AVAInHome from '../sections/AVAInHome';
 
 export default ({
   open,
@@ -505,8 +505,11 @@ export default ({
     case 'carousel':
     case 'in_home':
       return (
-        <AVACarousel
-          onClose={onSave}
+        <AVAInHome
+          pPerson={state.patient.person_id}
+          patient={state.patient}
+          pClient={session.client_id}
+          onReset={onClose}
         />
       );
     case 'group_form':
