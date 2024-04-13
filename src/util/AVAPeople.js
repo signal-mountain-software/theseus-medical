@@ -38,8 +38,17 @@ export function AVAname(pRec) {
 }
 
 export function getImage(pPerson) {
-    let imageLink = getObject(pPerson, 'image');
-    return imageLink;
+    if (typeof (pPerson) === 'string') {
+        let imageLink = getObject(pPerson, 'image');
+        return imageLink;
+    }
+    else if (Array.isArray(pPerson)) {
+        let imageLink = getObject(pPerson[0], 'image');
+        return imageLink;
+    }
+    else {
+        return '';
+    }
     // return `https://d3sds9ybtm36gy.cloudfront.net/${pPerson}.jpg`;
 };
 
