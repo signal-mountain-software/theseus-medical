@@ -1,10 +1,11 @@
 import React from 'react';
 
-import { titleCase, makeArray } from '../../util/AVAUtilities';
+import { titleCase, makeArray, sentenceCase } from '../../util/AVAUtilities';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
+import MenuItem from '@material-ui/core/MenuItem';
 
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -74,7 +75,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ titleText, promptText, valueText, errorText, buttonText, onCancel, onSave, allowCancel = true, options = {} }) => {
+export default ({ titleText, promptText, valueText, selectionList, errorText, buttonText, onCancel, onSave, allowCancel = true, options = {} }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -88,7 +89,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
   const [reactData, setReactData] = React.useState({
     saving: false,
     focusOn: 0
-  })
+  });
 
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
@@ -144,7 +145,7 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
         }
         updateReactData({
           focusOn: currentFocus
-        }, true)
+        }, true);
       }
     }
   };
@@ -219,20 +220,53 @@ export default ({ titleText, promptText, valueText, errorText, buttonText, onCan
                       key={'fullRow' + ndx}
                     >
                       {prompt.toLowerCase().startsWith('[checkbox]') &&
-                        <Checkbox
-                          className={classes.radioButton}
-                          size="small"
-                          onClick={() => {
-                            toggleCheckbox(ndx);
-                          }}
-                          checked={(textInput[ndx] === 'checked')}
-                        />
+                        <React.Fragment>
+                          <Checkbox
+                            className={classes.radioButton}
+                            size="small"
+                            onClick={() => {
+                              toggleCheckbox(ndx);
+                            }}
+                            checked={(textInput[ndx] === 'checked')}
+                          />
+                          <Typography style={AVATextStyle({
+                            size: 1
+                          })}>
+                            {prompt.split(']').pop()}
+                          </Typography>
+                        </React.Fragment>
                       }
-                      <Typography style={AVATextStyle({
-                        size: 1
-                      })}>
-                        {prompt.split(']').pop()}
-                      </Typography>
+                      {prompt.toLowerCase().startsWith('[select') &&
+                        <React.Fragment>  
+                          <TextField
+                            className={classes.idText}
+                            id={`prompt-${ndx}`}
+                            key={`prompt-${ndx}`}
+                            select
+                            autoFocus={(ndx === reactData.focusOn) ? true : null}
+                            inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                            FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                            error={!!(errorText && errorText[ndx])}
+                            value={textInput[ndx] || ''}
+                            onChange={(event) => {
+                              handleChangeTextInput(event, ndx);
+                            }}
+                            onKeyPress={(event) => {
+                              onCheckEnter(event);
+                            }}
+                            helperText={((errorText && errorText[ndx]) ? errorText[ndx] : (prompt.split(']').pop() || ''))}
+                            autoComplete='off'
+                          >
+                            {selectionList[ndx].map((sel) => (
+                              <MenuItem
+                                key={((typeof (sel) === 'string') ? sel : sel.key)}
+                                value={((typeof (sel) === 'string') ? sel : sel.value)}>
+                                {sentenceCase(((typeof (sel) === 'string') ? sel : sel.key))}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                        </React.Fragment>
+                      }
                     </Box>
                     :
                     <Box display='flex'
