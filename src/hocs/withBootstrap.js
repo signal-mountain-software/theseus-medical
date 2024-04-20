@@ -1198,6 +1198,11 @@ export default Component => props => {
             }
             case 'group_assignments': {
               currentSession.group_assignments = cRec.customization_value;
+              currentSession.inactiveGroupList = ['inactive'];
+              let inactiveAssignment = makeArray(currentSession?.group_assignments?.inactive);
+              if (inactiveAssignment.length > 0) {
+                currentSession.inactiveGroupList.push(...inactiveAssignment);
+              }
               break;
             }
             case 'greeting':
@@ -1227,7 +1232,7 @@ export default Component => props => {
       }
     }
 
-    belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.patient_id, {sort: true});
+    belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.patient_id, { sort: true });
 
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {
