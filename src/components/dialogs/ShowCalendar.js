@@ -111,13 +111,19 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
 
   const { enqueueSnackbar } = useSnackbar();
 
+  let defaultValues = Object.assign({}, ...currentEvent);
+  let eList = currentEvent.find(e => {
+    return e.hasOwnProperty('eventList');
+  })
+
   const [reactData, setReactData] = React.useState({
     start_date: 0,
     end_date: 'today',
+    defaultValues: defaultValues,
     selectedEvent: (currentEvent && !isObject(currentEvent[0]) ? currentEvent[0] : ''),
-    myCalendar: ((isEmpty(currentEvent) || !currentEvent[0].hasOwnProperty('eventList')) ? [] : currentEvent[0].eventList),
+    myCalendar: ((isEmpty(currentEvent) || !eList) ? [] : eList.eventList),
     loading: false
-  })
+  });
 
   const [statusMessage, setStatusMessage] = React.useState('Initializing');
   const [progress, setProgress] = React.useState(100);
@@ -352,9 +358,13 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
             <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
               <CalendarForm
                 myCalendar={reactData.myCalendar}
-                person_id={patient.patient_id}             
-                peopleList={peopleList}              
-                onClose={onClose}
+                person_id={patient.patient_id}
+                peopleList={peopleList}
+                onClose={() => {
+                  setShowAll(!reactData.selectedEvent);
+                  onClose();
+                }}
+                defaultValues={reactData.defaultValues}
               />
             </DialogContent>
           }
@@ -414,6 +424,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           pClient={eventClient || (patient.adopted_client || patient.client_id)}
           pOccData={reactData.myCalendar[0].occData}
           pPatientRec={patient}
+          defaultValues={reactData.defaultValues}
           onReset={() => { handleAbort(); }}
           pMode={calendarMode}
         />
