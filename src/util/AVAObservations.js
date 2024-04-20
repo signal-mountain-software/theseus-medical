@@ -36,6 +36,38 @@ export async function getObservationItems(pObsKey) {
   return returnObj;
 }
 
+export async function getObservationKeys(request) {
+  let pObsQkey = {
+    TableName: "Observation_Items",
+  };
+  if (typeof (request) === 'string') {
+    pObsQkey.KeyConditionExpression = 'observation_key = :c';
+    pObsQkey.ExpressionAttributeValues = {
+      ':c': request
+    };
+  }
+  else if (request.hasOwnProperty('characteristic')) {
+    pObsQkey.IndexName = 'characteristic-index';
+    pObsQkey.KeyConditionExpression = 'characteristic = :c';
+    pObsQkey.ExpressionAttributeValues = {
+      ':c': request.characteristic
+    }
+  }
+  else if (request.hasOwnProperty('observation_key')) {
+    pObsQkey.KeyConditionExpression = 'observation_key = :c';
+    pObsQkey.ExpressionAttributeValues = {
+      ':c': request.observation_key
+    };
+  }
+  let obsItemRec = await dbClient
+    .query(pObsQkey)
+    .promise()
+    .catch(error => { cl('ERROR reading Observation_Items.  Caught error is:', error); });
+  if (recordExists(obsItemRec)) {
+    return obsItemRec.Items
+  };
+}
+
 export async function getObservations(pClient, pKey, options = {}) {
   var observations;
   var valueList = [];
