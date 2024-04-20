@@ -1,4 +1,6 @@
 import React from 'react';
+import { useSnackbar } from 'notistack';
+
 import Box from '@material-ui/core/Box';
 import Dialog from '@material-ui/core/Dialog';
 import DialogContentText from '@material-ui/core/DialogContentText';
@@ -14,7 +16,7 @@ import CloseIcon from '@material-ui/icons/Close';
 import TextField from '@material-ui/core/TextField';
 
 import Paper from '@material-ui/core/Paper';
-import { cl } from '../../util/AVAUtilities';
+import { cl, isObject } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getImage, makeName } from '../../util/AVAPeople';
@@ -24,7 +26,8 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import Typography from '@material-ui/core/Typography';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -67,6 +70,7 @@ const useStyles = makeStyles(theme => ({
   },
   firstName: {
     marginLeft: theme.spacing(1),
+    fontSize: '0.8rem',
   },
   lastName: {
     fontWeight: 'bold',
@@ -91,10 +95,11 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ open, last_selected, roles, onClose }) => {
+export default ({ open, last_selected, priority_list, onClose }) => {
 
   const { state } = useSession();
   const { accessList } = state;
+  const { enqueueSnackbar } = useSnackbar();
 
   const [person_filter, setPersonFilter] = React.useState('');
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
@@ -112,6 +117,7 @@ export default ({ open, last_selected, roles, onClose }) => {
   const [reactData, setReactData] = React.useState({
     screen_mode: 'select',
     selected_person: null,
+    selection_list: buildSelectionList()
   });
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
@@ -120,6 +126,49 @@ export default ({ open, last_selected, roles, onClose }) => {
     )));
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
+
+  function buildSelectionList() {
+    let inList = [];
+    if (last_selected) {
+      inList.push(...last_selected);
+    }
+    if (priority_list) {
+      inList.push(...priority_list);
+    }
+    if (accessList) {
+      inList.push(...accessList[selectedClient].list);
+    }
+    let finalList = [];
+    let existingIDs = [];
+    for (let w = 0; w < inList.length; w++) {
+      let this_row = inList[w];
+      if (typeof (this_row) === 'string') {
+        this_row = accessList[selectedClient].list.find(r => {
+          return (r.person_id === this_row);
+        });
+      }
+      else if ((!this_row.hasOwnProperty.location) && accessList) {
+        let a_row = accessList[selectedClient].list.find(r => {
+          return (r.person_id === (this_row.id || this_row.person_id));
+        });
+        if (a_row.groups.some(r => {
+          return (state.session.inactiveGroupList.includes(r));
+        })) {
+          continue;
+        }
+        this_row.location = a_row.location;
+      }
+      if (!existingIDs.includes(this_row.id)) {
+        existingIDs.push(this_row.id);
+        finalList.push({
+          id: this_row.id,
+          location: this_row.location,
+          name: this_row.displayName || (`${this_row.first} ${this_row.last}`.trim()) || (`${this_row?.name.first} ${this_row?.name.last}`.trim()) || this_row.id || this_row.person_id
+        });
+      }
+    };
+    return finalList;
+  }
 
   const subMenuHead = React.useRef(null);
 
@@ -155,11 +204,18 @@ export default ({ open, last_selected, roles, onClose }) => {
       screen_mode: 'checkIn',
       selected_person: newPatient,
       statusObj: await getCurrentStatus(newClient, newPatient, 'staff')
-    }, true)
+    }, true);
   };
 
   async function getCurrentStatus(client_id, personRec, mode) {
-    let reqArray = await getServiceRequests({ client_id, person_id: personRec.person_id, foreign_key: mode, request_type: "checkout" });
+    let person;
+    if (isObject(personRec)) {
+      person = personRec.person_id || personRec.id;
+    }
+    else {
+      person = personRec;
+    }
+    let reqArray = await getServiceRequests({ client_id, person_id: person, foreign_key: mode, request_type: "checkout" });
     if (reqArray.length === 0) {
       let now = new Date().getTime();
       return {
@@ -210,7 +266,6 @@ export default ({ open, last_selected, roles, onClose }) => {
 
   function okToShow(pLine) {
     if (!pLine) { return false; }
-    if ((pLine.member_of !== 'staff') && (pLine.member_of !== 'admin')) { return false; }
     if (pLine.access === 'none') { return false; }
     if (pLine.access === 'view') { return false; }
     if (!person_filter) { return true; }
@@ -227,7 +282,6 @@ export default ({ open, last_selected, roles, onClose }) => {
   }, [selectedClient]);
 
   return (
-    accessList &&
     <Dialog open={open || forceRedisplay}
       onScroll={onScroll}
       p={2}
@@ -241,7 +295,7 @@ export default ({ open, last_selected, roles, onClose }) => {
         className={classes.title}
         id='scroll-dialog-title'
       >
-        {`Select your name from this list`}
+        {`Where are you checking in to?`}
       </DialogContentText>
       <TextField
         id='Type a few letters to filter the list'
@@ -254,12 +308,12 @@ export default ({ open, last_selected, roles, onClose }) => {
         {`You may filter the list below`}
       </Typography>
       <Paper p={2} component={Box} variant='outlined' width='100%' maxHeight={256} overflow='auto' square>
-        {(selectedClient !== '*none') &&
+        {accessList && (selectedClient !== '*none') &&
           <React.Fragment>
             <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
               {rowsWritten = 0}
             </Typography>
-            {((last_selected || reactData.last_selected_person || []).concat(accessList[selectedClient].list)).map((listEntry, x) => (
+            {reactData.selection_list.map((listEntry, x) => (
               ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
                 <ListItem
                   key={'person-list_' + x}
@@ -268,6 +322,14 @@ export default ({ open, last_selected, roles, onClose }) => {
                   }}
                   button
                   ref={(rowsWritten === 0) ? subMenuHead : null}
+                  onContextMenu={async (e) => {
+                    e.preventDefault();
+                    enqueueSnackbar(<div>
+                      ID: {listEntry.id}<br />
+                      Grp(s): {listEntry.groups}<br />
+                      </div>,
+                      { variant: 'info', persist: true });
+                  }}
                 >
                   <Box height={50} key={'name_box_' + x} display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
@@ -286,15 +348,8 @@ export default ({ open, last_selected, roles, onClose }) => {
                       src={getImage(listEntry.id)}
                     />
                     <Box key={'name_line_' + x} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                      <Typography variant='h5' className={classes.lastName}>{listEntry.last}</Typography>
-                      <Typography variant='h5' className={classes.firstName}>{listEntry.first}</Typography>
-                      {(x > 0) && (x < (accessList[selectedClient].list.length - 1)) &&
-                        ((accessList[selectedClient].list[x - 1].first === listEntry.first)
-                          || (accessList[selectedClient].list[x + 1].first === listEntry.first)) &&
-                        ((accessList[selectedClient].list[x - 1].last === listEntry.last)
-                          || (accessList[selectedClient].list[x + 1].last === listEntry.last)) &&
-                        <Typography variant='h5' className={classes.idText}>({listEntry.id})</Typography>
-                      }
+                      <Typography variant='h5' className={classes.lastName}>{listEntry.location}</Typography>
+                      <Typography variant='h5' className={classes.firstName}>{listEntry.name}</Typography>
                     </Box>
                   </Box>
                 </ListItem>
@@ -306,87 +361,97 @@ export default ({ open, last_selected, roles, onClose }) => {
             }
           </React.Fragment>
         }
-        </Paper>
-        { /* **********************************
+        {!accessList &&
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+            <Typography style={AVATextStyle({ bold: true, margin: { left: 1 } })}>
+              {'AVA is still loading'}
+            </Typography>
+            <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>
+              {'Please try again in a moment.'}
+            </Typography>
+          </Box>
+        }
+      </Paper>
+      { /* **********************************
                We are checking in/out
              ********************************** */
-          reactData.screen_mode === 'checkIn'
-          &&
-          (['in'].includes(reactData.statusObj.last_status) ?
-            <AVATextInput
-              titleText={[
-                makeGreeting(reactData.selected_person.first),
-                `[italic]You've been checked in with ${reactData.statusObj.last_visited_name} since ${makeDate(reactData.statusObj.last_update).relative}`,
-                ' ',
-                `Tap "Confirm" to check out`
-              ]}
-              promptText={[]}  // prompts go here (if any)
-              buttonText={['Confirm', 'Back']}
-              onCancel={() => {
-                updateReactData({
-                  screen_mode: 'select'
-                }, true)
-              }}
-              onSave={async (responses) => {
-                let now = makeDate(new Date());
-                reactData.statusObj.reqRec.last_status = 'out';
-                reactData.statusObj.reqRec.last_update = now.timestamp;
-                reactData.statusObj.reqRec.type_date = `${reactData.statusObj.reqRec.request_type}~${now.timestamp}`;
-                let hNote = `Checked out on ${now.absolute}`;
-                /*  if we have other data to capture ("did you complete your task?", "issues to note", etc.)
-                    those notes would be captured in prompts and be saved here
-                responses.forEach((r, x) => {
-                  if (r && reactData.residentPrompts) {
-                    hNote += ` ${reactData.residentPrompts[x]}: ${r}.`;
-                  }
-                });
-                */
-                reactData.statusObj.reqRec.history.unshift(hNote);
-                await updateServiceRequest(reactData.statusObj.reqRec);
-                //    enqueueSnackbar(`Check-out successful!`, { variant: 'success', persist: false });
-                handleClose();
-              }}
-              allowCancel={true}
-              options={{ save_on_enter: true }}
-            />
-            :
-            <AVATextInput
-              titleText={[
-                makeGreeting(reactData.selected_person.first),
-                `[italic]You are checking in with ${reactData.statusObj.last_visited_name}`,
-                ' ',
-                `Tap "Confirm" to check in`
-              ]}
-              promptText={[]}  // prompts go here (if any)
-              buttonText={['Confirm', 'Back']}
-              onCancel={() => {
-                updateReactData({
-                  screen_mode: 'select'
-                }, true)
-              }}
-              onSave={async () => {
-                let now = makeDate(new Date());
-                reactData.statusObj.reqRec.last_status = 'in';
-                reactData.statusObj.reqRec.last_update = now.timestamp;
-                reactData.statusObj.reqRec.type_date = `${reactData.statusObj.reqRec.request_type}~${now.timestamp}`;
-                let hNote = `Checked in on ${now.absolute} to visit ${reactData.statusObj.last_visited_name}`;
-                reactData.statusObj.reqRec.history.unshift(hNote);
-                reactData.statusObj.reqRec.last_visited = state.patient.person_id;
-                await updateServiceRequest(reactData.statusObj.reqRec);
-                handleClose();
-              }}
-              allowCancel={true}
-            />
-          )
-        }
+        reactData.screen_mode === 'checkIn'
+        &&
+        (['in'].includes(reactData.statusObj.last_status) ?
+          <AVATextInput
+            titleText={[
+              makeGreeting(reactData.selected_person.first),
+              `[italic]You've been checked in with ${reactData.statusObj.last_visited_name} since ${makeDate(reactData.statusObj.last_update).relative}`,
+              ' ',
+              `Tap "Confirm" to check out`
+            ]}
+            promptText={[]}  // prompts go here (if any)
+            buttonText={['Confirm', 'Back']}
+            onCancel={() => {
+              updateReactData({
+                screen_mode: 'select'
+              }, true);
+            }}
+            onSave={async (responses) => {
+              let now = makeDate(new Date());
+              reactData.statusObj.reqRec.last_status = 'out';
+              reactData.statusObj.reqRec.last_update = now.timestamp;
+              reactData.statusObj.reqRec.type_date = `${reactData.statusObj.reqRec.request_type}~${now.timestamp}`;
+              let hNote = `Checked out on ${now.absolute}`;
+              /*  if we have other data to capture ("did you complete your task?", "issues to note", etc.)
+                  those notes would be captured in prompts and be saved here
+              responses.forEach((r, x) => {
+                if (r && reactData.residentPrompts) {
+                  hNote += ` ${reactData.residentPrompts[x]}: ${r}.`;
+                }
+              });
+              */
+              reactData.statusObj.reqRec.history.unshift(hNote);
+              await updateServiceRequest(reactData.statusObj.reqRec);
+              //    enqueueSnackbar(`Check-out successful!`, { variant: 'success', persist: false });
+              handleClose();
+            }}
+            allowCancel={true}
+            options={{ save_on_enter: true }}
+          />
+          :
+          <AVATextInput
+            titleText={[
+              makeGreeting(state.session.patient_display_name),
+              `[italic]You are checking in to ${reactData.selected_person.location} (${reactData.selected_person.name})`,
+              ' ',
+              `Tap "Confirm" to check in`
+            ]}
+            promptText={[]}  // prompts go here (if any)
+            buttonText={['Confirm', 'Back']}
+            onCancel={() => {
+              updateReactData({
+                screen_mode: 'select'
+              }, true);
+            }}
+            onSave={async () => {
+              let now = makeDate(new Date());
+              reactData.statusObj.reqRec.last_status = 'in';
+              reactData.statusObj.reqRec.last_update = now.timestamp;
+              reactData.statusObj.reqRec.type_date = `${reactData.statusObj.reqRec.request_type}~${now.timestamp}`;
+              let hNote = `Checked in on ${now.absolute} to visit ${reactData.statusObj.last_visited_name}`;
+              reactData.statusObj.reqRec.history.unshift(hNote);
+              reactData.statusObj.reqRec.last_visited = state.patient.person_id;
+              await updateServiceRequest(reactData.statusObj.reqRec);
+              handleClose();
+            }}
+            allowCancel={true}
+          />
+        )
+      }
       <DialogActions style={{ justifyContent: 'center' }}>
         <Button
           className={AVAClass.AVAButton}
           style={{ backgroundColor: 'red', color: 'white' }}
           size='small'
-            onClick={() => {
-              handleClose();
-            }}
+          onClick={() => {
+            handleClose();
+          }}
           startIcon={<CloseIcon fontSize="small" />}
         >
           {'Exit'}

@@ -3,10 +3,13 @@ import { sentenceCase, deepCopy, makeArray, isMobile, cl, titleCase, dbClient, r
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getMemberList } from '../../util/AVAGroups';
+import { getCalendarEntries } from '../../util/AVACalendars';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, messageHistory, sendMessages } from '../../util/AVAMessages';
 import MakeMessage from '../forms/MakeMessage';
 import AVATextInput from '../forms/AVATextInput';
+import CalendarEventEditForm from '../forms/CalendarEventEditForm';
+import StaffAccess from './StaffAccess';
 
 import AVA_AlertSound from '../../ava_alert.mp3';
 import SearchIcon from '@material-ui/icons/Search';
@@ -28,6 +31,9 @@ import CheckIcon from '@material-ui/icons/DoneSharp';
 import SwapVertIcon from '@material-ui/icons/SwapVert';
 import ClearAllIcon from '@material-ui/icons/ClearAll';
 import DoneAllIcon from '@material-ui/icons/DoneAll';
+import OpenDoorIcon from '@material-ui/icons/MeetingRoom';
+import DashboardIcon from '@material-ui/icons/Dashboard';
+import ListIcon from '@material-ui/icons/List';
 
 import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -235,7 +241,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   const firstSelectedRowRef = React.useRef(null);
 
-  const { enqueueSnackbar } = useSnackbar();
+  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const [loading, setLoading] = React.useState('no_value');
   const [unmount, setUnmount] = React.useState();
@@ -273,7 +279,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     showDashboard: false,
     selectionsChanged: false,
     selectAssignTo: false,
-    selectStatus: false,
+    showUpdateForm: false,
+    showEventEdit: false,
+    detailEdit: {},
     choiceList: [],
     statusList: [],
     isMobile: isMobile(),
@@ -403,7 +411,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       historyLine += `Assigned to ${assignedToName}`;
     }
     let AVAdate = makeDate(new Date());
-    if (historyLine) {
+    if (pOptions.history_update) {
+      historyLine = pOptions.history_update;
+    }
+    else if (historyLine) {
       historyLine += ` on ${AVAdate.absolute}`;
     }
     let updateRows = [];
@@ -710,8 +721,30 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   function anyRowsSelected() {
     return reactData.dataRows.some(r => {
-      return r.workData.checked;
+      return (r.workData.checked && OKToDisplay(r));
     });
+  }
+
+  function checklistSelected() {
+    let selectedRow = false;
+    let checklistRow = { OK: false, reason: 'No checklist row selected' };;
+    reactData.dataRows.forEach(r => {
+      if (r.workData.checked && OKToDisplay(r)) {
+        // a selected row that is visible
+        if (selectedRow && (checklistRow.OK || (r.workData.flavor === 'checklist'))) {     // is there already a selected row?  if so, reject
+          return { OK: false, reason: 'You selected multiple rows, which included at least one checklist' };
+        }
+        selectedRow = true;
+        if (r.workData.flavor === 'checklist') {    // is this row a checklist type of request?
+          checklistRow = {
+            OK: true,
+            rowIndex: r,
+            foreign_key: r.foreign_key
+          };
+        }
+      }
+    });
+    return checklistRow;
   }
 
   const firstSelectedRow = () => {
@@ -1064,15 +1097,48 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
   };
 
+  async function orderWarning(pKey) {
+    const showWarning = new Promise((resolve, reject) => {
+      let response = '';
+      const snackAction = (
+        <React-Fragment>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'close'; resolve(response); }}
+          >
+            Yes, Close it!
+          </Button>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'leave'; resolve(response); }}
+          >
+            No, Leave it.
+          </Button>
+        </React-Fragment>
+      );
+      enqueueSnackbar(
+        `You marked off all ${pKey} items on the list.  Would you like to mark the request complete and close it?`,
+        { variant: 'warning', persist: true, action: snackAction }
+      );
+    });
+    let rValue = await showWarning;
+    closeSnackbar();
+    return rValue;
+  }
+
   async function buildRequestDetails(i) {
     i.workData = {};
     i.workData.search_data = '';
     if (session.service_request_types.hasOwnProperty(i.request_type)) {
       i.workData.formatted_type = session.service_request_types[i.request_type].description || `${titleCase(i.request_type)}`;
+      i.workData.flavor = session.service_request_types[i.request_type].flavor || '';
     }
     else {
       cl(`request type "${i.request_type}" not in session.service_request_types`);
       i.workData.formatted_type = titleCase(i.request_type);
+      i.workData.flavor = '';
     }
     let [enteredBy, requestTimeStamp] = i.request_id.split('~');
     i.workData.enteredBy = enteredBy;
@@ -1501,7 +1567,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           updateReactData({
                             dataRows: reactData.dataRows,
                             filter: reactData.filter
-                          }, true)
+                          }, true);
                         }}
                       >
                         <Typography
@@ -1912,7 +1978,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }}
             />
           }
-          {reactData.selectStatus &&
+          {reactData.showUpdateForm &&
             <SelectFromList
               prompt={['Status', 'Notes', 'Notifications']}
               selectionsList={reactData.statusList.filter(s => {
@@ -1926,7 +1992,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }}
               onCancel={() => {
                 updateReactData({
-                  selectStatus: false
+                  showUpdateForm: false
                 }, true);
               }}
               onSelect={async (response) => {
@@ -1936,12 +2002,12 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   notify: response.notify
                 });
                 updateReactData({
-                  selectStatus: false
+                  showUpdateForm: false
                 }, true);
               }}
             />
           }
-          {reactData.showStaffAccess &&
+          {reactData.showStaffAccess && false &&
             (['in'].includes(reactData.checkInStatusObj.last_status) ?
               <AVATextInput
                 titleText={[
@@ -1984,42 +2050,70 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 options={{ save_on_enter: true }}
               />
               :
-              <AVATextInput
-                titleText={[
-                  makeGreeting(state.session.patient_display_name),
-                  `[italic]You are checking in with ${reactData.dataRows[reactData.checkInStatusObj.targetIndex].on_behalf_of}`,
-                  ' ',
-                  `Tap "Confirm" to check in`
-                ]}
-                promptText={[]}  // prompts go here (if any)
-                buttonText={['Confirm', 'Back']}
-                onCancel={() => {
+              <StaffAccess
+                open={true}
+                priority_list={reactData.listOfPeopleToVisit}
+                onClose={async (selected_person) => {
+                  if (selected_person) {
+                    /****  FUTURE
+                    let now = makeDate(new Date());
+                    Object.assign((reactData.checkInStatusObj.reqRec || {}), reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                    reactData.checkInStatusObj.reqRec.last_status = 'in';
+                    reactData.checkInStatusObj.reqRec.last_update = now.timestamp;
+                    reactData.checkInStatusObj.reqRec.type_date = `${reactData.checkInStatusObj.reqRec.request_type}~${now.timestamp}`;
+                    let hNote = `${state.session.patient_display_name} checked in to ${selected_person} on ${now.absolute}`;
+                    reactData.checkInStatusObj.reqRec.history.unshift(hNote);
+                    reactData.checkInStatusObj.reqRec.last_visited = reactData.dataRows[reactData.checkInStatusObj.targetIndex].requestor;
+                    let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                    reactData.dataRows[reactData.checkInStatusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
+                    await updateServiceRequest([reactData.checkInStatusObj.reqRec]);
+                    enqueueSnackbar(`Check-in successful!`, { variant: 'success', persist: false });
+                    *****/
+                  }
                   updateReactData({
-                    showStaffAccess: false
+                    showStaffAccess: false,
+                    dataRows: reactData.dataRows
                   }, true);
                 }}
-                onSave={async () => {
+              />
+
+            )
+          }
+
+          {reactData.showStaffAccess &&
+            <StaffAccess
+              open={true}
+              priority_list={reactData.listOfPeopleToVisit}
+              onClose={async (selected_person) => {
+                if (selected_person) {
+                  /****  FUTURE
                   let now = makeDate(new Date());
-                  Object.assign(reactData.checkInStatusObj.reqRec, reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                  Object.assign((reactData.checkInStatusObj.reqRec || {}), reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
                   reactData.checkInStatusObj.reqRec.last_status = 'in';
                   reactData.checkInStatusObj.reqRec.last_update = now.timestamp;
                   reactData.checkInStatusObj.reqRec.type_date = `${reactData.checkInStatusObj.reqRec.request_type}~${now.timestamp}`;
-                  let hNote = `${state.session.patient_display_name} checked in on ${now.absolute}`;
+                  let hNote = `${state.session.patient_display_name} checked in to ${selected_person} on ${now.absolute}`;
                   reactData.checkInStatusObj.reqRec.history.unshift(hNote);
                   reactData.checkInStatusObj.reqRec.last_visited = reactData.dataRows[reactData.checkInStatusObj.targetIndex].requestor;
                   let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
                   reactData.dataRows[reactData.checkInStatusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
                   await updateServiceRequest([reactData.checkInStatusObj.reqRec]);
                   enqueueSnackbar(`Check-in successful!`, { variant: 'success', persist: false });
-                  updateReactData({
-                    showStaffAccess: false,
-                    dataRows: reactData.dataRows
-                  }, true);
-                }}
-                allowCancel={true}
-              />
-            )
+                  *****/
+                  let now = makeDate(new Date());
+                  await handleUpdates({
+                    newStatus: `in_process`,
+                    history_update: `${state.session.patient_display_name} checked in to ${selected_person[0].location} (${selected_person[0].display_name || selected_person[0].name}) on ${now.absolute}`
+                  });
+                }
+                updateReactData({
+                  showStaffAccess: false,
+                  dataRows: reactData.dataRows
+                }, true);
+              }}
+            />
           }
+
 
           {/* Buttons */}
           {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
@@ -2047,7 +2141,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           showDashboard: !reactData.showDashboard
                         }, true);
                       }}
-                      startIcon={<CloseIcon size="small" />}
+                      startIcon={reactData.showDashboard ? <ListIcon size="small" /> : <DashboardIcon size="small" />}
                     >
                       {reactData.showDashboard ? 'List' : 'Dashboard'}
                     </Button>
@@ -2124,23 +2218,52 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {'Assign'}
                     </Button>
                   }
-                  {anyRowsSelected() && false &&
+                  {anyRowsSelected() &&
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
+                      style={{ backgroundColor: 'aqua', color: 'black' }}
                       size='small'
                       onClick={async () => {
                         let checkInStatusObj = await getCurrentStatus(session.client_id, session.patient_id, 'staff');
-                        checkInStatusObj.targetIndex =
+                        checkInStatusObj.targetIndex =   // check in / check out only applies to the FIRST checked-off row
                           reactData.dataRows.findIndex(r => {
                             return r.workData.checked;
                           });
+                        let checklist_info = checklistSelected();
+                        let cEntries;
+                        let listOfPeopleToVisit = [];
+                        if (checklist_info.OK) {
+                          cEntries = await getCalendarEntries({
+                            client: session.client_id,
+                            event_id: checklist_info.foreign_key,
+                            type: 'slot'
+                          });
+                          cEntries.forEach(e => {
+                            if (e.slotData && !e.marked && (e.slotData?.status?.current !== 'released')) {
+                              let [first, last] = (e.slotData.display_name || e.slotData.name).split(/(?<=^\S+)\s/);
+                              listOfPeopleToVisit.push({
+                                id: e.slot_owner,
+                                first: first,
+                                last: last
+                              });
+                            }
+                          });
+                        }
+                        else {
+                          let [first, last] = (reactData.dataRows[checkInStatusObj.targetIndex].workData.requestor_name).split(/(?<=^\S+)\s/);
+                          listOfPeopleToVisit = [{
+                            id: reactData.dataRows[checkInStatusObj.targetIndex].requestor,
+                            first: first,
+                            last: last
+                          }];
+                        }
                         updateReactData({
                           showStaffAccess: true,
+                          listOfPeopleToVisit: listOfPeopleToVisit,
                           checkInStatusObj: checkInStatusObj
                         }, true);
                       }}
-                      startIcon={<PersonAddIcon size="small" />}
+                      startIcon={<OpenDoorIcon size="small" />}
                     >
                       {'Access'}
                     </Button>
@@ -2151,10 +2274,37 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       style={{ backgroundColor: 'brown', color: 'white' }}
                       size='small'
                       onClick={async () => {
-                        await setStatusList();
-                        updateReactData({
-                          selectStatus: true
-                        }, true);
+                        let checklist_info = checklistSelected();
+                        if (checklist_info.OK) {
+                          let cEntries = await getCalendarEntries({
+                            person_id: session.patient_id,
+                            client: session.client_id,
+                            event_id: checklist_info.foreign_key
+                          });
+                          let this_event = {
+                            event_key: checklist_info.foreign_key
+                          };
+                          this_event.occData = Object.assign({},
+                            cEntries[0].eventData.event_data,
+                            cEntries[0].eventData,
+                            { location: cEntries[0].eventData.event_data.location.description },
+                            { signup_type: cEntries[0].eventData.sign_up.type },
+                            cEntries[1],
+                            { date: cEntries[1].occurrence_date },
+                            { time$: `${cEntries[0].eventData.event_data.time.from}${((cEntries[0].eventData.event_data.time.to && cEntries[0].eventData.event_data.time.to.trim() !== '') ? ' to ' + cEntries[0].eventData.event_data.time.to : '')}` },
+                            { time24: this_event.time24 }
+                          );
+                          updateReactData({
+                            showEventEdit: true,
+                            detailEdit: this_event
+                          }, true);
+                        }
+                        else {
+                          await setStatusList();
+                          updateReactData({
+                            showUpdateForm: true
+                          }, true);
+                        }
                       }}
                       startIcon={<CheckIcon size="small" />}
                     >
@@ -2210,6 +2360,29 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 </Box>
               </Box>
             </DialogActions>
+          }
+          {(loading === 'load_complete') && reactData.showEventEdit &&
+            <CalendarEventEditForm
+              pEventCode={reactData.detailEdit.event_key}
+              peopleList={[]}
+              pPatient={session.patient_id}
+              pClient={session.client_id}
+              pOccData={reactData.detailEdit.occData}
+              onReset={async (occData) => {
+                if (occData.summaryInfo.listComplete) {
+                  let requestAction = await orderWarning(occData.summaryInfo.markedSlots);
+                  if (requestAction === 'close') {
+                    await handleUpdates({
+                      newStatus: 'complete',
+                      enteredNote: `${occData.summaryInfo.markedSlots} of ${occData.summaryInfo.ownedSlots} items marked off`,
+                    });
+                  }
+                }
+                updateReactData({
+                  showEventEdit: false
+                }, true);
+              }}
+            />
           }
         </React.Fragment >
       }
