@@ -125,7 +125,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         options = { withSession: true };
       }
       if (client_id !== session.client_id) {
-        options = { noNames: true };
+        options = { nameOnly: true };
       }
       let allPeople = await getMemberList('*all', client_id, options);
       // get all the people in the client
@@ -135,68 +135,70 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         // for each person...  I am allowed access to them or not?
         let accessLevel = 'none';
         let myMaxAccessLevelToThisPerson = -1;
+        let personFlavor = 99;
         // if I am a support or master class user, I get FULL (level 3) access to all users in this client
         if (['support', 'master', 'admin'].includes(myClass)) {
           myMaxAccessLevelToThisPerson = 3;
         }
-        // also... determine my role in all of the groups in this client
-        let personFlavor = 99;
-        if (p.groups) {
-          let gL = p.groups.length;
-          for (let x = 0; x < gL; x++) {
-            let g = p.groups[x];
-            if ((g === 'ALL') || (g === "__TOP__")) {
-              continue;
-            }
-            // am I specificaly responsible for this person?
-            if (session.hasOwnProperty('responsible_for')
-              && session.responsible_for.includes(p.person_id)
-              && ((myClass !== 'family') || !(['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)))
-            ) {
-              myMaxAccessLevelToThisPerson = 3;
-              continue;
-            }
-            // this person may belong to multiple groups; each group is assigned a type (flavor) earlier
-            // which describes where that group lands in the client's hierarchy of groups
-            // a person is given a flavor based on the most significant (lowest hierarchy number) group
-            // that this person is a member of
-            // 
-            // your class (set in your people rec or defaulted above in this code) determines
-            // how you are allowed to interact with people of a particular hierarchy
-            if (groupFlavor.hasOwnProperty(g)) {
-              personFlavor = Math.min(personFlavor, groupFlavor[g]);
-            }
-            // We're going to remember the access level for each group, so we don't
-            // have to recalculate it for each person in the client
-            // if we've already calculated my level of access to members of this group, it will be saved 
-            // in the myGroupAccessLevel object;  if not, calculate it and save it there
-            if (!myGroupAccessLevel.hasOwnProperty(g) && (myMaxAccessLevelToThisPerson < 3)) {
-              let myRole = await getRole(g, person_id);
-              if (myRole === 'responsible') { myGroupAccessLevel[g] = accessLevelTable.indexOf('full'); }
-              else {
-                // the Group table record for a group MAY contain a view_group attribute
-                // if it does, this attribute will contain an object
-                // that object is keyed by class of user
-                // each key should have a single value with the word (see accessLevelTable above) indicating
-                // the level of access granted to users of this class
-                // example... the staff group may have a view_group = {'local': 'view'} which would allow 
-                //       local users to see (but not proxy to) its members
-                let this_group = await getGroup(g, client_id);
-                if (!this_group.hasOwnProperty('view_group')) {
-                  myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
-                }
-                else if (this_group['view_group'].hasOwnProperty(myClass)) {
-                  myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
-                }
+        else {
+          // also... determine my role in all of the groups in this client
+          if (p.groups) {
+            let gL = p.groups.length;
+            for (let x = 0; x < gL; x++) {
+              let g = p.groups[x];
+              if ((g === 'ALL') || (g === "__TOP__")) {
+                continue;
+              }
+              // am I specificaly responsible for this person?
+              if (session.hasOwnProperty('responsible_for')
+                && session.responsible_for.includes(p.person_id)
+                && ((myClass !== 'family') || !(['none', 'na', 'cancelled', 'inactive'].includes(session.subscription_status)))
+              ) {
+                myMaxAccessLevelToThisPerson = 3;
+                continue;
+              }
+              // this person may belong to multiple groups; each group is assigned a type (flavor) earlier
+              // which describes where that group lands in the client's hierarchy of groups
+              // a person is given a flavor based on the most significant (lowest hierarchy number) group
+              // that this person is a member of
+              // 
+              // your class (set in your people rec or defaulted above in this code) determines
+              // how you are allowed to interact with people of a particular hierarchy
+              if (groupFlavor.hasOwnProperty(g)) {
+                personFlavor = Math.min(personFlavor, groupFlavor[g]);
+              }
+              // We're going to remember the access level for each group, so we don't
+              // have to recalculate it for each person in the client
+              // if we've already calculated my level of access to members of this group, it will be saved 
+              // in the myGroupAccessLevel object;  if not, calculate it and save it there
+              if (!myGroupAccessLevel.hasOwnProperty(g) && (myMaxAccessLevelToThisPerson < 3)) {
+                let myRole = await getRole(g, person_id);
+                if (myRole === 'responsible') { myGroupAccessLevel[g] = accessLevelTable.indexOf('full'); }
                 else {
-                  myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
-                }
-                if ((myRole === 'member') && (['local', 'resident', 'staff', 'admin'].includes(myClass))) {
-                  myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
+                  // the Group table record for a group MAY contain a view_group attribute
+                  // if it does, this attribute will contain an object
+                  // that object is keyed by class of user
+                  // each key should have a single value with the word (see accessLevelTable above) indicating
+                  // the level of access granted to users of this class
+                  // example... the staff group may have a view_group = {'local': 'view'} which would allow 
+                  //       local users to see (but not proxy to) its members
+                  let this_group = await getGroup(g, client_id);
+                  if (!this_group.hasOwnProperty('view_group')) {
+                    myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
+                  }
+                  else if (this_group['view_group'].hasOwnProperty(myClass)) {
+                    myGroupAccessLevel[g] = accessLevelTable.indexOf(this_group['view_group'][myClass]);
+                  }
+                  else {
+                    myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
+                  }
+                  if ((myRole === 'member') && (['local', 'resident', 'staff', 'admin'].includes(myClass))) {
+                    myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
+                  }
                 }
               }
+              if (myGroupAccessLevel[g] > myMaxAccessLevelToThisPerson) { myMaxAccessLevelToThisPerson = myGroupAccessLevel[g]; }
             }
-            if (myGroupAccessLevel[g] > myMaxAccessLevelToThisPerson) { myMaxAccessLevelToThisPerson = myGroupAccessLevel[g]; }
           }
         }
         if (myMaxAccessLevelToThisPerson > 0) { accessLevel = accessLevelTable[myMaxAccessLevelToThisPerson]; }
@@ -204,23 +206,26 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
           if ((accessLevel === 'proxy') || (accessLevel === 'full')) {
             proxyList.push(p.person_id);
           };
-          accessList[client_id].list.push({
+          let pRec2Push = {
             person_id: p.person_id,
             name: p.name,
             first: p.name.first,
-            member_of: ((personFlavor < 99) ? groupHierarchy[personFlavor] : null),
             last: p.name.last,
             display_name: `${p.name.first} ${p.name.last}`,
-            groups: p.groups,
-            location: p.location,
-            directory_option: p.directory_option,
-            messaging: p.messaging,
             preferred_method: p.preferred_method,
             id: p.person_id,
-            search_data: p.search_data,
-            access: accessLevel,
-            session: p.session
-          });
+            access: accessLevel
+          };
+          if (client_id === session.client_id) {
+            pRec2Push.directory_option = p.directory_option;
+            pRec2Push.groups = p.groups;
+            pRec2Push.location = p.location;
+            pRec2Push.messaging = p.messaging;
+            pRec2Push.member_of = ((personFlavor < 99) ? groupHierarchy[personFlavor] : null);
+            pRec2Push.search_data = p.search_data;
+            pRec2Push.session = p.session;
+          };
+          accessList[client_id].list.push(pRec2Push);
         }
       };
       // sort names within this client
@@ -564,21 +569,30 @@ export async function getMemberList(pGroups, pClient_id, options) {
             if (!i.name) { i.name = { last: `Unknown ${i.person_id}` }; }
             if (!i.messaging) { i.messaging = { ava_only: `AVA` }; }
             i.display_name = AVAname(i);
-            if (options && options.withSession) {
-              i.session = await getSession(i.person_id);
+            if (options.nameOnly) {
+              returnArray.push({
+                person_id: i.person_id,
+                name: i.name,
+                display_name: i.display_name
+              });
             }
-            // if you belong to a group that has a parent, you belong to the parent
-            if (i.groups && !options.nameOnly) {
-              for (let g = 0; g < i.groups.length; g++) {
-                if (!foundGroups.hasOwnProperty(i.groups[g])) {
-                  foundGroups[i.groups[g]] = await getGroup(i.groups[g], client);
-                }
-                if ((foundGroups[i.groups[g]]?.belongs_to) && (!i.groups.includes(foundGroups[i.groups[g]].belongs_to))) {
-                  i.groups.push(foundGroups[i.groups[g]].belongs_to);
+            else {
+              if (options && options.withSession) {
+                i.session = await getSession(i.person_id);
+              }
+              // if you belong to a group that has a parent, you belong to the parent
+              if (i.groups) {
+                for (let g = 0; g < i.groups.length; g++) {
+                  if (!foundGroups.hasOwnProperty(i.groups[g])) {
+                    foundGroups[i.groups[g]] = await getGroup(i.groups[g], client);
+                  }
+                  if ((foundGroups[i.groups[g]]?.belongs_to) && (!i.groups.includes(foundGroups[i.groups[g]].belongs_to))) {
+                    i.groups.push(foundGroups[i.groups[g]].belongs_to);
+                  }
                 }
               }
+              returnArray.push(i);
             }
-            returnArray.push(i);
           }
         }
       };
