@@ -119,8 +119,15 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         count: {},
         list: []
       };
+      let options;
       accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
-      let allPeople = await getMemberList('*all', client_id);
+      if (['master', 'support', 'admin'].includes(myClass)) {
+        options = { withSession: true };
+      }
+      if (client_id !== session.client_id) {
+        options = { noNames: true };
+      }
+      let allPeople = await getMemberList('*all', client_id, options);
       // get all the people in the client
       let pxL = allPeople.peopleList.length;
       for (let pX = 0; pX < pxL; pX++) {
@@ -210,7 +217,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
             messaging: p.messaging,
             preferred_method: p.preferred_method,
             id: p.person_id,
-            access: accessLevel
+            search_data: p.search_data,
+            access: accessLevel,
+            session: p.session
           });
         }
       };
@@ -559,7 +568,7 @@ export async function getMemberList(pGroups, pClient_id, options) {
               i.session = await getSession(i.person_id);
             }
             // if you belong to a group that has a parent, you belong to the parent
-            if (i.groups) {
+            if (i.groups && !options.nameOnly) {
               for (let g = 0; g < i.groups.length; g++) {
                 if (!foundGroups.hasOwnProperty(i.groups[g])) {
                   foundGroups[i.groups[g]] = await getGroup(i.groups[g], client);

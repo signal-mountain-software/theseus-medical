@@ -633,7 +633,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               }
                               {adminAccount && ((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for)) &&
                                 <Box display='flex' flexDirection='column'>
-                                  <Typography id={`resp_line`} key={`resp_line`} style={AVATextStyle({ size: 0.7, margin: { top: (pStyle !== 'short' ? -0.8 : 0), bottom: (pStyle !== 'short' ? 1.5 : 0.5) } })}>
+                                  <Typography id={`resp_line`} key={`resp_line`}
+                                    style={AVATextStyle({ margin: { top: 0, bottom: (pStyle !== 'short' ? 1.5 : 0.5) } })}>
                                     {makeResponsibleLines((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for))}
                                   </Typography>
                                 </Box>
