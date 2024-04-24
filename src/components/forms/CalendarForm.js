@@ -22,6 +22,7 @@ import TextField from '@material-ui/core/TextField';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
+import PrintIcon from '@material-ui/icons/Print';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -33,6 +34,7 @@ import Button from '@material-ui/core/Button';
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import useSession from '../../hooks/useSession';
+import { printCalendar } from '../../util/AVACalendarPrint';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -546,6 +548,25 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
           startIcon={<CloseIcon fontSize="small" />}
           onClick={onClose}>
           {'Done'}
+        </Button>
+        <Button
+          className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'blue', color: 'white' }}
+          size='small'
+          startIcon={<PrintIcon fontSize="small" />}
+          onClick={async () => {
+            await printCalendar(
+              {
+                client_id: state.session.client_id,
+                myCalendar,
+                requestor: state.session.user_id,
+                filterTextLower: reactData.filterTextLower,
+                groupFilter: state.groups.belongsTo
+              }
+            )
+          }}
+        >
+          {'Print'}
         </Button>
       </Box>
     </Dialog>

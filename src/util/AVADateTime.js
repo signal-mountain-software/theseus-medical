@@ -31,7 +31,7 @@ export function makeDate(pInput, validation = null) {
             'numeric': 20990101,
             'numeric$': '20990101',
             'dayPart': 'day',   // afternoon
-            'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 7
+            'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 6
             'weekday': '',   // 'weekend' or 'weekday' 
             'textOut': pInput
         };
