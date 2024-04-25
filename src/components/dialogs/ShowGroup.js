@@ -158,7 +158,27 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
           level: g.level
         };
       }
-    };   
+    }; 
+    for (let gID in state.groups.publicGroups) {
+      if (selectAll || pGroupList.includes(gID)) {
+        response[gID] = {
+          group_name: state.groups.publicGroups[gID].group_name,
+          group_id: gID,
+          role: state.groups.publicGroups[gID].role,
+          level: 0
+        };
+      }
+    }; 
+    for (let gID in state.groups.privateGroups) {
+      if (selectAll || pGroupList.includes(gID)) {
+        response[gID] = {
+          group_name: state.groups.privateGroups[gID].group_name,
+          group_id: gID,
+          role: state.groups.privateGroups[gID].role,
+          level: 0
+        };
+      }
+    }; 
     return response;
   };
 

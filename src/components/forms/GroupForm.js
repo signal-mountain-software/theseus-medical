@@ -4,7 +4,7 @@ import { lambda, cl, sentenceCase, switchActiveAccount, listFromArray, makeArray
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { getMemberList, addMember, getPublicGroupList, determineClass, getRole, getAllGroups, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
+import { getMemberList, addMember, getPublicGroupList, getPrivateGroupList, determineClass, getRole, getAllGroups, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import useSession from '../../hooks/useSession';
 
@@ -208,7 +208,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [showEditPerson, setShowEditPerson] = React.useState(null);
   const [editPersonRec, setEditPersonRec] = React.useState(null);
   const [groupData, setGroupData] = React.useState({});
-  const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const [workingMemberList, setGroupMemberList] = React.useState(Array.isArray(groupMemberList) ? groupMemberList : groupMemberList[pClient].list);
 
@@ -223,6 +222,20 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
   const [choiceList, setChoiceList] = React.useState([]);
+
+  /*
+  const [reactData, setReactData] = React.useState({
+    listXRef: [],
+  });
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+  */
+  const [forceRedisplay, setForceRedisplay] = React.useState(false); 
 
   if (peopleList && !showSuperSize) {
     let singlePerson;
@@ -244,6 +257,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       if (this_item) {
         this_item.role = 'member';    // await getRole(pGroup, singlePerson);
         this_item.public_groups = [];   //  await getPublicGroupList(state.session.client_id, singlePerson);
+        this_item.private_groups = [];  
         if (!this_item.account_class) {
           this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
         }
@@ -415,7 +429,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const setChoices = async (inList) => {
     let response = [];
     if (state.accessList) {
-      state.accessList[state.session.client_id].list.forEach(a => {
+      state.accessList[state.session.client_id].list.forEach((a, x) => {
         if ((a.access === 'proxy') || (a.access === 'full')) {
           // list is of the form <name>:<id>:<search_string>
           response.push(`${a.name.last}${a.name.first ? ', ' + a.name.first : ''}:${a.id}:${a.display_name}_${a.location}`);
@@ -600,7 +614,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                       <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                         {rowsWritten++}
-                      </Typography>
+                      </Typography>public_groups
                       <Box display='flex' flexDirection='column' >
                         <Box
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
@@ -612,6 +626,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               onClick={async () => {
                                 this_item.role = await getRole(pGroup, this_item.person_id);
                                 this_item.public_groups = await getPublicGroupList(state.session.client_id, this_item.person_id);
+                                this_item.private_groups = await getPrivateGroupList(state.session.client_id, this_item.person_id);
                                 if (!this_item.account_class) {
                                   this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
                                 }
@@ -988,6 +1003,19 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                             {(superSizeData.public_groups[pG].role !== 'non-member') &&
                               <Typography key={`pubG_${g}-superSize`} className={classes.superSizePreferenceLine3}>
                                 {sentenceCase(superSizeData.public_groups[pG].group_name)}
+                              </Typography>
+                            }
+                          </React.Fragment>
+                        ))}
+                      </Box>
+                    }
+                    {superSizeData.private_groups && (Object.keys(superSizeData.private_groups).length > 0) &&
+                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
+                        {Object.keys(superSizeData.private_groups).map((pG, g) => (
+                          <React.Fragment key={`pubGFrag_${g}-superSize`}>
+                            {(superSizeData.private_groups[pG].role !== 'non-member') &&
+                              <Typography key={`pubG_${g}-superSize`} className={classes.superSizePreferenceLine3}>
+                                {sentenceCase(superSizeData.private_groups[pG].group_name)}
                               </Typography>
                             }
                           </React.Fragment>
