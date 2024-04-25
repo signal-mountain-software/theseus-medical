@@ -11,6 +11,10 @@ import AVATextInput from '../forms/AVATextInput';
 import CalendarEventEditForm from '../forms/CalendarEventEditForm';
 import StaffAccess from './StaffAccess';
 
+import Menu from '@material-ui/core/Menu';
+import MenuList from '@material-ui/core/MenuList';
+import MenuItem from '@material-ui/core/MenuItem';
+
 import AVA_AlertSound from '../../ava_alert.mp3';
 import SearchIcon from '@material-ui/icons/Search';
 
@@ -34,6 +38,7 @@ import DoneAllIcon from '@material-ui/icons/DoneAll';
 import OpenDoorIcon from '@material-ui/icons/MeetingRoom';
 import DashboardIcon from '@material-ui/icons/Dashboard';
 import ListIcon from '@material-ui/icons/List';
+import HomeIcon from '@material-ui/icons/Home';
 
 import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -228,6 +233,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     options: {
       shortForm - when true, don't show image, history, or message details
       textForm - when true, show only requestor and selections (in a text format)
+      selectOnly: newStatus - show only the name and very brief info; select an item to automatically change ths status
       allowAssign - when items are selected, the "assign" button will be shown.  allowAssign should contain an array (list) of groups that assignees can be selected from
       updateMode - preselect first item
       viewMode - no search field; no changes allowed; show "add new request"; onClose carries instruction for next step
@@ -246,6 +252,13 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   const [loading, setLoading] = React.useState('no_value');
   const [unmount, setUnmount] = React.useState();
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
+
+  const [anchorEl, setAnchorEl] = React.useState(null);
+
+  const handleClick = async (event) => {
+    setAnchorEl(event.currentTarget);
+  };
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
@@ -1164,14 +1177,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.requestTime = AVArequestDate.timestamp;
     i.workData.orderForDate = makeDate(i.foreign_key);
     i.workData.this_status = sentenceCase(i.last_status);
-    if (!options.textForm) {
+    if (!options.textForm && !options.selectOnly) {
       let aName = '';
       if (i.assigned_to && (i.assigned_to !== 'unassigned') && (reactData.statusObj[i.last_status] && reactData.statusObj[i.last_status].open)) {
         aName = await makeName(i.assigned_to);
       }
       i.workData.formatted_request.push(['head', `Current status: ${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
     }
-    if ((!options.shortForm) && (!options.textForm)) {
+    if ((!options.shortForm) && (!options.textForm) && !options.selectOnly) {
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
         i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
       }
@@ -1208,7 +1221,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.summary_request = i.workData.formatted_request;
     let historyList = [];
     let noteList = [];
-    if ((!options.textForm)) {
+    if ((!options.textForm) && (!options.selectOnly)) {
       i.workData.formatted_request = [];
       if ('history' in i) {
         if (typeof (i.history) === 'string') {
@@ -1465,6 +1478,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           {/* Header with Avatar, Message, and VertMenu */}
           <Box
             display='flex' flexDirection='row'
+            mt={2}
             key={'topBox'}
           >
             <Box display='flex' flexDirection='column' flexGrow={1} key={'titlesection'}>
@@ -1479,7 +1493,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   : reactData.pageTitle
                 }
               </Typography>
-              {!options.viewMode &&
+              {!options.viewMode && !options.selectOnly &&
                 <Box
                   display='flex' flexDirection='row'
                   className={classes.messageArea}
@@ -1656,6 +1670,84 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 </Box>
               }
             </Box>
+            {options.selectOnly &&
+              <React.Fragment>
+                <Box
+                  display='flex'
+                  overflow='auto'
+                  justifyContent='center'
+                  alignContent='center'
+                  flexDirection='column'
+                >
+                  <Typography
+                    style={AVATextStyle({ align: 'right', wrap: 'nowrap', size: 1.1, margin: { right: 0 } })}
+                    id='scroll-dialog-title'
+                  >
+                    {`${makeDate(new Date()).dateOnly.split(',').pop().trim()}`}
+                  </Typography>
+                  <Typography
+                    style={AVATextStyle({ align: 'right', size: 1.1, margin: { right: 0 } })}
+                    id='scroll-dialog-title'
+                  >
+                    {`${makeDate(new Date()).timeOnly.split(' ').join('').toLowerCase()}`}
+                  </Typography>
+                </Box>
+                <Box
+                  display='flex' flexDirection='row'
+                  className={classes.messageArea}
+                  key={'topBox'}
+                >
+                  <Box
+                    component="img"
+                    ml={2}
+                    mr={2}
+                    aria-controls='hidden-menu'
+                    aria-haspopup='true'
+                    minWidth={50}
+                    maxWidth={50}
+                    minHeight={50}
+                    maxHeight={50}
+                    onClick={(event) => {
+                      handleClick(event);
+                      setPopupMenuOpen(true);
+                    }}
+                    alt=''
+                    src={process.env.REACT_APP_AVA_LOGO}
+                  />
+                  <Menu
+                    id='hidden-menu'
+                    anchorEl={anchorEl}
+                    open={popupMenuOpen}
+                    onClose={() => { setPopupMenuOpen(false); }}
+                    keepMounted>
+                    <MenuList className={classes.popUpMenu}>
+                      <MenuItem
+                        onClick={() => {
+                          onClose();
+                        }}>
+                        <Box
+                          display='flex' flexDirection='row' alignItems={'center'}
+                          key={'vRowHome'}
+                        >
+                          <HomeIcon />
+                          <Typography className={classes.popUpMenuRow} >{'Exit'}</Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem>
+                        <Box
+                          display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                          key={'vRowRefresh'}
+                        >
+                          <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                          <Typography className={classes.popUpFooter} >{`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}</Typography>
+                          <Typography className={classes.popUpFooter} >{`Function: Calendar`}</Typography>
+                        </Box>
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+                </Box>
+              </React.Fragment>
+            }
           </Box>
 
           {/* Main List */}
@@ -1751,35 +1843,37 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                         {this_item.workData.updated}
                                       </Typography>
                                     }
-                                    <React.Fragment>
-                                      {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                    {!options.selectOnly &&
+                                      <React.Fragment>
+                                        {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                          <Typography
+                                            variant='h5'
+                                            style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                          >
+                                            {`By ${this_item.workData.enteredBy_name}`}
+                                          </Typography>
+                                        }
                                         <Typography
                                           variant='h5'
                                           style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
                                         >
-                                          {`By ${this_item.workData.enteredBy_name}`}
+                                          {this_item.workData.display_date}
                                         </Typography>
-                                      }
-                                      <Typography
-                                        variant='h5'
-                                        style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
-                                      >
-                                        {this_item.workData.display_date}
-                                      </Typography>
-                                      {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey)
-                                        && !(this_item?.workData?.orderForDate.error)
-                                        &&
-                                        <Typography
-                                          variant='h5'
-                                          style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
-                                        >
-                                          {`For ${this_item?.workData?.orderForDate.relative}`}
-                                        </Typography>
-                                      }
-                                    </React.Fragment>
+                                        {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey)
+                                          && !(this_item?.workData?.orderForDate.error)
+                                          &&
+                                          <Typography
+                                            variant='h5'
+                                            style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                          >
+                                            {`For ${this_item?.workData?.orderForDate.relative}`}
+                                          </Typography>
+                                        }
+                                      </React.Fragment>
+                                    }
                                   </Box>
                                 </Box>
-                                {!options.textForm &&
+                                {!options.textForm && !options.selectOnly &&
                                   this_item?.workData?.summary_request &&
                                   this_item.workData.summary_request.map((mSumLine, mSumIndex) => (
                                     < Typography
@@ -1789,7 +1883,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                       {typeof mSumLine[1] === 'string' ? mSumLine[1] : (alert(mSumIndex, mSumLine))}
                                     </Typography>
                                   ))}
-                                {this_item.workData.open && this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                                {this_item.workData.open && !options.selectOnly && this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
                                   (mLine[0].startsWith('href=')
                                     ?
                                     <a
@@ -1814,7 +1908,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                     </Typography>
                                   )
                                 ))}
-                                {this_item.workData.open &&
+                                {this_item.workData.open && !options.selectOnly &&
                                   this_item.workData.messageRecs.map((mLine, dX) => (
                                     <Typography
                                       key={('mrow_out' + dX)}
@@ -2117,7 +2211,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
           {/* Buttons */}
           {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
-            (!options.viewMode) &&
+            (!options.viewMode) && (!options.selectOnly) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
@@ -2325,6 +2419,27 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {reactData.isMobile ? null : 'Print'}
                     </Button>
                   }
+                </Box>
+              </Box>
+            </DialogActions>
+          }
+          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            (options.selectOnly) && (anyRowsSelected()) &&
+            // Command Area
+            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+              <Box display='flex' flexDirection='column'>
+                <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white', paddingRight: (reactData.isMobile ? '4px' : '') }}
+                    size='small'
+                    onClick={async () => {
+                      await handlePrintRequest();
+                    }}
+                    startIcon={<PrintIcon size="small" />}
+                  >
+                    {'Check me in!'}
+                  </Button>
                 </Box>
               </Box>
             </DialogActions>
