@@ -290,6 +290,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     pageTitle: titleCase(title.split(/\(/).shift().toLowerCase().replace('list', '').trim()),
     requestIDs: [],
     showDashboard: false,
+    showSummary: false,
     selectionsChanged: false,
     selectAssignTo: false,
     showUpdateForm: false,
@@ -301,6 +302,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     showStaffAccess: false,
     statusObj: {},
     checkInStatusObj: {},
+    rowOpen: [],
+    display_summary: {},
+    display_summaryList: [],
     filter: deepCopy(filterIn),
     filterTextLower: (filter.filterText ? filter.filterText.toLowerCase() : null)
   });
@@ -356,7 +360,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     else { return `Good ${makeDate(new Date()).dayPart}${pName ? ', ' + pName : ''}!`; }
   }
 
-  const handleChangeStatusSelection = statusIn => {
+  async function handleChangeStatusSelection(statusIn) {
     let statusWord = statusIn.toLowerCase();
     if (!reactData.filter.fields.status.hasOwnProperty(statusWord)
       || !reactData.filter.fields.status[statusWord]) {
@@ -369,9 +373,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         return f;
       });
     }
-    updateReactData({
+    let reactUpdateObj = {
       filter: reactData.filter
-    }, true);
+    }
+    if (reactData.showSummary) {
+      await prepareSummary();
+      reactUpdateObj.display_summary = reactData.display_summary;
+    }
+    updateReactData(reactUpdateObj, true);
 
   };
 
@@ -632,6 +641,146 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
     }, 500);
   };
+
+  async function prepareSummary() {
+    reactData.display_summary = {};
+    reactData.display_summaryList = [];
+    reactData.rowOpen = [];
+    let observations;
+    let oType = {};
+    let last_fKey;
+    for (let x = 0; x < reactData.dataRows.length; x++) {
+      let this_item = reactData.dataRows[x];
+      if (this_item.foreign_key !== last_fKey) {
+        let pDate = makeDate(this_item.foreign_key);
+        observations = await dbClient
+          .query({
+            KeyConditionExpression: 'client_id = :c and date_key = :d',
+            ExpressionAttributeValues: { ':c': this_item.client_id, ':d': pDate.ymd },
+            TableName: "Observations",
+            IndexName: "date_key-index"
+          })
+          .promise()
+          .catch(error => { cl(`ERROR reading Observations by date *** caught error is: ${error}`); });
+        if (recordExists(observations)) {
+          last_fKey = this_item.foreign_key;
+          observations.Items.forEach(o => {
+            let check = o.composite_key.toLowerCase();
+            ['entree', 'salad', 'soup', 'bread', 'side', 'dessert', 'beverage'].forEach(t => {
+              if (check.includes(t)) {
+                oType[o.observation_code] = sentenceCase(t);               
+              }
+            });
+          });
+        }
+      }
+      if (OKToDisplay(this_item)) {
+        await countThisLine(this_item, oType);
+      }
+    }
+    // clean up Other (if possible)
+    for (let oKey in reactData.display_summary) {
+      if (reactData.display_summary[oKey].menuType === 'Other') {
+        if (oType.hasOwnProperty(oKey)) {
+          reactData.display_summary[oKey].menuType = oType.oKey;
+        }
+        else {
+          observations = await dbClient
+            .query({
+              KeyConditionExpression: 'client_id = :c and observation_code = :o',
+              ExpressionAttributeValues: { ':c': session.client_id, ':o': oKey },
+              TableName: "Observations",
+              IndexName: "observation_code-index"
+            })
+            .promise()
+            .catch(error => { cl(`ERROR reading Observations by obs_code *** caught error is: ${error}`); });
+          if (recordExists(observations)) {
+            let keepGoing = true;
+            for (let i = 0; ((i < observations.Items.length) && (keepGoing)); i++) {
+              let o = observations.Items[i];
+              let check = o.composite_key.toLowerCase();
+              ['entree', 'salad', 'soup', 'bread', 'side', 'dessert', 'beverage'].forEach(t => {
+                if (check.includes(t)) {
+                  reactData.display_summary[oKey].menuType = sentenceCase(t);
+                  oType[o.observation_code] = sentenceCase(t);
+                  keepGoing = false;
+                }
+              });
+            };
+          }
+        }
+      }
+    }
+    ['Entree', 'Salad', 'Soup', 'Bread', 'Side', 'Dessert', 'Beverage', 'Other'].forEach(t => {
+      let this_group = [];
+      for (let oKey in reactData.display_summary) {
+        if (reactData.display_summary[oKey].menuType === t) {
+          this_group.push(reactData.display_summary[oKey]);
+        }
+      }
+      if (this_group.length > 0) {
+        this_group.sort((a, b) => {
+          return (a.description > b.description ? 1 : -1);
+        });
+        reactData.display_summaryList.push(...this_group);
+      }
+    });
+    return reactData.display_summaryList;
+  }
+
+  async function countThisLine(this_item, oType) {
+    let parent;
+    for (let x = 0; x < this_item.workData.summary_request.length; x++) {
+      let line = this_item.workData.summary_request[x];
+      if ((line[0] === 'detail') || (line[0] === 'qual')) {
+        if (line[0] === 'detail') {
+          if (((x + 1) < this_item.workData.summary_request.length)
+            && (this_item.workData.summary_request[x + 1][0] === 'qual')) {
+            parent = line[1];
+          }
+          else {
+            parent = null;
+          }
+        }
+        // let this_prop = `${(line[0] === 'qual') ? parent + ' - ' : ''}${line[1]}`;
+        if (line[0] === 'detail') {
+          if (!reactData.display_summary.hasOwnProperty(line[1])) {
+            reactData.display_summary[line[1]] = {
+              description: line[1],
+              count: 1,
+              type: line[0],
+              menuType: oType[line[1]] || 'Other',
+              qual: {}
+            };
+            reactData.rowOpen.push(false);
+          }
+          else {
+            reactData.display_summary[line[1]].count++;
+          }
+        }
+        else {
+          if (!reactData.display_summary.hasOwnProperty(parent)) {
+            reactData.display_summary[parent] = {
+              description: parent,
+              count: 1,
+              type: line[0],
+              menuType: oType[parent] || 'Other',
+              qual: {
+                [line[1]]: 1
+              }
+            };
+            reactData.rowOpen.push(false);
+          }
+          else if (!reactData.display_summary[parent].qual.hasOwnProperty(line[1])) {
+            reactData.display_summary[parent].qual[line[1]] = 1;
+          }
+          else {
+            reactData.display_summary[parent].qual[line[1]]++;
+          }
+        }
+      }
+    };
+  }
 
   function OKToDisplay(this_item) {
     if (reactData.filter.filtering) {
@@ -1528,7 +1677,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         autoComplete='off'
                       />
                     </Box>
-                    {!reactData.showDashboard &&
+                    {!reactData.showDashboard && !reactData.showSummary &&
                       <Box display='flex'
                         paddingRight={2}
                         paddingBottom={0.5}
@@ -1644,8 +1793,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         {reactData.statusList.map((this_status, this_status_index) => (
                           <FormControlLabel
                             className={classes.formControlLbl}
-                            onChange={() => {
-                              handleChangeStatusSelection(this_status.value);
+                            onChange={async () => {
+                              await handleChangeStatusSelection(this_status.value);
                             }}
                             key={`status_selector_${this_status_index}`}
                             id={`status_selector_${this_status_index}`}
@@ -1751,7 +1900,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           </Box>
 
           {/* Main List */}
-          {!reactData.showDashboard &&
+          {!reactData.showDashboard && !reactData.showSummary &&
             <Paper
               component={Box}
               overflow='auto'
@@ -2025,6 +2174,76 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             </Paper>
           }
 
+
+          {/* Summary */}
+          {reactData.showSummary &&
+            <Paper
+              component={Box}
+              overflow='auto'
+              elevation={0}
+              pt={3}
+              pb={2}
+              square
+            >
+              <List>
+                {reactData.display_summaryList.map((this_item, this_index) => (
+                  <Paper
+                    component={Box}
+                    elevation={0}
+                    key={`paper_row_${this_index}`}
+                  >
+                    <Box
+                      display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'
+                      key={`paper_row_box${this_index}`}
+                      className={classes.listItem}
+                      marginLeft={2}
+                    >
+                      {((this_index === 0) || (this_item.menuType !== reactData.display_summaryList[this_index - 1].menuType)) &&
+                        <Typography
+                          variant='h5'
+                          style={AVATextStyle({ size: 1.2, bold: true, margin: { top: 2 } })}
+                          className={classes.firstName}
+                        >
+                          {this_item.menuType}
+                        </Typography>
+                      }
+                      <Box display='flex'
+                        flexDirection='row' width='100%'
+                        justifyContent='flex-start'
+                        alignItems='center'
+                        onClick={() => {
+                          reactData.rowOpen[this_index] = !reactData.rowOpen[this_index];
+                          updateReactData({
+                            rowOpen: reactData.rowOpen
+                          }, true);
+                        }}
+                      >
+                        <Typography
+                          variant='h5'
+                          style={AVATextStyle({ size: 1, margin: { top: 1, left: 2 } })}
+                          className={classes.firstName}
+                        >
+                          {`${this_item.description} - ${this_item.count}`}
+                        </Typography>
+                      </Box>
+                      {reactData.rowOpen[this_index]
+                        && Object.keys(this_item.qual).sort().map(qText => (
+                          <Typography
+                            variant='h5'
+                            style={AVATextStyle({ margin: { left: 4 }, italic: true, size: 1 })}
+                            className={classes.firstName}
+                          >
+                            {`${qText} - ${this_item.qual[qText]}`}
+                          </Typography>
+                        )
+                        )}
+                    </Box>
+                  </Paper>
+                ))}
+              </List>
+            </Paper>
+          };
+
           {/* Prompts */}
           {
             promptForMessage &&
@@ -2046,7 +2265,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               allowCancel={true}
             />
           }
-          {reactData.selectAssignTo &&
+          {
+            reactData.selectAssignTo &&
             <PersonFilter
               prompt={'Assign to whom?'}
               peopleList={reactData.choiceList}
@@ -2072,7 +2292,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }}
             />
           }
-          {reactData.showUpdateForm &&
+          {
+            reactData.showUpdateForm &&
             <SelectFromList
               prompt={['Status', 'Notes', 'Notifications']}
               selectionsList={reactData.statusList.filter(s => {
@@ -2101,7 +2322,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }}
             />
           }
-          {reactData.showStaffAccess && false &&
+          {
+            reactData.showStaffAccess && false &&
             (['in'].includes(reactData.checkInStatusObj.last_status) ?
               <AVATextInput
                 titleText={[
@@ -2174,7 +2396,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             )
           }
 
-          {reactData.showStaffAccess &&
+          {
+            reactData.showStaffAccess &&
             <StaffAccess
               open={true}
               priority_list={reactData.listOfPeopleToVisit}
@@ -2210,7 +2433,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
 
           {/* Buttons */}
-          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+          {
+            ((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
             (!options.viewMode) && (!options.selectOnly) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
@@ -2225,7 +2449,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   >
                     {reactData.isMobile ? 'Exit' : 'Close'}
                   </Button>
-                  {state.session.allow_request_dashboard && reactData.statistics &&
+                    {options.allowDashboard && reactData.statistics &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'purple', color: 'white' }}
@@ -2238,6 +2462,23 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       startIcon={reactData.showDashboard ? <ListIcon size="small" /> : <DashboardIcon size="small" />}
                     >
                       {reactData.showDashboard ? 'List' : 'Dashboard'}
+                    </Button>
+                  }
+                  {options.allowSummary &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'orange', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        await prepareSummary();
+                        updateReactData({
+                          display_summary: reactData.display_summary,
+                          showSummary: !reactData.showSummary
+                        }, true);
+                      }}
+                      startIcon={reactData.showSummary ? <ListIcon size="small" /> : <DashboardIcon size="small" />}
+                    >
+                      {reactData.showSummary ? 'List' : 'Summary'}
                     </Button>
                   }
                   {(rowsDisplayed.length > 0) &&
@@ -2423,7 +2664,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               </Box>
             </DialogActions>
           }
-          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+          {
+            ((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
             (options.selectOnly) && (anyRowsSelected()) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
@@ -2444,7 +2686,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               </Box>
             </DialogActions>
           }
-          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+          {
+            ((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
             (options.viewMode) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
@@ -2476,7 +2719,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               </Box>
             </DialogActions>
           }
-          {(loading === 'load_complete') && reactData.showEventEdit &&
+          {
+            (loading === 'load_complete') && reactData.showEventEdit &&
             <CalendarEventEditForm
               pEventCode={reactData.detailEdit.event_key}
               peopleList={[]}
