@@ -951,7 +951,45 @@ export async function getPublicGroupList(pClient_id, person_id, options) {
     });
   if (!recordExists(groupRec)) { return {}; }
   groupRec.Items.sort((a, b) => {
-    if (a.name > b.name) { return 11; }
+    if (a.name > b.name) { return 1; }
+    else { return -1; }
+  });
+  let response = {};
+  for (let g = 0; g < groupRec.Items.length; g++) {
+    let thisGroup = groupRec.Items[g];
+    let role = await getRole(thisGroup.group_id, person_id);
+    response[thisGroup.group_id] = {
+      group_name: thisGroup.name,
+      group_id: thisGroup.group_id,
+      role
+    };
+  }
+  return response;
+}
+
+export async function getPrivateGroupList(pClient_id, person_id, options) {
+  if (!pClient_id) {
+    if (session) { pClient_id = session.client_id; }
+    else return {};
+  }
+  let qParm = {
+    KeyConditionExpression: 'client_id = :c',
+    ExpressionAttributeValues: { ':c': pClient_id, ':p': 'private' },
+    FilterExpression: 'group_type = :p',
+    TableName: "Groups"
+  };
+  let groupRec = await dbClient
+    .query(qParm)
+    .promise()
+    .catch(error => {
+      cl({
+        'Error reading Groups': error,
+        client_id: `<${pClient_id}>`
+      });
+    });
+  if (!recordExists(groupRec)) { return {}; }
+  groupRec.Items.sort((a, b) => {
+    if (a.name > b.name) { return 1; }
     else { return -1; }
   });
   let response = {};
@@ -991,7 +1029,8 @@ export async function getAllGroups(person_id, client_id) {
     }
   });
   responseData.publicGroups = await getPublicGroupList(client_id, person_id);
-  responseData.privateGroups = await getGroupsBelongTo(client_id, person_id, { sort: true });
+  // responseData.privateGroups = await getGroupsBelongTo(client_id, person_id, { sort: true });
+  responseData.privateGroups = await getPrivateGroupList(client_id, person_id);
   responseData.adminHierarchy.forEach(a => { delete responseData.privateGroups[a.id]; });
   for (let gID in responseData.publicGroups) { delete responseData.privateGroups[gID]; }
   return responseData;
