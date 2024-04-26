@@ -698,7 +698,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             let keepGoing = true;
             for (let i = 0; ((i < observations.Items.length) && (keepGoing)); i++) {
               let o = observations.Items[i];
-              let check = o.composite_key.toLowerCase();
+              let check = `${o.composite_key} ${o.sort_order}`.toLowerCase();
+              // eslint-disable-next-line
               ['entree', 'salad', 'soup', 'bread', 'side', 'dessert', 'beverage'].forEach(t => {
                 if (check.includes(t)) {
                   reactData.display_summary[oKey].menuType = sentenceCase(t);
