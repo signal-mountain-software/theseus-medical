@@ -1237,7 +1237,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       if ((selections.length > 0) || (Object.keys(textInput).length > 0)) {
         // We are ready to save this service request
         let svc_messaging = null;
-        if (!fact.new_messaging) {
+        if (!fact.new_messaging && fact.messaging) {
           if ((Array.isArray(fact.messaging) && (fact.messaging.every(m => { return (m.format && (m.format.type !== 'mealTicket')); })))
             || (!Array.isArray(fact.messaging) && (fact.messaging.format && (fact.messaging.format.type !== 'mealTicket')))) {
             svc_messaging = fact.messaging;
@@ -1275,6 +1275,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         }
         if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
           putSR.attachments = reactData.attachmentList;
+          if (defaultValue.requestType === 'file') {
+          }
         }
         let result = await putServiceRequest(putSR);
         local_key = result.requestRec.local_key;
@@ -1957,7 +1959,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                               <Box display='flex' flexDirection='row' justifyContent='flex-start'
                                 key={`option_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
                                 id={`option_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                  style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
+                                style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
                                 alignItems='center'
                               >
                                 <Typography
@@ -1965,7 +1967,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                   id={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
                                   style={AVATextStyle({ size: 0.75, margin: { left: 1 } })}
                                 >
-                                    {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
+                                  {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
                                 </Typography>
                               </Box>
                             ))}

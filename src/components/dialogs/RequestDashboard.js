@@ -237,6 +237,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       allowAssign - when items are selected, the "assign" button will be shown.  allowAssign should contain an array (list) of groups that assignees can be selected from
       updateMode - preselect first item
       viewMode - no search field; no changes allowed; show "add new request"; onClose carries instruction for next step
+      noSelect - suppress checkbox and buttons for updates, etc.
     }
   */
 
@@ -785,7 +786,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   function OKToDisplay(this_item) {
     if (reactData.filter.filtering) {
-      if (reactData.filter.fields.status[this_item.last_status.toLowerCase()]) {
+      if (this_item.last_status && reactData.filter.fields.status[this_item.last_status.toLowerCase()]) {
         // We know we're filtering for something, and it turns out we care about this item
         // because it's status is checked off.  Reject the line if we are looking for rows
         // whose status is NOT this status
@@ -1300,7 +1301,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
     else {
       cl(`request type "${i.request_type}" not in session.service_request_types`);
-      i.workData.formatted_type = titleCase(i.request_type);
+      i.workData.formatted_type = titleCase(i.request_type.replace('_', ' '));
       i.workData.flavor = '';
     }
     let [enteredBy, requestTimeStamp] = i.request_id.split('~');
@@ -1322,7 +1323,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
     i.workData.summary_request = [];
-    i.workData.textBased_request = '';
+    i.workData.textBased_request = [];
     i.workData.update_date = AVAupdateDate.relative;
     i.workData.requestTime = AVArequestDate.timestamp;
     i.workData.orderForDate = makeDate(i.foreign_key);
@@ -1332,7 +1333,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (i.assigned_to && (i.assigned_to !== 'unassigned') && (reactData.statusObj[i.last_status] && reactData.statusObj[i.last_status].open)) {
         aName = await makeName(i.assigned_to);
       }
-      i.workData.formatted_request.push(['head', `Current status: ${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
+      if (i.last_status) {
+        i.workData.formatted_request.push(['head', `Current status: ${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
+      }
     }
     if ((!options.shortForm) && (!options.textForm) && !options.selectOnly) {
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
@@ -1340,17 +1343,31 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
       i.workData.formatted_request.push(['head', 'Details']);
     }
+    i.workData.textBased_request[0] = AVArequestDate.relative;
+    i.workData.textBased_request.push(`<b>${i.workData.formatted_type}`);
+    if (!anonymous) {
+      let pLine = '';
+      if (!filter.person_id) {
+        pLine += i.workData.requestor_name;
+      }
+      if (i.workData.enteredBy !== i.requestor) {
+         pLine += `by ${i.workData.enteredBy_name}`;
+      }
+      if (pLine) {
+        i.workData.textBased_request.push(pLine);
+      }
+    }
     if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
       anonymous = (i.original_request.selections && i.original_request.selections.join(' ').includes('anonymous'));
       let [fReq, fSearch, fText] = formatRequest(i, i.original_request);
-      i.workData.textBased_request = `${AVArequestDate.relative} ` + (anonymous ? `Anonymous` : i.workData.requestor_name) + fText;
+      i.workData.textBased_request.push(fText);
       i.workData.formatted_request.push(...fReq);
       i.workData.search_data += ` ${fSearch}`;
     }
     else {
       anonymous = i.original_request.includes('anonymous');
       i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
-      i.workData.textBased_request = `${AVArequestDate.relative} ` + (anonymous ? `Anonymous` : i.workData.requestor_name) + i.original_request;
+      i.workData.textBased_request.push(i.original_request);
       i.workData.search_data += ` ${i.original_request}`;
     }
     if (i.attachments && (i.attachments.length > 0)) {
@@ -1417,7 +1434,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         mHist.map(h => { return i.workData.formatted_request.push(['detail', h]); });
       }
       i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name} ~ ${i.workData.enteredBy_name}`;
-      if (['closed', 'completed', 'complete', 'cancelled'].includes(i.last_status.toLowerCase())) {
+      if (i.last_status && ['closed', 'completed', 'complete', 'cancelled'].includes(i.last_status.toLowerCase())) {
         i.workData.search_data += ` ~ closed`;
       }
       else { i.workData.search_data += ` ~ open`; }
@@ -1444,11 +1461,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if (!('textInput' in req)) { req.textInput = {}; }
     if (!('qualifiers' in req)) { req.qualifiers = []; }
     if (!('selections' in req)) { req.selections = []; }
-    if (i.workData.requestor_name !== i.on_behalf_of) {
+    if (!filter.person_id && (i.workData.requestor_name !== i.on_behalf_of)) {
       returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
       returnText += ` on behalf of ${i.on_behalf_of}`;
     }
-    returnText += ` - `;
     let textLink = '';
     req.selections.forEach(s => {
       let dLine = s.trim();
@@ -1946,13 +1962,19 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           key={this_item.message_id + 'r' + index}
                           className={classes.listItem}
                         >
-                          <Box display='flex' flexDirection='row'>
-                            <Checkbox
-                              checked={this_item.workData.checked || false}
-                              disableRipple
-                              key={'checkbox' + index}
-                              onClick={() => { toggleCheck(index); }}
-                            />
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            style={options.noSelect ? { paddingLeft: '16px' } : {}}
+                          >
+                            {!options.noSelect &&
+                              <Checkbox
+                                checked={this_item.workData.checked || false}
+                                disableRipple
+                                key={'checkbox' + index}
+                                onClick={() => { toggleCheck(index); }}
+                              />
+                            }
                             {!filter.person_id &&
                               <Box
                                 className={classes.imageArea}
@@ -2072,13 +2094,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                             </Box>
                           }
                           {options.textForm &&
-                            <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                              < Typography
-                                key={`singleTextLine-${index}`}
-                                className={classes.mrowdetail}
-                              >
-                                {this_item.workData.textBased_request}
-                              </Typography>
+                            <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                              {this_item.workData.textBased_request.map((textLine, tX) => 
+                                <Typography
+                                  style={AVATextStyle(textLine.startsWith('<b>') ? { bold: true } : {})} 
+                                  key={`singleTextLine-${index}_${tX}`}
+                                  className={classes.mrowdetail}
+                                >
+                                  {textLine.replace('<b>', '')}
+                                </Typography>
+                              )}
                             </Box>
                           }
                         </Box>
@@ -2502,24 +2527,26 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         >
                           {'None'}
                         </Button>
-                      }
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
-                        size='small'
-                        onClick={() => {
-                          rowsDisplayed.forEach((r, x) => {
-                            reactData.dataRows[r].workData.checked = true;
-                          });
-                          updateReactData({
-                            dataRows: reactData.dataRows,
-                            selectionsChanged: !reactData.selectionsChanged
-                          }, true);
-                        }}
-                        startIcon={<DoneAllIcon size="small" />}
-                      >
-                        {`All ${allRowsSelected().count}`}
-                      </Button>
+                        }
+                        {!options.noSelect &&
+                          <Button
+                            className={AVAClass.AVAButton}
+                            style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
+                            size='small'
+                            onClick={() => {
+                              rowsDisplayed.forEach((r, x) => {
+                                reactData.dataRows[r].workData.checked = true;
+                              });
+                              updateReactData({
+                                dataRows: reactData.dataRows,
+                                selectionsChanged: !reactData.selectionsChanged
+                              }, true);
+                            }}
+                            startIcon={<DoneAllIcon size="small" />}
+                          >
+                            {`All ${allRowsSelected().count}`}
+                          </Button>
+                        }
                     </React.Fragment>
                   }
                 </Box>
