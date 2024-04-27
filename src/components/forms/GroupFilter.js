@@ -186,14 +186,29 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
   const [lower_activity_filter, setLowerFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
 
+  /*
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [reactData, setReactData] = React.useState({
+    hideChildren: {},
+    hiding: false,
+    hidingLevel: 0
+  });
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+  */
+  const autoFocus = (element) => element?.focus();
+
   var rowsDisplayed;
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
   const { enqueueSnackbar } = useSnackbar();
-
-  const setFocus = React.useRef(null);
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
@@ -237,20 +252,11 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
     onRefresh();
   };
 
-  React.useEffect(() => {
-    if (setFocus && setFocus.current) {
-      setFocus.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }
-  }, [setFocus]);
-
-
   // **************************
 
   return (
     <Dialog
+      // open={forceRedisplay || true}
       open={true}
       fullWidth
       variant={'elevation'} elevation={2}
@@ -305,6 +311,8 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
                     </Typography>
                     <ListItem
                       key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
+                      ref={(listIndex === focusAt) ? autoFocus : null}
+                      style={(listIndex === focusAt) ? { backgroundColor: 'lightBlue', margin: { bottom: 1.5 } } : { margin: { bottom: 1.5 } }}
                       onClick={() => {
                         onSelect(listEntry, listIndex);
                       }}
@@ -319,10 +327,9 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
                         display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
                         <Typography
                           key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
-                          ref={(listIndex === focusAt) ? setFocus : null}
                           style={AVATextStyle({
                             size: 1.5,
-                            margin: { bottom: 1, left: (groupsManagedObject[listEntry].level ? groupsManagedObject[listEntry].level - 1 : 0) },
+                            margin: { left: (groupsManagedObject[listEntry].level ? groupsManagedObject[listEntry].level - 1 : 0) },
                             weight: (groupsManagedObject[listEntry].role === 'member' ? null
                               : (groupsManagedObject[listEntry].role === 'non-member' ? 'light' : 'bold'))
                           })}>
@@ -345,7 +352,7 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
                   }}
                 />
               }
-              {!promptForName && (rowsDisplayed === 0) && 
+              {!promptForName && (rowsDisplayed === 0) &&
                 <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
                   <Typography
                     key={`g_text_end`}
