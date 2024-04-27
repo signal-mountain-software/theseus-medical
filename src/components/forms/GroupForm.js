@@ -614,7 +614,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
                       <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                         {rowsWritten++}
-                      </Typography>public_groups
+                      </Typography>
                       <Box display='flex' flexDirection='column' >
                         <Box
                           display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
