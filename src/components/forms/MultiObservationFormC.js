@@ -985,16 +985,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   async function applyExistingRequest(existingRequest, this_column) {
-    for (let sX = 0; sX < existingRequest.requestToUse.original_request.selections.length; sX++) {
-      let s = existingRequest.requestToUse.original_request.selections[sX];
+    this_column.request_to_update = existingRequest.requestToUse;
+    if (!existingRequest.requestToUse.hasOwnProperty('current_request')) {
+      existingRequest.requestToUse.current_request = deepCopy(existingRequest.requestToUse.original_request);
+    }
+    for (let sX = 0; sX < existingRequest.requestToUse.current_request.selections.length; sX++) {
+      let s = existingRequest.requestToUse.current_request.selections[sX];
       let selection = s.split('(').shift().trim();
       let rowNumber = this_column.rowDetails.findIndex(r => {
         return (r.text === selection);
       });
       if (rowNumber > -1) {
         this_column.rowDetails[rowNumber].isChecked = true;
-        if ((existingRequest.requestToUse.original_request.hasOwnProperty('options'))
-          && (existingRequest.requestToUse.original_request.options.hasOwnProperty(selection))) {
+        if ((existingRequest.requestToUse.current_request.hasOwnProperty('options'))
+          && (existingRequest.requestToUse.current_request.options.hasOwnProperty(selection))) {
           if (!this_column.rowDetails[rowNumber].qualData) {
             // [this_column.rowDetails[rowNumber].defaultSelections, this_column.rowDetails[rowNumber].qualData] = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
             let qualResponse = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
@@ -1002,42 +1006,42 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             this_column.rowDetails[rowNumber].qualData = deepCopy(qualResponse.data);
             this_column.rowDetails[rowNumber].moreInfo = deepCopy(qualResponse.moreInfo);
           }
-          this_column.rowDetails[rowNumber].qualSelections = deepCopy(existingRequest.requestToUse.original_request.options[selection]);
+          this_column.rowDetails[rowNumber].qualSelections = deepCopy(existingRequest.requestToUse.current_request.options[selection]);
         }
-        if ((existingRequest.requestToUse?.original_request.hasOwnProperty('textInput'))
-          && (existingRequest.requestToUse?.original_request?.options?.hasOwnProperty(selection))) {
-          this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
+        if ((existingRequest.requestToUse?.current_request.hasOwnProperty('textInput'))
+          && (existingRequest.requestToUse?.current_request?.options?.hasOwnProperty(selection))) {
+          this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.current_request.textInput[selection]);
         }
         if ((this_column.rowDetails[rowNumber].input === 'signature')
-          && (existingRequest.requestToUse.original_request.hasOwnProperty('images') || existingRequest.requestToUse?.original_request.hasOwnProperty('image_location'))) {
-          if (existingRequest.requestToUse.original_request.image_location?.[this_column.rowDetails[rowNumber].text]) {
+          && (existingRequest.requestToUse.current_request.hasOwnProperty('images') || existingRequest.requestToUse?.current_request.hasOwnProperty('image_location'))) {
+          if (existingRequest.requestToUse.current_request.image_location?.[this_column.rowDetails[rowNumber].text]) {
 
             updateReactData({
-              storedSignature: existingRequest.requestToUse?.original_request.image_location[this_column.rowDetails[rowNumber].text]
+              storedSignature: existingRequest.requestToUse?.current_request.image_location[this_column.rowDetails[rowNumber].text]
             }, false);
           }
           else {
             updateReactData({
-              storedSignature: existingRequest.requestToUse?.original_request.images[this_column.rowDetails[rowNumber].text]
+              storedSignature: existingRequest.requestToUse?.current_request.images[this_column.rowDetails[rowNumber].text]
             }, false);
           }
         }
       }
     };
-    if (existingRequest.requestToUse.original_request.hasOwnProperty('textInput')) {
-      for (let selection in existingRequest.requestToUse.original_request.textInput) {
+    if (existingRequest.requestToUse.current_request.hasOwnProperty('textInput')) {
+      for (let selection in existingRequest.requestToUse.current_request.textInput) {
         let rowNumber = this_column.rowDetails.findIndex(r => {
           return (r.text === selection);
         });
         if (rowNumber < 0) {
           continue;
         };
-        this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.original_request.textInput[selection]);
+        this_column.rowDetails[rowNumber].textValue = deepCopy(existingRequest.requestToUse.current_request.textInput[selection]);
       }
     }
-    if (existingRequest.requestToUse.original_request.hasOwnProperty('qualifiers')) {
+    if (existingRequest.requestToUse.current_request.hasOwnProperty('qualifiers')) {
       /*
-         original_request.qualifiers come in as qualifiers.[<Menu choice>][<Qualifier Option>][<array of selections>]
+         current_request.qualifiers come in as qualifiers.[<Menu choice>][<Qualifier Option>][<array of selections>]
          example 
            [Coffee][How do you like your coffee?][cream, sugar]
         
@@ -1046,19 +1050,19 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
            [Coffee][rsteele][How do you like your coffee?][cream] = true
            [Coffee][rsteele][How do you like your coffee?][sugar] = true
       */
-      for (let selection in existingRequest.requestToUse.original_request.qualifiers) {
+      for (let selection in existingRequest.requestToUse.current_request.qualifiers) {
         let rowNumber = this_column.rowDetails.findIndex(r => {
           return (r.qualData && r.qualData.qualSelections && r.qualData.qualSelections.hasOwnProperty(selection));
         });
         if (rowNumber < 0) {
           continue;
         };
-        for (let option in existingRequest.requestToUse.original_request.qualifiers[selection]) {
+        for (let option in existingRequest.requestToUse.current_request.qualifiers[selection]) {
           if (!this_column.rowDetails.qualData.qualSelections[selection].hasOwnProperty(option)) {
             this_column.rowDetails.qualData.qualSelections[selection][option] = {};
           }
-          if (Array.isArray(existingRequest.requestToUse.original_request.qualifiers[selection][option])) {
-            existingRequest.requestToUse.original_request.qualifiers[selection][option].forEach(choice => {
+          if (Array.isArray(existingRequest.requestToUse.current_request.qualifiers[selection][option])) {
+            existingRequest.requestToUse.current_request.qualifiers[selection][option].forEach(choice => {
               this_column.rowDetails.qualData.qualSelections[selection][option][choice] = true;
             });
           }
@@ -1244,44 +1248,71 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             local_key = null;
           }
         }
-        let putSR = {
+        let putSR = {};
+        if (this_column.request_to_update) {
+          putSR = deepCopy(this_column.request_to_update);
+        }
+        Object.assign(putSR, {
           client: state.session.client_id,
           author: this_column.person_id || state.session.patient_id,
           proxy_user: state.session.user_id,
           requestType: this_column.requestType,
           activity_key: this_column.activity_key,
+          request: {},
           onBehalfOf: oBo,
-          foreign_key: await resolveMessageVariables(this_column.foreignKey, textInput),
-          history: [`Request submitted ${currentTime.oaDate}`],
-          assign_to: 'unassigned',      // see a few lines below; this may be overridden
-          request: {
+          messaging: svc_messaging
+        });
+        if (local_key) {
+          putSR.local_key = local_key;
+        }
+        if (this_column.request_to_update) {
+          if (putSR.history.length === 0) {
+            putSR.history = [];
+          };
+          putSR.history.unshift(`Request updated ${currentTime.oaDate}`);
+          // putSR.original_request = {
+          putSR.current_request = {
             selections,
             options,
             textInput,
             image_location,
             images
-          },
-          messaging: svc_messaging,
-          local_key
-        };
-        if (fact?.value?.freeText?.assign_to) {
-          // if there is an assign_to value, we'll assigne this SR to that ID
-          putSR.assign_to = fact?.value?.freeText?.assign_to;
-          let this_name = await getPerson(fact?.value?.freeText?.assign_to, 'name');
-          putSR.history.unshift(`Auto-Assigned to ${this_name}`);
-          if (validRequestStatus(this_column.requestType, 'assigned')) {
-            putSR.requestStatus = 'assigned';
-          }
+          };
+          await updateServiceRequest(putSR);
+          writtenRecords.push(putSR);
         }
-        if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
-          putSR.attachments = reactData.attachmentList;
-          if (defaultValue.requestType === 'file') {
+        else {
+          putSR.history = [`Request submitted ${currentTime.oaDate}`];
+          putSR.request = {
+            selections,
+            options,
+            textInput,
+            image_location,
+            images
+          };
+          putSR.foreign_key = await resolveMessageVariables(this_column.foreignKey, textInput);
+          if (fact?.value?.freeText?.assign_to) {
+            // if there is an assign_to value, we'll assigne this SR to that ID
+            putSR.assign_to = fact?.value?.freeText?.assign_to;
+            let this_name = await getPerson(fact?.value?.freeText?.assign_to, 'name');
+            putSR.history.unshift(`Auto-Assigned to ${this_name}`);
+            if (validRequestStatus(this_column.requestType, 'assigned', state.session)) {
+              putSR.requestStatus = 'assigned';
+            }
           }
+          else {
+            putSR.assign_to = 'unassigned';
+          }
+          if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
+            putSR.attachments = reactData.attachmentList;
+            if (defaultValue.requestType === 'file') {
+            }
+          }
+          let result = await putServiceRequest(putSR);
+          local_key = result.requestRec.local_key;
+          message_body = result.body;
+          writtenRecords.push(result.requestRec);
         }
-        let result = await putServiceRequest(putSR);
-        local_key = result.requestRec.local_key;
-        message_body = result.body;
-        writtenRecords.push(result.requestRec);
       }
     };
     // meal tickets print here combining all completed requests...
@@ -1356,7 +1387,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 rMsg = `Failed to send ${rTime.oaDate}`;
               }
               else {
-                if (validRequestStatus(message_body.requestType, 'sent')) {
+                if (validRequestStatus(message_body.requestType, 'sent', state.session)) {
                   last_status = 'Sent';
                 }
                 rMsg = `Sent for processing ${rTime.oaDate}`;
@@ -1374,7 +1405,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             await updateServiceRequest(writtenRecords);
           }
         }  // end of "is there a message to send?"
-        if (records2Update.length > 0) { await updateServiceRequest(records2Update); }
+        // if (records2Update.length > 0) { await updateServiceRequest(records2Update); }
       }
     }
   }
