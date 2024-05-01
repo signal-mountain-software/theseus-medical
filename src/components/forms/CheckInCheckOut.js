@@ -7,10 +7,10 @@ import Button from '@material-ui/core/Button';
 import Paper from '@material-ui/core/Paper';
 import Typography from '@material-ui/core/Typography';
 
-import { isEmpty, titleCase, getCustomizations } from '../../util/AVAUtilities';
+import { isEmpty, titleCase, dbClient, cl } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { determineClass } from '../../util/AVAGroups';
-import { getServiceRequests, updateServiceRequest } from '../../util/AVAServiceRequest';
+import { getServiceRequests, putServiceRequest, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getPerson, getImage, getPersonByWords, addGuest, addVendor, makeName } from '../../util/AVAPeople';
 import { AVAclasses, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
 
@@ -50,8 +50,6 @@ export default ({ onSave, onClose }) => {
 
   React.useEffect(() => {
     async function initialize() {
-      let customRec = await getCustomizations('resident_checkout_prompts', state.session.client_id);
-      reactData.residentPrompts = customRec.customization_value || [];
       reactData.initialized = true;
       setReactData(reactData);
       setForceRedisplay(!forceRedisplay);
@@ -190,6 +188,63 @@ export default ({ onSave, onClose }) => {
       }
     }
     return [checkedOutList, checkedInGuests, checkedInVendors];
+  }
+
+  async function putCheckout(reqRec, options) {
+    await updateServiceRequest(reqRec);
+    let requestor = reactData.personRec.person_id;
+    if (['vendor', 'guest'].includes(reqRec.foreign_key)) {
+      requestor = reqRec.visiting;
+      let visitor_name = `${reactData.personRec.name.first} ${reactData.personRec.name.last}`;
+      reqRec.history[0] = `${visitor_name} ${reqRec.history[0]}`;
+    }
+    if ((reqRec.last_status === 'in') || (!reqRec.hasOwnProperty('current_request'))) {
+      reqRec.current_request = {
+        textInput: {
+          Action: reqRec.history[0]
+        }
+      };
+    }
+    await putServiceRequest({
+      client: state.session.client_id,
+      author: requestor,
+      proxy_user: state.session.user_id,
+      requestType: 'checkout',
+      requestor: requestor,
+      activity_key: "",
+      onBehalfOf: `${reactData.personRec.name.first} ${reactData.personRec.name.last}`,
+      foreign_key: reactData.personRec.person_id,  // if person checking into another person
+      local_key: `${reactData.personRec.person_id}_checkout`,
+      history: reqRec.history[0],
+      last_status: reqRec.last_status,
+      request: {
+        selections: [`Checked ${reqRec.last_status}`],
+        textInput: reqRec.current_request.textInput,
+      },
+      messaging: {}
+    });
+    let last10checkout = [reqRec.history[0]];
+    if (reactData.personRec.hasOwnProperty('checkout_recent_history')) {
+      last10checkout.push(...reactData.personRec.checkout_recent_history.slice(0, 9))
+    }
+    await dbClient
+      .update({
+        Key: { person_id: reactData.personRec.person_id },
+        UpdateExpression: 'set #s = :s, #h = :h',
+        ExpressionAttributeValues: {
+          ':s': reqRec.last_status,
+          ':h': last10checkout
+        },
+        ExpressionAttributeNames: {
+          '#s': 'checkout_status',
+          '#h': 'checkout_recent_history'
+        },
+        TableName: "People",
+      })
+      .promise()
+      .catch(error => {
+        cl(`caught error updating People; error is: `, error);
+      });
   }
 
   function reset() {
@@ -420,7 +475,7 @@ export default ({ onSave, onClose }) => {
                   `[italic]You are currently checked in`,
                   `Tap below to check out`
                 ]}
-                promptText={reactData.residentPrompts || []}
+                promptText={state.session.resident_checkout_prompts || []}
                 buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
                 onCancel={() => {
                   reactData.validated_user = false;
@@ -433,19 +488,26 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.last_status = 'out';
                   reactData.currentStatus.reqRec.last_update = now.timestamp;
                   let hNote = `Checked out on ${now.absolute}`;
+                  let textInput = {
+                    Action: hNote
+                  };
                   responses.forEach((r, x) => {
-                    if (r && reactData.residentPrompts) {
-                      hNote += ` ${reactData.residentPrompts[x]}: ${r}.`;
+                    if (r && state.session.resident_checkout_prompts) {
+                      hNote += ` ${state.session.resident_checkout_prompts[x]}: ${r}.`;
+                      textInput[state.session.resident_checkout_prompts[x]] = r;
                     }
                   });
                   reactData.currentStatus.reqRec.history.unshift(hNote);
-                  await updateServiceRequest(reactData.currentStatus.reqRec);
+                  if (!isEmpty(textInput)) {
+                    reactData.currentStatus.reqRec.current_request = { textInput };
+                  }
+                  await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`Got it!  Thank you!`, { variant: 'success', persist: false });
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
-                options={{ save_on_enter: (reactData.residentPrompts && (reactData.residentPrompts.length === 1)) }}
+                  options={{ save_on_enter: (state.session.resident_checkout_prompts && (state.session.resident_checkout_prompts.length === 1)) }}
 
               />
               :
@@ -471,7 +533,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.last_update = now.timestamp;
                   let hNote = `Checked in on ${now.absolute}`;
                   reactData.currentStatus.reqRec.history.unshift(hNote);
-                  await updateServiceRequest(reactData.currentStatus.reqRec);
+                  await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else { reset(); }
@@ -502,7 +564,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.last_update = now.timestamp;
                   let hNote = `Checked out on ${now.absolute}`;
                   reactData.currentStatus.reqRec.history.unshift(hNote);
-                  await updateServiceRequest(reactData.currentStatus.reqRec);
+                  await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else { reset(); }
@@ -526,7 +588,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.last_update = now.timestamp;
                   let hNote = `Checked in on ${now.absolute}`;
                   reactData.currentStatus.reqRec.history.unshift(hNote);
-                  await updateServiceRequest(reactData.currentStatus.reqRec);
+                  await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else { reset(); }
@@ -557,7 +619,7 @@ export default ({ onSave, onClose }) => {
                   reactData.currentStatus.reqRec.last_update = now.timestamp;
                   let hNote = `Checked out on ${now.absolute}`;
                   reactData.currentStatus.reqRec.history.unshift(hNote);
-                  await updateServiceRequest(reactData.currentStatus.reqRec);
+                  await putCheckout(reactData.currentStatus.reqRec);
                   enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else { reset(); }
@@ -592,6 +654,7 @@ export default ({ onSave, onClose }) => {
                         if (residentRec[0].location) {
                           hWho += ` at ${residentRec[0].location}`;
                         }
+                        reactData.currentStatus.reqRec.visiting = residentRec[0].person_id;
                         reactData.currentStatus.reqRec.on_behalf_of = `${residentRec[0].name.first} ${residentRec[0].name.last}`;
                         break;
                       }
@@ -611,7 +674,7 @@ export default ({ onSave, onClose }) => {
                     let hNote = `Checked in on ${now.absolute}`;
                     hNote += hWho;
                     reactData.currentStatus.reqRec.history.unshift(hNote);
-                    await updateServiceRequest(reactData.currentStatus.reqRec);
+                    await putCheckout(reactData.currentStatus.reqRec);
                     enqueueSnackbar(`Got it!  Thank you!`, { variant: 'success', persist: false });
                     if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                     else { reset(); }
@@ -750,7 +813,7 @@ export default ({ onSave, onClose }) => {
                     let now = makeDate(new Date());
                     let hNote = `Checked in on ${now.absolute}`;
                     hNote += ` Visiting ${residentRec[0].name.first} ${residentRec[0].name.last}${residentRec[0].location ? ' at ' + residentRec[0].location : ''}`;
-                    await updateServiceRequest(
+                    await putServiceRequest(
                       {
                         client_id: state.session.client_id,
                         request_id: `${addedPerson.personRec.person_id}_checkout`,
@@ -939,9 +1002,10 @@ export default ({ onSave, onClose }) => {
                       let now = makeDate(new Date());
                       reqRec.last_status = 'in';
                       reqRec.last_update = now.timestamp;
-                      let hNote = `Checked in by ${state.session.user_display_name} on ${now.absolute}`;
+                      let myName = await makeName(state.session.user_id);
+                      let hNote = `Checked in by ${myName} on ${now.absolute}`;
                       reqRec.history.unshift(hNote);
-                      await updateServiceRequest(reqRec);
+                      await putCheckout(reqRec, { proxy: true });
                       enqueueSnackbar(`Check-in completed!`, { variant: 'success', persist: false });
                       reactData.adminOverride = false;
                       reactData.resident_mode = false;
@@ -968,9 +1032,10 @@ export default ({ onSave, onClose }) => {
                       let now = makeDate(new Date());
                       reqRec.last_status = 'out';
                       reqRec.last_update = now.timestamp;
-                      let hNote = `Checked out by ${state.session.user_display_name} on ${now.absolute}`;
+                      let myName = await makeName(state.session.user_id);
+                      let hNote = `Checked out by ${myName} on ${now.absolute}`;
                       reqRec.history.unshift(hNote);
-                      await updateServiceRequest(reqRec);
+                      await putCheckout(reqRec, { proxy: true });
                       enqueueSnackbar(`Check-out is complete!`, { variant: 'success', persist: false });
                       reactData.adminOverride = false;
                       reactData.vendor_mode = false;
@@ -997,9 +1062,10 @@ export default ({ onSave, onClose }) => {
                       let now = makeDate(new Date());
                       reqRec.last_status = 'out';
                       reqRec.last_update = now.timestamp;
-                      let hNote = `Checked out by ${state.session.user_display_name} on ${now.absolute}`;
+                      let myName = await makeName(state.session.user_id);
+                      let hNote = `Checked out by ${myName} on ${now.absolute}`;
                       reqRec.history.unshift(hNote);
-                      await updateServiceRequest(reqRec);
+                      await putCheckout(reqRec, { proxy: true });
                       enqueueSnackbar(`Check-out is complete!`, { variant: 'success', persist: false });
                       reactData.adminOverride = false;
                       reactData.guest_mode = false;

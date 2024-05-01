@@ -1221,7 +1221,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             options={{
               shortForm: true,
               showForeignKey: false,
-              textForm: true,
+              textForm: false,
               updateMode: false,
               noSelect: true
           }}

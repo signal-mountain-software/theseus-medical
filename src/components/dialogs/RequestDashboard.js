@@ -376,7 +376,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
     let reactUpdateObj = {
       filter: reactData.filter
-    }
+    };
     if (reactData.showSummary) {
       await prepareSummary();
       reactUpdateObj.display_summary = reactData.display_summary;
@@ -511,13 +511,25 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           messageText += ` entered by ${reactData.dataRows[this_index].workData.enteredBy_name}`;
           messageText += ` on ${reactData.dataRows[this_index].workData.display_date}`;
           messageText += ` has been assigned to you.  \r\n`;
-          if (reactData.dataRows[this_index].original_request.selections
-            && reactData.dataRows[this_index].original_request.selections.length > 0) {
-            messageText += `${reactData.dataRows[this_index].workData.enteredBy_name.split(' ').shift()} selected`;
-            messageText += ` ${listFromArray(reactData.dataRows[this_index].original_request.selections)}.  \r\n`;
+          if (reactData.dataRows[this_index].hasOwnProperty('current_request')) {
+            if (reactData.dataRows[this_index].current_request.selections
+              && reactData.dataRows[this_index].current_request.selections.length > 0) {
+              messageText += `${reactData.dataRows[this_index].workData.enteredBy_name.split(' ').shift()} selected`;
+              messageText += ` ${listFromArray(reactData.dataRows[this_index].current_request.selections)}.  \r\n`;
+            }
+            for (let topic in reactData.dataRows[this_index].current_request.textInput) {
+              messageText += `${topic}: ${reactData.dataRows[this_index].current_request.textInput[topic]}  \r\n`;
+            }
           }
-          for (let topic in reactData.dataRows[this_index].original_request.textInput) {
-            messageText += `${topic}: ${reactData.dataRows[this_index].original_request.textInput[topic]}  \r\n`;
+          else {
+            if (reactData.dataRows[this_index].original_request.selections
+              && reactData.dataRows[this_index].original_request.selections.length > 0) {
+              messageText += `${reactData.dataRows[this_index].workData.enteredBy_name.split(' ').shift()} selected`;
+              messageText += ` ${listFromArray(reactData.dataRows[this_index].original_request.selections)}.  \r\n`;
+            }
+            for (let topic in reactData.dataRows[this_index].original_request.textInput) {
+              messageText += `${topic}: ${reactData.dataRows[this_index].original_request.textInput[topic]}  \r\n`;
+            }
           }
           let messageObj = {
             client: session.client_id,
@@ -669,7 +681,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             let check = o.composite_key.toLowerCase();
             ['entree', 'salad', 'soup', 'bread', 'side', 'dessert', 'beverage'].forEach(t => {
               if (check.includes(t)) {
-                oType[o.observation_code] = sentenceCase(t);               
+                oType[o.observation_code] = sentenceCase(t);
               }
             });
           });
@@ -1015,7 +1027,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     else if (filter.person_id) {
       let pName = await makeName(filter.person_id);
       updateReactData({
-        selectedPersonName: `${pName}'${pName.slice(-1) === 's' ? '' : 's'} Requests`
+        selectedPersonName: `${pName}'${pName.slice(-1) === 's' ? '' : 's'} Activity`
       }, true);
     }
     if ((!filter.hasOwnProperty('client_id') || !filter.client_id)) {
@@ -1033,15 +1045,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (qList[x].request_date > maxTimeStamp) {
         maxTimeStamp = qList[x].request_date;
       }
-      reactData.dataRows.push(await buildRequestDetails(qList[x]));
-      reactData.requestIDs.push(qList[x].request_id);
-      if ((x % 5) === 0) {    // every 5th entry, commit to the screen
-        updateReactData({
-          lastTimeStamp: maxTimeStamp,
-          dataRows: reactData.dataRows,
-          requestIDs: reactData.requestIDs,
-          rebuilding: false,
-        }, true);
+      if (qList[x].request_id !== `${qList[x].requestor}_checkout`) {
+        reactData.dataRows.push(await buildRequestDetails(qList[x]));
+        reactData.requestIDs.push(qList[x].request_id);
+        if ((x % 5) === 0) {    // every 5th entry, commit to the screen
+          updateReactData({
+            lastTimeStamp: maxTimeStamp,
+            dataRows: reactData.dataRows,
+            requestIDs: reactData.requestIDs,
+            rebuilding: false,
+          }, true);
+        }
       }
     }
     if (loading !== 'rebuild') {
@@ -1295,6 +1309,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   async function buildRequestDetails(i) {
     i.workData = {};
     i.workData.search_data = '';
+    if (!i.hasOwnProperty('current_request')) {
+      i.current_request = deepCopy(i.original_request);
+    }
     if (session.service_request_types.hasOwnProperty(i.request_type)) {
       i.workData.formatted_type = session.service_request_types[i.request_type].description || `${titleCase(i.request_type)}`;
       i.workData.flavor = session.service_request_types[i.request_type].flavor || '';
@@ -1334,7 +1351,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         aName = await makeName(i.assigned_to);
       }
       if (i.last_status) {
-        i.workData.formatted_request.push(['head', `Current status: ${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
+        i.workData.formatted_request.push(['head', `${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
       }
     }
     if ((!options.shortForm) && (!options.textForm) && !options.selectOnly) {
@@ -1351,13 +1368,26 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         pLine += i.workData.requestor_name;
       }
       if (i.workData.enteredBy !== i.requestor) {
-         pLine += `by ${i.workData.enteredBy_name}`;
+        pLine += `by ${i.workData.enteredBy_name}`;
       }
       if (pLine) {
         i.workData.textBased_request.push(pLine);
       }
     }
-    if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
+    if (('current_request' in i) && (typeof (i.current_request) !== 'string')) {
+      anonymous = (i.current_request.selections && i.current_request.selections.join(' ').includes('anonymous'));
+      let [fReq, fSearch, fText] = formatRequest(i, i.current_request);
+      i.workData.textBased_request.push(fText);
+      i.workData.formatted_request.push(...fReq);
+      i.workData.search_data += ` ${fSearch}`;
+    }
+    else if ('current_request' in i) {
+      anonymous = i.current_request.includes('anonymous');
+      i.workData.formatted_request.push(['detail', i.current_request || 'No information available']);
+      i.workData.textBased_request.push(i.current_request);
+      i.workData.search_data += ` ${i.current_request}`;
+    }
+    else if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
       anonymous = (i.original_request.selections && i.original_request.selections.join(' ').includes('anonymous'));
       let [fReq, fSearch, fText] = formatRequest(i, i.original_request);
       i.workData.textBased_request.push(fText);
@@ -1999,14 +2029,27 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                       </Typography>
                                     }
                                     {!filter.person_id &&
-                                      <Typography
-                                        variant='h5'
-                                        style={AVATextStyle({ size: 1.5, bold: true })}
-                                        className={classes.firstName}
-                                      >
-                                        {`${this_item.workData.requestor_name} ${this_item?.original_request?.textInput['Room Number'] ? ('(' + this_item?.original_request?.textInput['Room Number'] + ')') : (
-                                          this_item.workData.requestor_location ? ('(' + this_item.workData.requestor_location + ')') : '')}`}
-                                      </Typography>
+                                      <React.Fragment>
+                                        {this_item.hasOwnProperty('current_request')
+                                          ?
+                                          <Typography
+                                            variant='h5'
+                                            style={AVATextStyle({ size: 1.5, bold: true })}
+                                            className={classes.firstName}
+                                          >
+                                            {`${this_item.workData.requestor_name} ${this_item?.current_request?.textInput['Room Number'] ? ('(' + this_item?.current_request?.textInput['Room Number'] + ')') : (
+                                              this_item.workData.requestor_location ? ('(' + this_item.workData.requestor_location + ')') : '')}`}
+                                          </Typography>
+                                          :
+                                          <Typography
+                                            variant='h5'
+                                            style={AVATextStyle({ size: 1.5, bold: true })}
+                                            className={classes.firstName}
+                                          >
+                                            {`${this_item.workData.requestor_name} ${this_item?.original_request?.textInput['Room Number'] ? ('(' + this_item?.original_request?.textInput['Room Number'] + ')') : (
+                                              this_item.workData.requestor_location ? ('(' + this_item.workData.requestor_location + ')') : '')}`}
+                                          </Typography>}
+                                      </React.Fragment>
                                     }
                                     {this_item.workData.updated &&
                                       <Typography
@@ -2095,9 +2138,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           }
                           {options.textForm &&
                             <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                              {this_item.workData.textBased_request.map((textLine, tX) => 
+                              {this_item.workData.textBased_request.map((textLine, tX) =>
                                 <Typography
-                                  style={AVATextStyle(textLine.startsWith('<b>') ? { bold: true } : {})} 
+                                  style={AVATextStyle(textLine.startsWith('<b>') ? { bold: true } : {})}
                                   key={`singleTextLine-${index}_${tX}`}
                                   className={classes.mrowdetail}
                                 >
@@ -2475,7 +2518,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   >
                     {reactData.isMobile ? 'Exit' : 'Close'}
                   </Button>
-                    {options.allowDashboard && reactData.statistics &&
+                  {options.allowDashboard && reactData.statistics &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'purple', color: 'white' }}
@@ -2527,26 +2570,26 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         >
                           {'None'}
                         </Button>
-                        }
-                        {!options.noSelect &&
-                          <Button
-                            className={AVAClass.AVAButton}
-                            style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
-                            size='small'
-                            onClick={() => {
-                              rowsDisplayed.forEach((r, x) => {
-                                reactData.dataRows[r].workData.checked = true;
-                              });
-                              updateReactData({
-                                dataRows: reactData.dataRows,
-                                selectionsChanged: !reactData.selectionsChanged
-                              }, true);
-                            }}
-                            startIcon={<DoneAllIcon size="small" />}
-                          >
-                            {`All ${allRowsSelected().count}`}
-                          </Button>
-                        }
+                      }
+                      {!options.noSelect &&
+                        <Button
+                          className={AVAClass.AVAButton}
+                          style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
+                          size='small'
+                          onClick={() => {
+                            rowsDisplayed.forEach((r, x) => {
+                              reactData.dataRows[r].workData.checked = true;
+                            });
+                            updateReactData({
+                              dataRows: reactData.dataRows,
+                              selectionsChanged: !reactData.selectionsChanged
+                            }, true);
+                          }}
+                          startIcon={<DoneAllIcon size="small" />}
+                        >
+                          {`All ${allRowsSelected().count}`}
+                        </Button>
+                      }
                     </React.Fragment>
                   }
                 </Box>
