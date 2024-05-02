@@ -298,6 +298,87 @@ export async function makeSRPrint(inboundRequest) {
   return final_result;
 }
 
+export async function printRawData(dataRows, state) {
+  // Header & Title
+  await pdfLaunch({ client_id: state.session.client_id });
+  page.title = 'Activity Listing';
+  pdfHeader();
+  dataRows.forEach((this_item, index) => {
+    pdfDown(3);
+    pdfStyle('reset');
+    if (pdfCurrent.yPos > (page.bottom - (1.5 * page.margin.bottom))) {
+      pdfCurrent.pageNumber++;
+      pdfHeader();
+    }
+    pdfLine(this_item.workData.formatted_type, { size: 'large', style: 'bold' });
+    pdfLine(this_item.workData.requestor_name, { size: 'large', style: 'normal' });
+    let line;
+    if (this_item?.current_request?.textInput['Room Number']) {
+      line = this_item?.current_request?.textInput['Room Number'];
+    }
+    else if (this_item?.original_request?.textInput['Room Number']) {
+      line = this_item?.original_request?.textInput['Room Number'];
+    }
+    else if (this_item.workData.requestor_location) {
+      line = this_item.workData.requestor_location;
+    }
+    if (line) {
+      pdfLine(line, { size: 'large', style: 'normal' });
+    }
+    pdfStyle({ size: 'small' });
+    if (this_item.workData.updated) {
+      pdfLine(this_item.workData.updated, {  });
+    }
+    if (this_item.requestor !== this_item.workData.enteredBy) {
+      pdfLine(`By ${this_item.workData.enteredBy_name}`);
+    }
+    pdfLine(this_item.workData.display_date);
+    if (this_item.workData.summary_request) {
+      this_item.workData.summary_request.forEach((mLine, mIndex) => {
+        if (typeof mLine[1] === 'string') {
+          if (mLine[0] === 'head') {
+            pdfLine(`Status: ${mLine[1]}`, { size: 'small', before: 0, indent: 0 });
+          }
+          else {
+            pdfLine(mLine[1], { size: 'medium', before: 0.5, indent: 0 });
+          }
+        }
+      });
+    }
+    if (this_item.workData.formatted_request) {
+      this_item.workData.formatted_request.forEach((mLine, mIndex) => {
+        if (typeof mLine[1] === 'string') {
+          if (mLine[0] === 'head') {
+            pdfLine(mLine[1], { size: 'medium', before: 0.5, indent: 0 });
+          }
+          else {
+            pdfLine(mLine[1], { size: 'small', before: 0, indent: 10 });
+          }
+        }
+      });
+    }
+    if (this_item.workData.messageRecs) {
+      this_item.workData.messageRecs.forEach((mLine, dX) => {
+        if (mLine[0] === 'head') {
+          pdfLine(mLine[1], { size: 'medium', before: 0.5, indent: 0 });
+        }
+        else {
+          pdfLine(mLine[1], { size: 'small', before: 0, indent: 10 });
+        }
+      });
+    }
+  });
+  let pdfInfo = {
+    PDF: true, fileName: 'report_PDF', request_type: "force_print",
+    s3Bucket: 'theseus-medical-storage',
+    s3Key: `${state.session.client_id}_AVA_Report.pdf`,
+  };
+  let pdfResp = await savePDFBlob(doc.output('blob'), pdfInfo, { local: false, S3: true, onSave: 'print' });
+  if (pdfResp.responseData.s3Resp) {
+    pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
+  }
+}
+
 export async function savePDFBlob(pdfBlob, pdfInfo, options = {}) {
   let s3Resp;
   let responseStatus = 400;
@@ -639,7 +720,7 @@ async function pdfLaunch(body) {
     info: { author: 'AVA Senior Living' },
     margin: {
       top: (body.pdf.margin && body.pdf.margin.top) || (doc.internal.pageSize.height / 20),
-      bottom: (body.pdf.margin && body.pdf.margin.bottom) || (doc.internal.pageSize.height / 15),
+      bottom: (body.pdf.margin && body.pdf.margin.bottom) || (doc.internal.pageSize.height / 10),
       left: (body.pdf.margin && body.pdf.margin.left) || (doc.internal.pageSize.width / 12),
       right: (body.pdf.margin && body.pdf.margin.right) || (doc.internal.pageSize.width / 12)
     }
@@ -648,7 +729,7 @@ async function pdfLaunch(body) {
   page.right = page.width - page.margin.right;
   page.centerPoint = page.width / 2;
   page.printableArea = page.width - page.margin.left - page.margin.right;
-  page.title = body.print.data.title;
+  page.title = body?.print?.data?.title || page.title;
   page.info.title = page.title;
   clt({ page });
 
@@ -660,8 +741,8 @@ async function pdfLaunch(body) {
     indent: 0,
     reportTime: nowTime.absolute,
     timestamp: nowTime.numeric24,
-    client_name: body.print.data.client_name,
-    logo: body.print.data.logo
+    client_name: body?.print?.data?.client_name,
+    logo: body?.print?.data?.logo
   };
 
   if (customizations['print']) {
@@ -688,6 +769,12 @@ async function pdfLaunch(body) {
 
 function pdfHeader() {
   clt({ pdfCurrent });
+  if (pdfCurrent.pageNumber > 1) {
+    doc.addPage({
+      orientation: "portrait",
+      format: ([page.width, page.height])
+    });
+  }
   let savedStyle = Object.assign({}, pdfCurrent);
   pdfCurrent.yPos = page.margin.top;
   pdfStyle('reset');
@@ -698,15 +785,15 @@ function pdfHeader() {
     // pdfCurrent.yPos += pdfCurrent.logo_height;
   }
   pdfStyle({ size: 'large', align: 'center', style: 'bold' });
-  doc.text(pdfCurrent.client_name, page.center, pdfCurrent.yPos, { align: 'center' });
+  doc.text(pdfCurrent.client_name || 'AVA', page.center, pdfCurrent.yPos, { align: 'center' });
   pdfStyle({ size: 'large', before: 1.5, style: 'normal' });
-  doc.text(page.title, page.center, pdfCurrent.yPos, { align: 'center' });
+  doc.text(page.title || 'Report', page.center, pdfCurrent.yPos, { align: 'center' });
   pdfStyle({ size: 'small', before: 1, style: 'normal' });
   doc.text(pdfCurrent.reportTime, page.center, pdfCurrent.yPos, { align: 'center' });
   if (pdfCurrent.pageNumber > 1) {
     pdfStyle({ size: 'small', before: 1 });
     doc.text(`Page ${pdfCurrent.pageNumber}`, page.center, pdfCurrent.yPos, { align: 'center' });
-    pdfDown(2);
+    pdfDown(4);
     pdfCurrent = Object.assign({}, savedStyle, { yPos: pdfCurrent.yPos });
     pdfStyle(pdfCurrent);
   }
@@ -718,8 +805,12 @@ function pdfHeader() {
 
 function pdfLine(text, options = {}) {
   clt({ pdfLine: text, options });
-  if (options) { pdfStyle(options); }
-  if (options.before) { pdfDown(options.before); }
+  if (options) {
+    pdfStyle(options);
+  }
+  if (options.before) {
+    delete options.before;
+  }
   if (options.yPos && !isNaN(options.yPos)) {
     pdfCurrent.yPos = options.yPos;
   }
@@ -735,7 +826,8 @@ function pdfLine(text, options = {}) {
   else if (!options.noNewLine) {
     pdfDown(1);
   }
-  if (!options.noNewPage && (pdfCurrent.yPos >= (page.bottom - page.margin.bottom))) {
+  if (!options.noNewPage && (pdfCurrent.yPos >= page.bottom)) {
+    pdfCurrent.pageNumber++;
     pdfHeader();
   }
   if (options.image) {
@@ -772,7 +864,7 @@ function pdfLine(text, options = {}) {
       else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
         tWords = doc.splitTextToSize(text, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
       }
-      if (tWords.length > 0) {
+      if (tWords.length > 1) {
         for (let t = 0; t < tWords.length - 1; t++) {
           pdfLine(tWords[t], options);
         }

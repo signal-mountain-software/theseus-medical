@@ -6,6 +6,7 @@ import { getMemberList } from '../../util/AVAGroups';
 import { getCalendarEntries } from '../../util/AVACalendars';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, messageHistory, sendMessages } from '../../util/AVAMessages';
+import { printRawData } from '../../util/AVAPrintServiceRequest';
 import MakeMessage from '../forms/MakeMessage';
 import AVATextInput from '../forms/AVATextInput';
 import CalendarEventEditForm from '../forms/CalendarEventEditForm';
@@ -818,7 +819,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       return true;
     }
     else {
-      return Object.values(this_item.workData).join(' ').toLowerCase().includes(reactData.filterTextLower);
+      let response = (`${this_item.workData.enteredBy_name} ${this_item.workData.search_data}`).toLowerCase().includes(reactData.filterTextLower)
+      return response;
     }
   }
 
@@ -2589,7 +2591,37 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         >
                           {`All ${allRowsSelected().count}`}
                         </Button>
-                      }
+                        }
+                        {!options.noSelect &&
+                          <Button
+                            className={AVAClass.AVAButton}
+                            style={{ backgroundColor: 'pink', color: 'black' }}
+                            size='small'
+                            onClick={async () => {
+                              let allRows = allRowsSelected();
+                              let anySelected = anyRowsSelected();
+                              if (!anySelected || allRows.allChecked) {
+                                await printRawData(
+                                  reactData.dataRows.filter((r, x) => {
+                                    return (OKToDisplay(r));
+                                  }),
+                                  state
+                                );
+                              }
+                              else {
+                                await printRawData(
+                                  reactData.dataRows.filter((r, x) => {
+                                    return (r.workData.checked && OKToDisplay(r));
+                                  }),
+                                  state
+                                );
+                              }
+                            }}
+                            startIcon={<DoneAllIcon size="small" />}
+                          >
+                            {`Print Report`}
+                          </Button>
+                        }
                     </React.Fragment>
                   }
                 </Box>
