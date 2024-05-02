@@ -31,6 +31,7 @@ import PersonFilter from '../forms/PersonFilter';
 import SelectFromList from '../forms/SelectFromList';
 
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
+import ListAltIcon from '@material-ui/icons/ListAlt';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/DoneSharp';
 import SwapVertIcon from '@material-ui/icons/SwapVert';
@@ -819,11 +820,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       return true;
     }
     else {
-      let response = (`${this_item.workData.enteredBy_name} ${this_item.workData.search_data}`).toLowerCase().includes(reactData.filterTextLower)
+      let response = (`${this_item.workData.enteredBy_name} ${this_item.workData.search_data}`).toLowerCase().includes(reactData.filterTextLower);
       if (!response && this_item.workData.notes_section) {
         response = this_item.workData.notes_section.some(note => {
           return note[1].toLowerCase().includes(reactData.filterTextLower);
-        })
+        });
       }
       return response;
     }
@@ -2113,41 +2114,41 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                 {!options.selectOnly
                                   && this_item?.workData?.notes_section
                                   && this_item.workData.notes_section.map((mLine, mIndex) => (
-                                      <Typography
-                                        key={`prefLine-${mIndex}`}
-                                        className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
-                                      >
-                                        {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
-                                      </Typography>
-                                  ))}
-                                {this_item.workData.open
-                                  && !options.selectOnly
-                                  && this_item?.workData?.formatted_request
-                                  && this_item.workData.formatted_request.map((mLine, mIndex) => (
-                                  (mLine[0].startsWith('href=')
-                                    ?
-                                    <a
-                                      href={mLine[0].split('=')[1]}
-                                      key={`attach-${mIndex}-href`}
-                                      target='_blank'
-                                      rel='noopener noreferrer'
-                                      style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                      <Typography
-                                        key={`attach-${mIndex}`}
-                                        className={classes.mrowdetail}
-                                      >
-                                        {`Attachment: ${mLine[1]}`}
-                                      </Typography>
-                                    </a>
-                                    :
-                                    < Typography
+                                    <Typography
                                       key={`prefLine-${mIndex}`}
                                       className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
                                     >
                                       {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
                                     </Typography>
-                                  )
-                                ))}
+                                  ))}
+                                {this_item.workData.open
+                                  && !options.selectOnly
+                                  && this_item?.workData?.formatted_request
+                                  && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                                    (mLine[0].startsWith('href=')
+                                      ?
+                                      <a
+                                        href={mLine[0].split('=')[1]}
+                                        key={`attach-${mIndex}-href`}
+                                        target='_blank'
+                                        rel='noopener noreferrer'
+                                        style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                        <Typography
+                                          key={`attach-${mIndex}`}
+                                          className={classes.mrowdetail}
+                                        >
+                                          {`Attachment: ${mLine[1]}`}
+                                        </Typography>
+                                      </a>
+                                      :
+                                      < Typography
+                                        key={`prefLine-${mIndex}`}
+                                        className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                      >
+                                        {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
+                                      </Typography>
+                                    )
+                                  ))}
                                 {this_item.workData.open && !options.selectOnly &&
                                   this_item.workData.messageRecs.map((mLine, dX) => (
                                     <Typography
@@ -2317,12 +2318,13 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           style={AVATextStyle({ size: 1, margin: { top: 1, left: 2 } })}
                           className={classes.firstName}
                         >
-                          {`${this_item.description} - ${this_item.count}`}
+                          {`${this_item.description} - ${this_item.count}${(this_item.qual && (Object.keys(this_item.qual).length > 0)) ? '*' : ''}`}
                         </Typography>
                       </Box>
                       {reactData.rowOpen[this_index]
-                        && Object.keys(this_item.qual).sort().map(qText => (
+                        && Object.keys(this_item.qual).sort().map((qText, qX) => (
                           <Typography
+                            key={`qual_row_${this_index}_${qX}`}
                             variant='h5'
                             style={AVATextStyle({ margin: { left: 4 }, italic: true, size: 1 })}
                             className={classes.firstName}
@@ -2558,23 +2560,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {reactData.showDashboard ? 'List' : 'Dashboard'}
                     </Button>
                   }
-                  {options.allowSummary &&
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'orange', color: 'white' }}
-                      size='small'
-                      onClick={async () => {
-                        await prepareSummary();
-                        updateReactData({
-                          display_summary: reactData.display_summary,
-                          showSummary: !reactData.showSummary
-                        }, true);
-                      }}
-                      startIcon={reactData.showSummary ? <ListIcon size="small" /> : <DashboardIcon size="small" />}
-                    >
-                      {reactData.showSummary ? 'List' : 'Summary'}
-                    </Button>
-                  }
                   {(rowsDisplayed.length > 0) &&
                     <React.Fragment>
                       {anyRowsSelected() &&
@@ -2614,38 +2599,60 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         >
                           {`All ${allRowsSelected().count}`}
                         </Button>
-                        }
-                        {!options.noSelect &&
-                          <Button
-                            className={AVAClass.AVAButton}
-                            style={{ backgroundColor: 'pink', color: 'black' }}
-                            size='small'
-                            onClick={async () => {
-                              let allRows = allRowsSelected();
-                              let anySelected = anyRowsSelected();
-                              if (!anySelected || allRows.allChecked) {
-                                await printRawData(
-                                  reactData.dataRows.filter((r, x) => {
-                                    return (OKToDisplay(r));
-                                  }),
-                                  state
-                                );
-                              }
-                              else {
-                                await printRawData(
-                                  reactData.dataRows.filter((r, x) => {
-                                    return (r.workData.checked && OKToDisplay(r));
-                                  }),
-                                  state
-                                );
-                              }
-                            }}
-                            startIcon={<DoneAllIcon size="small" />}
-                          >
-                            {`Print Report`}
-                          </Button>
-                        }
+                      }
                     </React.Fragment>
+                  }
+                  {options.allowSummary
+                    && !options.noSelect
+                    && ((rowsDisplayed.length > 0) || reactData.showSummary)
+                    &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'orange', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        await prepareSummary();
+                        updateReactData({
+                          display_summary: reactData.display_summary,
+                          showSummary: !reactData.showSummary
+                        }, true);
+                      }}
+                      startIcon={reactData.showSummary ? <ListIcon size="small" /> : <DashboardIcon size="small" />}
+                    >
+                      {reactData.showSummary ? 'List' : 'Summary'}
+                    </Button>
+                  }
+                  {!options.noSelect
+                    && (rowsDisplayed.length > 0)
+                    &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'pink', color: 'black' }}
+                      size='small'
+                      onClick={async () => {
+                        let allRows = allRowsSelected();
+                        let anySelected = anyRowsSelected();
+                        if (!anySelected || allRows.allChecked) {
+                          await printRawData(
+                            reactData.dataRows.filter((r, x) => {
+                              return (OKToDisplay(r));
+                            }),
+                            state
+                          );
+                        }
+                        else {
+                          await printRawData(
+                            reactData.dataRows.filter((r, x) => {
+                              return (r.workData.checked && OKToDisplay(r));
+                            }),
+                            state
+                          );
+                        }
+                      }}
+                      startIcon={<ListAltIcon size="small" />}
+                    >
+                      {`Print Report`}
+                    </Button>
                   }
                 </Box>
                 <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
