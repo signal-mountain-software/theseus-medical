@@ -820,6 +820,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
     else {
       let response = (`${this_item.workData.enteredBy_name} ${this_item.workData.search_data}`).toLowerCase().includes(reactData.filterTextLower)
+      if (!response && this_item.workData.notes_section) {
+        response = this_item.workData.notes_section.some(note => {
+          return note[1].toLowerCase().includes(reactData.filterTextLower);
+        })
+      }
       return response;
     }
   }
@@ -1342,6 +1347,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
     i.workData.summary_request = [];
+    i.workData.notes_section = [];
     i.workData.textBased_request = [];
     i.workData.update_date = AVAupdateDate.relative;
     i.workData.requestTime = AVArequestDate.timestamp;
@@ -1423,6 +1429,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if ((!options.textForm) && (!options.selectOnly)) {
       i.workData.formatted_request = [];
       if ('history' in i) {
+        // updateHistoryList takes each history line and determines if it contains "note added"
+        // if it does, then it includes that information on the notelist, otherwise the line is added to historylist
         if (typeof (i.history) === 'string') {
           updateHistoryList(i.history);
         }
@@ -1451,9 +1459,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
 
       if (noteList.length > 0) {
-        i.workData.formatted_request.push(['head', 'Notes']);
+        i.workData.notes_section.push(['head', 'Notes']);
         noteList.forEach(nLine => {
-          i.workData.formatted_request.push(['detail', nLine]);
+          i.workData.notes_section.push(['detail', nLine]);
         });
       }
 
@@ -2090,17 +2098,32 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                     }
                                   </Box>
                                 </Box>
-                                {!options.textForm && !options.selectOnly &&
-                                  this_item?.workData?.summary_request &&
-                                  this_item.workData.summary_request.map((mSumLine, mSumIndex) => (
-                                    < Typography
+                                {!options.textForm
+                                  && !options.selectOnly
+                                  && this_item?.workData?.summary_request
+                                  && this_item.workData.summary_request.map((mSumLine, mSumIndex) => (
+                                    <Typography
                                       key={`prefLine-${mSumIndex}`}
                                       className={(`mrow${mSumLine[0]}` in classes) ? classes[`mrow${mSumLine[0]}`] : classes.mrowdetail}
                                     >
                                       {typeof mSumLine[1] === 'string' ? mSumLine[1] : (alert(mSumIndex, mSumLine))}
                                     </Typography>
+                                  ))
+                                }
+                                {!options.selectOnly
+                                  && this_item?.workData?.notes_section
+                                  && this_item.workData.notes_section.map((mLine, mIndex) => (
+                                      <Typography
+                                        key={`prefLine-${mIndex}`}
+                                        className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                      >
+                                        {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
+                                      </Typography>
                                   ))}
-                                {this_item.workData.open && !options.selectOnly && this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                                {this_item.workData.open
+                                  && !options.selectOnly
+                                  && this_item?.workData?.formatted_request
+                                  && this_item.workData.formatted_request.map((mLine, mIndex) => (
                                   (mLine[0].startsWith('href=')
                                     ?
                                     <a

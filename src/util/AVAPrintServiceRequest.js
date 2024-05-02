@@ -345,6 +345,18 @@ export async function printRawData(dataRows, state) {
         }
       });
     }
+    if (this_item.workData.notes_section) {
+      this_item.workData.notes_section.forEach((mLine, mIndex) => {
+        if (typeof mLine[1] === 'string') {
+          if (mLine[0] === 'head') {
+            pdfLine(mLine[1], { size: 'medium', before: 0.5, indent: 0 });
+          }
+          else {
+            pdfLine(mLine[1], { size: 'small', before: 0, indent: 10 });
+          }
+        }
+      });
+    }
     if (this_item.workData.formatted_request) {
       this_item.workData.formatted_request.forEach((mLine, mIndex) => {
         if (typeof mLine[1] === 'string') {
@@ -808,7 +820,8 @@ function pdfLine(text, options = {}) {
   if (options) {
     pdfStyle(options);
   }
-  if (options.before) {
+  let remembered_indent = pdfCurrent.indent;
+  if (options.hasOwnProperty('before')) {
     delete options.before;
   }
   if (options.yPos && !isNaN(options.yPos)) {
@@ -861,14 +874,15 @@ function pdfLine(text, options = {}) {
       if ((pdfCurrent.align === 'center') && (doc.getTextWidth(text) > page.printableArea)) {
         tWords = doc.splitTextToSize(text, page.printableArea);
       }
-      else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent) > page.right)) {
+      else if ((pdfCurrent.align !== 'center') && ((doc.getTextWidth(text) + pdfCurrent.xPos + pdfCurrent.indent + 10) > page.right)) {
         tWords = doc.splitTextToSize(text, (page.right - (pdfCurrent.xPos + pdfCurrent.indent)));
       }
-      if (tWords.length > 1) {
+      if (tWords.length > 1) {        
         for (let t = 0; t < tWords.length - 1; t++) {
-          pdfLine(tWords[t], options);
+          doc.text(tWords[t], pdfCurrent.xPos + pdfCurrent.indent, pdfCurrent.yPos);
+          pdfCurrent.indent = remembered_indent + 10;
+          pdfDown(1);
         }
-        pdfDown(1);
         text = tWords[tWords.length - 1];
       }
     }
@@ -890,7 +904,12 @@ function pdfLine(text, options = {}) {
       pdfCurrent.xPos = (pdfCurrent.xPos + pdfCurrent.indent) + doc.getTextWidth(text) + pdfCurrent.fontSize;
     }
   }
-  if (options.after) { pdfDown(options.after); }
+  if (options.after) {
+    pdfDown(options.after);
+  }
+  if (remembered_indent) {
+    pdfCurrent.indent = remembered_indent;
+  }
   return;
 }
 
