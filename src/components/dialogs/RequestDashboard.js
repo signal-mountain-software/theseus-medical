@@ -702,8 +702,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         else {
           observations = await dbClient
             .query({
-              KeyConditionExpression: 'client_id = :c and observation_code = :o',
-              ExpressionAttributeValues: { ':c': session.client_id, ':o': oKey },
+              KeyConditionExpression: 'client_id = :c and begins_with(observation_code, :o)',
+              ExpressionAttributeValues: { ':c': session.client_id, ':o': oKey.slice(0, 10) },
               TableName: "Observations",
               IndexName: "observation_code-index"
             })

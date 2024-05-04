@@ -339,6 +339,9 @@ export async function printRawData(dataRows, state) {
           if (mLine[0] === 'head') {
             pdfLine(`Status: ${mLine[1]}`, { size: 'small', before: 0, indent: 0 });
           }
+          else if (mLine[0] === 'qual') {
+            pdfLine(mLine[1], { size: 'small', before: 0, indent: 10 });
+          }
           else {
             pdfLine(mLine[1], { size: 'medium', before: 0.5, indent: 0 });
           }

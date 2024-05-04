@@ -349,14 +349,25 @@ export function makeNumber(pNum) {
   }
 };
 
-export function parseNumeric(pStr) {
+export function parseNumeric(pIn) {
+  let pStr = pIn.toString();
+  let t = pStr.replace(/\d/g, '');
+  let n = t.replace(/[\s.]/g, '');
   let v = pStr.replace(/\D/g, '');
+  let p = parseFloat(pStr);
+  if (p.toString().includes('.')) {
+    // decimal point, not "dot" - in this case 
+    // remove the decimal point from t as it is part of the number, not the text
+    t = t.replace(/[.]/g, '');
+  }
   return ({
-    isNumeric: !!Number(pStr),
+    isNumeric: !!p,
     hasNumbers: !!v,
-    value: Number(v)
+    hasText: !!n,
+    textValue: t.trim() || null,
+    value: p || null
   });
-}
+};
 
 export async function getIcon(pIcon) {
   const imageBucket = 'ava-icons';
@@ -708,17 +719,23 @@ export async function updateDb(pData) {
             console.log(`caught error getting ${pData[t].table}; error is:`, error);
             response.push(error);
           });
-        let newRec = Object.assign(oldRec.Item, pData[t].data);
-        await dbClient
-          .delete({
-            Key: pData[t].key,
-            TableName: pData[t].table,
-          })
-          .promise()
-          .catch(error => {
-            console.log(`caught error deleting ${pData[t].table}; error is:`, error);
-            response.push(error);
-          });
+        let newRec;
+        if (recordExists(oldRec)) {
+          newRec = Object.assign({}, oldRec.Item, pData[t].data);
+          await dbClient
+            .delete({
+              Key: pData[t].key,
+              TableName: pData[t].table,
+            })
+            .promise()
+            .catch(error => {
+              console.log(`caught error deleting ${pData[t].table}; error is:`, error);
+              response.push(error);
+            });
+        }
+        else {
+          newRec = Object.assign({}, pData[t].data);
+        }
         await dbClient
           .put({
             TableName: pData[t].table,
