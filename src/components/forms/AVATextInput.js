@@ -1,6 +1,8 @@
 import React from 'react';
 
-import { titleCase, makeArray, sentenceCase } from '../../util/AVAUtilities';
+import { titleCase, makeArray, sentenceCase, s3, cl } from '../../util/AVAUtilities';
+
+import { useSnackbar } from 'notistack';
 
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
@@ -9,6 +11,9 @@ import MenuItem from '@material-ui/core/MenuItem';
 
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
+import CloudUploadIcon from '@material-ui/icons/CloudUpload';
+import DeleteIcon from '@material-ui/icons/Delete';
+import LinearProgress from '@material-ui/core/LinearProgress';
 
 import TextField from '@material-ui/core/TextField';
 import Box from '@material-ui/core/Box';
@@ -80,15 +85,28 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
+  const { enqueueSnackbar } = useSnackbar();
+
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   let keyPressed = 0;
 
-  const [textInput, setTextInput] = React.useState(valueText ? (Array.isArray(valueText) ? valueText : [valueText]) : []);
+  const [textInput, setTextInput] = React.useState(
+    promptText.map((p, x) => {
+      if (valueText && valueText[x]) {
+        return valueText[x];
+      }
+      else {
+        return "";
+      }
+    })
+  );
   const [forceRedisplay, setForceRedisplay] = React.useState(true);
   const [reactData, setReactData] = React.useState({
     saving: false,
-    focusOn: 0
+    focusOn: 0,
+    loadProgress: [],
+    attachmentList: (options.allowAttach && options.attachmentList ? options.attachmentList : [])
   });
 
   const updateReactData = (newData, force = false) => {
@@ -99,21 +117,29 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
-  /*
-  const setFocus = React.useRef(null);
+  const hiddenFileInput = React.useRef(null);
 
-  React.useEffect(() => {
-    if (setFocus && setFocus.current) {
-      setFocus.current.focus();
-    }
-  }, [reactData]);
-  */
+  const handleFileUpload = event => {
+    hiddenFileInput.current.click();
+  };
 
-  const handleChangeTextInput = (event, ndx) => {
+  const handleChangeTextInput = (inputValue, ndx, options = {}) => {
     if (!reactData.saving) {
-      textInput[ndx] = event.target.value;
+      textInput[ndx] = inputValue;
       setTextInput(textInput);
-      setForceRedisplay(!forceRedisplay);
+      if (inputValue === '*% select_new %*') {
+        updateReactData({ saving: true }, false);
+        handleSave();
+      }
+      else if (options.edit) {
+        textInput[ndx] = `*% edit_item %*${inputValue}`;
+        setTextInput(textInput);
+        updateReactData({ saving: true }, false);
+        handleSave();
+      }
+      else {
+        setForceRedisplay(!forceRedisplay);
+      }
     }
     else {
       updateReactData({ saving: false }, false);
@@ -127,9 +153,107 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     setForceRedisplay(!forceRedisplay);
   };
 
+  function loadingInProgress(index = 'all') {
+    if (!reactData.loadProgress) {
+      return false;
+    }
+    if (index !== 'all') {
+      return (reactData.loadProgress[index] && reactData.loadProgress[index].loading);
+    }
+    else {
+      return (reactData.loadProgress.some(i => {
+        return (i.loading);
+      }));
+    }
+  }
+
+  let upload;
+  async function handleSaveFile(pTarget) {
+    let pType = pTarget.type;
+    upload = s3.upload({
+      partSize: 10 * 1024 * 1024,
+      queueSize: 4,
+      Bucket: 'theseus-medical-storage',
+      Key: pTarget.name,
+      Body: pTarget,
+      ACL: 'public-read-write',
+      ContentType: pType
+    });
+    let reactData_index = reactData.attachmentList.push({
+      Key: pTarget.name
+    }) - 1;
+    reactData.loadProgress[reactData_index] = {
+      loading: true,
+      fileName: '',
+      total: 1,
+      progress: 0
+    };
+    updateReactData({ loadProgress: reactData.loadProgress }, true);
+    let s3Resp = await performUpload();
+    reactData.attachmentList[reactData_index] = s3Resp;
+    if (!reactData.textInput) { reactData.textInput = { 's3file': s3Resp.Location }; }
+    else { reactData.textInput.s3file = s3Resp.Location; }
+    reactData.loadProgress[reactData_index] = {
+      loading: false,
+      fileName: '',
+      total: 1,
+      progress: 0
+    };
+    updateReactData({
+      loadProgress: reactData.loadProgress,
+      attachmentList: reactData.attachmentList,
+      textInput: reactData.textInput
+    }, true);
+    return s3Resp;
+
+    function performUpload() {
+      return new Promise(function (resolve, reject) {
+        upload
+          .send((err, good) => {
+            if (err) {
+              if (err.code === 'RequestAbortedError') {
+                enqueueSnackbar(`AVA stopped loading at your request.`, { variant: 'error', persist: false });
+              }
+              else {
+                enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+              }
+              reject({});
+            }
+            else {
+              resolve(good);
+            }
+          });
+        upload.on('httpUploadProgress', progress => {
+          if (reactData.loadProgress[reactData_index].loading === 'abort') {
+            upload.abort();
+            reactData.loadProgress.splice(reactData_index, 1);
+          }
+          else {
+            let pFactor = 1000;
+            do {
+              pFactor *= 10;
+            }
+            while (progress.total > (1000 * pFactor));
+            reactData.loadProgress[reactData_index] = {
+              loading: true,
+              fileName: progress.key,
+              total: (progress.total / pFactor),
+              progress: ((progress.loaded * 100) / progress.total)
+            };
+          }
+          updateReactData({ loadProgress: reactData.loadProgress }, true);
+        });
+      });
+    };
+  };
+
   const handleSave = () => {
-    if (Array.isArray(promptText)) { onSave(textInput, keyPressed); }
-    else { onSave(textInput[0], keyPressed); }
+    if (Array.isArray(promptText)) {
+      onSave(textInput, keyPressed);
+    }
+    else {
+      onSave(textInput[0], keyPressed);
+    }
   };
 
   const onCheckEnter = (event) => {
@@ -237,7 +361,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                         </React.Fragment>
                       }
                       {prompt.toLowerCase().startsWith('[select') &&
-                        <React.Fragment>  
+                        <React.Fragment>
                           <TextField
                             className={classes.idText}
                             id={`prompt-${ndx}`}
@@ -247,9 +371,16 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                             inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
                             FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                             error={!!(errorText && errorText[ndx])}
+                            onContextMenu={async (e) => {
+                              e.preventDefault();
+                              cl(`right clicked ${prompt} at ndx=${ndx}`);
+                              if (prompt.toLowerCase().startsWith('[select/edit')) {
+                                handleChangeTextInput((textInput[ndx] || '*% select_new %*'), ndx, { edit: true });
+                              }
+                            }}
                             value={textInput[ndx] || ''}
                             onChange={(event) => {
-                              handleChangeTextInput(event, ndx);
+                              handleChangeTextInput(event.target.value, ndx);
                             }}
                             onKeyPress={(event) => {
                               onCheckEnter(event);
@@ -257,13 +388,22 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                             helperText={((errorText && errorText[ndx]) ? errorText[ndx] : (prompt.split(']').pop() || ''))}
                             autoComplete='off'
                           >
-                            {selectionList[ndx].map((sel) => (
+                            {selectionList[ndx].map((sel, sX) => (
                               <MenuItem
-                                key={((typeof (sel) === 'string') ? sel : sel.key)}
-                                value={((typeof (sel) === 'string') ? sel : sel.value)}>
+                                key={`sel_${sX}`}
+                                value={((typeof (sel) === 'string') ? sel : sel.value)}
+                                onContextMenu={async (e) => {
+                                  e.preventDefault();
+                                  cl(`right clicked ${((typeof (sel) === 'string') ? sel : sel.value)}`);
+                                  if (prompt.toLowerCase().startsWith('[select/edit')) {
+                                    handleChangeTextInput(((typeof (sel) === 'string') ? sel : sel.value), ndx, { edit: true });
+                                  }
+                                }}
+                              >
                                 {sentenceCase(((typeof (sel) === 'string') ? sel : sel.key))}
                               </MenuItem>
                             ))}
+
                           </TextField>
                         </React.Fragment>
                       }
@@ -295,7 +435,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                         error={!!(errorText && errorText[ndx])}
                         value={textInput[ndx] || ''}
                         onChange={(event) => {
-                          handleChangeTextInput(event, ndx);
+                          handleChangeTextInput(event.target.value, ndx);
                         }}
                         onKeyPress={(event) => {
                           onCheckEnter(event);
@@ -309,6 +449,59 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
               ))}
             </Box>
           </DialogContent>
+        }
+        {(options.allowAttach && reactData.attachmentList && reactData.attachmentList.length > 0) &&
+          <Box display='flex' flexDirection='column' pl={'24px'} justifyContent='flex-start'
+            alignItems='flex-start' key={'qrOpt_attachmentlist'}
+          >
+            <Typography className={classes.radioHead}>Attachments:</Typography>
+            {reactData.attachmentList.map((a, x) => (
+              <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                alignItems='center' key={`qrOpt_attachmentLine-${x}`}
+              >
+                <DeleteIcon
+                  className={classes.radioButton}
+                  size="small"
+                  onClick={() => {
+                    reactData.attachmentList.splice(x, 1);
+                    reactData.forceRedisplay = !reactData.forceRedisplay;
+                    if (loadingInProgress(x)) {
+                      reactData.loadProgress[x].loading = 'abort';
+                    }
+                    setReactData(reactData);
+                    setForceRedisplay(forceRedisplay => !forceRedisplay);
+                  }}
+                />
+                {loadingInProgress(x) &&
+                  <React.Fragment>
+                    <LinearProgress
+                      variant="determinate"
+                      className={classes.progressBar}
+                      style={{ width: reactData.loadProgress[x].total }}
+                      value={reactData.loadProgress[x].progress}
+                    />
+                  </React.Fragment>
+                }
+                <Typography
+                  style={AVATextStyle({
+                    size: 0.6,
+                    color: ((loadingInProgress(x)) ? 'gray' : 'black'),
+                    margin: { left: 0.3, right: 3 }
+                  })}
+                >
+                  {a.Key}
+                </Typography>
+                <Box
+                  component="img"
+                  mb={2}
+                  minWidth={150}
+                  maxWidth={150}
+                  alt=''
+                  src={a.Location}
+                />
+              </Box>
+            ))}
+          </Box>
         }
       </Box>
       <DialogActions style={{ justifyContent: 'center' }}>
@@ -355,6 +548,31 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                 {b}
               </Button>
             ))
+          }
+          {options.allowAttach &&
+            <Box display='flex' flexDirection='row' justifyContent='flex-start'
+              alignItems='center' key={'qrOpt_attachmentbox'}
+            >
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'blue', color: 'white' }}
+                size='small'
+                startIcon={<CloudUploadIcon />}
+                onClick={handleFileUpload}
+              >
+                {(typeof (options.allowAttach) === 'string') ? options.allowAttach : 'Attach'}
+              </Button>
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                ref={hiddenFileInput}
+                onChange={async (target) => {
+                  let s3Data = await handleSaveFile(target.target.files[0]);
+                  textInput.push(s3Data.Location);
+                  setTextInput(textInput);
+                }}
+              />
+            </Box>
           }
         </Box>
       </DialogActions>

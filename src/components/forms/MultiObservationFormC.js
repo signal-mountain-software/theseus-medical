@@ -974,7 +974,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           requestor_name: `${this_person.name.first} ${this_person.name.last}`
         });
         if (existingRequest.status === 'use existing') {
-          await applyExistingRequest(existingRequest, myDefaultColumns[c]);
+          await applyExistingRequest(existingRequest, myDefaultColumns[c], c);
         }
       }
     };
@@ -984,7 +984,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
   };
 
-  async function applyExistingRequest(existingRequest, this_column) {
+  async function applyExistingRequest(existingRequest, this_column, this_column_index) {
     this_column.request_to_update = existingRequest.requestToUse;
     if (!existingRequest.requestToUse.hasOwnProperty('current_request')) {
       existingRequest.requestToUse.current_request = deepCopy(existingRequest.requestToUse.original_request);
@@ -997,6 +997,18 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       });
       if (rowNumber > -1) {
         this_column.rowDetails[rowNumber].isChecked = true;
+        if (this_column.rowDetails[rowNumber].observationKey && !this_column.rowDetails[rowNumber].qualData) {
+          let qualResponse = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
+          if (Object.keys(qualResponse.selections).length > 0) {
+            this_column.rowDetails[rowNumber].qualSelections = deepCopy(qualResponse.selections);
+          }
+          if (Object.keys(qualResponse.data).length > 0) {
+            this_column.rowDetails[rowNumber].qualData = deepCopy(qualResponse.data);
+          }
+          if (Object.keys(qualResponse.moreInfo).length > 0) {
+            this_column.rowDetails[rowNumber].moreInfo = deepCopy(qualResponse.moreInfo);
+          }
+        }
         if ((existingRequest.requestToUse.current_request.hasOwnProperty('options'))
           && (existingRequest.requestToUse.current_request.options.hasOwnProperty(selection))) {
           if (!this_column.rowDetails[rowNumber].qualData) {
@@ -2132,6 +2144,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                           (opt === 'image') &&
                           <Box
                             component="img"
+                            key={`obs_image_${oX}`}
                             mt={0}
                             mb={1}
                             mr={2}

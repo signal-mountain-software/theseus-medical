@@ -1,10 +1,11 @@
 import React from 'react';
-import { titleCase, updateDb, deleteDbRec, sentenceCase } from '../../util/AVAUtilities';
+import { titleCase, updateDb, deleteDbRec, sentenceCase, parseNumeric, cl, dbClient } from '../../util/AVAUtilities';
 import useSession from '../../hooks/useSession';
-import { getObservationKeys } from '../../util/AVAObservations';
+import { getObservationKeys, getObservationItems } from '../../util/AVAObservations';
 import AVAConfirm from './AVAConfirm';
 
 import GridListTile from '@material-ui/core/GridListTile';
+import TextField from '@material-ui/core/TextField';
 
 import List from '@material-ui/core/List';
 
@@ -19,6 +20,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import IconButton from '@material-ui/core/IconButton';
 import EditIcon from '@material-ui/icons/Edit';
 import DeleteIcon from '@material-ui/icons/Delete';
+import AddIcon from '@material-ui/icons/PlaylistAdd';
 
 const useStyles = makeStyles(theme => ({
   listItem: {
@@ -47,10 +49,20 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
 
   let filterText = filter ? filter.toLowerCase() : null;
 
+  let displayed_ObservationName = '';
+
   const { state } = useSession();
 
   const [reactData, setReactData] = React.useState({
     editMode: false,
+    addMode: false,
+    savedRequestUpdates: [],
+    observationItemMode: false,
+    oIValues: [],
+    oIImage: '',
+    oIKey: '',
+    ogSelectedObservation: {},
+    newObservationName: '',
     loadMode: false,
     deletePending: false,
     selectedObservation: {},
@@ -67,6 +79,90 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
       setForceRedisplay(forceRedisplay => !forceRedisplay);
     }
   };
+
+  async function loadOIValues(OIKey) {
+    let OIObj = await getObservationItems(OIKey);
+    if (Object.keys(OIObj).length === 0) {
+      return [];
+    }
+    let characteristics = ['calories', 'cholesterol', 'sodium', 'total_carb', 'total_fat'];
+    let OIValues = characteristics.map(c => {
+      let response = '';
+      if (OIObj[c]) {
+        if (OIObj[c].value) {
+          response = OIObj[c].value.toString();
+          if (OIObj[c].uom) {
+            response += ` ${OIObj[c].uom}`;
+          }
+        }
+        else if (OIObj[c].display_value) {
+          response = ` ${OIObj[c].display_value}`;
+        }
+      }
+      return response;
+    });
+    return {
+      values: OIValues,
+      oIName: (OIObj.hasOwnProperty('observation_name') ? OIObj['observation_name'].display_value : null),
+      image: (OIObj.hasOwnProperty('image') ? OIObj['image'].display_value : null)
+    };
+  }
+
+  async function handleAddOItem(oIName, newDataList) {
+    // ['Calories', 'Cholesterol (mg)', 'Sodium (mg)', 'Total Carbs (g)', 'Total Fat (g)', ...attachment(s)]
+    let characteristics = ['calories', 'cholesterol', 'sodium', 'total_carb', 'total_fat', 'image'];
+    let uom = ['', 'mg', 'mg', 'g', 'g', 'image'];
+    let oKey = reactData.oIKey;
+    if (!reactData.oIogName || (reactData.oIogName === `Item ${oKey}`)) {
+      let oIRec = {
+        observation_key: oKey,
+        display_value: oIName,
+        characteristic: 'observation_name',
+      };
+      cl({ 'Put to Observation_Items': oIRec });
+      await dbClient
+        .put({
+          TableName: 'Observation_Items',
+          Item: oIRec
+        })
+        .promise()
+        .catch(error => {
+          cl(`Bad put to Observation_Items - caught error is: ${error}`);
+        });
+    }
+    for (let n = 0; n < newDataList.length; n++) {
+      if (newDataList[n] && (newDataList[n].toString().length > 0)) {
+        let oIRec = {
+          observation_key: oKey,
+          characteristic: characteristics[n],
+        };
+        let checkN = parseNumeric(newDataList[n]);
+        if (!checkN.isNumeric) {
+          oIRec.display_value = newDataList[n];
+        }
+        else {
+          oIRec.value = checkN.value;
+          if (checkN.hasText) {
+            oIRec.uom = checkN.textValue;
+          }
+          else if (uom[n]) {
+            oIRec.uom = uom[n];
+          }
+        }
+        cl({ 'Put to Observation_Items': oIRec });
+        await dbClient
+          .put({
+            TableName: 'Observation_Items',
+            Item: oIRec
+          })
+          .promise()
+          .catch(error => {
+            cl(`Bad put to Observation_Items - caught error is: ${error}`);
+          });
+      }
+    }
+    return oKey;
+  }
 
   const handleEditObservation = async (pObs, index) => {
     if (reactData.recipeList.length === 0) {
@@ -91,9 +187,58 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
         return (r.key.toLowerCase().includes(w));
       })));
     });
+    filteredRecipeList.push({
+      key: '*** Tap here to add new ***',
+      value: '*% select_new %*'
+    });
     pObs.listIndex = index;
     updateReactData({
       editMode: true,
+      ogSelectedObservation: pObs,
+      selectedObservation: pObs,
+      filteredRecipeList: filteredRecipeList
+    }, true);
+  };
+
+  const handleAddObservation = async (pObs_name, index) => {
+    if (reactData.recipeList.length === 0) {
+      let recipeRecs = await getObservationKeys({ characteristic: 'observation_name' });
+      let unsortedRecipeList = recipeRecs.map(r => {
+        return {
+          key: `${sentenceCase(r.display_value)} (${r.observation_key})`,
+          value: r.observation_key
+        };
+      });
+      updateReactData({
+        recipeList: unsortedRecipeList.sort((a, b) => {
+          return ((a.key < b.key) ? -1 : 1);
+        }),
+      });
+    }
+    let obsWords = pObs_name.toLowerCase().trim().split(/\s+/).filter(w => {
+      return !((w === 'with') || (w === 'w/'));
+    });
+    let filteredRecipeList = reactData.recipeList.filter((r, x) => {
+      return (obsWords.some(w => {
+        return (r.key.toLowerCase().includes(w));
+      }));
+    });
+    filteredRecipeList.push({
+      key: '*** Tap here to add new ***',
+      value: '*% select_new %*'
+    });
+    let pObs = {
+      listIndex: index,
+      observation_code: pObs_name
+    }
+    updateReactData({
+      editMode: true,
+      addMode: true,
+      ogSelectedObservation: {
+        rightSide: observationList[observationList.length - 1].composite_key.match(/_(?:.(?!_))+$/gm),
+        client_id: observationList[0].client_id,
+        date_key: observationList[0].date_key
+      },
       selectedObservation: pObs,
       filteredRecipeList: filteredRecipeList
     }, true);
@@ -105,26 +250,50 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
     if (original_data.observation_code !== update_data[0]) {
       newData.observation_code = update_data[0];
     }
-    let oldRightSide = original_data.composite_key.match(/_(?:.(?!_))+$/gm);
+    let oldRightSide = original_data.rightSide || original_data.composite_key.match(/_(?:.(?!_))+$/gm);
     let newCompositeKey = `${original_data.client_id}~${update_data[1]}${oldRightSide}`;
     if (original_data.composite_key !== newCompositeKey) {
       newData.composite_key = newCompositeKey;
-      newData.sort_key = update_data[1];
-      newData.sort_order = `${oldRightSide}${update_data[1]}`;
+      newData.observation_type = update_data[1];
+      newData.sort_order = `${update_data[1]}${oldRightSide}`;
     }
     if (original_data.observation_key !== update_data[2]) {
       newData.observation_key = update_data[2];
     }
+    if (original_data.description !== update_data[3]) {
+      newData.description = update_data[3];
+    }
     if (Object.keys(newData).length > 0) {
-      updateDb([{
-        table: 'Observations',
-        key: {
-          composite_key: original_data.composite_key,
-          observation_code: original_data.observation_code
-        },
-        data: newData
-      }]);
-      Object.assign(observationList[original_data.listIndex], newData);
+      if (original_data.composite_key) {
+        updateDb([{
+          table: 'Observations',
+          key: {
+            composite_key: original_data.composite_key || newData.composite_key,
+            observation_code: original_data.observation_code || newData.observation_code
+          },
+          data: newData
+        }]);
+        Object.assign(observationList[original_data.listIndex], newData);
+      }
+      else {
+        newData.client_id = original_data.client_id;
+        newData.date_key = original_data.date_key;
+        await dbClient
+          .put({
+            TableName: 'Observations',
+            Item: newData
+          })
+          .promise()
+          .catch(error => {
+            console.log(`caught error putting to Observations; error is:`, error);
+          });
+        observationList.push(Object.assign({}, newData, {
+          sort_key: newData.observation_type
+        }));
+        updateReactData({
+          newObservationName: ''
+        }, false)
+      }
     }
   };
 
@@ -166,7 +335,7 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
                                   <Typography className={classes.typeOfLine}>{titleCase(this_item.composite_key.replace(this_item.client_id, '').split(/[~_]/g).slice(1, -1).join(' '))}</Typography>
                                   <Typography className={classes.observationLine}>{this_item.observation_code.replace(/~/g, '')}</Typography>
                                   {this_item.observation_key && (this_item.observation_key !== '') && (this_item.observation_key !== '0') &&
-                                    <Typography className={classes.recipeCode}>{`Recipe code ${this_item.observation_key}`}</Typography>
+                                    <Typography className={classes.recipeCode}>{`Item code ${this_item.observation_key}`}</Typography>
                                   }
                                 </Box>
                                 <IconButton
@@ -198,25 +367,154 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
                     </GridListTile>
                   </React-fragment>
               ))}
+              <GridListTile
+                key={'new_item.composite_key-r' + observationList.length}
+                style={{ marginBottom: '0px', marginTop: '0px' }}
+                cols={1}
+              >
+                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                  <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
+                    <React.Fragment key={`act_box_new_item.id`}>
+                      <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                        <React.Fragment key={`new_row_new_item.id`}>
+                          <Box className={classes.listItem} display='flex' flexGrow={1} flexDirection='column'>
+                            <TextField
+                              className={classes.observationLine}
+                              inputProps={{ style: { fontSize: `1.5rem` } }}
+                              id={`prompt-new`}
+                              key={`prompt-new`}
+                              value={reactData.newObservationName ? reactData.newObservationName : ''}
+                              onChange={(event) => {
+                                displayed_ObservationName = event.target.value;
+                                updateReactData({
+                                  newObservationName: displayed_ObservationName
+                                }, true)
+                              }}
+                              FormHelperTextProps={{ style: { fontSize: '0.75rem', lineHeight: '0.9rem' } }}
+                              helperText={`Add something new here`}
+                              autoComplete='off'
+                            />
+                          </Box>
+                          <IconButton
+                            aria-label="search_icon"
+                            onClick={() => {
+                              handleAddObservation(reactData.newObservationName, observationList.length);
+                            }}
+                            edge="end"
+                          >
+                            {<AddIcon />}
+                          </IconButton>
+                        </React.Fragment>
+                      </Box>
+                    </React.Fragment>
+                  </Box>
+                </Box>
+              </GridListTile>
             </React.Fragment>
           }
           {reactData.editMode &&
             <AVATextInput
-              titleText={`Update this Item`}
-              promptText={['Description', '[select]Type', '[select=0]Recipe Code']}
-              valueText={[reactData.selectedObservation.observation_code, reactData.selectedObservation.sort_key, reactData.selectedObservation.observation_key]}
+              titleText={reactData.addMode ? 'Adding an item' : `Update this Item`}
+              promptText={['Name', '[select]Type', '[select/edit]Item Code', 'Description']}
+              valueText={[
+                reactData.selectedObservation.observation_code,
+                reactData.selectedObservation.observation_type,
+                reactData.selectedObservation.observation_key,
+                reactData.selectedObservation.description
+              ]}
               selectionList={[null, state.session.menu_types.sort(), reactData.filteredRecipeList]}
-              buttonText='Update'
+            buttonText={reactData.addMode ? 'Add' : 'Update'}
               onCancel={() => {
                 updateReactData({
                   editMode: false
                 }, true);
               }}
               onSave={async (requestUpdates) => {
+                if (requestUpdates[2] === '*% select_new %*') {
+                  let now$ = new Date().getTime().toString();
+                  updateReactData({
+                    oIKey: `${now$.slice(3, 7)}-${now$.slice(7, 11)}`,
+                    oIValues: [],
+                    oIImage: null,
+                    oIogName: null,
+                    savedRequestUpdates: requestUpdates,
+                    observationItemMode: true,
+                    editMode: false
+                  }, true);
+                }
+                else if (requestUpdates[2].startsWith('*% edit_item %*')) {
+                  let OIKey = requestUpdates[2].slice(15).trim();
+                  let OIInfo = await loadOIValues(OIKey);
+                  updateReactData({
+                    oIKey: OIKey,
+                    oIValues: OIInfo.values,
+                    oIImage: OIInfo.image,
+                    oIogName: OIInfo.oIName,
+                    savedRequestUpdates: requestUpdates,
+                    observationItemMode: true,
+                    editMode: false
+                  }, true);
+                }
+                else {
+                  await handleUpdateObservation(reactData.ogSelectedObservation, requestUpdates);
+                  updateReactData({
+                    editMode: false
+                  }, true);
+                }
+              }}
+            />
+          }
+          {reactData.observationItemMode &&
+            <AVATextInput
+              titleText={reactData.oIogName || reactData.savedRequestUpdates[0]}
+              promptText={['Calories', 'Cholesterol (mg)', 'Sodium (mg)', 'Total Carbs (g)', 'Total Fat (g)']}
+              valueText={reactData.oIValues}
+              buttonText={((reactData.oIValues.length === 0) ? 'Add' : 'Update')}
+              options={{
+                allowAttach: 'Add Image',
+                attachmentList: (reactData.oIImage ? [{
+                  Key: 'Current Image',
+                  Location: reactData.oIImage,
+                }] : false)
+              }}
+              onCancel={() => {
                 updateReactData({
-                  editMode: false
+                  selectedObservation: Object.assign(
+                    {},
+                    reactData.ogSelectedObservation,
+                    {
+                      observation_code: reactData.savedRequestUpdates[0],
+                      observation_type: reactData.savedRequestUpdates[1]
+                    }),
+                  observationItemMode: false,
+                  editMode: true
                 }, true);
-                await handleUpdateObservation(reactData.selectedObservation, requestUpdates);
+              }}
+              onSave={async (newOItemData) => {
+                let newOCode = await handleAddOItem(reactData.savedRequestUpdates[0], newOItemData);
+                if (!reactData.oIogName) {          // indicates this is a new entry
+                  reactData.filteredRecipeList.splice(-1, 0, {
+                    value: newOCode,
+                    key: `${reactData.savedRequestUpdates[0]} (${newOCode})`
+                  });
+                  reactData.recipeList.splice(-1, 0, {
+                    value: newOCode,
+                    key: `${reactData.savedRequestUpdates[0]} (${newOCode})`
+                  });
+                }
+                updateReactData({
+                  filteredRecipeList: reactData.filteredRecipeList,
+                  selectedObservation: Object.assign(
+                    {},
+                    reactData.ogSelectedObservation,
+                    {
+                      observation_code: reactData.savedRequestUpdates[0],
+                      observation_type: reactData.savedRequestUpdates[1],
+                      observation_key: newOCode
+                    }),
+                  observationItemMode: false,
+                  editMode: true
+                }, true);
               }}
             />
           }

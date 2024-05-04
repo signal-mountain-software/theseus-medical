@@ -14,9 +14,7 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import FileCopyIcon from '@material-ui/icons/FileCopy';
-import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 
-import EditObservation from '../forms/EditObservation';
 import CopyMenu from '../forms/CopyMenu';
 
 import MenuForm from '../forms/MenuForm';
@@ -91,9 +89,7 @@ export default ({ pClient, showMenu, onClose }) => {
   const [observationList, setObservationList] = React.useState();
   const [selectedDate, setSelectedDate] = React.useState(new Date().toDateString());
   const [loadMode, setLoadMode] = React.useState(false);
-  const [addMode, setAddMode] = React.useState(false);
   const [copyMode, setCopyMode] = React.useState(false);
-  const [selectedObservation, setSelectedObservation] = React.useState({});
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -108,18 +104,6 @@ export default ({ pClient, showMenu, onClose }) => {
     let [obsList,] = await getObservations(pClient, '', { date: pDate, sort: true, return: 'records' });
     setObservationList(obsList);
     return obsList;
-  };
-
-  const handleAddObservation = async () => {
-    setAddMode(true);
-    let pDate = new Date(selectedDate);
-    let pYMD = pDate.getFullYear() + '.' + (pDate.getMonth() + 1) + '.' + pDate.getDate();
-    let newEntry = {
-      "composite_key": `${pClient}~ _${pYMD}`,
-      "observation_code": '',
-      "sort_order": `${pYMD}_`
-    };
-    setSelectedObservation(newEntry);
   };
 
   const handleLoad = async () => {
@@ -279,29 +263,7 @@ export default ({ pClient, showMenu, onClose }) => {
           >
             {'Copy'}
           </Button>
-          <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'blue', color: 'white' }}
-            size='small'
-            onClick={() => { handleAddObservation(); }}
-            startIcon={<AddCircleOutlineIcon size="small" />}
-          >
-            {'Add Items'}
-          </Button>
         </DialogActions>
-        {addMode &&
-          <EditObservation
-            observation={selectedObservation}
-            showDialog={addMode}
-            handleClose={() => {
-              setAddMode(false);
-              buildObservationList(selectedDate);
-            }}
-            handleCancel={() => {
-              setAddMode(false);
-            }}
-          />
-        }
         {loadMode &&
           <LoadMenuSpreadsheet
             pClient={pClient}
