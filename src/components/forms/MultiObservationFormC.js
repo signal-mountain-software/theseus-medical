@@ -948,10 +948,30 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         if (column.defaultValues[dKey] === '[person.location]') {
           myDefaultColumns[c].defaultValues[dKey] = this_person.location;
         }
+        else if (column.defaultValues[dKey] === '[person.name]') {
+          myDefaultColumns[c].defaultValues[dKey] = `${this_person.first} ${this_person.last}`;
+        }
+        else if (column.defaultValues[dKey].startsWith('[person.')) {
+          let pKey = column.defaultValues[dKey].split('.')[1];
+          if (this_person.hasOwnProperty(pKey)) {
+            myDefaultColumns[c].defaultValues[dKey] = this_person[pKey];
+          }
+        }
       }
       myDefaultColumns[c].rowDetails.forEach((dRow, r) => {
-        if (dRow.textValue === '[person.location]') {
-          myDefaultColumns[c].rowDetails[r].textValue = this_person.location;
+        if (dRow.textValue) {
+          if (dRow.textValue === '[person.location]') {
+            myDefaultColumns[c].rowDetails[r].textValue = this_person.location;
+          }
+          else if (dRow.textValue === '[person.name]') {
+            myDefaultColumns[c].rowDetails[r].textValue = `${this_person.first} ${this_person.last}`;
+          }
+          else if (dRow.textValue.startsWith('[person.')) {
+            let pKey = dRow.textValue.split('.')[1];
+            if (this_person.hasOwnProperty(pKey)) {
+              myDefaultColumns[c].rowDetails[r].textValue = this_person[pKey];
+            }
+          }
         }
       });
       myDefaultColumns[c].person_id = this_id;
@@ -1998,21 +2018,51 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                             alignItems='center' flexWrap='wrap'
                           >
                             {Object.keys(this_item.moreInfo).map((opt, oX) => (
-                              (opt !== 'image') &&
-                              <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                key={`option_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                id={`option_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
-                                alignItems='center'
+                              <React.Fragment
+                                key={`optionbox_${selectedColumn}.${this_index}.fragment-${this_item.isChecked}-${oX}`}
                               >
-                                <Typography
-                                  key={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                  id={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                  style={AVATextStyle({ size: 0.75, margin: { left: 1 } })}
-                                >
-                                  {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
-                                </Typography>
-                              </Box>
+                                {(opt !== 'image') && (opt !== 'restriction') &&
+                                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                    key={`option_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
+                                    id={`option_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
+                                    style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
+                                    alignItems='center'
+                                  >
+                                    <Typography
+                                      key={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
+                                      id={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
+                                      style={AVATextStyle({ size: 0.75, margin: { left: 1 } })}
+                                    >
+                                      {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
+                                    </Typography>
+                                  </Box>
+                                }
+                                {(opt === 'restriction')
+                                  && (
+                                    state
+                                      .accessList[state.session.client_id]
+                                      .list
+                                      .find(p => { return (p.person_id === reactData.columnList[selectedColumn].person_id); })
+                                      .groups
+                                      .includes(this_item.moreInfo[opt].trim())
+                                  )
+                                  &&
+                                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                    key={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
+                                    id={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
+                                    style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
+                                    alignItems='center'
+                                  >
+                                    <Typography
+                                      key={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
+                                      id={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
+                                      style={AVATextStyle({ color: 'red', style: 'bold', size: 1.2, margin: { left: 1 } })}
+                                    >
+                                      {`*** THIS ITEM IS NOT RECOMMENDED FOR ${reactData.columnList[selectedColumn].display_name.toUpperCase()} ***`}
+                                    </Typography>
+                                  </Box>
+                                }
+                              </React.Fragment>
                             ))}
                           </Box>
                         </Box>

@@ -2034,7 +2034,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                     {(!filter.request_type || (filter.request_type.length !== 1)) &&
                                       <Typography
                                         variant='h5'
-                                        style={AVATextStyle({ size: 1, italic: true })}
+                                        style={AVATextStyle({ size: 1.5, italic: true, bold: true })}
                                       >
                                         {this_item.workData.formatted_type}
                                       </Typography>
