@@ -3,8 +3,7 @@ import { getCustomizations } from './AVAUtilities';
 import { makeDate, addDays} from './AVADateTime';
 
 import { jsPDF } from "jspdf";
-
-// import autoTable from 'jspdf-autotable';
+import 'jspdf-autotable';
 
 import htmlToFormattedText from "html-to-formatted-text";
 
