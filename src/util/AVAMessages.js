@@ -2,7 +2,7 @@ import { clt, cl, s3, recordExists, titleCase, uuid, isObject, listFromArray, ma
 import { getPerson, makeName } from './AVAPeople';
 import { getGroupsBelongTo } from './AVAGroups';
 import { getCustomizations, getObject64 } from './AVAUtilities';
-import { getServiceRequests } from './AVAServiceRequest';
+import { getServiceRequests, formatServiceRequestDetails } from './AVAServiceRequest';
 import { getObservationItems } from './AVAObservations';
 import { makeDate } from './AVADateTime';
 
@@ -77,6 +77,12 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
     },
       inBody.original_request,
       inBody.request);
+    // about Attachments...
+    // "attachments" are URLs that will be hyperlinked to from the body of the message
+    //   these URLs may have come along with the message or be created below
+    //   This is our non-traditional way of sending links to resources in the body of a message
+    // "attachment_data" is what is needed to create a traditional attached file in the message
+    //   and is only present when the activity lists attachment_method = 'file'
     if (inBody.hasOwnProperty('attachments')) {
       requestInfo.attachments = inBody.attachments.map(a => {
         if (typeof (a) === 'string') {
@@ -131,14 +137,8 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
         case 'factForm': {
           [results.htmlText, results.messageText, results.pdfInfo] = await formatRequestDetails(this_request, this_request.format.type);
           firstDoc = false;
-          break;
-        }
-        case 'document': {
-          [results.htmlText, results.messageText, results.pdfInfo] = await buildDocument(this_request);
-          results.attachments = deepCopy(results.pdfInfo);
-          requestInfo.attachments = results.pdfInfo;
           if ((this_request.messaging.hasOwnProperty('attachment_method')
-            && (this_request.messaging.attachment_method === 'file')) || 
+            && (this_request.messaging.attachment_method === 'file')) ||
             (this_request.hasOwnProperty('attachment_method')
               && (this_request.attachment_method === 'file'))) {
             results.attachment_data = {
@@ -148,8 +148,28 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
               disposition: 'attachment',
               content_id: this_request.local_key
             };
-           // results.htmlText = 'See attached';
-           // results.messageText = 'See attached';
+            // results.htmlText = 'See attached';
+            // results.messageText = 'See attached';
+          }
+          break;
+        }
+        case 'document': {
+          [results.htmlText, results.messageText, results.pdfInfo] = await buildDocument(this_request);
+          results.attachments = deepCopy(results.pdfInfo);
+          requestInfo.attachments = results.pdfInfo;
+          if ((this_request.messaging.hasOwnProperty('attachment_method')
+            && (this_request.messaging.attachment_method === 'file')) ||
+            (this_request.hasOwnProperty('attachment_method')
+              && (this_request.attachment_method === 'file'))) {
+            results.attachment_data = {
+              filename: results.pdfInfo.key,
+              content: results.pdfInfo.data,
+              type: 'application/pdf',
+              disposition: 'attachment',
+              content_id: this_request.local_key
+            };
+            // results.htmlText = 'See attached';
+            // results.messageText = 'See attached';
           }
           break;
         }
@@ -162,7 +182,7 @@ export async function prepareMessage(inBodyData, requestRec = {}) {
               && (this_request.messaging.attachment_method === 'file')) {
               results.attachment_data = {
                 filename: `MealTicket-${this_request.local_key}.pdf`,
-                 content: results.attachments.data,
+                content: results.attachments.data,
                 type: 'application/pdf',
                 disposition: 'attachment',
                 content_id: this_request.local_key
@@ -674,13 +694,138 @@ export async function formatRequestDetails(body, summaryType) {
   };
   if (!body.multiPrint || body.multiPrint.lastDoc) {
     pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
-    let this_method = body.overrideMethod || body.messaging?.format?.method;
-    let pdfResp = await savePDF(doc, pdfInfo, { local: !body.PDF, S3: true, onSave: this_method });
+    let this_method = body.overrideMethod || body.messaging?.format?.method || body.messaging[0].format.method;
+    let pdfResp = await savePDF(doc, pdfInfo, { local: false, S3: true, onSave: this_method });
     if (pdfResp.responseData.s3Resp) {
       pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
     }
   }
   return [htmlMessage, rawMessage, pdfInfo];
+}
+
+export async function factForm(serviceRequestRec) {
+  /*
+  serviceRequestRec.original_request: {
+            selections,
+            options,
+            textInput,
+            image_location,
+            images
+          },
+  */
+  // Standard 8.5 x 11 output for a Request of any type
+  // Prep the PDF output
+   let page = {};
+  await pdfLaunch(Object.assign({}, { client_id: serviceRequestRec.client_id }));
+  
+  let htmlMessage = `<h1 style="color: #5e9ca0;"><span style="color: #000000;">${page.title}</span></h1>`;
+  let rawMessage = `${page.title}\n\r`;
+  pdfLine(' ', { align: 'center', image: pdfCurrent.logo });
+  pdfLine(page.title, { style: 'bold', size: 'large', align: 'center', after: 1 });
+
+  // Person
+  let pRec = await getPerson(serviceRequestRec.requestor);
+
+  let authorName = await makeName(serviceRequestRec.requestor);
+  let pName = (serviceRequestRec.onBehalfOf || authorName).replace(/\(.+\)/g, '').trim();  // this removes anything inside parenthesis
+  // does the title contain all of the words in the obo?
+  let tLower = page.title.toLowerCase();
+  let oboWords = pName.toLowerCase().split(/\s+/);
+  let allWordsAppear = oboWords.every(oboWord => {
+    return (tLower.includes(oboWord));
+  });
+  if (!allWordsAppear) {
+    htmlMessage += `<h2 style = "color: black;" >${pName}`;
+    rawMessage += `${pName}\n`;
+    pdfLine(`for ${pName}`, { style: 'normal', align: 'center', size: 'large' });
+  }
+
+  if (pRec.location) {
+    htmlMessage += `<br />${pRec.location}`;
+    rawMessage += `${pRec.location}\n`;
+    pdfLine(pRec.location, { align: 'center' });
+  }
+  htmlMessage += `</h2>`;
+
+  if (!serviceRequestRec.requestDate) {
+    serviceRequestRec.requestDate = new Date();
+  }
+  let pDateTime = makeDate(serviceRequestRec.requestDate).absolute;
+
+  // get creator info - most reliable spot is first characters of the request id
+  let creator_id = serviceRequestRec.request_id.split('~')[0];
+  if (creator_id !== serviceRequestRec.author) {
+    pDateTime += ` by ${await makeName(creator_id)}`;
+  }
+  htmlMessage += `<p style = "color: black;">created: <strong>${pDateTime}</strong>`;
+  rawMessage += `${pDateTime}\n\r`;
+  pdfLine(`created: ${pDateTime}`, { size: 'medium', align: 'center' });
+
+  for (let cTyp in pRec.messaging) {
+    if ((pRec[cTyp]) && (pRec[cTyp].trim() !== '')) {
+      let cLab;
+      switch (cTyp) {
+        case 'sms': { cLab = 'cell'; break; }
+        case 'voice': { cLab = 'home'; break; }
+        case 'email': { cLab = 'e-Mail'; break; }
+        default: { cLab = cTyp; }
+      }
+      htmlMessage += `<br />${cLab}: <strong>${pRec[cTyp]}</strong>`;
+      pdfLine(`${pRec[cTyp]}`, { align: 'center' });
+    }
+  }
+  pdfDown(2);
+
+  htmlMessage += '</p><h2 style = "color: black;" >** AVA **</h2>';
+  rawMessage += '\n\r** AVA **\n\r';
+
+  let spaceBetweenLines = 25;
+  let renderCheckBox = '';
+   
+  let formattedRequestObj = formatServiceRequestDetails(serviceRequestRec);
+  for (const [this_selection, optionList] of Object.entries(formattedRequestObj)) {
+    htmlMessage += `<dt style="font-size: 1.2em; color: black;">${renderCheckBox}<strong>&nbsp;&nbsp;&nbsp;${sentenceCase(this_selection)}</dt>`;
+    rawMessage += `\n${this_selection}\n`;
+    pdfStyle('reset');
+    pdfLine(this_selection, { before: 1 });
+    // eslint-disable-next-line
+    optionList.forEach(this_option => {
+      htmlMessage += `<dd>${titleCase(this_option)}</dd>`;
+      rawMessage += `${titleCase(this_option)}\n`;
+      pdfLine(`${titleCase(this_option)}`, { noNewLine: true, italic: true, before: 1, indent: 15, size: 'small' });
+    });
+    if ((serviceRequestRec.original_request.images) && (serviceRequestRec.original_request.images.hasOwnProperty(this_selection))) {
+      pdfLine(' ', { align: 'left', image: serviceRequestRec.original_request.images[this_selection] });
+      rawMessage += `<Signature Captured>\n`;
+      htmlMessage += `<img src="${serviceRequestRec.original_request.images[this_selection]}" />`;
+    }
+  };
+
+  pdfStyle('reset');
+
+  htmlMessage += `</dl><p style="padding-top:${(spaceBetweenLines * 1.5).toString()}px;">`;
+
+  // Finish
+  let refText = `AVA reference: ${serviceRequestRec.client_id}/${serviceRequestRec.request_id} (${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()})`;
+  if (serviceRequestRec.local_key) {
+    htmlMessage += `<div>AVA request number: <strong>${serviceRequestRec.local_key}</strong></div>`;
+    rawMessage += `\n\rAVA request number: ${serviceRequestRec.local_key}`
+    pdfLine(`AVA request number: ${serviceRequestRec.local_key}`, { size: 'tiny', after: 1, yPos: 'footer', align: 'center' });
+    pdfLine(refText, { noNewPage: true, noNewLine: true, before: 1, align: 'center' });
+  }
+  else {
+    pdfLine(refText, { noNewPage: true, yPos: 'footer', align: 'center' });
+  }
+
+  htmlMessage += `<div>${refText}</div>`;
+  htmlMessage += `<div>***** END *****</div></p>`;
+  rawMessage += `\n\r${refText}\n***** END *****`;
+
+  return {
+    html: htmlMessage,
+    plainText: rawMessage,
+    pdf: doc
+  };
 }
 
 export async function buildDocument(body) {
@@ -717,7 +862,7 @@ export async function buildDocument(body) {
     rawMessage = `${body.format.title}\n\r`;
     pdfLine(pdfLine(body.format.title, { size: 'medium', bold: true }));
   }
-  
+
   let ignoreNextLine = false;
   do {
     let this_instruction = printInstructions.shift();
@@ -834,23 +979,21 @@ export async function buildDocument(body) {
   if (body.fileName && body.fileName.slice(-4) !== '.pdf') {
     body.fileName += '.pdf';
   }
-  /*
+  
   let pdfInfo = {
     s3Key: (body.fileName || `AVA_${body.requestID.replace('~', '_')}.pdf`),
     s3Bucket: (body.S3_bucket || 'theseus-medical-storage')
   };
-  */
-  let s3Resp
+  
+  let s3Resp;
   if (!body.multiPrint || body.multiPrint.lastDoc) {
     pdfLine(`***** END *****`, { noNewPage: true, noNewLine: true, before: 1 });
-    
-    /*
-    let this_method = body.overrideMethod || body.messaging?.format?.method;
+
+    let this_method = body.overrideMethod || body.messaging?.format?.method  || body.messaging[0].format.method;;
     let pdfResp = await savePDF(doc, pdfInfo, { local: !body.PDF, S3: true, onSave: this_method });
     if (pdfResp.responseData.s3Resp) {
       pdfInfo.s3Location = pdfResp.responseData.s3Resp.Location;
     }
-    */
 
     let pBlob = doc.output('blob');
     let data64 = (doc.output('datauri')).split(';base64,')[1];
