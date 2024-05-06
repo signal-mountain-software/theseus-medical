@@ -418,7 +418,7 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
               promptText={['Name', '[select]Type', '[select/edit]Item Code', 'Description']}
               valueText={[
                 reactData.selectedObservation.observation_code,
-                reactData.selectedObservation.observation_type,
+                reactData.selectedObservation.observation_type || reactData.selectedObservation.sort_key,
                 reactData.selectedObservation.observation_key,
                 reactData.selectedObservation.description
               ]}
