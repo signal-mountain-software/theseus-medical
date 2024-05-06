@@ -7,6 +7,7 @@ import { cl, makeArray, dbClient } from '../../util/AVAUtilities';
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
 import { sendMessages } from '../../util/AVAMessages';
 import { putServiceRequest } from '../../util/AVAServiceRequest';
+import MakeMessage from './MakeMessage';
 
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
@@ -312,7 +313,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
     });
     slotList.sort((a, b) => {
       if (a.slotData.slot_sort) {
-        return ((a.slotData.slot_sort > b.slotData.slot_sort) ? 1 : -1)
+        return ((a.slotData.slot_sort > b.slotData.slot_sort) ? 1 : -1);
       }
       else if (a.slotData.id > b.slotData.id) { return 1; }
       else { return -1; }
@@ -322,25 +323,6 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
     setEventSlotList(slotList);
     setReactData(reactData);
     return slotList;
-  };
-
-  const handleSendMessage = async (pMessage, pRecipient = null) => {
-    await sendMessages({
-      client: pClient,
-      author: pPatient,
-      messageText: pMessage,
-      recipientList: pRecipient,
-      subject: pOccData.description
-    });
-    let sentTo;
-    if (typeof pRecipient === 'string') { sentTo = await makeName(pRecipient); }
-    else if (pRecipient.length === 1) { sentTo = await makeName(pRecipient[0]); }
-    else {
-      let random = Math.floor(Math.random() * pRecipient.length);
-      let randomName = await makeName(pRecipient[random]);
-      sentTo = `${pRecipient.length} people, including ${randomName}`;
-    };
-    enqueueSnackbar(`Your message was sent to ${sentTo}`, { variant: 'success' });
   };
 
   const handleAllocateSlot = async (body) => {
@@ -766,8 +748,13 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                       <MenuItem
                         onClick={() => {
                           setPromptForMessage(true);
-                          setMessageType('Group');
-                          setRecipient(eventSlotList.map(e => { return e.slotData.id; }));
+                          setMessageType('group');
+                          let filteredList = eventSlotList.filter(e => {
+                            return (e.slotData.status !== 'released');
+                          });
+                          setRecipient(filteredList.map(e => {
+                            return `${e.slotData.display_name}:${e.slotData.id}`;
+                          }));
                         }}
                       >
                         <Box
@@ -863,12 +850,12 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                         {/* Slot Name */}
                         {(this_item.slotData.id !== this_item.slotData.owner) &&
                           <Box display='flex' mr={1} ml={0} flexDirection='row' justifyContent='center' alignItems='center'>
-                              <Typography style={AVATextStyle({ size: 1, align: 'left' })} className={classes.standard} >
-                                {this_item.slotData.hasOwnProperty('slot_description')
-                                  ? this_item.slotData.slot_description
-                                  : makeSlotName(this_item.slotData.id)
-                                }
-                              </Typography>
+                            <Typography style={AVATextStyle({ size: 1, align: 'left' })} className={classes.standard} >
+                              {this_item.slotData.hasOwnProperty('slot_description')
+                                ? this_item.slotData.slot_description
+                                : makeSlotName(this_item.slotData.id)
+                              }
+                            </Typography>
                           </Box>
                         }
                         {/* Slot Owner */}
@@ -1079,14 +1066,53 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
           </PersonFilter>
         }
         {promptForMessage &&
-          <AVATextInput
-            promptText={`Message to everyone signed up for ${pOccData.description}`}
-            buttonText='Send'
-            onCancel={() => { setPromptForMessage(false); }}
-            onSave={(messageText) => {
-              setPromptForMessage(false);
-              handleSendMessage(messageText, recipient, messageType);
+          (messageType !== 'group') &&
+          <MakeMessage
+            titleText={`Message to ${recipient.split(':')[0]}`}
+            promptText={['Subject', `What should your message say?`]}
+            promptUse={['subject', 'message']}
+            seedText={[`${pOccData.description} ${pOccData.occurrence_date ? makeDate(pOccData.occurrence_date).relative : ''}`]}
+            buttonText={'Send'}
+            sender={{
+              "client_id": state.session.client_id,
+              "patient_id": state.session.patient_id,
+              "patient_display_name": state.session.patient_display_name
             }}
+            pRecipientID={recipient.split(':')[1]}
+            pRecipientName={recipient.split(':')[0]}
+            onCancel={() => {
+              setPromptForMessage(false);
+            }}
+            onComplete={() => {
+              setPromptForMessage(false);
+            }}
+            setMethod={null}
+            allowCancel={true}
+          />
+        }
+        {promptForMessage &&
+          (messageType === 'group') &&
+          <MakeMessage
+            titleText={`Message to everyone signed-up for ${pOccData.description} ${pOccData.occurrence_date ? makeDate(pOccData.occurrence_date).relative : ''}`}
+            promptText={['Subject', `What should your message say?`]}
+            promptUse={['subject', 'message']}
+            seedText={[`${pOccData.description} ${pOccData.occurrence_date ? makeDate(pOccData.occurrence_date).relative : ''}`]}
+            buttonText={'Send'}
+            sender={{
+              "client_id": state.session.client_id,
+              "patient_id": state.session.patient_id,
+              "patient_display_name": state.session.patient_display_name
+            }}
+            pRecipientID={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[1]; }) : [recipient.split(':')[1]]}
+            pRecipientName={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[0]; }) : [recipient.split(':')[0]]}
+            onCancel={() => {
+              setPromptForMessage(false);
+            }}
+            onComplete={() => {
+              setPromptForMessage(false);
+            }}
+            setMethod={null}
+            allowCancel={true}
           />
         }
         {reactData.editEventInfo &&
@@ -1249,7 +1275,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                     {'Done'}
                   </Button>
                 </Tooltip>
-                {(!ownerOfSlots || isEventOwner) && 
+                {(!ownerOfSlots || isEventOwner) &&
                   (!['time', 'seats'].includes(pOccData.signup_type)) &&
                   <Tooltip title={'Add to the list'} placement='top'>
                     <Button
