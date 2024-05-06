@@ -630,7 +630,7 @@ export default ({ onSave, onClose }) => {
               <AVATextInput
                 titleText={`Welcome back, ${reactData.personRec.name.first}!`}
                 promptText={["Who are you visiting today?"]}
-                valueText={[(reactData.currentStatus ? reactData.currentStatus.reqRec.on_behalf_of : '')]}
+                valueText={['']}
                 buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
                 errorText={reactData.errorText}
                 onCancel={() => {
@@ -666,6 +666,7 @@ export default ({ onSave, onClose }) => {
                   }
                   else {
                     hWho = ` Visiting ${reactData.currentStatus.reqRec.on_behalf_of}`;
+                    reactData.currentStatus.reqRec.visiting = reactData.currentStatus.reqRec.person_id;
                   }
                   if (reactData.errorText.length === 0) {
                     let now = makeDate(new Date());
