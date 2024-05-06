@@ -1336,6 +1336,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     let AVArequestDate = makeDate(i.request_date);
     i.workData.display_date = AVArequestDate.relative;    // the date/time the request was first created
     let anonymous = false;
+    if (!i.requestor) {
+      if (i.composite_key) {
+        i.requestor = i.composite_key.split('%')[0];
+      }
+      else {
+        i.requestor = i.request_id.split('~')[0];
+      }
+    }
     let requestorRec = await getPerson(i.requestor, '*all');
     i.workData.requestor_name = await makeName(i.requestor);
     if (i.requestor !== enteredBy) {
