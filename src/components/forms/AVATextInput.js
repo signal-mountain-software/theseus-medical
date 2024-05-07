@@ -92,7 +92,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
   let keyPressed = 0;
 
   const [textInput, setTextInput] = React.useState(
-    promptText.map((p, x) => {
+    makeArray(promptText).map((p, x) => {
       if (valueText && valueText[x]) {
         return valueText[x];
       }

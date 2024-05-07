@@ -1334,7 +1334,7 @@ export async function mealTicketFormat(body, requestRec = {}) {
 
 async function pdfLaunch(body) {
   if (!body.hasOwnProperty('pdf')) { body.pdf = {}; }
-  if (!body.multiPrint || body.multiPrint.firstDoc) {
+  if (!doc || !body.multiPrint || body.multiPrint.firstDoc) {
     doc = new jsPDF({
       orientation: "portrait",
       unit: "px",
