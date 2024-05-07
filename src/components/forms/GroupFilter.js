@@ -168,6 +168,10 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
+  noDisplay: {
+    display: 'none',
+    visibility: 'hidden'
+  },
   radioButton: {
     marginTop: 0,
     marginRight: 0,
@@ -177,10 +181,29 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }) => {
+export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, onRefresh }) => {
   const [activity_filter, setActivityFilter] = React.useState('');
   const [lower_activity_filter, setLowerFilter] = React.useState('');
   const [promptForName, setPromptForName] = React.useState(false);
+
+  /*
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [reactData, setReactData] = React.useState({
+    hideChildren: {},
+    hiding: false,
+    hidingLevel: 0
+  });
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+  */
+  const autoFocus = (element) => element?.focus();
+
+  var rowsDisplayed;
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -233,6 +256,7 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
 
   return (
     <Dialog
+      // open={forceRedisplay || true}
       open={true}
       fullWidth
       variant={'elevation'} elevation={2}
@@ -272,30 +296,48 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
           </Box>
           <Paper component={Box} variant='outlined' width='100%' overflow='auto' square>
             <List component='nav'>
-              {Object.keys(groupsManagedObject).map((listEntry, x) => (
+              <Typography
+                key={'hidden_row'}
+                className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                {rowsDisplayed = 0}
+              </Typography>
+              {Object.keys(groupsManagedObject).map((listEntry, listIndex) => (
                 (OKtoShow(groupsManagedObject[listEntry]) &&
-                  <ListItem
-                    key={'activity-list_' + listEntry}
-                    onClick={() => {
-                      onSelect(listEntry);
-                    }}
-                    onContextMenu={async (e) => {
-                      e.preventDefault();
-                      enqueueSnackbar(`Group ID = ${listEntry}`, { variant: 'info', persist: true });
-                    }}
-                    button
-                  >
-                    <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
-                      <Typography
-                        style={AVATextStyle({
-                          size: 1.5, margin: { bottom: 1 },
-                          weight: (groupsManagedObject[listEntry].role === 'member' ? null
-                            : (groupsManagedObject[listEntry].role === 'non-member' ? 'light' : 'bold'))
-                        })}>
-                        {groupsManagedObject[listEntry].group_name}
-                      </Typography>
-                    </Box>
-                  </ListItem>
+                  <React.Fragment key={`frag_${listIndex}`}>
+                    <Typography
+                      key={`counter_row_${listIndex}`}
+                      className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                      {rowsDisplayed++}
+                    </Typography>
+                    <ListItem
+                      key={`activity-list_${listIndex}_${((listIndex === focusAt) ? 'selected' : '')}`}
+                      ref={(listIndex === focusAt) ? autoFocus : null}
+                      style={(listIndex === focusAt) ? { backgroundColor: 'lightBlue', margin: { bottom: 1.5 } } : { margin: { bottom: 1.5 } }}
+                      onClick={() => {
+                        onSelect(listEntry, listIndex);
+                      }}
+                      onContextMenu={async (e) => {
+                        e.preventDefault();
+                        enqueueSnackbar(`Group ID = ${listEntry}`, { variant: 'info', persist: true });
+                      }}
+                      button
+                    >
+                      <Box
+                        key={`g_box_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
+                        display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
+                        <Typography
+                          key={`g_text_${listIndex}_${(listIndex === focusAt) ? 'selected' : ''}`}
+                          style={AVATextStyle({
+                            size: 1.5,
+                            margin: { left: (groupsManagedObject[listEntry].level ? groupsManagedObject[listEntry].level - 1 : 0) },
+                            weight: (groupsManagedObject[listEntry].role === 'member' ? null
+                              : (groupsManagedObject[listEntry].role === 'non-member' ? 'light' : 'bold'))
+                          })}>
+                          {groupsManagedObject[listEntry].group_name}
+                        </Typography>
+                      </Box>
+                    </ListItem>
+                  </React.Fragment>
                 )
               ))
               }
@@ -309,6 +351,18 @@ export default ({ pSession, groupsManagedObject, onCancel, onSelect, onRefresh }
                     handleCreateAGroup(newGroupName);
                   }}
                 />
+              }
+              {!promptForName && (rowsDisplayed === 0) &&
+                <Box display='flex' flexDirection='row' minWidth='100%' justifyContent='space-between' alignItems='center'>
+                  <Typography
+                    key={`g_text_end`}
+                    style={AVATextStyle({
+                      size: 1.5,
+                      margin: { bottom: 1 },
+                    })}>
+                    {!lower_activity_filter ? 'This Group has no members' : 'No members match that filter'}
+                  </Typography>
+                </Box>
               }
             </List>
           </Paper>

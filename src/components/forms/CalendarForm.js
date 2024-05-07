@@ -22,6 +22,7 @@ import TextField from '@material-ui/core/TextField';
 
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
+import PrintIcon from '@material-ui/icons/Print';
 
 import Menu from '@material-ui/core/Menu';
 import MenuList from '@material-ui/core/MenuList';
@@ -33,6 +34,7 @@ import Button from '@material-ui/core/Button';
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import useSession from '../../hooks/useSession';
+import { printCalendar } from '../../util/AVACalendarPrint';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -142,7 +144,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ myCalendar, person_id, peopleList, onClose }) => {
+export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {} }) => {
 
   let working_date = '';
 
@@ -165,7 +167,8 @@ export default ({ myCalendar, person_id, peopleList, onClose }) => {
       needRef: false,
       loading: false,
       progress: 0,
-      pWidth: 60
+      pWidth: 60,
+      defaultValues: defaultValues
     }
   );
   let local_needRef = false;
@@ -179,6 +182,12 @@ export default ({ myCalendar, person_id, peopleList, onClose }) => {
     }
     if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
+
+  if (myCalendar.loadError || (myCalendar.length === 0)) {
+    enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+    onClose();
+    return [];
+  }
 
   React.useEffect(() => {
     if (selectedDate && selectedDate.current) {
@@ -253,7 +262,7 @@ export default ({ myCalendar, person_id, peopleList, onClose }) => {
 
   return (
     <Dialog
-      open={true || forceRedisplay}
+      open={(true || forceRedisplay)}
       p={2}
       fullScreen
     >
@@ -464,11 +473,13 @@ export default ({ myCalendar, person_id, peopleList, onClose }) => {
                               justifyContent='flex-start' alignItems='center'
                               onContextMenu={async (e) => {
                                 e.preventDefault();
-                                enqueueSnackbar(`Event data=${JSON.stringify(this_event)}`, { variant: 'info', persist: true });
+                                enqueueSnackbar(<div>
+                                  1. Event {this_event.event_key}<br /></div>,
+                                  { variant: 'info', persist: true });
                               }}
                             >
                               <Typography style={AVATextStyle({})}>
-                                {`${this_event.description}${this_event.time ? ' - ' + this_event.time : ''}`}
+                                {`${this_event.description}${(this_event.time && (this_event.time.trim() !== '')) ? ' - ' + this_event.time : ''}`}
                               </Typography>
                             </Box>
                           </Paper>
@@ -505,7 +516,8 @@ export default ({ myCalendar, person_id, peopleList, onClose }) => {
               peopleList={peopleList}
               pPatient={person_id}
               pClient={detailEdit.client}
-              pOccData={detailEdit.occData}
+            pOccData={detailEdit.occData}
+            defaultValues={reactData.defaultValues}
               onReset={(updatedData) => {
                 myCalendar[detailEdit.index].description = updatedData.description;
                 if ((myCalendar[detailEdit.index].date !== updatedData.date)
@@ -536,6 +548,25 @@ export default ({ myCalendar, person_id, peopleList, onClose }) => {
           startIcon={<CloseIcon fontSize="small" />}
           onClick={onClose}>
           {'Done'}
+        </Button>
+        <Button
+          className={AVAClass.AVAButton}
+          style={{ backgroundColor: 'blue', color: 'white' }}
+          size='small'
+          startIcon={<PrintIcon fontSize="small" />}
+          onClick={async () => {
+            await printCalendar(
+              {
+                client_id: state.session.client_id,
+                myCalendar,
+                requestor: state.session.user_id,
+                filterTextLower: reactData.filterTextLower,
+                groupFilter: state.groups.belongsTo
+              }
+            )
+          }}
+        >
+          {'Print'}
         </Button>
       </Box>
     </Dialog>

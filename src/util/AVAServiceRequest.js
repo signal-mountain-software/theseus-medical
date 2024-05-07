@@ -1,8 +1,8 @@
-import { clt, cl, recordExists, getCustomizations, dbClient, makeArray, deepCopy, isObject } from '../util/AVAUtilities';
+import { clt, cl, recordExists, getCustomizations, dbClient, makeArray, deepCopy, isObject, s3 } from '../util/AVAUtilities';
 import { getActivity } from '../util/AVAObservations';
 import { getPerson, makeName } from '../util/AVAPeople';
 import { makeDate } from '../util/AVADateTime';
-import { prepareMessage, sendMessages, resolveMessageVariables, messageHistory } from '../util/AVAMessages';
+import { prepareMessage, sendMessages, resolveMessageVariables, messageHistory, factForm } from '../util/AVAMessages';
 
 // Functions
 
@@ -236,60 +236,28 @@ export async function putServiceRequest(body) {
     "request_type": body.requestType,
     "request_date": body.requestDate,
     "activity_key": body.activity_key,
-    "original_request": body.request,
+    "original_request": body.request || body.original_request,
+    "current_request": body.request || body.original_request,
     "history": historyArray,
     "local_key": body.local_key,
     "assigned_to": body.assigned_to || body.assign_to || 'unassigned',
     "foreign_key": body.foreign_key || '',
     "last_update": body.update_time || now,
     "type_date": `${body.requestType}~${body.update_time || now}`,
-    "last_status": body.requestStatus || 'submitted',
-    "last_note": body.notes
+    "last_status": body.requestStatus || body.last_status || 'submitted',
+    "last_note": body.notes || null
   };
   if (body.attachments && (body.attachments.length > 0)) {
     serviceRequestRec.attachments = body.attachments.map(a => { return a.Location; });
-  }
-  let rTime = makeDate(new Date().getTime());
-  let rMsg;
-  if (body.messaging) {
-    if (body.messaging?.format?.method === 'hold') {
-      serviceRequestRec.last_status = 'Prepared & Held';
-      rMsg = `Held for future processing ${rTime.oaDate}`;
-    }
-    else {
-      let preparedMessages = await prepareMessage(body, serviceRequestRec);
-      if (preparedMessages.length > 0) {
-        preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
-        serviceRequestRec.messages = preparedMessages;
-        serviceRequestRec.last_update = rTime.timestamp;
-        let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
-        if (!sendResults.sent) {
-          serviceRequestRec.last_status = 'Failed to send';
-          rMsg = `Failed to send ${rTime.oaDate}`;
-        }
-        else {
-          // serviceRequestRec.last_status = 'Sent';
-          rMsg = `Sent for processing ${rTime.oaDate}`;
-        }
-        if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
-          serviceRequestRec.history.unshift(rMsg);
-        }
-        else { serviceRequestRec.history = [rMsg]; }
-      }
-    }
   }
   serviceRequestRec.composite_key = '';
   if (serviceRequestRec.foreign_key !== '') {
     serviceRequestRec.composite_key = serviceRequestRec.foreign_key + '%';
   }
   serviceRequestRec.composite_key += `${serviceRequestRec.request_type}%${serviceRequestRec.last_status}`;
+  
+  // WRITE REQUEST
   let goodWrite = true;
-  //if (serviceRequestRec.messages[0].hasOwnProperty('attachment_data')) {
-   // serviceRequestRec.messages[0].htmlText = 'See attached';
-    //serviceRequestRec.messages[0].messageText = 'See attached';
-    //serviceRequestRec.messages[0].pdfInfo.data = null;
-   // serviceRequestRec.original_request.images = null;
-  //}
   cl({ 'adding ServiceRequestRec as': serviceRequestRec });
   await dbClient
     .put({
@@ -301,6 +269,8 @@ export async function putServiceRequest(body) {
       clt({ 'Bad put to ServiceRequests - caught error is': error });
       goodWrite = false;
     });
+  
+  // WRITE REQUEST LOG
   let requestLogRec = {
     "client_id": serviceRequestRec.client_id,
     "log_time": serviceRequestRec.last_update,
@@ -322,12 +292,218 @@ export async function putServiceRequest(body) {
       clt({ 'Bad put to ServiceRequestLog - caught error is': error });
       goodWrite = false;
     });
+  
+  // HANDLE MESSAGING IF NEEDED
+  if (goodWrite && body.messaging) {
+    await handleServiceRequestMessaging(body, serviceRequestRec);
+  }
+
   return {
     'request_id': serviceRequestRec.request_id,
     'requestRec': serviceRequestRec,
     'body': body,
     'message': (goodWrite ? `${body.requestType} request ${serviceRequestRec.request_id} added (${body.author} for ${serviceRequestRec.on_behalf_of})` : 'Request not added')
   };
+}
+
+export async function handleServiceRequestMessaging(body, serviceRequestRec) {
+/*
+SERVICE REQUEST FLOW (NEW) -
+ Messaging attribute will be an object;
+ The object will be keyed by request_status, ie. {
+   submitted: [ {
+    document_type: <value>, 
+    distribution_method: {message: {}, print: {}, ...},
+    test: [<special instructions that may change the document_type or distribution_method>]
+  }, ... ],
+   assigned: [],
+   in_process: [],
+   ...
+ }
+ Each array entry represents a different output that is associated with the Activity.
+ For each individual messaging entry:
+   1. document_type (string) tells how to prepare the request data
+       output -> string containing html, string containing plain text, & encoding from which a PDF can be rendered
+         factForm (default) - 8 1/2 x 11 sheet primarily to list selections and options (this is the default)
+         mealOrder - 8 1/2 x 11 factForm with wording and sequencing specifically required for a meal order
+         document - 8 1/2 x 11 built primarily around template with selections used as variables 
+         singleTicket - 3" format primarily for selections and options
+         mealTicket - same as singleTicket                      
+         none - no document output
+   2. distribution_method (object) tells how to distribute the results
+         message - send using AVA
+               {
+                 subject: text with variables that can be pointed at selections and options
+                 attachment_method: "attachment" (default) or "link" (if "link", key S3_save is implied)
+                 message_body: text with variables that can be pointed at selections and options
+                 force_method: always send via "phone", "email", "text"
+                 recipient_list: [array of AVA IDs to receive this message] (these can be variables such as author or obo)
+               }
+         print - when complete, send the output to a printer or open the print dialog on user's device
+               {
+                 target: "pop-up" or <printer_queue_name>
+               }
+         S3_save - save the document in S3
+               {
+                 filename: text with variables that can be pointed at selections and options
+                 file_type: 
+                 bucket: text with variables that can be pointed at selections and options
+               }
+         local_save - save the document locally in default downloads folder
+               {
+                 filename: text with variables that can be pointed at selections and options
+                 file_type: 
+               }
+*/
+  let rTime = makeDate(new Date().getTime());
+  let rMsg;
+  if (Array.isArray(body.messaging)) {
+    for (let msgNum = 0; msgNum < body.messaging.length; msgNum++) {
+      let this_message = body.messaging[msgNum];
+      if (this_message.format) {   // old style
+        if (this_message.format.method === 'hold') {
+          serviceRequestRec.last_status = 'Prepared & Held';
+          rMsg = `Held for future processing ${rTime.oaDate}`;
+        }
+        else {
+          Object.assign(body, this_message);
+          let preparedMessages = await prepareMessage(body, serviceRequestRec);
+          if (preparedMessages.length > 0) {
+            preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
+            serviceRequestRec.messages = preparedMessages;
+            serviceRequestRec.last_update = rTime.timestamp;
+            let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
+            if (!sendResults.sent) {
+              serviceRequestRec.last_status = 'Failed to send';
+              rMsg = `Failed to send ${rTime.oaDate}`;
+            }
+            else {
+              // serviceRequestRec.last_status = 'Sent';
+              rMsg = `Sent for processing ${rTime.oaDate}`;
+            }
+          }
+        }
+        if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
+          serviceRequestRec.history.unshift(rMsg);
+        }
+        else { serviceRequestRec.history = [rMsg]; }
+        await updateServiceRequest(serviceRequestRec);
+      }
+    }
+  }
+  else {      // new style
+    // are there instructions for this status?
+    if (!body.messaging.hasOwnProperty(serviceRequestRec.last_status)) {    
+      return;
+    }
+    // we have one or more instructions to follow for this status
+    let instructionList = [];
+    if (Array.isArray(body.messaging[serviceRequestRec.last_status])) {
+      instructionList.push(...body.messaging[serviceRequestRec.last_status]);
+    }
+    else {
+      instructionList = [body.messaging[serviceRequestRec.last_status]];
+    }
+    for (let instructionNumber = 0; instructionNumber < instructionList.length; instructionNumber++) {
+      let this_instruction = instructionList[instructionNumber];
+      if (this_instruction.hasOwnProperty('test')) {
+        this_instruction = handleTest(this_instruction, serviceRequestRec)
+      }
+      let SRDocument = await prepareSRDocuments(this_instruction.document_type, serviceRequestRec);
+      await sendSRDocuments(this_instruction.distribution_method, SRDocument, serviceRequestRec);
+    }
+  }
+
+  function handleTest(this_instruction, serviceRequestRec) {
+    return;
+  }
+
+  async function prepareSRDocuments(documentType, serviceRequestRec) {
+    let SRDocuments = {};
+    switch (documentType) {
+      /*
+        factForm - 8 1/2 x 11 sheet primarily to list selections and options (this is the default)
+        mealOrder - 8 1/2 x 11 factForm with wording and sequencing specifically required for a meal order
+        document - 8 1/2 x 11 built primarily around template with selections used as variables 
+        singleTicket - 3" format primarily for selections and options
+        mealTicket - same as singleTicket                      
+        none - no document output
+      */
+      case 'factForm': {
+        SRDocuments = await factForm(serviceRequestRec);
+        break;
+      }
+      default: {
+        
+      }
+    }
+    return SRDocuments;
+  }
+
+  async function sendSRDocuments(distribution_method, SRDocObj, serviceRequestRec) {
+    let methodList = Object.keys(distribution_method);
+    for (let k = 0; k < methodList.length; k++) {
+      switch (methodList[k]) {
+        case 'message': {
+          /*
+          message - send using AVA messaging
+               {
+                 subject: text with variables that can be pointed at selections and options
+                 attachment_method: "attachment" (default) or "link" (if "link", key S3_save is implied)
+                 message_body: text with variables that can be pointed at selections and options
+                 force_method: always send via "phone", "email", "text"
+                 recipient_list: [array of AVA IDs to receive this message] (these can be variables such as author or obo)
+               }
+          */
+          let messageObj = {
+            client: serviceRequestRec.client_id,
+            author: serviceRequestRec.requestor,
+            testMode: false,
+            messageText: SRDocObj.plainText,
+            htmlMessageText: SRDocObj.html,
+            recipientList: distribution_method.message.recipient_list,
+            subject: distribution_method.message.subject
+          }
+          if (distribution_method.message.attachment_method === 'link') {
+            let goodS3 = true;
+            let s3Resp = await s3
+              .upload({
+                Bucket: 'theseus-medical-storage',
+                Key: `AVA_${serviceRequestRec.request_id.replace('~', '_')}.pdf`,
+                Body: SRDocObj.pdf.output('blob'),
+                ACL: 'public-read-write',
+                ContentType: 'application/pdf'
+              })
+              .promise()
+              .catch(err => {
+                cl(`PDF not saved by AVA.  The reason is ${err.message}`);
+                goodS3 = false;
+              });
+            if (goodS3) {
+              messageObj.attachments = [s3Resp.Location];
+            }
+          }
+          else {
+            messageObj.attachment_data = {
+              filename: `AVA_${serviceRequestRec.request_id.replace('~', '_')}.pdf`,
+              content: SRDocObj.pdf.output('blob'),
+              type: 'application/pdf',
+              disposition: 'attachment',
+              content_id: serviceRequestRec.local_key
+            }
+          }
+          if (distribution_method.message.force_method) {
+            messageObj.preffered_method = distribution_method.message.force_method;
+          }
+          sendMessages(messageObj);
+          break;
+        }
+        default: {
+          
+        }
+      }
+    } 
+  }
 }
 
 export async function printServiceRequest(serviceRequestRecsIn, options = {}) {
@@ -538,6 +714,7 @@ export function formatServiceRequestDetails(pInput) {
     selection: [
       option1,
       option2,
+      text,
       ...
     ],
     ...
@@ -836,8 +1013,9 @@ export async function formatServiceRequest(inboundRequest) {
   return final_result;
 }
 
-export function validRequestStatus(pRequestType, pStatus) {
-  let rType = JSON.parse(sessionStorage.AVASessionData).currentSession?.service_request_types[pRequestType];
+export function validRequestStatus(pRequestType, pStatus, currentSession) {
+  // let rType = JSON.parse(sessionStorage.AVASessionData).currentSession?.service_request_types[pRequestType];
+  let rType = currentSession.service_request_types[pRequestType];
   if (!rType || !rType.statusList) {
     return false;
   }

@@ -6,7 +6,7 @@ import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getActivity } from '../../util/AVAObservations';
 import { getActivityDetail } from '../../util/AVAActivityLoader';
-import { AVATextStyle, AVADefaults, hexToRgb } from '../../util/AVAStyles';
+import { AVATextStyle, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyles';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -783,9 +783,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         if (pFact.value.mediaData) {
           let newName = pFact.value?.freeText?.Title || pFact.value.mediaData.Key;
           let fileExtension = pFact.value.mediaData.Key.split('.').pop();
-          pFact.value.mediaData.Key = newName.trim().replace(/[\s/.]/g, '_') + '.' + fileExtension;
-          let fileType = ((pFact.value.mediaData.ContentType?.includes('video') || pFact.value.mediaData.Body?.type?.includes('video')) ? 'Video' : 'File');
-          let fileName = await putS3Object(pFact.value.mediaData, fileType);
+          pFact.value.mediaData.Key = newName.trim().replace(/[\s/.]/g, '_') + '.' + fileExtension;  
+          let fileType;
+          let fileName;
+          if (pFact.value.mediaData.Location) {
+            fileName = pFact.value.mediaData.Location;
+            fileType = fileExtension.startsWith('mp') ? 'video' : 'file';
+          }
+          else {
+            fileType = ((pFact.value.mediaData.ContentType?.includes('video') || pFact.value.mediaData.Body?.type?.includes('video')) ? 'Video' : 'File');
+            fileName = await putS3Object(pFact.value.mediaData, fileType);
+          }
           valueArray.unshift(`s3file=${fileName}`, fileType, `userTag=${pFact.value.tag}`);
           factValueType = 'file_details';
         }
@@ -1363,7 +1371,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                                       {(currentSection = this_row.section_name)}
                                     </Typography>
-                                    <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center' })} >{this_row.section_name.trim()}</Typography>
+                                    <Typography style={AVATextStyle({ size: 1.5, bold: true, align: 'center', color: (isDark(this_row.section_color) ? 'white' : 'black') })} >{this_row.section_name.trim()}</Typography>
                                   </Box>
                                   <Box flex={1} display='flex' justifyContent='flex-end' alignItems='center'>
                                     {(currentMenu !== 'main') ? null : (!sectionOpen[this_row.section_name] ? 'Show' : 'Hide')}

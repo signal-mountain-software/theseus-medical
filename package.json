@@ -1,6 +1,6 @@
 {
   "name": "ava",
-  "version": "24.03.23",
+  "version": "24.04.20",
   "private": true,
   "scripts": {
     "start": "react-scripts --openssl-legacy-provider start",
@@ -19,6 +19,7 @@
     "fontsource-roboto": "^3.0.3",
     "html-to-formatted-text": "^2.7.0",
     "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.2",
     "jwt-decode": "^3.1.2",
     "material-ui-image": "^3.3.2",
     "moment": "^2.29.1",

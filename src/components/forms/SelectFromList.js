@@ -271,10 +271,14 @@ export default ({
                 }}
                 variant={'elevation'} elevation={0} overflow='auto' square
               >
-                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                <Typography className={classes.noDisplay}
+                  key={'rWritten_' + x}
+                  sx={{ display: 'none', visibility: 'hidden' }}>
                   {rowsWritten++}
                 </Typography>
-                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' className={classes.listItem}>
+                <Box display='flex' flexDirection='row'
+                  key={'outerBox_' + x}
+                  justifyContent='flex-start' alignItems='center' className={classes.listItem}>
                   <Checkbox
                     edge='start'
                     mr={1}
@@ -288,7 +292,8 @@ export default ({
                   />
                   {listEntry.image &&
                     <Box
-                      component="img"
+                    component="img"
+                    key={'imageBox_' + x}
                       border={1}
                       mr={1}
                       minWidth={50}
@@ -299,8 +304,12 @@ export default ({
                       src={listEntry.image}
                     />
                   }
-                  <Box display='flex' flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                    <Typography style={(AVATextVariableStyle(listEntry.display), { bold: true })}>
+                  <Box display='flex'
+                    key={'entryBox_' + x}
+                    flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                    <Typography
+                      key={'entryLine_' + x}
+                      style={(AVATextVariableStyle(listEntry.display), { bold: true })}>
                       {listEntry.display}
                     </Typography>
                   </Box>
@@ -366,7 +375,9 @@ export default ({
                 variant={'elevation'} elevation={0} overflow='auto' square
               >
                 {Object.keys(options.allowNotify).map((notifyID, x) => (
-                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center' className={classes.listItem}>
+                  <Box display='flex'
+                    key={`checkbox_outer_${x}`}
+                    flexDirection='row' justifyContent='flex-start' alignItems='center' className={classes.listItem}>
                     <Checkbox
                       edge='start'
                       mr={1}
@@ -393,7 +404,9 @@ export default ({
                       alignItems='flex-start'
                       key={`checkbox_rtext_${x}`}
                     >
-                      <Typography style={(AVATextVariableStyle(options.allowNotify[notifyID].name), { bold: true })}>
+                      <Typography
+                        key={`notif_line_${x}`}
+                        style={(AVATextVariableStyle(options.allowNotify[notifyID].name), { bold: true })}>
                         {`${options.allowNotify[notifyID].name} ${(options.allowNotify[notifyID].count > 1) ? '(' + options.allowNotify[notifyID].count + ')' : ''}`}
                       </Typography>
                     </Box>

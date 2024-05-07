@@ -4,7 +4,7 @@ import { lambda, cl, sentenceCase, switchActiveAccount, listFromArray, makeArray
 import { useSnackbar } from 'notistack';
 import { getImage, getPerson, formatPhone } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
-import { getMemberList, addMember, getPublicGroupList, determineClass, getRole, getAllGroups, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
+import { getMemberList, addMember, getPublicGroupList, getPrivateGroupList, determineClass, getRole, getAllGroups, removeMember, removeAdministrator, addAdministrator } from '../../util/AVAGroups';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import useSession from '../../hooks/useSession';
 
@@ -42,6 +42,7 @@ import AVAConfirm from './AVAConfirm';
 import MakeMessage from './MakeMessage';
 
 import { AVAclasses, AVATextStyle, AVATextVariableStyle, AVADefaults } from '../../util/AVAStyles';
+import RequestDashboard from '../dialogs/RequestDashboard';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -208,7 +209,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [showEditPerson, setShowEditPerson] = React.useState(null);
   const [editPersonRec, setEditPersonRec] = React.useState(null);
   const [groupData, setGroupData] = React.useState({});
-  const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const [workingMemberList, setGroupMemberList] = React.useState(Array.isArray(groupMemberList) ? groupMemberList : groupMemberList[pClient].list);
 
@@ -218,11 +218,26 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [confirmIndex, setConfirmIndex] = React.useState('');
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [showSuperSize, setshowSuperSize] = React.useState(false);
+  const [showAccountHistory, setShowAccountHistory] = React.useState(false);
   const [superSizeData, setSuperSizeData] = React.useState(false);
   const [singlePersonMode, setsinglePersonMode] = React.useState(false);
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
   const [choiceList, setChoiceList] = React.useState([]);
+
+  /*
+  const [reactData, setReactData] = React.useState({
+    listXRef: [],
+  });
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+  */
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   if (peopleList && !showSuperSize) {
     let singlePerson;
@@ -234,16 +249,17 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         singlePerson = peopleList[0].person_id;
       }
     }
-    else if (typeof (peopleList) === 'string') { 
+    else if (typeof (peopleList) === 'string') {
       singlePerson = peopleList;
     }
     if (singlePerson && !singlePerson.startsWith('~')) {
       let this_item = workingMemberList.find((pObj) => {
         return (pObj.person_id === singlePerson);
-      })
+      });
       if (this_item) {
         this_item.role = 'member';    // await getRole(pGroup, singlePerson);
         this_item.public_groups = [];   //  await getPublicGroupList(state.session.client_id, singlePerson);
+        this_item.private_groups = [];
         if (!this_item.account_class) {
           this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
         }
@@ -370,7 +386,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         "client_id": pClient,
         "requestor": pPatient,
         "report_title": pGroupName,
-        "paperSize": [396, 612],
+        "paperSize": (state?.session?.directory_format?.paperSize || [563, 750]),
         "showImages": true,
         "group_id": pClient + '~' + pGroup
       }
@@ -415,7 +431,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const setChoices = async (inList) => {
     let response = [];
     if (state.accessList) {
-      state.accessList[state.session.client_id].list.forEach(a => {
+      state.accessList[state.session.client_id].list.forEach((a, x) => {
         if ((a.access === 'proxy') || (a.access === 'full')) {
           // list is of the form <name>:<id>:<search_string>
           response.push(`${a.name.last}${a.name.first ? ', ' + a.name.first : ''}:${a.id}:${a.display_name}_${a.location}`);
@@ -612,6 +628,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               onClick={async () => {
                                 this_item.role = await getRole(pGroup, this_item.person_id);
                                 this_item.public_groups = await getPublicGroupList(state.session.client_id, this_item.person_id);
+                                this_item.private_groups = await getPrivateGroupList(state.session.client_id, this_item.person_id);
                                 if (!this_item.account_class) {
                                   this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
                                 }
@@ -633,7 +650,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               }
                               {adminAccount && ((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for)) &&
                                 <Box display='flex' flexDirection='column'>
-                                  <Typography id={`resp_line`} key={`resp_line`} style={AVATextStyle({ size: 0.7, margin: { top: (pStyle !== 'short' ? -0.8 : 0), bottom: (pStyle !== 'short' ? 1.5 : 0.5) } })}>
+                                  <Typography id={`resp_line`} key={`resp_line`}
+                                    style={AVATextStyle({ margin: { top: 0, bottom: (pStyle !== 'short' ? 1.5 : 0.5) } })}>
                                     {makeResponsibleLines((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for))}
                                   </Typography>
                                 </Box>
@@ -993,6 +1011,19 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         ))}
                       </Box>
                     }
+                    {superSizeData.private_groups && (Object.keys(superSizeData.private_groups).length > 0) &&
+                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
+                        {Object.keys(superSizeData.private_groups).map((pG, g) => (
+                          <React.Fragment key={`pubGFrag_${g}-superSize`}>
+                            {(superSizeData.private_groups[pG].role !== 'non-member') &&
+                              <Typography key={`pubG_${g}-superSize`} className={classes.superSizePreferenceLine3}>
+                                {sentenceCase(superSizeData.private_groups[pG].group_name)}
+                              </Typography>
+                            }
+                          </React.Fragment>
+                        ))}
+                      </Box>
+                    }
                     {superSizeData.local_data && (Object.keys(superSizeData.local_data).length > 0) &&
                       <React.Fragment>
                         {Object.keys(superSizeData.local_data).map((local, l) => (
@@ -1109,6 +1140,17 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     >
                       {'Edit'}
                     </Button>
+                    <Button
+                      onClick={async () => {
+                        setShowAccountHistory(true);
+                      }}
+                      startIcon={<EditIcon size='small' />}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'gray', color: 'white' }}
+                      size='small'
+                    >
+                      {'Show Activity'}
+                    </Button>
                   </Box>
                 </React.Fragment>
               }
@@ -1168,6 +1210,25 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               }
             </Box>
           </List>
+        }
+        {showAccountHistory &&
+          <RequestDashboard
+            session={state.session}
+          title={superSizeData.display_name}
+            filter={{
+              person_id: superSizeData.person_id
+            }}
+            options={{
+              shortForm: true,
+              showForeignKey: false,
+              textForm: false,
+              updateMode: false,
+              noSelect: true
+          }}
+          onClose={() => {
+            setShowAccountHistory(false);
+          }}
+          />
         }
       </Dialog >
     </React.Fragment >

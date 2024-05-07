@@ -3,10 +3,18 @@ import { sentenceCase, deepCopy, makeArray, isMobile, cl, titleCase, dbClient, r
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getMemberList } from '../../util/AVAGroups';
+import { getCalendarEntries } from '../../util/AVACalendars';
 import { getServiceRequests, updateServiceRequest, printServiceRequest } from '../../util/AVAServiceRequest';
 import { getMessages, messageHistory, sendMessages } from '../../util/AVAMessages';
+import { printRawData } from '../../util/AVAPrintServiceRequest';
 import MakeMessage from '../forms/MakeMessage';
 import AVATextInput from '../forms/AVATextInput';
+import CalendarEventEditForm from '../forms/CalendarEventEditForm';
+import StaffAccess from './StaffAccess';
+
+import Menu from '@material-ui/core/Menu';
+import MenuList from '@material-ui/core/MenuList';
+import MenuItem from '@material-ui/core/MenuItem';
 
 import AVA_AlertSound from '../../ava_alert.mp3';
 import SearchIcon from '@material-ui/icons/Search';
@@ -23,11 +31,16 @@ import PersonFilter from '../forms/PersonFilter';
 import SelectFromList from '../forms/SelectFromList';
 
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
+import ListAltIcon from '@material-ui/icons/ListAlt';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/DoneSharp';
 import SwapVertIcon from '@material-ui/icons/SwapVert';
 import ClearAllIcon from '@material-ui/icons/ClearAll';
 import DoneAllIcon from '@material-ui/icons/DoneAll';
+import OpenDoorIcon from '@material-ui/icons/MeetingRoom';
+import DashboardIcon from '@material-ui/icons/Dashboard';
+import ListIcon from '@material-ui/icons/List';
+import HomeIcon from '@material-ui/icons/Home';
 
 import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -222,9 +235,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     options: {
       shortForm - when true, don't show image, history, or message details
       textForm - when true, show only requestor and selections (in a text format)
+      selectOnly: newStatus - show only the name and very brief info; select an item to automatically change ths status
       allowAssign - when items are selected, the "assign" button will be shown.  allowAssign should contain an array (list) of groups that assignees can be selected from
       updateMode - preselect first item
       viewMode - no search field; no changes allowed; show "add new request"; onClose carries instruction for next step
+      noSelect - suppress checkbox and buttons for updates, etc.
     }
   */
 
@@ -235,11 +250,18 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   const firstSelectedRowRef = React.useRef(null);
 
-  const { enqueueSnackbar } = useSnackbar();
+  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const [loading, setLoading] = React.useState('no_value');
   const [unmount, setUnmount] = React.useState();
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
+
+  const [anchorEl, setAnchorEl] = React.useState(null);
+
+  const handleClick = async (event) => {
+    setAnchorEl(event.currentTarget);
+  };
 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
@@ -271,15 +293,21 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     pageTitle: titleCase(title.split(/\(/).shift().toLowerCase().replace('list', '').trim()),
     requestIDs: [],
     showDashboard: false,
+    showSummary: false,
     selectionsChanged: false,
     selectAssignTo: false,
-    selectStatus: false,
+    showUpdateForm: false,
+    showEventEdit: false,
+    detailEdit: {},
     choiceList: [],
     statusList: [],
     isMobile: isMobile(),
     showStaffAccess: false,
     statusObj: {},
     checkInStatusObj: {},
+    rowOpen: [],
+    display_summary: {},
+    display_summaryList: [],
     filter: deepCopy(filterIn),
     filterTextLower: (filter.filterText ? filter.filterText.toLowerCase() : null)
   });
@@ -335,7 +363,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     else { return `Good ${makeDate(new Date()).dayPart}${pName ? ', ' + pName : ''}!`; }
   }
 
-  const handleChangeStatusSelection = statusIn => {
+  async function handleChangeStatusSelection(statusIn) {
     let statusWord = statusIn.toLowerCase();
     if (!reactData.filter.fields.status.hasOwnProperty(statusWord)
       || !reactData.filter.fields.status[statusWord]) {
@@ -348,9 +376,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         return f;
       });
     }
-    updateReactData({
+    let reactUpdateObj = {
       filter: reactData.filter
-    }, true);
+    };
+    if (reactData.showSummary) {
+      await prepareSummary();
+      reactUpdateObj.display_summary = reactData.display_summary;
+    }
+    updateReactData(reactUpdateObj, true);
 
   };
 
@@ -403,7 +436,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       historyLine += `Assigned to ${assignedToName}`;
     }
     let AVAdate = makeDate(new Date());
-    if (historyLine) {
+    if (pOptions.history_update) {
+      historyLine = pOptions.history_update;
+    }
+    else if (historyLine) {
       historyLine += ` on ${AVAdate.absolute}`;
     }
     let updateRows = [];
@@ -477,13 +513,25 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           messageText += ` entered by ${reactData.dataRows[this_index].workData.enteredBy_name}`;
           messageText += ` on ${reactData.dataRows[this_index].workData.display_date}`;
           messageText += ` has been assigned to you.  \r\n`;
-          if (reactData.dataRows[this_index].original_request.selections
-            && reactData.dataRows[this_index].original_request.selections.length > 0) {
-            messageText += `${reactData.dataRows[this_index].workData.enteredBy_name.split(' ').shift()} selected`;
-            messageText += ` ${listFromArray(reactData.dataRows[this_index].original_request.selections)}.  \r\n`;
+          if (reactData.dataRows[this_index].hasOwnProperty('current_request')) {
+            if (reactData.dataRows[this_index].current_request.selections
+              && reactData.dataRows[this_index].current_request.selections.length > 0) {
+              messageText += `${reactData.dataRows[this_index].workData.enteredBy_name.split(' ').shift()} selected`;
+              messageText += ` ${listFromArray(reactData.dataRows[this_index].current_request.selections)}.  \r\n`;
+            }
+            for (let topic in reactData.dataRows[this_index].current_request.textInput) {
+              messageText += `${topic}: ${reactData.dataRows[this_index].current_request.textInput[topic]}  \r\n`;
+            }
           }
-          for (let topic in reactData.dataRows[this_index].original_request.textInput) {
-            messageText += `${topic}: ${reactData.dataRows[this_index].original_request.textInput[topic]}  \r\n`;
+          else {
+            if (reactData.dataRows[this_index].original_request.selections
+              && reactData.dataRows[this_index].original_request.selections.length > 0) {
+              messageText += `${reactData.dataRows[this_index].workData.enteredBy_name.split(' ').shift()} selected`;
+              messageText += ` ${listFromArray(reactData.dataRows[this_index].original_request.selections)}.  \r\n`;
+            }
+            for (let topic in reactData.dataRows[this_index].original_request.textInput) {
+              messageText += `${topic}: ${reactData.dataRows[this_index].original_request.textInput[topic]}  \r\n`;
+            }
           }
           let messageObj = {
             client: session.client_id,
@@ -609,9 +657,150 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }, 500);
   };
 
+  async function prepareSummary() {
+    reactData.display_summary = {};
+    reactData.display_summaryList = [];
+    reactData.rowOpen = [];
+    let observations;
+    let oType = {};
+    let last_fKey;
+    for (let x = 0; x < reactData.dataRows.length; x++) {
+      let this_item = reactData.dataRows[x];
+      if (this_item.foreign_key !== last_fKey) {
+        let pDate = makeDate(this_item.foreign_key);
+        observations = await dbClient
+          .query({
+            KeyConditionExpression: 'client_id = :c and date_key = :d',
+            ExpressionAttributeValues: { ':c': this_item.client_id, ':d': pDate.ymd },
+            TableName: "Observations",
+            IndexName: "date_key-index"
+          })
+          .promise()
+          .catch(error => { cl(`ERROR reading Observations by date *** caught error is: ${error}`); });
+        if (recordExists(observations)) {
+          last_fKey = this_item.foreign_key;
+          observations.Items.forEach(o => {
+            let check = o.composite_key.toLowerCase();
+            ['entree', 'salad', 'soup', 'bread', 'side', 'dessert', 'beverage'].forEach(t => {
+              if (check.includes(t)) {
+                oType[o.observation_code] = sentenceCase(t);
+              }
+            });
+          });
+        }
+      }
+      if (OKToDisplay(this_item)) {
+        await countThisLine(this_item, oType);
+      }
+    }
+    // clean up Other (if possible)
+    for (let oKey in reactData.display_summary) {
+      if (reactData.display_summary[oKey].menuType === 'Other') {
+        if (oType.hasOwnProperty(oKey)) {
+          reactData.display_summary[oKey].menuType = oType.oKey;
+        }
+        else {
+          observations = await dbClient
+            .query({
+              KeyConditionExpression: 'client_id = :c and begins_with(observation_code, :o)',
+              ExpressionAttributeValues: { ':c': session.client_id, ':o': oKey.slice(0, 10) },
+              TableName: "Observations",
+              IndexName: "observation_code-index"
+            })
+            .promise()
+            .catch(error => { cl(`ERROR reading Observations by obs_code *** caught error is: ${error}`); });
+          if (recordExists(observations)) {
+            let keepGoing = true;
+            for (let i = 0; ((i < observations.Items.length) && (keepGoing)); i++) {
+              let o = observations.Items[i];
+              let check = `${o.composite_key} ${o.sort_order}`.toLowerCase();
+              // eslint-disable-next-line
+              ['entree', 'salad', 'soup', 'bread', 'side', 'dessert', 'beverage'].forEach(t => {
+                if (check.includes(t)) {
+                  reactData.display_summary[oKey].menuType = sentenceCase(t);
+                  oType[o.observation_code] = sentenceCase(t);
+                  keepGoing = false;
+                }
+              });
+            };
+          }
+        }
+      }
+    }
+    ['Entree', 'Salad', 'Soup', 'Bread', 'Side', 'Dessert', 'Beverage', 'Other'].forEach(t => {
+      let this_group = [];
+      for (let oKey in reactData.display_summary) {
+        if (reactData.display_summary[oKey].menuType === t) {
+          this_group.push(reactData.display_summary[oKey]);
+        }
+      }
+      if (this_group.length > 0) {
+        this_group.sort((a, b) => {
+          return (a.description > b.description ? 1 : -1);
+        });
+        reactData.display_summaryList.push(...this_group);
+      }
+    });
+    return reactData.display_summaryList;
+  }
+
+  async function countThisLine(this_item, oType) {
+    let parent;
+    for (let x = 0; x < this_item.workData.summary_request.length; x++) {
+      let line = this_item.workData.summary_request[x];
+      if ((line[0] === 'detail') || (line[0] === 'qual')) {
+        if (line[0] === 'detail') {
+          if (((x + 1) < this_item.workData.summary_request.length)
+            && (this_item.workData.summary_request[x + 1][0] === 'qual')) {
+            parent = line[1];
+          }
+          else {
+            parent = null;
+          }
+        }
+        // let this_prop = `${(line[0] === 'qual') ? parent + ' - ' : ''}${line[1]}`;
+        if (line[0] === 'detail') {
+          if (!reactData.display_summary.hasOwnProperty(line[1])) {
+            reactData.display_summary[line[1]] = {
+              description: line[1],
+              count: 1,
+              type: line[0],
+              menuType: oType[line[1]] || 'Other',
+              qual: {}
+            };
+            reactData.rowOpen.push(false);
+          }
+          else {
+            reactData.display_summary[line[1]].count++;
+          }
+        }
+        else {
+          if (!reactData.display_summary.hasOwnProperty(parent)) {
+            reactData.display_summary[parent] = {
+              description: parent,
+              count: 1,
+              type: line[0],
+              menuType: oType[parent] || 'Other',
+              qual: {
+                [line[1]]: 1
+              }
+            };
+            reactData.rowOpen.push(false);
+          }
+          else if (!reactData.display_summary[parent].qual.hasOwnProperty(line[1])) {
+            reactData.display_summary[parent].qual[line[1]] = 1;
+          }
+          else {
+            reactData.display_summary[parent].qual[line[1]]++;
+          }
+        }
+      }
+    };
+  }
+
   function OKToDisplay(this_item) {
     if (reactData.filter.filtering) {
-      if (reactData.filter.fields.status[this_item.last_status.toLowerCase()]) {
+      if (this_item.last_status && reactData.filter.fields.status[this_item.last_status.toLowerCase()]) {
         // We know we're filtering for something, and it turns out we care about this item
         // because it's status is checked off.  Reject the line if we are looking for rows
         // whose status is NOT this status
@@ -631,7 +820,13 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       return true;
     }
     else {
-      return Object.values(this_item.workData).join(' ').toLowerCase().includes(reactData.filterTextLower);
+      let response = (`${this_item.workData.enteredBy_name} ${this_item.workData.search_data}`).toLowerCase().includes(reactData.filterTextLower);
+      if (!response && this_item.workData.notes_section) {
+        response = this_item.workData.notes_section.some(note => {
+          return note[1].toLowerCase().includes(reactData.filterTextLower);
+        });
+      }
+      return response;
     }
   }
 
@@ -710,8 +905,30 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
   function anyRowsSelected() {
     return reactData.dataRows.some(r => {
-      return r.workData.checked;
+      return (r.workData.checked && OKToDisplay(r));
     });
+  }
+
+  function checklistSelected() {
+    let selectedRow = false;
+    let checklistRow = { OK: false, reason: 'No checklist row selected' };;
+    reactData.dataRows.forEach(r => {
+      if (r.workData.checked && OKToDisplay(r)) {
+        // a selected row that is visible
+        if (selectedRow && (checklistRow.OK || (r.workData.flavor === 'checklist'))) {     // is there already a selected row?  if so, reject
+          return { OK: false, reason: 'You selected multiple rows, which included at least one checklist' };
+        }
+        selectedRow = true;
+        if (r.workData.flavor === 'checklist') {    // is this row a checklist type of request?
+          checklistRow = {
+            OK: true,
+            rowIndex: r,
+            foreign_key: r.foreign_key
+          };
+        }
+      }
+    });
+    return checklistRow;
   }
 
   const firstSelectedRow = () => {
@@ -818,7 +1035,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     else if (filter.person_id) {
       let pName = await makeName(filter.person_id);
       updateReactData({
-        selectedPersonName: `${pName}'${pName.slice(-1) === 's' ? '' : 's'} Requests`
+        selectedPersonName: `${pName}'${pName.slice(-1) === 's' ? '' : 's'} Activity`
       }, true);
     }
     if ((!filter.hasOwnProperty('client_id') || !filter.client_id)) {
@@ -836,15 +1053,17 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       if (qList[x].request_date > maxTimeStamp) {
         maxTimeStamp = qList[x].request_date;
       }
-      reactData.dataRows.push(await buildRequestDetails(qList[x]));
-      reactData.requestIDs.push(qList[x].request_id);
-      if ((x % 5) === 0) {    // every 5th entry, commit to the screen
-        updateReactData({
-          lastTimeStamp: maxTimeStamp,
-          dataRows: reactData.dataRows,
-          requestIDs: reactData.requestIDs,
-          rebuilding: false,
-        }, true);
+      if (qList[x].request_id !== `${qList[x].requestor}_checkout`) {
+        reactData.dataRows.push(await buildRequestDetails(qList[x]));
+        reactData.requestIDs.push(qList[x].request_id);
+        if ((x % 5) === 0) {    // every 5th entry, commit to the screen
+          updateReactData({
+            lastTimeStamp: maxTimeStamp,
+            dataRows: reactData.dataRows,
+            requestIDs: reactData.requestIDs,
+            rebuilding: false,
+          }, true);
+        }
       }
     }
     if (loading !== 'rebuild') {
@@ -1064,15 +1283,51 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
   };
 
+  async function orderWarning(pKey) {
+    const showWarning = new Promise((resolve, reject) => {
+      let response = '';
+      const snackAction = (
+        <React-Fragment>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'close'; resolve(response); }}
+          >
+            Yes, Close it!
+          </Button>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'leave'; resolve(response); }}
+          >
+            No, Leave it.
+          </Button>
+        </React-Fragment>
+      );
+      enqueueSnackbar(
+        `You marked off all ${pKey} items on the list.  Would you like to mark the request complete and close it?`,
+        { variant: 'warning', persist: true, action: snackAction }
+      );
+    });
+    let rValue = await showWarning;
+    closeSnackbar();
+    return rValue;
+  }
+
   async function buildRequestDetails(i) {
     i.workData = {};
     i.workData.search_data = '';
+    if (!i.hasOwnProperty('current_request')) {
+      i.current_request = deepCopy(i.original_request);
+    }
     if (session.service_request_types.hasOwnProperty(i.request_type)) {
       i.workData.formatted_type = session.service_request_types[i.request_type].description || `${titleCase(i.request_type)}`;
+      i.workData.flavor = session.service_request_types[i.request_type].flavor || '';
     }
     else {
       cl(`request type "${i.request_type}" not in session.service_request_types`);
-      i.workData.formatted_type = titleCase(i.request_type);
+      i.workData.formatted_type = titleCase(i.request_type.replace('_', ' '));
+      i.workData.flavor = '';
     }
     let [enteredBy, requestTimeStamp] = i.request_id.split('~');
     i.workData.enteredBy = enteredBy;
@@ -1081,6 +1336,14 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     let AVArequestDate = makeDate(i.request_date);
     i.workData.display_date = AVArequestDate.relative;    // the date/time the request was first created
     let anonymous = false;
+    if (!i.requestor) {
+      if (i.composite_key) {
+        i.requestor = i.composite_key.split('%')[0];
+      }
+      else {
+        i.requestor = i.request_id.split('~')[0];
+      }
+    }
     let requestorRec = await getPerson(i.requestor, '*all');
     i.workData.requestor_name = await makeName(i.requestor);
     if (i.requestor !== enteredBy) {
@@ -1093,35 +1356,65 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.requestor_image = await getImage(i.requestor);
     i.workData.formatted_request = [];
     i.workData.summary_request = [];
-    i.workData.textBased_request = '';
+    i.workData.notes_section = [];
+    i.workData.textBased_request = [];
     i.workData.update_date = AVAupdateDate.relative;
     i.workData.requestTime = AVArequestDate.timestamp;
     i.workData.orderForDate = makeDate(i.foreign_key);
     i.workData.this_status = sentenceCase(i.last_status);
-    if (!options.textForm) {
+    if (!options.textForm && !options.selectOnly) {
       let aName = '';
       if (i.assigned_to && (i.assigned_to !== 'unassigned') && (reactData.statusObj[i.last_status] && reactData.statusObj[i.last_status].open)) {
         aName = await makeName(i.assigned_to);
       }
-      i.workData.formatted_request.push(['head', `Current status: ${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
+      if (i.last_status) {
+        i.workData.formatted_request.push(['head', `${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
+      }
     }
-    if ((!options.shortForm) && (!options.textForm)) {
+    if ((!options.shortForm) && (!options.textForm) && !options.selectOnly) {
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
         i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
       }
       i.workData.formatted_request.push(['head', 'Details']);
     }
-    if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
+    i.workData.textBased_request[0] = AVArequestDate.relative;
+    i.workData.textBased_request.push(`<b>${i.workData.formatted_type}`);
+    if (!anonymous) {
+      let pLine = '';
+      if (!filter.person_id) {
+        pLine += i.workData.requestor_name;
+      }
+      if (i.workData.enteredBy !== i.requestor) {
+        pLine += `by ${i.workData.enteredBy_name}`;
+      }
+      if (pLine) {
+        i.workData.textBased_request.push(pLine);
+      }
+    }
+    if (('current_request' in i) && (typeof (i.current_request) !== 'string')) {
+      anonymous = (i.current_request.selections && i.current_request.selections.join(' ').includes('anonymous'));
+      let [fReq, fSearch, fText] = formatRequest(i, i.current_request);
+      i.workData.textBased_request.push(fText);
+      i.workData.formatted_request.push(...fReq);
+      i.workData.search_data += ` ${fSearch}`;
+    }
+    else if ('current_request' in i) {
+      anonymous = i.current_request.includes('anonymous');
+      i.workData.formatted_request.push(['detail', i.current_request || 'No information available']);
+      i.workData.textBased_request.push(i.current_request);
+      i.workData.search_data += ` ${i.current_request}`;
+    }
+    else if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
       anonymous = (i.original_request.selections && i.original_request.selections.join(' ').includes('anonymous'));
       let [fReq, fSearch, fText] = formatRequest(i, i.original_request);
-      i.workData.textBased_request = `${AVArequestDate.relative} ` + (anonymous ? `Anonymous` : i.workData.requestor_name) + fText;
+      i.workData.textBased_request.push(fText);
       i.workData.formatted_request.push(...fReq);
       i.workData.search_data += ` ${fSearch}`;
     }
     else {
       anonymous = i.original_request.includes('anonymous');
       i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
-      i.workData.textBased_request = `${AVArequestDate.relative} ` + (anonymous ? `Anonymous` : i.workData.requestor_name) + i.original_request;
+      i.workData.textBased_request.push(i.original_request);
       i.workData.search_data += ` ${i.original_request}`;
     }
     if (i.attachments && (i.attachments.length > 0)) {
@@ -1142,9 +1435,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     i.workData.summary_request = i.workData.formatted_request;
     let historyList = [];
     let noteList = [];
-    if ((!options.textForm)) {
+    if ((!options.textForm) && (!options.selectOnly)) {
       i.workData.formatted_request = [];
       if ('history' in i) {
+        // updateHistoryList takes each history line and determines if it contains "note added"
+        // if it does, then it includes that information on the notelist, otherwise the line is added to historylist
         if (typeof (i.history) === 'string') {
           updateHistoryList(i.history);
         }
@@ -1173,9 +1468,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
 
       if (noteList.length > 0) {
-        i.workData.formatted_request.push(['head', 'Notes']);
+        i.workData.notes_section.push(['head', 'Notes']);
         noteList.forEach(nLine => {
-          i.workData.formatted_request.push(['detail', nLine]);
+          i.workData.notes_section.push(['detail', nLine]);
         });
       }
 
@@ -1188,7 +1483,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         mHist.map(h => { return i.workData.formatted_request.push(['detail', h]); });
       }
       i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name} ~ ${i.workData.enteredBy_name}`;
-      if (['closed', 'completed', 'complete', 'cancelled'].includes(i.last_status.toLowerCase())) {
+      if (i.last_status && ['closed', 'completed', 'complete', 'cancelled'].includes(i.last_status.toLowerCase())) {
         i.workData.search_data += ` ~ closed`;
       }
       else { i.workData.search_data += ` ~ open`; }
@@ -1215,11 +1510,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if (!('textInput' in req)) { req.textInput = {}; }
     if (!('qualifiers' in req)) { req.qualifiers = []; }
     if (!('selections' in req)) { req.selections = []; }
-    if (i.workData.requestor_name !== i.on_behalf_of) {
+    if (!filter.person_id && (i.workData.requestor_name !== i.on_behalf_of)) {
       returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
       returnText += ` on behalf of ${i.on_behalf_of}`;
     }
-    returnText += ` - `;
     let textLink = '';
     req.selections.forEach(s => {
       let dLine = s.trim();
@@ -1399,6 +1693,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           {/* Header with Avatar, Message, and VertMenu */}
           <Box
             display='flex' flexDirection='row'
+            mt={2}
             key={'topBox'}
           >
             <Box display='flex' flexDirection='column' flexGrow={1} key={'titlesection'}>
@@ -1413,7 +1708,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   : reactData.pageTitle
                 }
               </Typography>
-              {!options.viewMode &&
+              {!options.viewMode && !options.selectOnly &&
                 <Box
                   display='flex' flexDirection='row'
                   className={classes.messageArea}
@@ -1448,7 +1743,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         autoComplete='off'
                       />
                     </Box>
-                    {!reactData.showDashboard &&
+                    {!reactData.showDashboard && !reactData.showSummary &&
                       <Box display='flex'
                         paddingRight={2}
                         paddingBottom={0.5}
@@ -1501,7 +1796,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           updateReactData({
                             dataRows: reactData.dataRows,
                             filter: reactData.filter
-                          }, true)
+                          }, true);
                         }}
                       >
                         <Typography
@@ -1564,8 +1859,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                         {reactData.statusList.map((this_status, this_status_index) => (
                           <FormControlLabel
                             className={classes.formControlLbl}
-                            onChange={() => {
-                              handleChangeStatusSelection(this_status.value);
+                            onChange={async () => {
+                              await handleChangeStatusSelection(this_status.value);
                             }}
                             key={`status_selector_${this_status_index}`}
                             id={`status_selector_${this_status_index}`}
@@ -1590,10 +1885,88 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 </Box>
               }
             </Box>
+            {options.selectOnly &&
+              <React.Fragment>
+                <Box
+                  display='flex'
+                  overflow='auto'
+                  justifyContent='center'
+                  alignContent='center'
+                  flexDirection='column'
+                >
+                  <Typography
+                    style={AVATextStyle({ align: 'right', wrap: 'nowrap', size: 1.1, margin: { right: 0 } })}
+                    id='scroll-dialog-title'
+                  >
+                    {`${makeDate(new Date()).dateOnly.split(',').pop().trim()}`}
+                  </Typography>
+                  <Typography
+                    style={AVATextStyle({ align: 'right', size: 1.1, margin: { right: 0 } })}
+                    id='scroll-dialog-title'
+                  >
+                    {`${makeDate(new Date()).timeOnly.split(' ').join('').toLowerCase()}`}
+                  </Typography>
+                </Box>
+                <Box
+                  display='flex' flexDirection='row'
+                  className={classes.messageArea}
+                  key={'topBox'}
+                >
+                  <Box
+                    component="img"
+                    ml={2}
+                    mr={2}
+                    aria-controls='hidden-menu'
+                    aria-haspopup='true'
+                    minWidth={50}
+                    maxWidth={50}
+                    minHeight={50}
+                    maxHeight={50}
+                    onClick={(event) => {
+                      handleClick(event);
+                      setPopupMenuOpen(true);
+                    }}
+                    alt=''
+                    src={process.env.REACT_APP_AVA_LOGO}
+                  />
+                  <Menu
+                    id='hidden-menu'
+                    anchorEl={anchorEl}
+                    open={popupMenuOpen}
+                    onClose={() => { setPopupMenuOpen(false); }}
+                    keepMounted>
+                    <MenuList className={classes.popUpMenu}>
+                      <MenuItem
+                        onClick={() => {
+                          onClose();
+                        }}>
+                        <Box
+                          display='flex' flexDirection='row' alignItems={'center'}
+                          key={'vRowHome'}
+                        >
+                          <HomeIcon />
+                          <Typography className={classes.popUpMenuRow} >{'Exit'}</Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem>
+                        <Box
+                          display='flex' flexDirection='column' justifyContent={'center'} alignItems={'flex-start'}
+                          key={'vRowRefresh'}
+                        >
+                          <Typography className={classes.popUpFooter} >{`AVA vers ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
+                          <Typography className={classes.popUpFooter} >{`User ${state.session.user_id}${state.session.patient_id !== state.session.user_id ? (' (' + state.session.patient_id + ')') : ''}`}</Typography>
+                          <Typography className={classes.popUpFooter} >{`Function: Calendar`}</Typography>
+                        </Box>
+                      </MenuItem>
+                    </MenuList>
+                  </Menu>
+                </Box>
+              </React.Fragment>
+            }
           </Box>
 
           {/* Main List */}
-          {!reactData.showDashboard &&
+          {!reactData.showDashboard && !reactData.showSummary &&
             <Paper
               component={Box}
               overflow='auto'
@@ -1638,13 +2011,19 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           key={this_item.message_id + 'r' + index}
                           className={classes.listItem}
                         >
-                          <Box display='flex' flexDirection='row'>
-                            <Checkbox
-                              checked={this_item.workData.checked || false}
-                              disableRipple
-                              key={'checkbox' + index}
-                              onClick={() => { toggleCheck(index); }}
-                            />
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            style={options.noSelect ? { paddingLeft: '16px' } : {}}
+                          >
+                            {!options.noSelect &&
+                              <Checkbox
+                                checked={this_item.workData.checked || false}
+                                disableRipple
+                                key={'checkbox' + index}
+                                onClick={() => { toggleCheck(index); }}
+                              />
+                            }
                             {!filter.person_id &&
                               <Box
                                 className={classes.imageArea}
@@ -1663,20 +2042,33 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                     {(!filter.request_type || (filter.request_type.length !== 1)) &&
                                       <Typography
                                         variant='h5'
-                                        style={AVATextStyle({ size: 1, italic: true })}
+                                        style={AVATextStyle({ size: 1.5, italic: true, bold: true })}
                                       >
                                         {this_item.workData.formatted_type}
                                       </Typography>
                                     }
                                     {!filter.person_id &&
-                                      <Typography
-                                        variant='h5'
-                                        style={AVATextStyle({ size: 1.5, bold: true })}
-                                        className={classes.firstName}
-                                      >
-                                        {`${this_item.workData.requestor_name} ${this_item?.original_request?.textInput['Room Number'] ? ('(' + this_item?.original_request?.textInput['Room Number'] + ')') : (
-                                          this_item.workData.requestor_location ? ('(' + this_item.workData.requestor_location + ')') : '')}`}
-                                      </Typography>
+                                      <React.Fragment>
+                                        {this_item.hasOwnProperty('current_request')
+                                          ?
+                                          <Typography
+                                            variant='h5'
+                                            style={AVATextStyle({ size: 1.5, bold: true })}
+                                            className={classes.firstName}
+                                          >
+                                            {`${this_item.workData.requestor_name} ${this_item?.current_request?.textInput['Room Number'] ? ('(' + this_item?.current_request?.textInput['Room Number'] + ')') : (
+                                              this_item.workData.requestor_location ? ('(' + this_item.workData.requestor_location + ')') : '')}`}
+                                          </Typography>
+                                          :
+                                          <Typography
+                                            variant='h5'
+                                            style={AVATextStyle({ size: 1.5, bold: true })}
+                                            className={classes.firstName}
+                                          >
+                                            {`${this_item.workData.requestor_name} ${this_item?.original_request?.textInput['Room Number'] ? ('(' + this_item?.original_request?.textInput['Room Number'] + ')') : (
+                                              this_item.workData.requestor_location ? ('(' + this_item.workData.requestor_location + ')') : '')}`}
+                                          </Typography>}
+                                      </React.Fragment>
                                     }
                                     {this_item.workData.updated &&
                                       <Typography
@@ -1685,70 +2077,87 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                                         {this_item.workData.updated}
                                       </Typography>
                                     }
-                                    <React.Fragment>
-                                      {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                    {!options.selectOnly &&
+                                      <React.Fragment>
+                                        {(this_item.requestor !== this_item.workData.enteredBy) &&
+                                          <Typography
+                                            variant='h5'
+                                            style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                          >
+                                            {`By ${this_item.workData.enteredBy_name}`}
+                                          </Typography>
+                                        }
                                         <Typography
                                           variant='h5'
                                           style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
                                         >
-                                          {`By ${this_item.workData.enteredBy_name}`}
+                                          {this_item.workData.display_date}
                                         </Typography>
-                                      }
-                                      <Typography
-                                        variant='h5'
-                                        style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
-                                      >
-                                        {this_item.workData.display_date}
-                                      </Typography>
-                                      {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey)
-                                        && !(this_item?.workData?.orderForDate.error)
-                                        &&
-                                        <Typography
-                                          variant='h5'
-                                          style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
-                                        >
-                                          {`For ${this_item?.workData?.orderForDate.relative}`}
-                                        </Typography>
-                                      }
-                                    </React.Fragment>
+                                        {(!options.hasOwnProperty('showForeignKey') || options.showForeignKey)
+                                          && !(this_item?.workData?.orderForDate.error)
+                                          &&
+                                          <Typography
+                                            variant='h5'
+                                            style={AVATextStyle({ size: 1, margin: { top: 0.2 } })}
+                                          >
+                                            {`For ${this_item?.workData?.orderForDate.relative}`}
+                                          </Typography>
+                                        }
+                                      </React.Fragment>
+                                    }
                                   </Box>
                                 </Box>
-                                {!options.textForm &&
-                                  this_item?.workData?.summary_request &&
-                                  this_item.workData.summary_request.map((mSumLine, mSumIndex) => (
-                                    < Typography
+                                {!options.textForm
+                                  && !options.selectOnly
+                                  && this_item?.workData?.summary_request
+                                  && this_item.workData.summary_request.map((mSumLine, mSumIndex) => (
+                                    <Typography
                                       key={`prefLine-${mSumIndex}`}
                                       className={(`mrow${mSumLine[0]}` in classes) ? classes[`mrow${mSumLine[0]}`] : classes.mrowdetail}
                                     >
                                       {typeof mSumLine[1] === 'string' ? mSumLine[1] : (alert(mSumIndex, mSumLine))}
                                     </Typography>
-                                  ))}
-                                {this_item.workData.open && this_item?.workData?.formatted_request && this_item.workData.formatted_request.map((mLine, mIndex) => (
-                                  (mLine[0].startsWith('href=')
-                                    ?
-                                    <a
-                                      href={mLine[0].split('=')[1]}
-                                      key={`attach-${mIndex}-href`}
-                                      target='_blank'
-                                      rel='noopener noreferrer'
-                                      style={{ color: 'inherit', textDecoration: 'underline' }}>
-                                      <Typography
-                                        key={`attach-${mIndex}`}
-                                        className={classes.mrowdetail}
-                                      >
-                                        {`Attachment: ${mLine[1]}`}
-                                      </Typography>
-                                    </a>
-                                    :
-                                    < Typography
+                                  ))
+                                }
+                                {!options.selectOnly
+                                  && this_item?.workData?.notes_section
+                                  && this_item.workData.notes_section.map((mLine, mIndex) => (
+                                    <Typography
                                       key={`prefLine-${mIndex}`}
                                       className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
                                     >
                                       {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
                                     </Typography>
-                                  )
-                                ))}
-                                {this_item.workData.open &&
+                                  ))}
+                                {this_item.workData.open
+                                  && !options.selectOnly
+                                  && this_item?.workData?.formatted_request
+                                  && this_item.workData.formatted_request.map((mLine, mIndex) => (
+                                    (mLine[0].startsWith('href=')
+                                      ?
+                                      <a
+                                        href={mLine[0].split('=')[1]}
+                                        key={`attach-${mIndex}-href`}
+                                        target='_blank'
+                                        rel='noopener noreferrer'
+                                        style={{ color: 'inherit', textDecoration: 'underline' }}>
+                                        <Typography
+                                          key={`attach-${mIndex}`}
+                                          className={classes.mrowdetail}
+                                        >
+                                          {`Attachment: ${mLine[1]}`}
+                                        </Typography>
+                                      </a>
+                                      :
+                                      < Typography
+                                        key={`prefLine-${mIndex}`}
+                                        className={(`mrow${mLine[0]}` in classes) ? classes[`mrow${mLine[0]}`] : classes.mrowdetail}
+                                      >
+                                        {typeof mLine[1] === 'string' ? mLine[1] : (alert(index, mLine))}
+                                      </Typography>
+                                    )
+                                  ))}
+                                {this_item.workData.open && !options.selectOnly &&
                                   this_item.workData.messageRecs.map((mLine, dX) => (
                                     <Typography
                                       key={('mrow_out' + dX)}
@@ -1762,13 +2171,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                             </Box>
                           }
                           {options.textForm &&
-                            <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                              < Typography
-                                key={`singleTextLine-${index}`}
-                                className={classes.mrowdetail}
-                              >
-                                {this_item.workData.textBased_request}
-                              </Typography>
+                            <Box display='flex' onClick={() => { toggleOpen(index); }} flexGrow={1} flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                              {this_item.workData.textBased_request.map((textLine, tX) =>
+                                <Typography
+                                  style={AVATextStyle(textLine.startsWith('<b>') ? { bold: true } : {})}
+                                  key={`singleTextLine-${index}_${tX}`}
+                                  className={classes.mrowdetail}
+                                >
+                                  {textLine.replace('<b>', '')}
+                                </Typography>
+                              )}
                             </Box>
                           }
                         </Box>
@@ -1865,6 +2277,77 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             </Paper>
           }
 
+
+          {/* Summary */}
+          {reactData.showSummary &&
+            <Paper
+              component={Box}
+              overflow='auto'
+              elevation={0}
+              pt={3}
+              pb={2}
+              square
+            >
+              <List>
+                {reactData.display_summaryList.map((this_item, this_index) => (
+                  <Paper
+                    component={Box}
+                    elevation={0}
+                    key={`paper_row_${this_index}`}
+                  >
+                    <Box
+                      display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'
+                      key={`paper_row_box${this_index}`}
+                      className={classes.listItem}
+                      marginLeft={2}
+                    >
+                      {((this_index === 0) || (this_item.menuType !== reactData.display_summaryList[this_index - 1].menuType)) &&
+                        <Typography
+                          variant='h5'
+                          style={AVATextStyle({ size: 1.2, bold: true, margin: { top: 2 } })}
+                          className={classes.firstName}
+                        >
+                          {this_item.menuType}
+                        </Typography>
+                      }
+                      <Box display='flex'
+                        flexDirection='row' width='100%'
+                        justifyContent='flex-start'
+                        alignItems='center'
+                        onClick={() => {
+                          reactData.rowOpen[this_index] = !reactData.rowOpen[this_index];
+                          updateReactData({
+                            rowOpen: reactData.rowOpen
+                          }, true);
+                        }}
+                      >
+                        <Typography
+                          variant='h5'
+                          style={AVATextStyle({ size: 1, margin: { top: 1, left: 2 } })}
+                          className={classes.firstName}
+                        >
+                          {`${this_item.description} - ${this_item.count}${(this_item.qual && (Object.keys(this_item.qual).length > 0)) ? '*' : ''}`}
+                        </Typography>
+                      </Box>
+                      {reactData.rowOpen[this_index]
+                        && Object.keys(this_item.qual).sort().map((qText, qX) => (
+                          <Typography
+                            key={`qual_row_${this_index}_${qX}`}
+                            variant='h5'
+                            style={AVATextStyle({ margin: { left: 4 }, italic: true, size: 1 })}
+                            className={classes.firstName}
+                          >
+                            {`${qText} - ${this_item.qual[qText]}`}
+                          </Typography>
+                        )
+                        )}
+                    </Box>
+                  </Paper>
+                ))}
+              </List>
+            </Paper>
+          };
+
           {/* Prompts */}
           {
             promptForMessage &&
@@ -1886,7 +2369,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               allowCancel={true}
             />
           }
-          {reactData.selectAssignTo &&
+          {
+            reactData.selectAssignTo &&
             <PersonFilter
               prompt={'Assign to whom?'}
               peopleList={reactData.choiceList}
@@ -1912,7 +2396,8 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }}
             />
           }
-          {reactData.selectStatus &&
+          {
+            reactData.showUpdateForm &&
             <SelectFromList
               prompt={['Status', 'Notes', 'Notifications']}
               selectionsList={reactData.statusList.filter(s => {
@@ -1926,7 +2411,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }}
               onCancel={() => {
                 updateReactData({
-                  selectStatus: false
+                  showUpdateForm: false
                 }, true);
               }}
               onSelect={async (response) => {
@@ -1936,12 +2421,13 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   notify: response.notify
                 });
                 updateReactData({
-                  selectStatus: false
+                  showUpdateForm: false
                 }, true);
               }}
             />
           }
-          {reactData.showStaffAccess &&
+          {
+            reactData.showStaffAccess && false &&
             (['in'].includes(reactData.checkInStatusObj.last_status) ?
               <AVATextInput
                 titleText={[
@@ -1984,46 +2470,76 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 options={{ save_on_enter: true }}
               />
               :
-              <AVATextInput
-                titleText={[
-                  makeGreeting(state.session.patient_display_name),
-                  `[italic]You are checking in with ${reactData.dataRows[reactData.checkInStatusObj.targetIndex].on_behalf_of}`,
-                  ' ',
-                  `Tap "Confirm" to check in`
-                ]}
-                promptText={[]}  // prompts go here (if any)
-                buttonText={['Confirm', 'Back']}
-                onCancel={() => {
+              <StaffAccess
+                open={true}
+                priority_list={reactData.listOfPeopleToVisit}
+                onClose={async (selected_person) => {
+                  if (selected_person) {
+                    /****  FUTURE
+                    let now = makeDate(new Date());
+                    Object.assign((reactData.checkInStatusObj.reqRec || {}), reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                    reactData.checkInStatusObj.reqRec.last_status = 'in';
+                    reactData.checkInStatusObj.reqRec.last_update = now.timestamp;
+                    reactData.checkInStatusObj.reqRec.type_date = `${reactData.checkInStatusObj.reqRec.request_type}~${now.timestamp}`;
+                    let hNote = `${state.session.patient_display_name} checked in to ${selected_person} on ${now.absolute}`;
+                    reactData.checkInStatusObj.reqRec.history.unshift(hNote);
+                    reactData.checkInStatusObj.reqRec.last_visited = reactData.dataRows[reactData.checkInStatusObj.targetIndex].requestor;
+                    let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                    reactData.dataRows[reactData.checkInStatusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
+                    await updateServiceRequest([reactData.checkInStatusObj.reqRec]);
+                    enqueueSnackbar(`Check-in successful!`, { variant: 'success', persist: false });
+                    *****/
+                  }
                   updateReactData({
-                    showStaffAccess: false
+                    showStaffAccess: false,
+                    dataRows: reactData.dataRows
                   }, true);
                 }}
-                onSave={async () => {
+              />
+
+            )
+          }
+
+          {
+            reactData.showStaffAccess &&
+            <StaffAccess
+              open={true}
+              priority_list={reactData.listOfPeopleToVisit}
+              onClose={async (selected_person) => {
+                if (selected_person) {
+                  /****  FUTURE
                   let now = makeDate(new Date());
-                  Object.assign(reactData.checkInStatusObj.reqRec, reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
+                  Object.assign((reactData.checkInStatusObj.reqRec || {}), reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
                   reactData.checkInStatusObj.reqRec.last_status = 'in';
                   reactData.checkInStatusObj.reqRec.last_update = now.timestamp;
                   reactData.checkInStatusObj.reqRec.type_date = `${reactData.checkInStatusObj.reqRec.request_type}~${now.timestamp}`;
-                  let hNote = `${state.session.patient_display_name} checked in on ${now.absolute}`;
+                  let hNote = `${state.session.patient_display_name} checked in to ${selected_person} on ${now.absolute}`;
                   reactData.checkInStatusObj.reqRec.history.unshift(hNote);
                   reactData.checkInStatusObj.reqRec.last_visited = reactData.dataRows[reactData.checkInStatusObj.targetIndex].requestor;
                   let newFormattedRequest = await buildRequestDetails(reactData.dataRows[reactData.checkInStatusObj.targetIndex]);
                   reactData.dataRows[reactData.checkInStatusObj.targetIndex].workData.formatted_request = newFormattedRequest.workData.formatted_request;
                   await updateServiceRequest([reactData.checkInStatusObj.reqRec]);
                   enqueueSnackbar(`Check-in successful!`, { variant: 'success', persist: false });
-                  updateReactData({
-                    showStaffAccess: false,
-                    dataRows: reactData.dataRows
-                  }, true);
-                }}
-                allowCancel={true}
-              />
-            )
+                  *****/
+                  let now = makeDate(new Date());
+                  await handleUpdates({
+                    newStatus: `in_process`,
+                    history_update: `${state.session.patient_display_name} checked in to ${selected_person[0].location} (${selected_person[0].display_name || selected_person[0].name}) on ${now.absolute}`
+                  });
+                }
+                updateReactData({
+                  showStaffAccess: false,
+                  dataRows: reactData.dataRows
+                }, true);
+              }}
+            />
           }
 
+
           {/* Buttons */}
-          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
-            (!options.viewMode) &&
+          {
+            ((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            (!options.viewMode) && (!options.selectOnly) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
               <Box display='flex' flexDirection='column'>
@@ -2037,7 +2553,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   >
                     {reactData.isMobile ? 'Exit' : 'Close'}
                   </Button>
-                  {state.session.allow_request_dashboard && reactData.statistics &&
+                  {options.allowDashboard && reactData.statistics &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'purple', color: 'white' }}
@@ -2047,7 +2563,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           showDashboard: !reactData.showDashboard
                         }, true);
                       }}
-                      startIcon={<CloseIcon size="small" />}
+                      startIcon={reactData.showDashboard ? <ListIcon size="small" /> : <DashboardIcon size="small" />}
                     >
                       {reactData.showDashboard ? 'List' : 'Dashboard'}
                     </Button>
@@ -2073,24 +2589,78 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           {'None'}
                         </Button>
                       }
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
-                        size='small'
-                        onClick={() => {
-                          rowsDisplayed.forEach((r, x) => {
-                            reactData.dataRows[r].workData.checked = true;
-                          });
-                          updateReactData({
-                            dataRows: reactData.dataRows,
-                            selectionsChanged: !reactData.selectionsChanged
-                          }, true);
-                        }}
-                        startIcon={<DoneAllIcon size="small" />}
-                      >
-                        {`All ${allRowsSelected().count}`}
-                      </Button>
+                      {!options.noSelect &&
+                        <Button
+                          className={AVAClass.AVAButton}
+                          style={allRowsSelected().allChecked ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
+                          size='small'
+                          onClick={() => {
+                            rowsDisplayed.forEach((r, x) => {
+                              reactData.dataRows[r].workData.checked = true;
+                            });
+                            updateReactData({
+                              dataRows: reactData.dataRows,
+                              selectionsChanged: !reactData.selectionsChanged
+                            }, true);
+                          }}
+                          startIcon={<DoneAllIcon size="small" />}
+                        >
+                          {`All ${allRowsSelected().count}`}
+                        </Button>
+                      }
                     </React.Fragment>
+                  }
+                  {options.allowSummary
+                    && !options.noSelect
+                    && ((rowsDisplayed.length > 0) || reactData.showSummary)
+                    &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'orange', color: 'white' }}
+                      size='small'
+                      onClick={async () => {
+                        await prepareSummary();
+                        updateReactData({
+                          display_summary: reactData.display_summary,
+                          showSummary: !reactData.showSummary
+                        }, true);
+                      }}
+                      startIcon={reactData.showSummary ? <ListIcon size="small" /> : <DashboardIcon size="small" />}
+                    >
+                      {reactData.showSummary ? 'List' : 'Summary'}
+                    </Button>
+                  }
+                  {!options.noSelect
+                    && (rowsDisplayed.length > 0)
+                    &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'pink', color: 'black' }}
+                      size='small'
+                      onClick={async () => {
+                        let allRows = allRowsSelected();
+                        let anySelected = anyRowsSelected();
+                        if (!anySelected || allRows.allChecked) {
+                          await printRawData(
+                            reactData.dataRows.filter((r, x) => {
+                              return (OKToDisplay(r));
+                            }),
+                            state
+                          );
+                        }
+                        else {
+                          await printRawData(
+                            reactData.dataRows.filter((r, x) => {
+                              return (r.workData.checked && OKToDisplay(r));
+                            }),
+                            state
+                          );
+                        }
+                      }}
+                      startIcon={<ListAltIcon size="small" />}
+                    >
+                      {`Print Report`}
+                    </Button>
                   }
                 </Box>
                 <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
@@ -2124,23 +2694,52 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {'Assign'}
                     </Button>
                   }
-                  {anyRowsSelected() && false &&
+                  {anyRowsSelected() &&
                     <Button
                       className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'green', color: 'white' }}
+                      style={{ backgroundColor: 'aqua', color: 'black' }}
                       size='small'
                       onClick={async () => {
                         let checkInStatusObj = await getCurrentStatus(session.client_id, session.patient_id, 'staff');
-                        checkInStatusObj.targetIndex =
+                        checkInStatusObj.targetIndex =   // check in / check out only applies to the FIRST checked-off row
                           reactData.dataRows.findIndex(r => {
                             return r.workData.checked;
                           });
+                        let checklist_info = checklistSelected();
+                        let cEntries;
+                        let listOfPeopleToVisit = [];
+                        if (checklist_info.OK) {
+                          cEntries = await getCalendarEntries({
+                            client: session.client_id,
+                            event_id: checklist_info.foreign_key,
+                            type: 'slot'
+                          });
+                          cEntries.forEach(e => {
+                            if (e.slotData && !e.marked && (e.slotData?.status?.current !== 'released')) {
+                              let [first, last] = (e.slotData.display_name || e.slotData.name).split(/(?<=^\S+)\s/);
+                              listOfPeopleToVisit.push({
+                                id: e.slot_owner,
+                                first: first,
+                                last: last
+                              });
+                            }
+                          });
+                        }
+                        else {
+                          let [first, last] = (reactData.dataRows[checkInStatusObj.targetIndex].workData.requestor_name).split(/(?<=^\S+)\s/);
+                          listOfPeopleToVisit = [{
+                            id: reactData.dataRows[checkInStatusObj.targetIndex].requestor,
+                            first: first,
+                            last: last
+                          }];
+                        }
                         updateReactData({
                           showStaffAccess: true,
+                          listOfPeopleToVisit: listOfPeopleToVisit,
                           checkInStatusObj: checkInStatusObj
                         }, true);
                       }}
-                      startIcon={<PersonAddIcon size="small" />}
+                      startIcon={<OpenDoorIcon size="small" />}
                     >
                       {'Access'}
                     </Button>
@@ -2151,10 +2750,37 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       style={{ backgroundColor: 'brown', color: 'white' }}
                       size='small'
                       onClick={async () => {
-                        await setStatusList();
-                        updateReactData({
-                          selectStatus: true
-                        }, true);
+                        let checklist_info = checklistSelected();
+                        if (checklist_info.OK) {
+                          let cEntries = await getCalendarEntries({
+                            person_id: session.patient_id,
+                            client: session.client_id,
+                            event_id: checklist_info.foreign_key
+                          });
+                          let this_event = {
+                            event_key: checklist_info.foreign_key
+                          };
+                          this_event.occData = Object.assign({},
+                            cEntries[0].eventData.event_data,
+                            cEntries[0].eventData,
+                            { location: cEntries[0].eventData.event_data.location.description },
+                            { signup_type: cEntries[0].eventData.sign_up.type },
+                            cEntries[1],
+                            { date: cEntries[1].occurrence_date },
+                            { time$: `${cEntries[0].eventData.event_data.time.from}${((cEntries[0].eventData.event_data.time.to && cEntries[0].eventData.event_data.time.to.trim() !== '') ? ' to ' + cEntries[0].eventData.event_data.time.to : '')}` },
+                            { time24: this_event.time24 }
+                          );
+                          updateReactData({
+                            showEventEdit: true,
+                            detailEdit: this_event
+                          }, true);
+                        }
+                        else {
+                          await setStatusList();
+                          updateReactData({
+                            showUpdateForm: true
+                          }, true);
+                        }
                       }}
                       startIcon={<CheckIcon size="small" />}
                     >
@@ -2179,7 +2805,30 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               </Box>
             </DialogActions>
           }
-          {((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+          {
+            ((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
+            (options.selectOnly) && (anyRowsSelected()) &&
+            // Command Area
+            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+              <Box display='flex' flexDirection='column'>
+                <Box display='flex' flexDirection='row' flexWrap='wrap' justifyContent='center' alignItems='center'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white', paddingRight: (reactData.isMobile ? '4px' : '') }}
+                    size='small'
+                    onClick={async () => {
+                      await handlePrintRequest();
+                    }}
+                    startIcon={<PrintIcon size="small" />}
+                  >
+                    {'Check me in!'}
+                  </Button>
+                </Box>
+              </Box>
+            </DialogActions>
+          }
+          {
+            ((loading === 'load_complete') || (reactData.dataRows.length > 0)) &&
             (options.viewMode) &&
             // Command Area
             <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
@@ -2210,6 +2859,30 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 </Box>
               </Box>
             </DialogActions>
+          }
+          {
+            (loading === 'load_complete') && reactData.showEventEdit &&
+            <CalendarEventEditForm
+              pEventCode={reactData.detailEdit.event_key}
+              peopleList={[]}
+              pPatient={session.patient_id}
+              pClient={session.client_id}
+              pOccData={reactData.detailEdit.occData}
+              onReset={async (occData) => {
+                if (occData.summaryInfo.listComplete) {
+                  let requestAction = await orderWarning(occData.summaryInfo.markedSlots);
+                  if (requestAction === 'close') {
+                    await handleUpdates({
+                      newStatus: 'complete',
+                      enteredNote: `${occData.summaryInfo.markedSlots} of ${occData.summaryInfo.ownedSlots} items marked off`,
+                    });
+                  }
+                }
+                updateReactData({
+                  showEventEdit: false
+                }, true);
+              }}
+            />
           }
         </React.Fragment >
       }

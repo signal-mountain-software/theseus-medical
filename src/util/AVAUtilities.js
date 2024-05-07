@@ -349,14 +349,25 @@ export function makeNumber(pNum) {
   }
 };
 
-export function parseNumeric(pStr) {
+export function parseNumeric(pIn) {
+  let pStr = pIn.toString();
+  let t = pStr.replace(/\d/g, '');
+  let n = t.replace(/[\s.]/g, '');
   let v = pStr.replace(/\D/g, '');
+  let p = parseFloat(pStr);
+  if (p.toString().includes('.')) {
+    // decimal point, not "dot" - in this case 
+    // remove the decimal point from t as it is part of the number, not the text
+    t = t.replace(/[.]/g, '');
+  }
   return ({
-    isNumeric: !!Number(pStr),
+    isNumeric: !!p,
     hasNumbers: !!v,
-    value: Number(v)
+    hasText: !!n,
+    textValue: t.trim() || null,
+    value: p || null
   });
-}
+};
 
 export async function getIcon(pIcon) {
   const imageBucket = 'ava-icons';
@@ -397,7 +408,7 @@ export async function getObject64(pObj) {
     return (x.includes('.s3'));
   });
   if (myPiece > -1) {
-    imageBucket = oPieces[myPiece].substring(0, oPieces[myPiece].indexOf('.s3'))
+    imageBucket = oPieces[myPiece].substring(0, oPieces[myPiece].indexOf('.s3'));
   }
   let oData;
   try {
@@ -414,7 +425,7 @@ export async function getObject64(pObj) {
     else {
       let base64String = oData.Body.toString('base64');
       return "data:image/jpeg;base64," + base64String;
-    }    
+    }
   }
   catch (e) {
     console.log(`error getting S3 image is ${e}`);
@@ -689,12 +700,54 @@ export async function switchActiveAccount(session, newClient, newPatient) {
 export async function updateDb(pData) {
   // pData in the form {["table": <tablename>, "key": {"key1": "keydata1", etc...}, "data": {"field_name1": "new value", "field_name2", "new value", ...}]}
   let response = [];
-  for (let t = 0; t < pData.length; t++) {
+  pData_loop: for (let t = 0; t < pData.length; t++) {
     let k_num = 0;
     let aNamesObj = {};
     let aValuesObj = {};
     let expression = 'set';
     for (let pKey in pData[t].data) {
+      // are you updating anything in the key?
+      if (pData[t].key.hasOwnProperty(pKey)) {
+        // this is a delete/add; not an update
+        let oldRec = await dbClient
+          .get({
+            Key: pData[t].key,
+            TableName: pData[t].table,
+          })
+          .promise()
+          .catch(error => {
+            console.log(`caught error getting ${pData[t].table}; error is:`, error);
+            response.push(error);
+          });
+        let newRec;
+        if (recordExists(oldRec)) {
+          newRec = Object.assign({}, oldRec.Item, pData[t].data);
+          await dbClient
+            .delete({
+              Key: pData[t].key,
+              TableName: pData[t].table,
+            })
+            .promise()
+            .catch(error => {
+              console.log(`caught error deleting ${pData[t].table}; error is:`, error);
+              response.push(error);
+            });
+        }
+        else {
+          newRec = Object.assign({}, pData[t].data);
+        }
+        await dbClient
+          .put({
+            TableName: pData[t].table,
+            Item: newRec
+          })
+          .promise()
+          .catch(error => {
+            console.log(`caught error putting to ${pData[t].table}; error is:`, error);
+            response.push(error);
+          });
+        continue pData_loop;
+      }
       let aKey = `n${k_num++}`;
       aNamesObj[`#${aKey}`] = pKey;
       aValuesObj[`:${aKey}`] = pData[t].data[pKey];
@@ -714,6 +767,25 @@ export async function updateDb(pData) {
       .promise()
       .catch(error => {
         console.log(`caught error updating ${pData[t].table}; error is:`, error);
+        response.push(error);
+      });
+    response.push('OK');
+  }
+  return response;
+}
+
+export async function deleteDbRec(pData) {
+  // pData in the form {["table": <tablename>, "key": {"key1": "keydata1", etc...}]}
+  let response = [];
+  for (let t = 0; t < pData.length; t++) {
+    await dbClient
+      .delete({
+        Key: pData[t].key,
+        TableName: pData[t].table,
+      })
+      .promise()
+      .catch(error => {
+        console.log(`caught error deleting ${pData[t].table}; error is:`, error);
         response.push(error);
       });
     response.push('OK');

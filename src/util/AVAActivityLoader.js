@@ -319,8 +319,15 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         //   a passed in default for this item instructs AVA to set the checkbox ON
         if ((defaults.hasOwnProperty(instruction[0]) && defaultCheckedWords.includes(defaults[instruction[0]])) // this item is checked off by default
           || (defaultCheckedWords.includes(observationDefaultValue))) {  // this item is checked off because this instruction had a modifier such as [default=checked]
-          [rObj.qualSelections, rObj.qualData, docRows] = await buildQualifiers(rObj.observationKey);  // see if there any any qualifiers for this item
-          if (!docRows) {
+          // [rObj.qualSelections, rObj.qualData, docRows] = await buildQualifiers(rObj.observationKey);  // see if there any any qualifiers for this item
+          let qualResponse = await buildQualifiers(rObj.observationKey);  // see if there any any qualifiers for this item
+          rObj.qualSelections = deepCopy(qualResponse.selections);
+          rObj.qualData = deepCopy(qualResponse.data);
+          rObj.moreInfo = deepCopy(qualResponse.moreInfo);
+          if (qualResponse.docLines) {
+            docRows = deepCopy(qualResponse.docLines)
+          }
+          else {
             rObj.isChecked = true;
           }
         }
@@ -431,7 +438,8 @@ export async function buildQualifiers(qKey) {
   if (!rememberedQualifiers[qKey]) {
     rememberedQualifiers[qKey] = {
       selections: {},
-      data: {}
+      data: {},
+      moreInfo: {}
     };
     let docLineList = [];
     let oItem = await getObservationItems(qKey);
@@ -451,9 +459,21 @@ export async function buildQualifiers(qKey) {
         else if (prop.startsWith('doc_line')) {
           docLineList[Number(prop.split(':')[1])] = oItem[prop].display_value;
         }
+        else if (prop !== 'observation_name') {
+          if (oItem[prop].display_value) {
+            rememberedQualifiers[qKey].moreInfo[prop] = oItem[prop].display_value;
+          }
+          else if (oItem[prop].value) {
+            rememberedQualifiers[qKey].moreInfo[prop] = `${oItem[prop].value}${oItem[prop].uom || ''}`;
+          }
+          else {
+            rememberedQualifiers[qKey].moreInfo[prop] = ' ';
+          }
+        }
       }
     }
     rememberedQualifiers[qKey].docLines = docLineList.join('');
   }
-  return [rememberedQualifiers[qKey].selections, rememberedQualifiers[qKey].data, rememberedQualifiers[qKey].docLines];
+  // return [rememberedQualifiers[qKey].selections, rememberedQualifiers[qKey].data, rememberedQualifiers[qKey].docLines];
+  return rememberedQualifiers[qKey];
 }

@@ -4,8 +4,10 @@ import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getSlotList, writeSlot, makeSlotName, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
 import { cl, makeArray, dbClient } from '../../util/AVAUtilities';
-import { makeName, getImage } from '../../util/AVAPeople';
+import { makeName, getImage, getPerson } from '../../util/AVAPeople';
 import { sendMessages } from '../../util/AVAMessages';
+import { putServiceRequest } from '../../util/AVAServiceRequest';
+import MakeMessage from './MakeMessage';
 
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
@@ -46,6 +48,7 @@ import MenuItem from '@material-ui/core/MenuItem';
 import TextField from '@material-ui/core/TextField';
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import { getServiceRequests } from '../../util/AVAServiceRequest';
 
 const useStyles = makeStyles(theme => ({
   page: {
@@ -115,7 +118,7 @@ const useStyles = makeStyles(theme => ({
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1),
     marginLeft: 0,
-    paddingLeft: theme.spacing(0.5),
+    paddingLeft: theme.spacing(2),
   },
   listItemNarrow: {
     justifyContent: 'space-between',
@@ -162,7 +165,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientRec, onReset, pMode }) => {
+export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultValues, onReset, pMode }) => {
 
   const { state } = useSession();
 
@@ -174,14 +177,11 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   const [selectNewSlotOwner, setSelectNewSlotOwner] = React.useState(false);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
-  const [editIndex, setEditIndex] = React.useState();
   const [editSlot, setEditSlot] = React.useState();
-  const [popupMenuOpen, setPopupMenuOpen] = React.useState(false);
 
   const [promptForMessage, setPromptForMessage] = React.useState('');
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
-  const [choiceList, setChoiceList] = React.useState([]);
 
   const [editNoteNumber, setEditNoteNumber] = React.useState(-1);
   const [newNote, setNewNote] = React.useState('');
@@ -199,9 +199,23 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     editEventInfo: false,
     editInfoErrorList: [],
     editOwnerInfo: false,
+    editIndex: false,
+    popupMenuOpen: false,
+    choiceList: [],
+    attachedSR: false,
+    selectAssignTo: false,
+    defaultValues: defaultValues || { "noDefaults": true },
     cancelPending: false,
     numberOfOwnedSlots: 0
   });
+
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
 
   const [anchorEl, setAnchorEl] = React.useState(null);
 
@@ -222,7 +236,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
   };
 
   const setChoices = async (inList) => {
-    if (choiceList.length > 0) { return; }
+    if (reactData.choiceList.length > 0) { return; }
     let response = [];
     let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });
     /* getMemberList returns
@@ -246,7 +260,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         cl(`response push error at index ${e} with ${mInfo}`);
       }
     };
-    setChoiceList(response);
+    updateReactData({
+      choiceList: response
+    }, false);
   };
 
   const handlePrint = async (pEvent, pType) => {
@@ -280,8 +296,12 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         name: slotInfo.slotObj[o].display_name,
         id: o
       });
-      if (!checkOwnership) { checkOwnership = isSlotOwner(slotData); }
-      if (isOwned(slotData)) { reactData.numberOfOwnedSlots++; }
+      if (!checkOwnership) {
+        checkOwnership = isSlotOwner(slotData);
+      }
+      if (isOwned(slotData)) {
+        reactData.numberOfOwnedSlots++;
+      }
       return {
         event_key: slotInfo.occRec.event_key,
         first,
@@ -292,7 +312,10 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
       };
     });
     slotList.sort((a, b) => {
-      if (a.slotData.id > b.slotData.id) { return 1; }
+      if (a.slotData.slot_sort) {
+        return ((a.slotData.slot_sort > b.slotData.slot_sort) ? 1 : -1);
+      }
+      else if (a.slotData.id > b.slotData.id) { return 1; }
       else { return -1; }
     });
     setOwnerOfSlots(checkOwnership);
@@ -302,31 +325,14 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     return slotList;
   };
 
-  const handleSendMessage = async (pMessage, pRecipient = null) => {
-    await sendMessages({
-      client: pClient,
-      author: pPatient,
-      messageText: pMessage,
-      recipientList: pRecipient,
-      subject: pOccData.description
-    });
-    let sentTo;
-    if (typeof pRecipient === 'string') { sentTo = await makeName(pRecipient); }
-    else if (pRecipient.length === 1) { sentTo = await makeName(pRecipient[0]); }
-    else {
-      let random = Math.floor(Math.random() * pRecipient.length);
-      let randomName = await makeName(pRecipient[random]);
-      sentTo = `${pRecipient.length} people, including ${randomName}`;
-    };
-    enqueueSnackbar(`Your message was sent to ${sentTo}`, { variant: 'success' });
-  };
-
   const handleAllocateSlot = async (body) => {
     let pPerson, pSlot, pRelease, pIndex;
 
     if (body.release) { pRelease = body.release; }
     else { pRelease = false; }
-    if (body.hasOwnProperty('index')) { pIndex = body.index; }
+    if (body.hasOwnProperty('index')) {
+      pIndex = body.index;
+    }
     let workingList = eventSlotList;
 
     pPerson = makeArray(body.person);
@@ -344,6 +350,18 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         newPersonName = nArray[0];
       }
       let [first, last] = newPersonName.split(/\s(.*)/);
+      let newPersonLocation = null;
+      let this_person = await getPerson(newPersonID, '*all');
+      if (this_person) {
+        if (this_person.location) {
+          newPersonLocation = this_person.location.trim();
+        }
+        if (this_person.name) {
+          first = this_person.name.first;
+          last = this_person.name.last;
+        }
+        newPersonName = (`${first || ''} ${last}`).trim();
+      }
       let writeRequest = {
         "client": pClient,
         "event": pEventCode,
@@ -359,17 +377,17 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
 
       if (pRelease) {
         if (pSlot !== newPersonID) {
+          let updatedSlotData = Object.assign(workingList[pIndex].slotData, {
+            name: '',
+            owner: '',
+            notes: ''
+          });
           workingList[pIndex] = {
             event_key: slotInfo.event_key,
             first,
             last,
             display_name: '',
-            slotData: {
-              name: '',
-              id: pSlot,
-              owner: '',
-              notes: ''
-            }
+            slotData: updatedSlotData
           };
         }
         else {
@@ -377,14 +395,15 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         }
       }
       else {
-        // where in the displayed list of slots shoud this added entry go?
+        // where in the displayed list of slots should this added entry go?
         let whereToGo;
         if (pIndex > -1) { whereToGo = pIndex; }   // we came here from a know spot in the slotList
         else {  // look at every workingList entry for something that matches the slot we just registered
           let foundIndex = workingList.findIndex(s => { return (s.slotData.id === writeRequest.slot); });
           if (foundIndex > -1) { whereToGo = foundIndex; }
         }
-        if (whereToGo > -1) {
+
+        if ((whereToGo > -1) && (whereToGo < workingList.length)) {
           workingList[whereToGo] = {
             event_key: slotInfo.event_key,
             first,
@@ -392,14 +411,18 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             display_name: newPersonName,
             slotData: {
               name: newPersonName,
+              display_name: newPersonName,
               id: pSlot,
               owner: newPersonID,
-              notes: body.notes
+              owner_location: newPersonLocation,
+              notes: body.notes,
+              slot_description: workingList[whereToGo].slotData.slot_description,
+              slot_sort: workingList[whereToGo].slotData.slot_sort
             }
           };
         }
         else {
-          workingList.unshift({
+          workingList.push({
             event_key: slotInfo.event_key,
             first,
             last,
@@ -407,13 +430,15 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             slotData: {
               name: newPersonName,
               id: newPersonID,
+              display_name: newPersonName,
               owner: newPersonID,
+              owner_location: newPersonLocation,
               notes: body.notes
             }
           });
         }
       }
-    }
+    };
     setEventSlotList(workingList);
     setForceRedisplay(!forceRedisplay);
     return workingList;
@@ -552,17 +577,27 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
     return eventSlotList;
   };
 
-  function makeReadableName(pName) {
-    let [pPrimary, pFirst] = pName.split(',');
-    return (`${pFirst || ''} ${pPrimary}`).trim();
-  }
-
   // ********************
 
   React.useEffect(() => {
     async function buildIt() {
       setLoading(true);
       await getEventSlots(pEventCode);
+      let attachedRequest = await getServiceRequests({
+        foreign_key: pEventCode,
+        client_id: state.session.client_id
+      });
+      if (attachedRequest.length === 0) {
+        updateReactData({
+          attachedSR: false
+        }, false);
+      }
+      else {
+        attachedRequest[0].assigned_to_name = await makeName(attachedRequest[0].assigned_to);
+        updateReactData({
+          attachedSR: attachedRequest[0]
+        }, false);
+      }
       setLoading(false);
     }
     buildIt();
@@ -605,6 +640,11 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                   {pOccData.location}
                 </Typography>
               }
+              {reactData.attachedSR &&
+                <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
+                  {`Assigned to ${reactData.attachedSR.assigned_to_name}`}
+                </Typography>
+              }
               <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                 {rowsWritten = 0}
               </Typography>
@@ -624,7 +664,9 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                   maxHeight={50}
                   onClick={(event) => {
                     handleClick(event);
-                    setPopupMenuOpen(true);
+                    updateReactData({
+                      popupMenuOpen: true
+                    }, true);
                   }}
                   alt=''
                   src={process.env.REACT_APP_AVA_LOGO}
@@ -632,15 +674,19 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                 <Menu
                   id='hidden-menu'
                   anchorEl={anchorEl}
-                  open={popupMenuOpen}
-                  onClose={() => { setPopupMenuOpen(false); }}
+                  open={reactData.popupMenuOpen}
+                  onClose={() => {
+                    updateReactData({
+                      popupMenuOpen: false
+                    }, true);
+                  }}
                   keepMounted>
                   <MenuList className={classes.popUpMenu}>
                     {(pOccData.signup_type === 'none') && isEventOwner &&
                       <MenuItem
                         onClick={async () => {
                           await setChoices(peopleList);
-                          setEditIndex(false);
+                          updateReactData({ editIndex: false }, false);
                           setEditSlot(false);
                           setSelectNewSlotOwner(true);
                         }}
@@ -651,6 +697,24 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                         >
                           <PersonAddIcon />
                           <Typography className={classes.popUpMenuRow} >{'Add a person'}</Typography>
+                        </Box>
+                      </MenuItem>
+                    }
+                    {isEventOwner && reactData.defaultValues.allowAssign &&
+                      <MenuItem
+                        onClick={async () => {
+                          await setChoices(reactData.defaultValues.allowAssign);
+                          updateReactData({
+                            selectAssignTo: true
+                          }, true);
+                        }}
+                      >
+                        <Box
+                          display='flex' flexDirection='row' alignItems={'center'}
+                          key={'vRowHome'}
+                        >
+                          <PersonAddIcon />
+                          <Typography className={classes.popUpMenuRow} >{'Assign'}</Typography>
                         </Box>
                       </MenuItem>
                     }
@@ -684,8 +748,13 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                       <MenuItem
                         onClick={() => {
                           setPromptForMessage(true);
-                          setMessageType('Group');
-                          setRecipient(eventSlotList.map(e => { return e.slotData.id; }));
+                          setMessageType('group');
+                          let filteredList = eventSlotList.filter(e => {
+                            return (e.slotData.status !== 'released');
+                          });
+                          setRecipient(filteredList.map(e => {
+                            return `${e.slotData.display_name}:${e.slotData.id}`;
+                          }));
                         }}
                       >
                         <Box
@@ -776,112 +845,142 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                       <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                         {rowsWritten++}
                       </Typography>
-                      {/* Mark an item - Radio button */}
-                      {isEventOwner &&
-                        <Box width={40} display='flex' mr={0} flexDirection='row' justifyContent='center' alignItems='center'>
-                          {isOwned(this_item.slotData) &&
-                            <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
-                              <IconButton mr={0} ml={0} color='inherit'
-                                onClick={async () => {
-                                  await dbClient
-                                    .update({
-                                      Key: {
-                                        "client": pClient,
-                                        "event_key": `${pEventCode}#${this_item.slotData.id}`
-                                      },
-                                      UpdateExpression: 'set marked = :m',
-                                      ExpressionAttributeValues: { ':m': !this_item.marked },
-                                      TableName: "Calendar"
-                                    })
-                                    .promise()
-                                    .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
-                                  eventSlotList[index].marked = !this_item.marked;
-                                  setEventSlotList(eventSlotList);
-                                  setForceRedisplay(!forceRedisplay);
-                                }}
-                              >
-                                {this_item.marked ? <RadioButtonCheckedIcon mr={0} ml={0} /> : <RadioButtonUncheckedIcon mr={0} ml={0} />}
-                              </IconButton>
-                            </Tooltip>
-                          }
-                        </Box>
-                      }
-                      {/* Slot Name */}
-                      {(this_item.slotData.id !== this_item.slotData.owner) ?
-                        <Box display='flex' mr={1} ml={1} flexDirection='row' justifyContent='center' alignItems='center'>
-                          <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} >{makeSlotName(this_item.slotData.id)}</Typography>
-                        </Box>
-                        :
-                        <Box display='flex' mr={0} ml={0} flexDirection='row' justifyContent='center' alignItems='center'>
-                          <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} ></Typography>
-                        </Box>
-                      }
-                      {/* Image and Name */}
-                      {isOwned(this_item.slotData) &&
-                        <React.Fragment>
-                          <Box
-                            component="img"
-                            mr={1}
-                            minWidth={50}
-                            maxWidth={50}
-                            minHeight={50}
-                            maxHeight={50}
-                            border={1}
-                            alt=''
-                            src={(state.user.account_class
-                              && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
-                              && !(isEventOwner || isSlotOwner(this_item.slotData))
-                            ) ? null
-                              : getImage(this_item.slotData.owner)
-                            }
-                          />
-                          <Box display='flex' flexWrap='wrap' flexDirection='column' flexGrow={1}>
-                            <Typography style={AVATextStyle({ size: 1.2, margin: { right: 1 } })}  >
-                              {(state.user.account_class
-                                && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
-                                && !(isEventOwner || isSlotOwner(this_item.slotData))
-                              ) ? 'Reserved' : makeReadableName(this_item.slotData.name)
+                      {/* Slot Name above Slot owner info */}
+                      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                        {/* Slot Name */}
+                        {(this_item.slotData.id !== this_item.slotData.owner) &&
+                          <Box display='flex' mr={1} ml={0} flexDirection='row' justifyContent='center' alignItems='center'>
+                            <Typography style={AVATextStyle({ size: 1, align: 'left' })} className={classes.standard} >
+                              {this_item.slotData.hasOwnProperty('slot_description')
+                                ? this_item.slotData.slot_description
+                                : makeSlotName(this_item.slotData.id)
                               }
                             </Typography>
-                            {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
-                              (editNoteNumber === index ?
-                                <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>
-                                  <TextField
-                                    classes={{ root: classes.standard, input: classes.inputRule }}
-                                    id={`prompt-msg`}
-                                    key={`prompt-msg`}
-                                    multiline
-                                    inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                                    defaultValue={this_item.slotData.notes || ''}
-                                    onChange={(event) => { setNewNote(event.target.value); }}
-                                    autoComplete='off'
-                                  />
-                                  <SaveIcon
-                                    aria-label="saveNote_icon"
-                                    onClick={() => { handleChangeNotes(index, newNote); }}
-                                    edge="end"
-                                  />
-                                  <CloseIcon
-                                    aria-label="closeNote_icon"
-                                    onClick={() => { setEditNoteNumber(-1); }}
-                                    edge="end"
-                                  />
-                                </Box>
-                                :
-                                <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} >
-                                  {this_item.slotData.notes}
-                                </Typography>
-                              )
-                            }
                           </Box>
-                        </React.Fragment>
-                      }
+                        }
+                        {/* Slot Owner */}
+                        {isOwned(this_item.slotData) &&
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                            {/* Mark an item - Radio button */}
+                            <Box width={40} display='flex' mr={0} flexDirection='row' justifyContent='center' alignItems='center'>
+                              {isEventOwner &&
+                                <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
+                                  <IconButton mr={0} ml={0} color='inherit'
+                                    onClick={async () => {
+                                      await dbClient
+                                        .update({
+                                          Key: {
+                                            "client": pClient,
+                                            "event_key": `${pEventCode}#${this_item.slotData.id}`
+                                          },
+                                          UpdateExpression: 'set marked = :m',
+                                          ExpressionAttributeValues: { ':m': !this_item.marked },
+                                          TableName: "Calendar"
+                                        })
+                                        .promise()
+                                        .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+                                      eventSlotList[index].marked = !this_item.marked;
+                                      setEventSlotList(eventSlotList);
+                                      setForceRedisplay(!forceRedisplay);
+                                    }}
+                                  >
+                                    {this_item.marked ? <RadioButtonCheckedIcon mr={0} ml={0} /> : <RadioButtonUncheckedIcon mr={0} ml={0} />}
+                                  </IconButton>
+                                </Tooltip>
+                              }
+                            </Box>
+                            {/* Image and Name */}
+                            <Box
+                              component="img"
+                              mr={1}
+                              minWidth={50}
+                              maxWidth={50}
+                              minHeight={50}
+                              maxHeight={50}
+                              border={1}
+                              alt=''
+                              src={(state.user.account_class
+                                && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                                && !(isEventOwner || isSlotOwner(this_item.slotData))
+                              ) ? null
+                                : getImage(this_item.slotData.owner)
+                              }
+                            />
+                            <Box display='flex' flexWrap='wrap' flexDirection='column' flexGrow={1}>
+                              <Typography style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}  >
+                                {(state.user.account_class
+                                  && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                                  && !(isEventOwner || isSlotOwner(this_item.slotData))
+                                ) ? 'Reserved' : this_item.slotData.display_name
+                                }
+                              </Typography>
+                              {this_item.slotData.owner_location &&
+                                <Typography style={AVATextStyle({ size: 0.8, margin: { right: 1 } })}  >
+                                  {this_item.slotData.owner_location}
+                                </Typography>
+                              }
+                              {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
+                                (editNoteNumber === index ?
+                                  <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>
+                                    <TextField
+                                      classes={{ root: classes.standard, input: classes.inputRule }}
+                                      id={`prompt-msg`}
+                                      key={`prompt-msg`}
+                                      multiline
+                                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                                      defaultValue={this_item.slotData.notes || ''}
+                                      onChange={(event) => { setNewNote(event.target.value); }}
+                                      autoComplete='off'
+                                    />
+                                    <SaveIcon
+                                      aria-label="saveNote_icon"
+                                      onClick={() => { handleChangeNotes(index, newNote); }}
+                                      edge="end"
+                                    />
+                                    <CloseIcon
+                                      aria-label="closeNote_icon"
+                                      onClick={() => { setEditNoteNumber(-1); }}
+                                      edge="end"
+                                    />
+                                  </Box>
+                                  :
+                                  <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} >
+                                    {this_item.slotData.notes}
+                                  </Typography>
+                                )
+                              }
+                            </Box>
+                          </Box>
+                        }
+                      </Box>
                     </Box>
                     {isOwned(this_item.slotData) &&
                       (isEventOwner || isSlotOwner(this_item.slotData)) &&
                       (editNoteNumber === -1) &&
-                      <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                        <Tooltip title={`Remove ${isEventOwner ? makeReadableName(this_item.slotData.name) : 'me'}`}>
+                      <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                        {isEventOwner && !isSlotOwner(this_item.slotData) &&
+                          <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                            <Tooltip title={`Send a message to ${this_item.slotData.display_name}`} >
+                              <SendIcon
+                                onClick={() => {
+                                  setPromptForMessage(true);
+                                  setMessageType('');
+                                  setRecipient(`${this_item.slotData.display_name}:` + this_item.slotData.owner);
+                                }}
+                              />
+                            </Tooltip>
+                          </Box>
+                        }
+                        <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
+                          <Tooltip title={`${this_item.slotData.notes ? 'Update' : 'Add a'} note...`}>
+                            <EditIcon
+                              onClick={() => {
+                                setEditNoteNumber(index);
+                              }}
+                            />
+                          </Tooltip>
+                        </Box>
+                        <Tooltip title={`Remove ${isEventOwner ? this_item.slotData.display_name : 'me'}`}>
                           <PersonAddDisabledIcon
                             onClick={async () => {
                               await handleAllocateSlot({
@@ -893,34 +992,16 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                             }}
                           />
                         </Tooltip>
-                        <Tooltip title={`${this_item.slotData.notes ? 'Update' : 'Add a'} note...`}>
-                          <EditIcon
-                            onClick={() => {
-                              setEditNoteNumber(index);
-                            }}
-                          />
-                        </Tooltip>
-                        {isEventOwner && !isSlotOwner(this_item.slotData) &&
-                          <Tooltip title={`Send a message to ${makeReadableName(this_item.slotData.name)}`} >
-                            <SendIcon
-                              onClick={() => {
-                                setPromptForMessage(true);
-                                setMessageType('');
-                                setRecipient(`${makeReadableName(this_item.slotData.name)}:` + this_item.slotData.owner);
-                              }}
-                            />
-                          </Tooltip>
-                        }
                       </Box>
                     }
                     {!isOwned(this_item.slotData) &&
                       (editNoteNumber === -1) &&
-                      <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                      <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
                         <Tooltip title={isEventOwner ? `Select someone` : `Add myself`}>
                           <PersonAddIcon
                             onClick={async () => {
                               if (isEventOwner) {
-                                setEditIndex(index);
+                                updateReactData({ editIndex: index }, false);
                                 setEditSlot(true);
                                 await setChoices(peopleList);
                                 setSelectNewSlotOwner(true);
@@ -944,7 +1025,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
               {(rowsWritten === 0) &&
                 <React.Fragment>
                   <Box display='flex' flexWrap='wrap' flexDirection='column' flexGrow={1}>
-                    <Typography variant='h5' >'The List is Empty'</Typography>
+                    <Typography style={AVATextStyle({ size: 1.8, align: 'center' })} >The List is Empty</Typography>
+                    <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >Tap "Add Someone" below</Typography>
                   </Box>
                 </React.Fragment>
               }
@@ -953,8 +1035,8 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
         }
         {selectNewSlotOwner &&
           <PersonFilter
-            prompt={'Who are you signing-up?'}
-            peopleList={choiceList}
+            prompt={'Who are you adding?'}
+            peopleList={reactData.choiceList}
             multiSelect={!editSlot}
             onCancel={() => {
               setSelectNewSlotOwner(false);
@@ -963,8 +1045,20 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
               setSelectNewSlotOwner(false);
               let slotObj = { person: selectedPerson };
               if (editSlot) {
-                slotObj.slot = eventSlotList[editIndex].slotData.id;
-                slotObj.index = editIndex;
+                let listIndex = reactData.editIndex;
+                if (!reactData.editIndex && (reactData.editIndex !== 0)) {
+                  listIndex = eventSlotList.findIndex(slot => {
+                    return (slot.slotData.status === 'available');
+                  });
+                }
+                if ((listIndex < 0) || (!listIndex && (listIndex !== 0))) {   // no assigned slot
+                  slotObj.slot = selectedPerson.person_id;
+                  slotObj.index = eventSlotList.length;
+                }
+                else {
+                  slotObj.slot = eventSlotList[listIndex].slotData.id;
+                  slotObj.index = listIndex;
+                }
               }
               await handleAllocateSlot(slotObj);
             }}
@@ -972,14 +1066,53 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
           </PersonFilter>
         }
         {promptForMessage &&
-          <AVATextInput
-            promptText={`Message to everyone signed up for ${pOccData.description}`}
-            buttonText='Send'
-            onCancel={() => { setPromptForMessage(false); }}
-            onSave={(messageText) => {
-              setPromptForMessage(false);
-              handleSendMessage(messageText, recipient, messageType);
+          (messageType !== 'group') &&
+          <MakeMessage
+            titleText={`Message to ${recipient.split(':')[0]}`}
+            promptText={['Subject', `What should your message say?`]}
+            promptUse={['subject', 'message']}
+            seedText={[`${pOccData.description} ${pOccData.occurrence_date ? makeDate(pOccData.occurrence_date).relative : ''}`]}
+            buttonText={'Send'}
+            sender={{
+              "client_id": state.session.client_id,
+              "patient_id": state.session.patient_id,
+              "patient_display_name": state.session.patient_display_name
             }}
+            pRecipientID={recipient.split(':')[1]}
+            pRecipientName={recipient.split(':')[0]}
+            onCancel={() => {
+              setPromptForMessage(false);
+            }}
+            onComplete={() => {
+              setPromptForMessage(false);
+            }}
+            setMethod={null}
+            allowCancel={true}
+          />
+        }
+        {promptForMessage &&
+          (messageType === 'group') &&
+          <MakeMessage
+            titleText={`Message to everyone signed-up for ${pOccData.description} ${pOccData.occurrence_date ? makeDate(pOccData.occurrence_date).relative : ''}`}
+            promptText={['Subject', `What should your message say?`]}
+            promptUse={['subject', 'message']}
+            seedText={[`${pOccData.description} ${pOccData.occurrence_date ? makeDate(pOccData.occurrence_date).relative : ''}`]}
+            buttonText={'Send'}
+            sender={{
+              "client_id": state.session.client_id,
+              "patient_id": state.session.patient_id,
+              "patient_display_name": state.session.patient_display_name
+            }}
+            pRecipientID={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[1]; }) : [recipient.split(':')[1]]}
+            pRecipientName={Array.isArray(recipient) ? recipient.map(r => { return r.split(':')[0]; }) : [recipient.split(':')[0]]}
+            onCancel={() => {
+              setPromptForMessage(false);
+            }}
+            onComplete={() => {
+              setPromptForMessage(false);
+            }}
+            setMethod={null}
+            allowCancel={true}
           />
         }
         {reactData.editEventInfo &&
@@ -1054,6 +1187,56 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
             allowCancel={true}
           />
         }
+        {reactData.selectAssignTo &&
+          <PersonFilter
+            prompt={'Assign to whom?'}
+            peopleList={reactData.choiceList}
+            multiSelect={false}
+            onCancel={() => {
+              updateReactData({
+                selectAssignTo: false,
+                choiceList: []
+              }, true);
+            }}
+            onSelect={async (selectedPerson) => {
+              let currentTime = makeDate(new Date());
+              let assigned_to = selectedPerson.split(':')[1];
+              let assigned_to_name = await makeName(assigned_to);
+              let putSR = {
+                client: state.session.client_id,
+                author: state.session.patient_id,
+                proxy_user: state.session.user_id,
+                requestType: 'checklist',
+                activity_key: "",
+                onBehalfOf: state.session.patient_display_name,
+                foreign_key: pEventCode,
+                history: [`Checklist assigned to ${assigned_to_name} ${currentTime.oaDate}`],
+                assign_to: assigned_to,
+                last_status: 'assigned',
+                request: {},
+                messaging: {}
+              };
+              let result = await putServiceRequest(putSR);
+              result.assigned_to_name = assigned_to_name;
+              let messageText = `${state.session.patient_display_name} has assigned you to "${pOccData.description}" - ${makeDate(pOccData.date).relative}`;
+              let messageObj = {
+                client: state.session.client_id,
+                author: state.session.patient_id,
+                messageText: messageText,
+                thread_id: `svc_checklist/${result.request_id}`,
+                recipientList: [assigned_to],
+                subject: `${pOccData.description} assigned to you`
+              };
+              await sendMessages(messageObj);
+              updateReactData({
+                selectAssignTo: false,
+                popupMenuOpen: false,
+                choiceList: [],
+                attachedSR: result
+              }, true);
+            }}
+          />
+        }
         {!loading &&
           <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
             <Box display='flex' flexDirection='column'>
@@ -1063,28 +1246,62 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, pPatientR
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'red', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
                     size='small'
-                    onClick={() => { onReset(pOccData); }}
+                    onClick={() => {
+                      let summaryInfo = {
+                        totalSlots: 0,
+                        ownedSlots: 0,
+                        markedSlots: 0,
+                        listComplete: false
+                      };
+                      if (eventSlotList) {
+                        eventSlotList.forEach(s => {
+                          if (s.slotData) {
+                            summaryInfo.totalSlots++;
+                            if (s.slotData.owner) {
+                              summaryInfo.ownedSlots++;
+                            }
+                            if (s.marked) {
+                              summaryInfo.markedSlots++;
+                            }
+                          }
+                        });
+                        summaryInfo.listComplete = ((summaryInfo.ownedSlots > 0) && (summaryInfo.markedSlots >= summaryInfo.ownedSlots));
+                      }
+                      pOccData.summaryInfo = summaryInfo;
+                      onReset(pOccData);
+                    }}
                     startIcon={<CloseIcon size="small" />}
                   >
                     {'Done'}
                   </Button>
                 </Tooltip>
-                {!ownerOfSlots &&
-                  <Tooltip title={'Add myself to the list'} placement='top'>
+                {(!ownerOfSlots || isEventOwner) &&
+                  (!['time', 'seats'].includes(pOccData.signup_type)) &&
+                  <Tooltip title={'Add to the list'} placement='top'>
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
                       size='small'
                       onClick={async () => {
-                        let pName = await makeName(pPatient);
-                        let request = { person: `${pName}:${pPatient}` };
-                        if (pOccData.signup_type !== 'none') { request.slot = firstAvailableSlot; }
-                        await handleAllocateSlot(request);
-                        setOwnerOfSlots(true);
+                        console.log(firstAvailableSlot);
+                        if (isEventOwner) {
+                          setEditSlot(true);
+                          await setChoices(peopleList);
+                          setSelectNewSlotOwner(true);
+                        }
+                        else {
+                          let pName = await makeName(pPatient);
+                          let request = { person: `${pName}:${pPatient}` };
+                          await handleAllocateSlot(request);
+                          setOwnerOfSlots(true);
+                          if (pOccData.signup_type !== 'none') {
+                            request.slot = firstAvailableSlot;
+                          }
+                        }
                       }}
                       startIcon={<PersonAddIcon size="small" />}
                     >
-                      {'Add myself'}
+                      {isEventOwner ? `Add someone` : `Add myself`}
                     </Button>
                   </Tooltip>
                 }

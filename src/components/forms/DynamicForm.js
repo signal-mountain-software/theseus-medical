@@ -489,15 +489,13 @@ export default ({
         />
       );
     case 'show_groups':
-      let dGroups = defaultObject?.groups || defaultValue;
-      let dFlavor = defaultObject?.mode || 'full';
       return (
         <ShowGroup
           pSession={session}
-          pGroup_id={dGroups}
+          pGroup_id={defaultObject?.groups || defaultValue}
           pGroup_name={message}
           peopleList={values}
-          showList={dFlavor}
+          showList={defaultObject?.mode || 'full'}
           onClose={onSave}
           onAbort={onClose}
         />

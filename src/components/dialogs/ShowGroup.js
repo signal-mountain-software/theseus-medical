@@ -89,7 +89,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
   const { enqueueSnackbar } = useSnackbar();
 
   async function getGroupMemberList(pGroupArray) {
-    reactData.progressMessage = 'Getting all accounts';
+    reactData.progressMessage = 'Getting accounts';
     let memberInfo;
     if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])
       || (state.session.hasOwnProperty('last_state') && (state.session.client_id === pSession.client_id))) {
@@ -115,9 +115,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       return [];
     }
     if (memberInfo.peopleList.length === 0) {
-      enqueueSnackbar(`AVA couldn't find any accounts.`, { variant: 'error' });
-      onAbort();
-      return [];
+      enqueueSnackbar(`AVA couldn't find any members in that Group.`, { variant: 'error' });
+      reactData.showGroupSelect = true;
+      setReactData(reactData);
     }
     reactData.groupMemberList = memberInfo.peopleList;
     if (pGroupArray.length === 1) {
@@ -143,7 +143,46 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     return memberInfo.peopleList;
   };
 
-  const getGroupsManagedObject = async (pClient, pPatient) => {
+
+  const prepareGroupObject = async (pGroupList) => {
+    let selectAll = pGroupList.includes('*all');
+    let gList = state.groups.adminHierarchy;
+    let response = {};
+    for (let x = 0; x < gList.length; x++) {
+      let g = gList[x];
+      if ((g.level > 0) && (selectAll || pGroupList.includes(g.id))) {
+        response[g.id] = {
+          group_name: g.name,
+          group_id: g.id,
+          role: await getRole(g.id, state.session.person_id),
+          level: g.level
+        };
+      }
+    }; 
+    for (let gID in state.groups.publicGroups) {
+      if (selectAll || pGroupList.includes(gID)) {
+        response[gID] = {
+          group_name: state.groups.publicGroups[gID].group_name,
+          group_id: gID,
+          role: state.groups.publicGroups[gID].role,
+          level: 0
+        };
+      }
+    }; 
+    for (let gID in state.groups.privateGroups) {
+      if (selectAll || pGroupList.includes(gID)) {
+        response[gID] = {
+          group_name: state.groups.privateGroups[gID].group_name,
+          group_id: gID,
+          role: state.groups.privateGroups[gID].role,
+          level: 0
+        };
+      }
+    }; 
+    return response;
+  };
+
+  const getGroupsManagedObject = async (pClient, pPatient, pGroupList) => {
     let [gList,] = await getGroupsResponsibleFor(pClient, pPatient);
     // sort by group name
     let gSort = [];
@@ -171,9 +210,17 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
 
   React.useEffect(() => {
     async function prepare() {
-      if (pGroup_id && makeArray(pGroup_id).length > 0) {
-        await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
-        reactData.showGroupSelect = false;
+      let groupList = makeArray(pGroup_id, /[~,;]/);
+      if (groupList && groupList.length > 0) {
+        reactData.groupList = groupList;
+        if (showList === 'select') {
+          reactData.groupsManagedObject = await prepareGroupObject(groupList);
+          reactData.showGroupSelect = true;
+        }
+        else {
+          await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
+          reactData.showGroupSelect = false;
+        }
       }
       else {
         reactData.groupsManagedObject = state.groups.belongsTo;
@@ -254,7 +301,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
               pRole={reactData.groupRole}
               pStyle={showList}
               onReset={() => {
-                if (pGroup_id) { handleAbort(); }
+                if (pGroup_id && (showList !== 'select')) {
+                  handleAbort();
+                }
                 else {
                   reactData.showGroupSelect = true;
                   reactData.groupMemberList = [];
@@ -269,12 +318,14 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
           <GroupFilter
             pSession={pSession}
             groupsManagedObject={reactData.groupsManagedObject}
+            focusAt={reactData.selectedIndex || 0}
             onCancel={() => {
               reactData.showGroupSelect = false;
               setReactData(reactData);
               onClose();
             }}
-            onSelect={async (selectedGroup) => {
+            onSelect={async (selectedGroup, selectedIndex) => {
+              reactData.selectedIndex = selectedIndex;
               reactData.showGroupSelect = false;
               reactData.groupName = reactData.groupsManagedObject[selectedGroup].group_name;
               reactData.groupID = reactData.groupsManagedObject[selectedGroup].group_id;
@@ -285,7 +336,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
             }}
             onRefresh={async () => {
               reactData.showGroupSelect = true;
-              await getGroupsManagedObject(pSession.client_id, pSession.patient_id);
+              await getGroupsManagedObject(pSession.client_id, pSession.patient_id, reactData.groupList);
               setForceRedisplay(!forceRedisplay);
             }}
           >

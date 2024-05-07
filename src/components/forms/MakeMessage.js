@@ -126,10 +126,11 @@ export default ({
   const setFocus = React.useRef(null);
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  let rList = makeArray(pRecipientID);
   const [reactData, setReactData] = React.useState({
     recipientID: pRecipientID,
     recipientName: pRecipientName,
-    selectID: pRecipientID,
+    selectID: ((rList.length === 1) ? rList[0] : ''),
     newAccount: false,
     titleText: titleText,
     attachmentList: [],
@@ -384,7 +385,6 @@ export default ({
         let [last, first] = nArray[random].split(/,/);
         response += `to ${rArray.length} people, including ${first ? (first + ' ') : ''}${last}`;
       }
-      reactData.selectID = selectedData.recipientID[random];
     }
     reactData.titleText = response;
     setReactData(reactData);
@@ -439,12 +439,14 @@ export default ({
             })} id='scroll-dialog-title'>
               {reactData.titleText || makeTitle(reactData)}
             </Typography>
-            <Box
-              className={classes.imageArea}
-              component="img"
-              alt=''
-              src={getImage(reactData.selectID)}
-            />
+            {reactData.selectID &&
+              <Box
+                className={classes.imageArea}
+                component="img"
+                alt=''
+                src={getImage(reactData.selectID)}
+              />
+            }
             <DialogContent className={classes.contentBox}>
               <Box
                 display='flex'

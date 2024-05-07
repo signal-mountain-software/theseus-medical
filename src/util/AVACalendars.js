@@ -46,6 +46,7 @@ export async function addEvent(body) {
     schedule_key: 'event_master',
     record_type: 'event',
     eventData: {
+      defaultSlotOwners: body.calendar_info.defaultSlotOwners,
       messaging: [],
       event_data: {
         description: body.calendar_info.description,
@@ -74,7 +75,8 @@ export async function addEvent(body) {
         name_security: (body.calendar_info.slot_visibility && (body.calendar_info.slot_visibility !== 'show_name')),
         type: body.calendar_info.signup_type,
       },
-      slotPattern: setSlots(body.calendar_info)
+      slotPattern: setSlots(body.calendar_info),
+      slot_object_list: body.calendar_info.slot_object_list
     }
   };
   await dbClient
@@ -286,16 +288,14 @@ export async function getCalendarEntries(body, statusUpdate) {
             break;
           }
           case 'slot': {
+            qQ.KeyConditionExpression += ' and begins_with(event_key, :rV)';
+            qQ.ExpressionAttributeValues[':rV'] = rV;
             if (rP) {
-              qQ.KeyConditionExpression += ' and begins_with(event_key, :rV)';
-              qQ.ExpressionAttributeValues[':rV'] = rV;
               qQ.FilterExpression = 'begins_with(list_key, :rP)';
               qQ.ExpressionAttributeValues[':rP'] = `${rP}#`;
-              break;
             }
-            // fall through is intentional
+            break;
           }
-          // eslint-disable-next-line
           case 'exact':
           default: {
             qQ.KeyConditionExpression += ' and event_key = :rV';
@@ -537,32 +537,184 @@ export async function getSlotList(request) {
     occRec = cRecs[0];
     if (cRecs[1]) { eventRec = cRecs[1]; }
   }
+  let last_ampm = null;
+  let show_ampm = '';
   if (eventRec && ('eventData' in eventRec) && (eventRec.eventData.slotPattern)) {
     let slotArray = eventRec.eventData.slotPattern;
     if (('occData' in occRec) && (occRec.occData.slotPattern)) { slotArray = occRec.occData.slotPattern; };
     slotArray.forEach(s => {
+      let slot_description = s;
+      if (eventRec.eventData.sign_up.type === 'time') {
+        let hh = Number(s.slice(0, 2));
+        let calc_ampm = ((hh < 12) ? 'am' : 'pm');
+        if (calc_ampm !== last_ampm) {
+          show_ampm = calc_ampm;
+          last_ampm = calc_ampm;
+        }
+        else {
+          show_ampm = '';
+        }
+        if (hh > 12) {
+          hh -= 12;
+        }
+        slot_description = `${hh}:${s.slice(2)} ${show_ampm}`.trim()
+      }
+      let slot_sort = s;
+      if (eventRec.eventData.slot_object_list) {
+        let found = eventRec.eventData.slot_object_list.find(o => {
+          return (o.key === s);
+        });
+        if (found) {
+          slot_description = found.value;
+          slot_sort = found.sort;
+        }
+      }
       slotObj[s] = {
         status: "available",
-        show_this_slot: true
+        show_this_slot: true,
+        slot_description,
+        slot_sort
       };
     });
   }
   let slotRecs = await getCalendarEntries({ client: request.client, event: occRec.event_key, type: 'structure' });
   if (slotRecs.length > 0) {
-    slotRecs.forEach(r => {
+    let ownedSlotsFound = false;
+    for (let rNum = 0; rNum < slotRecs.length; rNum++) {
+      let r = slotRecs[rNum];
       if (r.slotData) {
         let slotKey = r.slotData.slot || r.slotData.id;
+        let owner_location = null;
+        if (r.slotData.owner && (r.slotData.status && (r.slotData.status.current !== 'released'))) {
+          ownedSlotsFound = true;
+          let this_person = await getPerson(r.slotData.owner, '*all');
+          if (this_person.location) {
+            owner_location = this_person.location.trim();
+          }
+        }
+        let slot_description = slotKey;
+        if (eventRec.eventData.sign_up.type === 'time') {
+          let hh = Number(slotKey.slice(0, 2));
+          let calc_ampm = ((hh < 12) ? 'am' : 'pm');
+          if (calc_ampm !== last_ampm) {
+            show_ampm = calc_ampm;
+            last_ampm = calc_ampm;
+          }
+          else {
+            show_ampm = '';
+          }
+          if (hh > 12) {
+            hh -= 12;
+          }
+          slot_description = `${hh}:${slotKey.slice(2)} ${show_ampm}`.trim();
+        }
+        let slot_sort = slotKey;
+        if (eventRec.eventData.slot_object_list) {
+          let found = eventRec.eventData.slot_object_list.find(o => {
+            return (o.key === slotKey);
+          });
+          if (found) {
+            slot_description = found.value;
+            slot_sort = found.sort;
+          }
+        }
         slotObj[slotKey] = Object.assign(r.slotData, {
           status: (r.slotData.status ? r.slotData.status.current : "undefined"),
           show_this_slot: (r.slotData.hasOwnProperty('show_this_slot') ? r.slotData.show_this_slot : true),
           owner: r.slotData.owner,
-          display_name: r.slotData.display_name || r.slotData.name,
-          marked: r.marked
+          display_name: makeReadableName(r.slotData),
+          owner_location: owner_location,
+          marked: r.marked,
+          slot_description,
+          slot_sort
         });
       }
-    });
+    };
+    if (!ownedSlotsFound) {   // no slots found at all?
+      // slotRecs[0] will be the event record - does it give instructions on what to do?
+      if (eventRec.eventData.hasOwnProperty('defaultSlotOwners')) {
+        if (eventRec.eventData.defaultSlotOwners === 'first_occurrence') {
+          let newSlotObj = await copySlots(request.client, `${eventRec.event_id}#${eventRec.occExists[0]}`, occRec.event_key);
+          slotObj = Object.assign(slotObj, newSlotObj);
+        }
+        else if (eventRec.eventData.defaultSlotOwners === 'prior_occurrence') {
+          let indexAt = eventRec.occExists.indexOf(occRec.occurrence_date);
+          let stopLoop = false;
+          let newSlotObj = {};
+          while ((indexAt >= 0) && !stopLoop) {
+            newSlotObj = await copySlots(request.client, `${eventRec.event_id}#${eventRec.occExists[indexAt - 1]}`, occRec.event_key);
+            stopLoop = (Object.keys(newSlotObj).length > 0);
+            indexAt--;
+          }
+          slotObj = Object.assign(slotObj, newSlotObj);
+
+        }
+      }
+    }
   }
   return ({ eventRec, slotObj, occRec });
+
+  function makeReadableName(pItem) {
+    if (!pItem.name) {
+      return pItem.display_name;
+    }
+    let [pPrimary, pFirst] = pItem.name.split(',');
+    return (`${pFirst || ''} ${pPrimary}`).trim();
+  }
+}
+
+export async function copySlots(client_id, from_occ, to_occ) {
+  if (to_occ === from_occ) {
+    return {};
+  }
+  let slotObj = {};
+  let slotRecs = await getCalendarEntries({
+    client: client_id,
+    event: from_occ,
+    type: ['event', 'structure']
+  });
+  let from_event = slotRecs.find(r => {
+    return r.hasOwnProperty('eventData');
+  })
+  for (let rNum = 0; rNum < slotRecs.length; rNum++) {
+    let r = slotRecs[rNum];
+    if (r.slotData && r.slotData.owner && (r.slotData.status && (r.slotData.status.current !== 'released'))) {
+      let slotKey = r.slotData.slot || r.SlotData.id;
+      let newSlot = await writeSlot({
+        "client": client_id,
+        "event": to_occ,
+        "owner": r.slotData.owner,
+        "slot": slotKey,
+        "no_messaging": true
+      });
+      let owner_location = null;
+      let readableName = '';
+      let this_person = await getPerson(r.slotData.owner, '*all');
+      if (this_person.location) {
+        owner_location = this_person.location.trim();
+      }
+      if (!this_person.name) {
+        readableName = this_person.display_name;
+      }
+      else {
+        readableName = (`${this_person.name.first || ''} ${this_person.name.last || ''}`).trim();
+      }
+      let this_slotObj = from_event.eventData.slot_object_list.find(o => {
+        return (slotKey === o.key)
+      })
+      slotObj[slotKey] = Object.assign(newSlot, {
+        status: (newSlot.status ? newSlot.status.current : "undefined"),
+        show_this_slot: (newSlot.hasOwnProperty('show_this_slot') ? newSlot.show_this_slot : true),
+        owner: r.slotData.owner,
+        display_name: readableName,
+        owner_location: owner_location,
+        marked: false,
+        slot_description: this_slotObj.value,
+        slot_sort: this_slotObj.sort
+      });
+    }
+  }
+  return slotObj;
 }
 
 export async function getOccurenceList(request) {
@@ -626,9 +778,9 @@ export async function getOccurenceList(request) {
     }
     case "bi-weekly": {
       let firstWeek = [];
-      let count = 0;
       let firstDate = makeDate(occPattern.first_date).date;
-      for (let d = addDays(firstDate, count); count < 7; count++) {
+      for (let count = 0; count < 7; count++) {
+        let d = addDays(firstDate, count);
         firstWeek[d.getDay()] = d;
       }
       for (let candidate = from_date; candidate < to_date; candidate = addDays(candidate, 1)) {
@@ -932,73 +1084,78 @@ export async function writeSlot(body) {
     });
 
   // messaging
-  let [eventRec] = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'event' });
-  if (eventRec.eventData && (!eventRec.eventData.messaging || (eventRec.eventData.messaging.length === 0))) {
-    let subjectLine = '';
-    let messageText = '';
-    let notesLine = '';
-    if (eventRec.eventData.event_data) {
-      subjectLine = eventRec.eventData.event_data.description;
-      if (slotDataObj.notes) { notesLine = `  \r\n\nNotes - ${slotDataObj.notes}`; }
-    }
-    else if (eventRec.calData) {
-      subjectLine = eventRec.calData.description;
-    }
-    else { subjectLine = 'Your event'; }
-    subjectLine += ` on ${makeDate(occurrence).absolute}`;
-    messageText += `${subjectLine} - ${slotDataObj.name}`;
-    subjectLine += ` - ${slotDataObj.name}`;
-    if (body.status === 'released') {
-      messageText += ` removed`;
-      subjectLine += ` removed`;
-    }
-    else {
-      messageText += ` added`;
-      if (slotDataObj.slot) {
-        let maybeTime = makeSlotName(slotDataObj.slot);
-        if (maybeTime.includes(':')) {
-          messageText += ` in the ${makeTime(slotDataObj.slot).time} slot.`;
-        }
-        else {
-          messageText += `.`;
-        }
-        messageText += notesLine;
-      }
-      subjectLine += ` added`;
-    }
-    messageText += `  \r\n\nThe current sign-up sheet is available in AVA.`;
-    let ownerList;
-    if (eventRec.eventData.event_data) { ownerList = makeArray(eventRec.eventData.event_data.owner); }
-    else if (eventRec.calData) { ownerList = eventRec.calData.owner; }
-    eventRec.eventData.messaging = {
-      action: (body.status === 'released' ? "released" : "selected"),
-      format: {
-        subject: subjectLine,
-        text: messageText
-      },
-      recipientList: ownerList
-    };
+  if (body.no_messaging) {
+    // no op here... just drop through
   }
-  if (eventRec.eventData && eventRec.eventData.messaging) {
-    let messageList = [];
-    let msgObject = {
-      client: eventRec.client,
-      author: 'AVA'
-    };
-    body.client = eventRec.client;
-    body.person = eventRec.owner;
-    body.onBehalfOf = slotDataObj.name;
-    body = Object.assign(body, eventRec.eventData.event_data, slotDataObj);
-    if (Array.isArray(eventRec.eventData.messaging)) { messageList.push(...eventRec.eventData.messaging); }
-    else { messageList.push(eventRec.eventData.messaging); }
-    for (let m = 0; m < messageList.length; m++) {
-      let this_message = messageList[m];
-      if (!this_message.action || (this_message.action === body.status.current)) {
-        if ('subject' in this_message.format) { msgObject.subject = await resolveMessageVariables(this_message.format.subject, body); }
-        if (Array.isArray(this_message.recipientList)) { msgObject.recipientList = [...this_message.recipientList]; }
-        else { msgObject.recipientList = [this_message.recipientList]; }
-        msgObject.messageText = await resolveMessageVariables(this_message.format.text, body);
-        sendMessages(msgObject);
+  else {
+    let [eventRec] = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'event' });
+    if (eventRec.eventData && (!eventRec.eventData.messaging || (eventRec.eventData.messaging.length === 0))) {
+      let subjectLine = '';
+      let messageText = '';
+      let notesLine = '';
+      if (eventRec.eventData.event_data) {
+        subjectLine = eventRec.eventData.event_data.description;
+        if (slotDataObj.notes) { notesLine = `  \r\n\nNotes - ${slotDataObj.notes}`; }
+      }
+      else if (eventRec.calData) {
+        subjectLine = eventRec.calData.description;
+      }
+      else { subjectLine = 'Your event'; }
+      subjectLine += ` on ${makeDate(occurrence).absolute}`;
+      messageText += `${subjectLine} - ${slotDataObj.name}`;
+      subjectLine += ` - ${slotDataObj.name}`;
+      if (body.status === 'released') {
+        messageText += ` removed`;
+        subjectLine += ` removed`;
+      }
+      else {
+        messageText += ` added`;
+        if (slotDataObj.slot) {
+          let maybeTime = makeSlotName(slotDataObj.slot);
+          if (maybeTime.includes(':')) {
+            messageText += ` in the ${makeTime(slotDataObj.slot).time} slot.`;
+          }
+          else {
+            messageText += `.`;
+          }
+          messageText += notesLine;
+        }
+        subjectLine += ` added`;
+      }
+      messageText += `  \r\n\nThe current sign-up sheet is available in AVA.`;
+      let ownerList;
+      if (eventRec.eventData.event_data) { ownerList = makeArray(eventRec.eventData.event_data.owner); }
+      else if (eventRec.calData) { ownerList = eventRec.calData.owner; }
+      eventRec.eventData.messaging = {
+        action: (body.status === 'released' ? "released" : "selected"),
+        format: {
+          subject: subjectLine,
+          text: messageText
+        },
+        recipientList: ownerList
+      };
+    }
+    if (eventRec.eventData && eventRec.eventData.messaging) {
+      let messageList = [];
+      let msgObject = {
+        client: eventRec.client,
+        author: 'AVA'
+      };
+      body.client = eventRec.client;
+      body.person = eventRec.owner;
+      body.onBehalfOf = slotDataObj.name;
+      body = Object.assign(body, eventRec.eventData.event_data, slotDataObj);
+      if (Array.isArray(eventRec.eventData.messaging)) { messageList.push(...eventRec.eventData.messaging); }
+      else { messageList.push(eventRec.eventData.messaging); }
+      for (let m = 0; m < messageList.length; m++) {
+        let this_message = messageList[m];
+        if (!this_message.action || (this_message.action === body.status.current)) {
+          if ('subject' in this_message.format) { msgObject.subject = await resolveMessageVariables(this_message.format.subject, body); }
+          if (Array.isArray(this_message.recipientList)) { msgObject.recipientList = [...this_message.recipientList]; }
+          else { msgObject.recipientList = [this_message.recipientList]; }
+          msgObject.messageText = await resolveMessageVariables(this_message.format.text, body);
+          sendMessages(msgObject);
+        }
       }
     }
   }
@@ -1587,9 +1744,9 @@ export async function eventData(body) {
           returnObj.location = this_rec.eventData.event_data.location.description;
           returnObj.type = this_rec.eventData.event_data.type;
           if (this_rec.eventData.event_data.groups) {
-            returnObj.groups = this_rec.eventData.event_data.groups.filter(g => { 
+            returnObj.groups = this_rec.eventData.event_data.groups.filter(g => {
               return ((g !== 'ALL') && (g !== '__TOP__'));
-            })
+            });
           }
           if (!returnObj.groups || (returnObj.groups.length === 0)) {
             returnObj.groups = ['*all'];
