@@ -94,6 +94,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
     };
     for (let c = 0; c < clientList.length; c++) {
       let client_id = clientList[c];
+      // let client_id = pClient_id;
       let clientName = await getCustomizations('client_name', client_id);
       let clientLogo = await getCustomizations('logo', client_id);
       let clientGroupAssignments = await getCustomizations('group_assignments', client_id);
@@ -119,10 +120,10 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
         count: {},
         list: []
       };
-      let options;
+      let options = {};
       accessLevelTable.forEach(a => { accessList[client_id].count[a] = 0; });
       if (['master', 'support', 'admin'].includes(myClass)) {
-        options = { withSession: true };
+        // options = { withSession: true };
       }
       if (client_id !== session.client_id) {
         options = { nameOnly: true };
@@ -472,11 +473,11 @@ export async function getRole(pGroup, pPerson) {
   }
   else {
     if (pGroup.every(async n => {
-      return (await isMemberOf(pSession.client_id, pPerson, n))
+      return (await isMemberOf(pSession.client_id, pPerson, n));
     })) { return 'member'; }
     else { return 'non-member'; }
   }
-  
+
 }
 
 export function determineClass(gList, group_assignments) {
@@ -672,8 +673,8 @@ export async function removeMember(pPerson, pClient, pGroup) {
   let peopleRec = await getPerson(pPerson);
   if (peopleRec?.person_id) {
     let newGroupList = peopleRec.groups.filter(g => {
-      return !(g === pGroup)
-    })
+      return !(g === pGroup);
+    });
     let clientGroups = (Array.isArray(peopleRec.clients) ? peopleRec.clients : [peopleRec.clients]);
     clientGroups.some((cG, ndx) => {
       if (cG.id === pClient) {

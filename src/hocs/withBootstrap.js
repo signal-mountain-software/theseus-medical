@@ -1329,6 +1329,7 @@ export default Component => props => {
           .then(() => {
             console.log(`Menu reload complete`);
           });
+        /*
         let last_state = {
           list: deepCopy(bootState.accessList[pSession.client_id].list)
         };
@@ -1344,6 +1345,7 @@ export default Component => props => {
           .catch(error => {
             console.log(`caught error updating SessionsV2; error is:`, error);
           });
+        */
       });
     return;
   }
