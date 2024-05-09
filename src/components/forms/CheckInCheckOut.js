@@ -630,7 +630,7 @@ export default ({ onSave, onClose }) => {
               <AVATextInput
                 titleText={`Welcome back, ${reactData.personRec.name.first}!`}
                 promptText={["Who are you visiting today?"]}
-                valueText={['']}
+                valueText={[reactData?.currentStatus?.reqRec?.on_behalf_of || '']}
                 buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
                 errorText={reactData.errorText}
                 onCancel={() => {
