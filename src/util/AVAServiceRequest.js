@@ -357,16 +357,16 @@ SERVICE REQUEST FLOW (NEW) -
 */
   let rTime = makeDate(new Date().getTime());
   let rMsg;
-  if (Array.isArray(body.messaging)) {
-    for (let msgNum = 0; msgNum < body.messaging.length; msgNum++) {
-      let this_message = body.messaging[msgNum];
-      if (this_message.format) {   // old style
-        if (this_message.format.method === 'hold') {
-          serviceRequestRec.last_status = 'Prepared & Held';
-          rMsg = `Held for future processing ${rTime.oaDate}`;
-        }
-        else {
-          Object.assign(body, this_message);
+  if (Array.isArray(body.messaging)) {   // if messaging is an array, send everything in the array
+    // for (let msgNum = 0; msgNum < body.messaging.length; msgNum++) {
+      //let this_message = body.messaging[msgNum];
+      //if (this_message.format) {   // old style
+        //if (this_message.format.method === 'hold') {
+          //serviceRequestRec.last_status = 'Prepared & Held';
+          //rMsg = `Held for future processing ${rTime.oaDate}`;
+        //}
+        // else {
+        //  Object.assign(body, this_message);
           let preparedMessages = await prepareMessage(body, serviceRequestRec);
           if (preparedMessages.length > 0) {
             preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
@@ -382,16 +382,16 @@ SERVICE REQUEST FLOW (NEW) -
               rMsg = `Sent for processing ${rTime.oaDate}`;
             }
           }
-        }
+        //}
         if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
           serviceRequestRec.history.unshift(rMsg);
         }
         else { serviceRequestRec.history = [rMsg]; }
         await updateServiceRequest(serviceRequestRec);
-      }
-    }
+     // }
+    // }
   }
-  else {      // new style
+  else {      // if messaging is an object, send only the key that matches the current status
     // are there instructions for this status?
     if (!body.messaging.hasOwnProperty(serviceRequestRec.last_status)) {    
       return;

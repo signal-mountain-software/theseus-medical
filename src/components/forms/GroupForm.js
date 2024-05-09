@@ -1216,7 +1216,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
             session={state.session}
           title={superSizeData.display_name}
             filter={{
-              person_id: superSizeData.person_id
+              person_id: superSizeData.person_id,
+              sort: 'desc'
             }}
             options={{
               shortForm: true,
