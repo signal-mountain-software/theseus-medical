@@ -203,6 +203,19 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   async function initialLoad() {
     let defaultObj = buildDefaults(defaultValue);
+    let paymentInfo = defaultObj.collectPayment
+      || defaultValue.collectPayment
+      || (defaultValue.global_defaults && defaultValue.global_defaults.collectPayment);
+    if (paymentInfo) {
+      if (typeof (paymentInfo) === 'string') {
+        paymentInfo = {
+          allow: true
+        }
+      }
+      updateReactData({
+        collectPayment: paymentInfo,
+      }, false);
+    }
     let defaultColumnList = [];
     let localData_maxDName = 0;
     // eslint-disable-next-line
@@ -233,6 +246,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           // merge global defaults and column_defaults into a single object; column_defaults will override globals
           let defaultsToUse = deepCopy(Object.assign({}, defaultObj, defaultValue.activities[a].column_defaults || {}));
           // if this activity carries qualifiers with it, add those to the qualifiers object that was passed in
+          if (defaultsToUse.hasOwnProperty('collectPayment')) {
+            if (typeof (defaultsToUse.collectPayment) === 'string') {
+              updateReactData({
+                collectPayment: {
+                  allow: true
+                }
+              }, false);
+            }
+            else {
+              updateReactData({
+                collectPayment: defaultsToUse.collectPayment,
+              }, false);
+            }
+          }
           if (defaultValue.activities[a].hasOwnProperty('qualifiers')) {
             Object.assign(qualifiers, defaultValue.activities[a].qualifiers);
           }
@@ -951,7 +978,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         else if (column.defaultValues[dKey] === '[person.name]') {
           myDefaultColumns[c].defaultValues[dKey] = `${this_person.first} ${this_person.last}`;
         }
-        else if (column.defaultValues[dKey].startsWith('[person.')) {
+        else if ((typeof(column.defaultValues[dKey]) === 'string') && (column.defaultValues[dKey].startsWith('[person.'))) {
           let pKey = column.defaultValues[dKey].split('.')[1];
           if (this_person.hasOwnProperty(pKey)) {
             myDefaultColumns[c].defaultValues[dKey] = this_person[pKey];
@@ -1701,7 +1728,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               marginTop={0}
               marginBottom={0}
               borderBottom={2}
-              paddingTop={(reactData.columnList.length > 5) ? '100px' : 1}
+              paddingTop={(reactData.columnList.length > 5) ? ((reactData.titleName.remembered.length > 1) ? '150px' : '100px') : 1}
               overflow={(reactData.columnList.length > 5) ? 'scroll' : null}
               key={'peopleSelectionBox'}
               id={'peopleSelectionBox'}
@@ -2345,6 +2372,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 { lockSend: true },
                 false
               );
+              if (reactData.collectPayment) {
+                window.open(reactData.collectPayment.link || 'https://buy.stripe.com/3cs5lzbSS9RXecwcMN', reactData.collectPayment.description || 'Please pay');
+              }
               await sendRequests(reactData.columnList);
             }
             onSave();
