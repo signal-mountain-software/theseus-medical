@@ -595,6 +595,49 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }, true);
   }
 
+  function sortDataRows(direction) {
+    let sort_factor;
+    if (direction.startsWith('des')) {
+      sort_factor = -1;
+    }
+    else {
+      sort_factor = 1;
+    }
+    reactData.dataRows.sort((a, b) => {
+      if (!a.this_sort) {
+        if (!a.workData.orderForDate.error) {
+          a.this_sort = a.workData.orderForDate.timeStamp;
+        }
+        else {
+          a.this_sort = a.request_date;
+        }
+      }
+      if (!b.this_sort) {
+        if (!b.workData.orderForDate.error) {
+          b.this_sort = b.workData.orderForDate.timeStamp;
+        }
+        else {
+          b.this_sort = b.request_date;
+        }
+      }
+      if (a.this_sort < b.this_sort) {
+        return -1 * sort_factor;
+      }
+      else if (a.this_sort > b.this_sort) {
+        return 1 * sort_factor;
+      }
+      else if (a.request_date < b.request_date) {
+        return -1 * sort_factor;
+      }
+      else {
+        return 1 * sort_factor;
+      }
+    });
+    updateReactData({
+      dataRows: reactData.dataRows,
+    }, true);
+  }
+
   function exitModule(instruction) {
     onClose(instruction);
     setUnmount(true);
@@ -1067,6 +1110,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
     }
     if (loading !== 'rebuild') {
+      if (filter.person_id
+        && (!filter.request_type
+          || (filter.request_type.length === 0)
+          || ((filter.request_type.length > 0) && filter.request_type.includes('event')))) {
+        let eList = await getCalendarEntries({ person_id: filter.person_id });
+        for (let x = 0; (x < eList.length); x++) {
+          reactData.dataRows.push(await buildRequestFromEvent(eList[x]));
+        }
+        sortDataRows(filter.sort);
+      }
       updateReactData({
         lastTimeStamp: maxTimeStamp,
         dataRows: reactData.dataRows,
@@ -1078,6 +1131,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       enqueueSnackbar(`No requests were found`, { variant: 'error', persist: false });
     }
     else {
+      // Capture statistics
       let nowTime = new Date().getTime();
       const msInADay = 1000 * 60 * 60 * 24;
       let count = {};
@@ -1182,7 +1236,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
           open_closed
         }
       }, false);
-
     }
     if (dashboard_idleTimer && dashboard_idleTimer.current) {
       dashboard_idleTimer.current.start();
@@ -1314,183 +1367,183 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     return rValue;
   }
 
-  async function buildRequestDetails(i) {
-    i.workData = {};
-    i.workData.search_data = '';
-    if (!i.hasOwnProperty('current_request')) {
-      i.current_request = deepCopy(i.original_request);
+  async function buildRequestDetails(this_request) {
+    this_request.workData = {};
+    this_request.workData.search_data = '';
+    if (!this_request.hasOwnProperty('current_request')) {
+      this_request.current_request = deepCopy(this_request.original_request);
     }
-    if (session.service_request_types.hasOwnProperty(i.request_type)) {
-      i.workData.formatted_type = session.service_request_types[i.request_type].description || `${titleCase(i.request_type)}`;
-      i.workData.flavor = session.service_request_types[i.request_type].flavor || '';
+    if (session.service_request_types.hasOwnProperty(this_request.request_type)) {
+      this_request.workData.formatted_type = session.service_request_types[this_request.request_type].description || `${titleCase(this_request.request_type)}`;
+      this_request.workData.flavor = session.service_request_types[this_request.request_type].flavor || '';
     }
     else {
-      cl(`request type "${i.request_type}" not in session.service_request_types`);
-      i.workData.formatted_type = titleCase(i.request_type.replace('_', ' '));
-      i.workData.flavor = '';
+      cl(`request type "${this_request.request_type}" not in session.service_request_types`);
+      this_request.workData.formatted_type = titleCase(this_request.request_type.replace('_', ' '));
+      this_request.workData.flavor = '';
     }
-    let [enteredBy, requestTimeStamp] = i.request_id.split('~');
-    i.workData.enteredBy = enteredBy;
-    if (!('request_date' in i)) { i.request_date = requestTimeStamp; }
-    let AVAupdateDate = makeDate(i.last_update);
-    let AVArequestDate = makeDate(i.request_date);
-    i.workData.display_date = AVArequestDate.relative;    // the date/time the request was first created
+    let [enteredBy, requestTimeStamp] = this_request.request_id.split('~');
+    this_request.workData.enteredBy = enteredBy;
+    if (!('request_date' in this_request)) { this_request.request_date = requestTimeStamp; }
+    let AVAupdateDate = makeDate(this_request.last_update);
+    let AVArequestDate = makeDate(this_request.request_date);
+    this_request.workData.display_date = AVArequestDate.relative;    // the date/time the request was first created
     let anonymous = false;
-    if (!i.requestor) {
-      if (i.composite_key) {
-        i.requestor = i.composite_key.split('%')[0];
+    if (!this_request.requestor) {
+      if (this_request.composite_key) {
+        this_request.requestor = this_request.composite_key.split('%')[0];
       }
       else {
-        i.requestor = i.request_id.split('~')[0];
+        this_request.requestor = this_request.request_id.split('~')[0];
       }
     }
-    let requestorRec = await getPerson(i.requestor, '*all');
-    i.workData.requestor_name = await makeName(i.requestor);
-    if (i.requestor !== enteredBy) {
-      i.workData.enteredBy_name = await makeName(enteredBy);
+    let requestorRec = await getPerson(this_request.requestor, '*all');
+    this_request.workData.requestor_name = await makeName(this_request.requestor);
+    if (this_request.requestor !== enteredBy) {
+      this_request.workData.enteredBy_name = await makeName(enteredBy);
     }
     else {
-      i.workData.enteredBy_name = i.workData.requestor_name;
+      this_request.workData.enteredBy_name = this_request.workData.requestor_name;
     }
-    i.workData.requestor_location = requestorRec.location;
-    i.workData.requestor_image = await getImage(i.requestor);
-    i.workData.formatted_request = [];
-    i.workData.summary_request = [];
-    i.workData.notes_section = [];
-    i.workData.textBased_request = [];
-    i.workData.update_date = AVAupdateDate.relative;
-    i.workData.requestTime = AVArequestDate.timestamp;
-    i.workData.orderForDate = makeDate(i.foreign_key);
-    i.workData.this_status = sentenceCase(i.last_status);
+    this_request.workData.requestor_location = requestorRec.location;
+    this_request.workData.requestor_image = await getImage(this_request.requestor);
+    this_request.workData.formatted_request = [];
+    this_request.workData.summary_request = [];
+    this_request.workData.notes_section = [];
+    this_request.workData.textBased_request = [];
+    this_request.workData.update_date = AVAupdateDate.relative;
+    this_request.workData.requestTime = AVArequestDate.timestamp;
+    this_request.workData.orderForDate = makeDate(this_request.foreign_key);
+    this_request.workData.this_status = sentenceCase(this_request.last_status);
     if (!options.textForm && !options.selectOnly) {
       let aName = '';
-      if (i.assigned_to && (i.assigned_to !== 'unassigned') && (reactData.statusObj[i.last_status] && reactData.statusObj[i.last_status].open)) {
-        aName = await makeName(i.assigned_to);
+      if (this_request.assigned_to && (this_request.assigned_to !== 'unassigned') && (reactData.statusObj[this_request.last_status] && reactData.statusObj[this_request.last_status].open)) {
+        aName = await makeName(this_request.assigned_to);
       }
-      if (i.last_status) {
-        i.workData.formatted_request.push(['head', `${(titleCase(i.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
+      if (this_request.last_status) {
+        this_request.workData.formatted_request.push(['head', `${(titleCase(this_request.last_status.replace('_', ' ')))} ${aName ? ('- ' + aName) : ''}`]);
       }
     }
     if ((!options.shortForm) && (!options.textForm) && !options.selectOnly) {
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
-        i.workData.formatted_request.push(['head', `Updated: ${i.workData.update_date}`]);
+        this_request.workData.formatted_request.push(['head', `Updated: ${this_request.workData.update_date}`]);
       }
-      i.workData.formatted_request.push(['head', 'Details']);
+      this_request.workData.formatted_request.push(['head', 'Details']);
     }
-    i.workData.textBased_request[0] = AVArequestDate.relative;
-    i.workData.textBased_request.push(`<b>${i.workData.formatted_type}`);
+    this_request.workData.textBased_request[0] = AVArequestDate.relative;
+    this_request.workData.textBased_request.push(`<b>${this_request.workData.formatted_type}`);
     if (!anonymous) {
       let pLine = '';
       if (!filter.person_id) {
-        pLine += i.workData.requestor_name;
+        pLine += this_request.workData.requestor_name;
       }
-      if (i.workData.enteredBy !== i.requestor) {
-        pLine += `by ${i.workData.enteredBy_name}`;
+      if (this_request.workData.enteredBy !== this_request.requestor) {
+        pLine += `by ${this_request.workData.enteredBy_name}`;
       }
       if (pLine) {
-        i.workData.textBased_request.push(pLine);
+        this_request.workData.textBased_request.push(pLine);
       }
     }
-    if (('current_request' in i) && (typeof (i.current_request) !== 'string')) {
-      anonymous = (i.current_request.selections && i.current_request.selections.join(' ').includes('anonymous'));
-      let [fReq, fSearch, fText] = formatRequest(i, i.current_request);
-      i.workData.textBased_request.push(fText);
-      i.workData.formatted_request.push(...fReq);
-      i.workData.search_data += ` ${fSearch}`;
+    if (('current_request' in this_request) && (typeof (this_request.current_request) !== 'string')) {
+      anonymous = (this_request.current_request.selections && this_request.current_request.selections.join(' ').includes('anonymous'));
+      let [fReq, fSearch, fText] = formatRequest(this_request, this_request.current_request);
+      this_request.workData.textBased_request.push(fText);
+      this_request.workData.formatted_request.push(...fReq);
+      this_request.workData.search_data += ` ${fSearch}`;
     }
-    else if ('current_request' in i) {
-      anonymous = i.current_request.includes('anonymous');
-      i.workData.formatted_request.push(['detail', i.current_request || 'No information available']);
-      i.workData.textBased_request.push(i.current_request);
-      i.workData.search_data += ` ${i.current_request}`;
+    else if ('current_request' in this_request) {
+      anonymous = this_request.current_request.includes('anonymous');
+      this_request.workData.formatted_request.push(['detail', this_request.current_request || 'No information available']);
+      this_request.workData.textBased_request.push(this_request.current_request);
+      this_request.workData.search_data += ` ${this_request.current_request}`;
     }
-    else if (('original_request' in i) && (typeof (i.original_request) !== 'string')) {
-      anonymous = (i.original_request.selections && i.original_request.selections.join(' ').includes('anonymous'));
-      let [fReq, fSearch, fText] = formatRequest(i, i.original_request);
-      i.workData.textBased_request.push(fText);
-      i.workData.formatted_request.push(...fReq);
-      i.workData.search_data += ` ${fSearch}`;
+    else if (('original_request' in this_request) && (typeof (this_request.original_request) !== 'string')) {
+      anonymous = (this_request.original_request.selections && this_request.original_request.selections.join(' ').includes('anonymous'));
+      let [fReq, fSearch, fText] = formatRequest(this_request, this_request.original_request);
+      this_request.workData.textBased_request.push(fText);
+      this_request.workData.formatted_request.push(...fReq);
+      this_request.workData.search_data += ` ${fSearch}`;
     }
     else {
-      anonymous = i.original_request.includes('anonymous');
-      i.workData.formatted_request.push(['detail', i.original_request || 'No information available']);
-      i.workData.textBased_request.push(i.original_request);
-      i.workData.search_data += ` ${i.original_request}`;
+      anonymous = this_request.original_request.includes('anonymous');
+      this_request.workData.formatted_request.push(['detail', this_request.original_request || 'No information available']);
+      this_request.workData.textBased_request.push(this_request.original_request);
+      this_request.workData.search_data += ` ${this_request.original_request}`;
     }
-    if (i.attachments && (i.attachments.length > 0)) {
-      i.attachments.forEach(a => {
+    if (this_request.attachments && (this_request.attachments.length > 0)) {
+      this_request.attachments.forEach(a => {
         let fNArr = a.split('/').pop().split('.');
         fNArr.pop();
         let fName = decodeURI(fNArr.join('.'));
-        i.workData.formatted_request.push([`href=${a}`, fName]);
+        this_request.workData.formatted_request.push([`href=${a}`, fName]);
       });
     }
     if (anonymous) {
-      i.workData.requestor_name = 'Anonymous';
-      i.workData.enteredBy_name = 'Anonymous';
-      i.workData.requestor_location = null;
-      i.workData.requestor_image = null;
+      this_request.workData.requestor_name = 'Anonymous';
+      this_request.workData.enteredBy_name = 'Anonymous';
+      this_request.workData.requestor_location = null;
+      this_request.workData.requestor_image = null;
     }
-    i.workData.search_data += i.workData.requestor_name;
-    i.workData.summary_request = i.workData.formatted_request;
+    this_request.workData.search_data += this_request.workData.requestor_name;
+    this_request.workData.summary_request = this_request.workData.formatted_request;
     let historyList = [];
     let noteList = [];
     if ((!options.textForm) && (!options.selectOnly)) {
-      i.workData.formatted_request = [];
-      if ('history' in i) {
+      this_request.workData.formatted_request = [];
+      if ('history' in this_request) {
         // updateHistoryList takes each history line and determines if it contains "note added"
         // if it does, then it includes that information on the notelist, otherwise the line is added to historylist
-        if (typeof (i.history) === 'string') {
-          updateHistoryList(i.history);
+        if (typeof (this_request.history) === 'string') {
+          updateHistoryList(this_request.history);
         }
-        else if (Array.isArray(i.history)) {
-          i.history.forEach(h => {
+        else if (Array.isArray(this_request.history)) {
+          this_request.history.forEach(h => {
             if (typeof h === 'string') {
               updateHistoryList(h);
             }
           });
         }
         else {
-          Object.values(i.history).forEach(h => {
+          Object.values(this_request.history).forEach(h => {
             updateHistoryList(h);
           });
         }
       }
 
-      i.workData.formatted_request.push(['head', 'History']);
+      this_request.workData.formatted_request.push(['head', 'History']);
       if (historyList.length === 0) {
-        i.workData.formatted_request.push(['detail', '*** None ***']);
+        this_request.workData.formatted_request.push(['detail', '*** None ***']);
       }
       else {
         historyList.forEach(hLine => {
-          i.workData.formatted_request.push(['detail', hLine]);
+          this_request.workData.formatted_request.push(['detail', hLine]);
         });
       }
 
       if (noteList.length > 0) {
-        i.workData.notes_section.push(['head', 'Notes']);
+        this_request.workData.notes_section.push(['head', 'Notes']);
         noteList.forEach(nLine => {
-          i.workData.notes_section.push(['detail', nLine]);
+          this_request.workData.notes_section.push(['detail', nLine]);
         });
       }
 
       let mHist = await messageHistory({
-        thread_id: `svc_${i.request_type}/${i.request_id}`,
+        thread_id: `svc_${this_request.request_type}/${this_request.request_id}`,
         type: 'delivery'
       });
       if (mHist && (mHist.length > 0)) {
-        i.workData.formatted_request.push(['head', 'Messages']);
-        mHist.map(h => { return i.workData.formatted_request.push(['detail', h]); });
+        this_request.workData.formatted_request.push(['head', 'Messages']);
+        mHist.map(h => { return this_request.workData.formatted_request.push(['detail', h]); });
       }
-      i.workData.search_data += `~ ${requestorRec.location} ~ ${i.workData.requestor_name} ~ ${i.workData.enteredBy_name}`;
-      if (i.last_status && ['closed', 'completed', 'complete', 'cancelled'].includes(i.last_status.toLowerCase())) {
-        i.workData.search_data += ` ~ closed`;
+      this_request.workData.search_data += `~ ${requestorRec.location} ~ ${this_request.workData.requestor_name} ~ ${this_request.workData.enteredBy_name}`;
+      if (this_request.last_status && ['closed', 'completed', 'complete', 'cancelled'].includes(this_request.last_status.toLowerCase())) {
+        this_request.workData.search_data += ` ~ closed`;
       }
-      else { i.workData.search_data += ` ~ open`; }
+      else { this_request.workData.search_data += ` ~ open`; }
     }
-    i.workData.checked = false;
-    i.workData.open = false;
-    return i;
+    this_request.workData.checked = false;
+    this_request.workData.open = false;
+    return this_request;
 
     function updateHistoryList(text) {
       if (text.startsWith('Note added')) {
@@ -1503,16 +1556,80 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
   }
 
-  function formatRequest(i, req) {
+  async function buildRequestFromEvent(this_event) {
+    let response = {
+      workData: {
+        search_data: ''
+      }
+    };
+    response.workData.this_status = 'Signed-up';
+    response.workData.flavor = 'event';
+    response.workData.formatted_type = 'Event';
+    if (session.service_request_types.hasOwnProperty('event')) {
+      response.workData.formatted_type = session.service_request_types['event'].description || `Event`;
+      if (session.service_request_types['event'].hasOwnProperty('statusList')) {
+        let foundStatus = (session.service_request_types['event'].statusList.find(x => {
+          return (x.value === this_event?.slotData?.status?.current);
+        }));
+        if (foundStatus) {
+          response.workData.this_status = foundStatus.display;
+        }
+      }
+    }
+
+    let AVArequestDate = makeDate(this_event.event_key.split('#')[1]);
+    let AVAupdateDate = null;
+    response.request_date = AVArequestDate.date.getTime();
+    response.workData.display_date = AVArequestDate.relative;    // the date/time the request was first created
+    response.workData.requestTime = AVArequestDate.timestamp;
+
+    if (this_event.slotData?.status) {
+      if (this_event.slotData?.status?.history) {
+        AVAupdateDate = makeDate(this_event.slotData?.status?.history[0].date);
+        response.workData.update_date = AVAupdateDate.relative;
+      }
+    }
+
+    response.requestor = this_event.slotData.owner;
+    response.workData.enteredBy = this_event.slotData.owner;
+    response.workData.requestor_name = this_event.slotData.name;
+    response.workData.enteredBy_name = this_event.slotData.name;
+
+    let requestorRec = await getPerson(this_event.slotData.owner, '*all');
+    response.workData.requestor_location = requestorRec.location;
+    response.workData.requestor_image = await getImage(this_event.slotData.owner);
+
+    response.workData.formatted_request = [];
+    response.workData.summary_request = [];
+    response.workData.notes_section = [];
+    response.workData.textBased_request = [];
+
+    if ((!options.shortForm) && (!options.textForm) && !options.selectOnly) {
+      if (AVAupdateDate.relative !== AVArequestDate.relative) {
+        response.workData.formatted_request.push(['head', `Updated: ${AVAupdateDate.relative}`]);
+      }
+      response.workData.formatted_request.push(['head', 'Details']);
+    }
+    response.workData.textBased_request[0] = AVArequestDate.relative;
+    response.workData.textBased_request.push(`<b>${response.workData.formatted_type}`);
+
+    response.workData.search_data += response.workData.requestor_name;
+    response.workData.summary_request = response.workData.formatted_request;
+    response.workData.checked = false;
+    response.workData.open = false;
+    return response;
+  }
+
+  function formatRequest(this_request, req) {
     let returnMessage = [];
     let returnText = '';
     let returnSearch = '';
     if (!('textInput' in req)) { req.textInput = {}; }
     if (!('qualifiers' in req)) { req.qualifiers = []; }
     if (!('selections' in req)) { req.selections = []; }
-    if (!filter.person_id && (i.workData.requestor_name !== i.on_behalf_of)) {
-      returnMessage.push(['detail', `For ${i.on_behalf_of}`]);
-      returnText += ` on behalf of ${i.on_behalf_of}`;
+    if (!filter.person_id && (this_request.workData.requestor_name !== this_request.on_behalf_of)) {
+      returnMessage.push(['detail', `For ${this_request.on_behalf_of}`]);
+      returnText += ` on behalf of ${this_request.on_behalf_of}`;
     }
     let textLink = '';
     req.selections.forEach(s => {
@@ -1558,7 +1675,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     for (let k in req.textInput) {
       if (['-stamped', '-date', '-ymd'].some(w => { return k.includes(w); })) { continue; }
       if (typeof req.textInput[k] === 'string') {
-        if (req.textInput[k] !== i.on_behalf_of) {
+        if (req.textInput[k] !== this_request.on_behalf_of) {
           let kLow = k.toLowerCase().trim();
           returnSearch += ` ${req.textInput[k]}`;
           if (['description', 'summary', 'details'].some(w => { return kLow.includes(w); })) {
@@ -2716,7 +2833,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           });
                           cEntries.forEach(e => {
                             if (e.slotData && !e.marked && (e.slotData?.status?.current !== 'released')) {
-                              let [first, last] = (e.slotData.display_name || e.slotData.name).split(/(?<=^\S+)\s/);
+                              let [first, last] = (e.slotData.display_name || e.slotData.name).split(' ');
                               listOfPeopleToVisit.push({
                                 id: e.slot_owner,
                                 first: first,
@@ -2726,7 +2843,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                           });
                         }
                         else {
-                          let [first, last] = (reactData.dataRows[checkInStatusObj.targetIndex].workData.requestor_name).split(/(?<=^\S+)\s/);
+                          let [first, last] = (reactData.dataRows[checkInStatusObj.targetIndex].workData.requestor_name).split(' ');
                           listOfPeopleToVisit = [{
                             id: reactData.dataRows[checkInStatusObj.targetIndex].requestor,
                             first: first,

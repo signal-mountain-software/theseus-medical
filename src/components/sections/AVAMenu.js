@@ -783,7 +783,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         if (pFact.value.mediaData) {
           let newName = pFact.value?.freeText?.Title || pFact.value.mediaData.Key;
           let fileExtension = pFact.value.mediaData.Key.split('.').pop();
-          pFact.value.mediaData.Key = newName.trim().replace(/[\s/.]/g, '_') + '.' + fileExtension;  
+          pFact.value.mediaData.Key = newName.trim().replace(/[\s/.]/g, '_') + '.' + fileExtension;
           let fileType;
           let fileName;
           if (pFact.value.mediaData.Location) {
@@ -1340,10 +1340,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               <Box
                                 display='flex'
                                 style={{
-                              borderRadius: ((sectionOpen[this_row.section_name] || (currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
-                              backgroundColor: hexToRgb(this_row.section_color, 1),
-                              textDecoration: 'none'
-                            }}
+                                  borderRadius: ((sectionOpen[this_row.section_name] || (currentMenu !== 'main')) ? '30px 30px 0px 0px' : '30px 30px 30px 30px'),
+                                  backgroundColor: hexToRgb(this_row.section_color, 1),
+                                  textDecoration: 'none'
+                                }}
                                 justifyContent='center'
                                 flexDirection='column'
                                 minHeight={80}
@@ -1388,10 +1388,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               <Box
                                 display='flex'
                                 style={{
-                              borderRadius: '0px 0px 0px 0px',
-                              backgroundColor: hexToRgb(this_row.row_color, 0.4),
-                              textDecoration: 'none'
-                            }}
+                                  borderRadius: '0px 0px 0px 0px',
+                                  backgroundColor: hexToRgb(this_row.row_color, 0.4),
+                                  textDecoration: 'none'
+                                }}
                                 p={2}
                                 justifyContent='center'
                                 flexDirection='column'
@@ -1560,8 +1560,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
               </Box>
               {loading &&
                 <React.Fragment>
-                  <LinearProgress variant="determinate" className={classes.progressBar} style={{ width: pWidth }} value={progress} />
-                  <CircularProgress />
+                  <LinearProgress variant="determinate" className={classes.progressBar}
+                    style={AVATextStyle({ width: pWidth, margin: { top: 1 } })}
+                    value={progress} />
                 </React.Fragment>
               }
             </React.Fragment>
@@ -1651,7 +1652,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   nextActivityRec = await getActivity(state.session.client_id, nextActivityList[0]);
                 }
                 // the assign here "promotes" and default_value in the validation object up to the activityRec itself where getActivityDetails expects it to be
-                nextActivityRec.default_value = Object.assign({}, nextActivityRec.validation.default_value, nextActivityRec.default_value)
+                nextActivityRec.default_value = Object.assign({}, nextActivityRec.validation.default_value, nextActivityRec.default_value);
                 let gad_response = await getActivityDetail(nextActivityRec, state);
                 setSelected(gad_response.activityRec);
               }
