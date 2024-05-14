@@ -41,7 +41,7 @@ import SubscriptionIcon from '@material-ui/icons/CardMembership';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
 import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
-import CircularProgress from '@material-ui/core/CircularProgress';
+// import CircularProgress from '@material-ui/core/CircularProgress';
 import LinearProgress from '@material-ui/core/LinearProgress';
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 
