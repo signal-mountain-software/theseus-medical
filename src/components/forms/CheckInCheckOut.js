@@ -964,7 +964,11 @@ export default ({ onSave, onClose }) => {
                       >
                         <Box display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                           <Typography><b>{inRow.name}</b></Typography>
-                          <Typography>{inRow.reqRec.original_request.vendor_company[0]}</Typography>
+                          {inRow.reqRec && inRow.reqRec.original_request && inRow.reqRec.original_request.vendor_company
+                            && Array.isArray(inRow.reqRec.original_request.vendor_company)
+                            &&
+                            <Typography>{inRow.reqRec.original_request.vendor_company[0]}</Typography>
+                          }
                           <Typography variant='subtitle2' style={{ marginLeft: '20px' }}>{inRow.message}</Typography>
                         </Box>
                       </Box>
