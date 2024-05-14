@@ -305,7 +305,8 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         multiColumn,
         text: instruction[0],
         observationKey: getKey(instruction[0]),
-        desc: getDescription(instruction[0]),
+        desc: getQualifier(instruction[0], 'description'),
+        fee: getQualifier(instruction[0], 'fee'),
         input: false,
         bold: displayBold,
         style: displayStyle,
@@ -377,7 +378,8 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         obo_line: ((defaults.obo || defaults.onBehalfOf) === this_instruction),
         location_line: (defaults[this_instruction] && (defaults[this_instruction] === '[person.location]')),
         observationKey: instruction[3] || getKey(this_instruction),
-        desc: getDescription(this_instruction),
+        desc: getQualifier(this_instruction, 'description'),
+        fee: getQualifier(this_instruction, 'fee'),
         input: instruction[1].trim().toLowerCase(),
         header: false,
         row_qualifier: this_qualifier
@@ -402,7 +404,8 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       multiColumn: false,
       text: instruction[1],
       observationKey: getKey(instruction[1]),
-      desc: getDescription(instruction[1]),
+      desc: getQualifier(instruction[1], 'description'),
+      fee: getQualifier(instruction[1], 'fee'),
       input: false,
       header: true
     });
@@ -420,9 +423,9 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     return null;
   }
 
-  function getDescription(pText) {
+  function getQualifier(pText, pQual) {
     if (qualifiers.hasOwnProperty(pText)) {
-      return qualifiers[pText].description;
+      return qualifiers[pText][pQual];
     }
     else {
       return null;

@@ -111,8 +111,15 @@ export async function getObservations(pClient, pKey, options = {}) {
       oList.push(oRec);
       valueList.push(oRec.observation_code);
       let qualObj = {};
-      if (oRec.description) { qualObj.description = oRec.description; }
-      if (oRec.image_url) { qualObj.image_url = oRec.image_url; }
+      if (oRec.fee) {
+        qualObj.fee = oRec.fee;
+      }
+      if (oRec.description) {
+        qualObj.description = oRec.description;
+      }
+      if (oRec.image_url) {
+        qualObj.image_url = oRec.image_url;
+      }
       if ('qualifiers' in oRec) {
         if (oRec.qualifiers.minimum_required) { qualObj.minimum_required = oRec.qualifiers.minimum_required; }
         if (oRec.qualifiers.maximum_allowed) { qualObj.maximum_allowed = oRec.qualifiers.maximum_allowed; }
