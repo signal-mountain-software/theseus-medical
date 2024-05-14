@@ -210,7 +210,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       if (typeof (paymentInfo) === 'string') {
         paymentInfo = {
           allow: true
-        }
+        };
       }
       updateReactData({
         collectPayment: paymentInfo,
@@ -329,6 +329,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               setAllowAddPeople(defaultValue.allowAddPeople);
               break;
             }
+            case ('allowAttachment'):
             case ('allowAttachments'): {
               updateReactData({ allowAttachments: true }, false);
               break;
@@ -978,7 +979,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         else if (column.defaultValues[dKey] === '[person.name]') {
           myDefaultColumns[c].defaultValues[dKey] = `${this_person.first} ${this_person.last}`;
         }
-        else if ((typeof(column.defaultValues[dKey]) === 'string') && (column.defaultValues[dKey].startsWith('[person.'))) {
+        else if ((typeof (column.defaultValues[dKey]) === 'string') && (column.defaultValues[dKey].startsWith('[person.'))) {
           let pKey = column.defaultValues[dKey].split('.')[1];
           if (this_person.hasOwnProperty(pKey)) {
             myDefaultColumns[c].defaultValues[dKey] = this_person[pKey];
@@ -1534,7 +1535,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           warningsExist = true;
         }
       });
-      for (const [this_selection, optionList] of Object.entries(formatServiceRequestDetails(this_column))) {
+      let options = {};
+      if (reactData.collectPayment) {
+        options.includeFees = true;
+      }
+      for (const [this_selection, optionList] of Object.entries(formatServiceRequestDetails(this_column, options))) {
         selectionText.push(`[style={size:1}]${sentenceCase(this_selection)}`);
         optionList.forEach(option => {
           selectionText.push(`[indent=1][italic][style={size:0.4}]${option}`);
@@ -2175,7 +2180,9 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       <Typography
                                         key={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                         id={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                        style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>{opt.display}</Typography>
+                                        style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>
+                                        {opt.display}
+                                      </Typography>
                                     </React.Fragment>
                                   }
                                   {opt.type === 'prompt' &&
