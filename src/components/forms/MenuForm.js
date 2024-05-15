@@ -3,6 +3,7 @@ import { titleCase, updateDb, deleteDbRec, sentenceCase, parseNumeric, cl, dbCli
 import useSession from '../../hooks/useSession';
 import { getObservationKeys, getObservationItems } from '../../util/AVAObservations';
 import AVAConfirm from './AVAConfirm';
+import { makeDate } from '../../util/AVADateTime';
 
 import GridListTile from '@material-ui/core/GridListTile';
 import TextField from '@material-ui/core/TextField';
@@ -66,7 +67,35 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
     loadMode: false,
     deletePending: false,
     selectedObservation: {},
-    recipeList: []
+    recipeList: [],
+    oiCharacteristics: state.session.observation_item_characteristics || 
+      [
+        {
+          "description": "Calories",
+          "uom": "",
+          "code": "calories"
+        },
+        {
+          "description": "Cholesterol",
+          "uom": "mg",
+          "code": "cholesterol"
+        },
+        {
+          "description": "Sodium",
+          "uom": "mg",
+          "code": "sodium"
+        },
+        {
+          "description": "Total Carbs",
+          "uom": "g",
+          "code": "total_carb"
+        },
+        {
+          "description": "Total Fat",
+          "uom": "g",
+          "code": "total_fat"
+        }
+      ]
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
@@ -85,18 +114,17 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
     if (Object.keys(OIObj).length === 0) {
       return [];
     }
-    let characteristics = ['calories', 'cholesterol', 'sodium', 'total_carb', 'total_fat'];
-    let OIValues = characteristics.map(c => {
+    let OIValues = reactData.oiCharacteristics.map(c => {
       let response = '';
-      if (OIObj[c]) {
-        if (OIObj[c].value) {
-          response = OIObj[c].value.toString();
-          if (OIObj[c].uom) {
-            response += ` ${OIObj[c].uom}`;
+      if (OIObj[c.code]) {
+        if (OIObj[c.code].value) {
+          response = OIObj[c.code].value.toString();
+          if (OIObj[c.code].uom) {
+            response += ` ${OIObj[c.code].uom}`;
           }
         }
-        else if (OIObj[c].display_value) {
-          response = ` ${OIObj[c].display_value}`;
+        else if (OIObj[c.code].display_value) {
+          response = ` ${OIObj[c.code].display_value}`;
         }
       }
       return response;
@@ -109,9 +137,6 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
   }
 
   async function handleAddOItem(oIName, newDataList) {
-    // ['Calories', 'Cholesterol (mg)', 'Sodium (mg)', 'Total Carbs (g)', 'Total Fat (g)', ...attachment(s)]
-    let characteristics = ['calories', 'cholesterol', 'sodium', 'total_carb', 'total_fat', 'image'];
-    let uom = ['', 'mg', 'mg', 'g', 'g', 'image'];
     let oKey = reactData.oIKey;
     if (!reactData.oIogName || (reactData.oIogName === `Item ${oKey}`)) {
       let oIRec = {
@@ -134,7 +159,7 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
       if (newDataList[n] && (newDataList[n].toString().length > 0)) {
         let oIRec = {
           observation_key: oKey,
-          characteristic: characteristics[n],
+          characteristic: reactData.oiCharacteristics[n].code,
         };
         let checkN = parseNumeric(newDataList[n]);
         if (!checkN.isNumeric) {
@@ -145,8 +170,8 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
           if (checkN.hasText) {
             oIRec.uom = checkN.textValue;
           }
-          else if (uom[n]) {
-            oIRec.uom = uom[n];
+          else if (reactData.oiCharacteristics[n].uom) {
+            oIRec.uom = reactData.oiCharacteristics[n].uom;
           }
         }
         cl({ 'Put to Observation_Items': oIRec });
@@ -230,15 +255,27 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
     let pObs = {
       listIndex: index,
       observation_code: pObs_name
+    };
+    let ogSelectedObservation = {};
+    if (observationList.length === 0) {
+      let this_dataKey = makeDate(keyDate);
+      ogSelectedObservation = {
+        rightSide: this_dataKey.obs,
+        client_id: state.session.client_id,
+        date_key: this_dataKey.ymd
+      };
+    }
+    else {
+      ogSelectedObservation = {
+        rightSide: observationList[observationList.length - 1].composite_key.match(/_(?:.(?!_))+$/gm),
+        client_id: observationList[0].client_id,
+        date_key: observationList[0].date_key
+      }
     }
     updateReactData({
       editMode: true,
       addMode: true,
-      ogSelectedObservation: {
-        rightSide: observationList[observationList.length - 1].composite_key.match(/_(?:.(?!_))+$/gm),
-        client_id: observationList[0].client_id,
-        date_key: observationList[0].date_key
-      },
+      ogSelectedObservation: ogSelectedObservation,
       selectedObservation: pObs,
       filteredRecipeList: filteredRecipeList
     }, true);
@@ -292,7 +329,7 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
         }));
         updateReactData({
           newObservationName: ''
-        }, false)
+        }, false);
       }
     }
   };
@@ -311,7 +348,6 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
 
   return (
     ((forceRedisplay || true) &&
-      (observationList?.length > 0) &&
       <Box >
         <List >
           {!reactData.editMode && !reactData.loadMode && !reactData.deletePending &&
@@ -388,7 +424,7 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
                                 displayed_ObservationName = event.target.value;
                                 updateReactData({
                                   newObservationName: displayed_ObservationName
-                                }, true)
+                                }, true);
                               }}
                               FormHelperTextProps={{ style: { fontSize: '0.75rem', lineHeight: '0.9rem' } }}
                               helperText={`Add something new here`}
@@ -423,7 +459,7 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
                 reactData.selectedObservation.description
               ]}
               selectionList={[null, state.session.menu_types.sort(), reactData.filteredRecipeList]}
-            buttonText={reactData.addMode ? 'Add' : 'Update'}
+              buttonText={reactData.addMode ? 'Add' : 'Update'}
               onCancel={() => {
                 updateReactData({
                   editMode: false
@@ -467,7 +503,7 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
           {reactData.observationItemMode &&
             <AVATextInput
               titleText={reactData.oIogName || reactData.savedRequestUpdates[0]}
-              promptText={['Calories', 'Cholesterol (mg)', 'Sodium (mg)', 'Total Carbs (g)', 'Total Fat (g)']}
+              promptText={reactData.oiCharacteristics.map(c => { return `${c.description} ${c.uom ? '(' + c.uom + ')' : ''}`})}
               valueText={reactData.oIValues}
               buttonText={((reactData.oIValues.length === 0) ? 'Add' : 'Update')}
               options={{
