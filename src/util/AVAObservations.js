@@ -16,6 +16,9 @@ export function putMessage_nonAsync(body) {
 */
 
 export async function getObservationItems(pObsKey) {
+  if (!pObsKey) {
+    return {};
+  }
   let returnObj = {};
   let pObsQkey = {
     KeyConditionExpression: 'observation_key = :c',
@@ -82,6 +85,17 @@ export async function getObservations(pClient, pKey, options = {}) {
       .query({
         KeyConditionExpression: 'client_id = :c and date_key = :d',
         ExpressionAttributeValues: { ':c': pClient, ':d': pDate.ymd },
+        TableName: "Observations",
+        IndexName: "date_key-index"
+      })
+      .promise()
+      .catch(error => { cl(`ERROR reading Observations by date *** caught error is: ${error}`); });
+  }
+  else if (options && options.always) {
+    observations = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c and date_key = :d',
+        ExpressionAttributeValues: { ':c': pClient, ':d': 'always' },
         TableName: "Observations",
         IndexName: "date_key-index"
       })
