@@ -28,7 +28,6 @@ import useSession from '../../hooks/useSession';
 
 import List from '@material-ui/core/List';
 import PersonFilter from '../forms/PersonFilter';
-import SelectFromList from '../forms/SelectFromList';
 
 import PersonAddIcon from '@material-ui/icons/PersonAdd';
 import ListAltIcon from '@material-ui/icons/ListAlt';
@@ -912,26 +911,6 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     updateReactData({
       dataRows: reactData.dataRows
     }, true);
-  }
-
-  function commonStatus() {
-    let commonStatus;
-    let multipleStatuses = reactData.dataRows.some(row => {
-      if (row.workData.checked) {
-        if (!commonStatus) {
-          commonStatus = row.last_status;
-          return false;
-        }
-        return (row.last_status !== commonStatus);
-      }
-      return false;
-    });
-    if (multipleStatuses) {
-      return null;
-    }
-    else {
-      return commonStatus;
-    }
   }
 
   function commonFKey() {
