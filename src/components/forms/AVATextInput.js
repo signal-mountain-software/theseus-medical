@@ -1,16 +1,17 @@
 import React from 'react';
 
-import { titleCase, makeArray, s3, cl } from '../../util/AVAUtilities';
+import { titleCase, makeArray, s3 } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 
-import { Dialog, DialogActions, DialogContent, MenuItem, TextField, Box, Button, Typography, Checkbox } from '@material-ui/core';
+import { Dialog, DialogActions, DialogContent, TextField, Box, Button, Typography, Checkbox } from '@material-ui/core';
 
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import DeleteIcon from '@material-ui/icons/Delete';
 import LinearProgress from '@material-ui/core/LinearProgress';
+import Select from "react-dropdown-select";
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
@@ -59,6 +60,10 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
+  },
+  placeHolder: {
+    marginLeft: 0,
+    color: 'black'
   },
   idText: {
     minWidth: '100%',
@@ -115,7 +120,19 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
 
   const handleChangeTextInput = (inputValue, ndx, options = {}) => {
     if (!reactData.saving) {
-      textInput[ndx] = inputValue;
+      if (Array.isArray(inputValue)) {
+        if (inputValue.length > 1) {
+          textInput[ndx] = inputValue.map(v => {
+            return v.value;
+          });
+        }
+        else {
+          textInput[ndx] = inputValue[0].value;
+        }
+      }
+      else {
+        textInput[ndx] = inputValue;
+      }
       setTextInput(textInput);
       if (inputValue === '*% select_new %*') {
         updateReactData({ saving: true }, false);
@@ -242,7 +259,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
       attachments = reactData.attachmentList.map(a => {
         return a.Location;
-      })
+      });
     }
     if (Array.isArray(promptText)) {
       onSave(textInput, keyPressed, attachments);
@@ -276,7 +293,28 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     promptArray = [promptText];
     if (!titleText) { titleText = titleCase(promptText); }
   }
+  let minHeight = 0;
+  promptArray.forEach(p => {
+    if (p.startsWith('[select')) {
+      minHeight = 350;
+    }
+  });
   let titleArray = makeArray(titleText);
+  let displayValueArray = makeArray(valueText).map((v, ndx) => {
+    if (!v || (v.trim() === '')) {
+      return '';
+    }
+    if (!selectionList[ndx]) {
+      return v;
+    }
+    let foundIt = selectionList[ndx].find(s => {
+      return (s.value.toLowerCase().trim() === v.toLowerCase().trim());
+    });
+    if (foundIt) {
+      return (foundIt.key || foundIt.label || foundIt.display);
+    }
+    return '';
+  });
 
 
   let buttonArray = [];
@@ -290,33 +328,46 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
 
   return (
     <Dialog open={forceRedisplay || true} fullWidth>
-     
-        <Box display='flex'
-          grow={1}
-          mb={3}
-          ml={2}
-          mr={2}
-          mt={3}
-          flexDirection='column'
-          justifyContent='center'
-          alignItems='flex-start'
-        >
-          {titleText && titleArray.map((t, tx) => (
-            <Typography key={`title-${tx}`}
-              style={AVATextStyle({
-                size: ((tx === 0) ? 1.3 : 1.0),
-                bold: (tx === 0),
-                italic: (t.includes('[italic]')),
-                marginTop: ((!t || t.trim() === '') ? 1.5 : 0)
-              })}
-              className={classes.titleRow}>
-              {t.replace('[italic]', '')}
-            </Typography>
-          ))}
-        </Box>
-     
+
+      <Box display='flex'
+        grow={1}
+        mb={3}
+        ml={2}
+        mr={2}
+        mt={3}
+        flexDirection='column'
+        justifyContent='center'
+        alignItems='flex-start'
+      >
+        {titleText && titleArray.map((t, tx) => (
+          <Typography key={`title-${tx}`}
+            style={AVATextStyle({
+              size: ((tx === 0) ? 1.3 : 1.0),
+              bold: (tx === 0),
+              italic: (t.includes('[italic]')),
+              marginTop: ((!t || t.trim() === '') ? 1.5 : 0)
+            })}
+            className={classes.titleRow}>
+            {t.replace('[italic]', '')}
+          </Typography>
+        ))}
+      </Box>
+
       {promptArray && (promptArray.length > 0) &&
-        <DialogContent dividers={true} className={classes.contentBox} id='dialog-content'>
+        <DialogContent
+          dividers={true}
+          style={{
+            minWidth: '100%',
+            dividers: {
+              paddingTop: 8,
+              paddingBottom: 8,
+              minWidth: '100%',
+            },
+            minHeight: `${minHeight}px`,
+            marginBottom: '1em'
+          }}
+          id='dialog-content'
+        >
           <Box
             display='flex'
             grow={1}
@@ -331,83 +382,97 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
             {promptArray.map((prompt, ndx) => (
               <React.Fragment key={`frag-${ndx}`}>
                 {prompt && (prompt.toLowerCase().startsWith('[')) ?
-                  <Box display='flex'
-                    flexDirection='row'
-                    mt={0.5}
-                    mb={0.5}
-                    paddingLeft={2}
-                    paddingRight={2}
-                    alignItems={'center'}
-                    minWidth={'100%'}
-                    border={textInput[ndx] ? 1 : 0}
-                    borderRadius={'16px'}
-                    key={'fullRow' + ndx}
-                  >
-                    {prompt.toLowerCase().startsWith('[checkbox]') &&
-                      <React.Fragment>
-                        <Checkbox
-                          className={classes.radioButton}
-                          size="small"
-                          onClick={() => {
-                            toggleCheckbox(ndx);
-                          }}
-                          checked={(textInput[ndx] === 'checked')}
-                        />
-                        <Typography style={AVATextStyle({
-                          size: 1
-                        })}>
-                          {prompt.split(']').pop()}
-                        </Typography>
-                      </React.Fragment>
-                    }
-                    {prompt.toLowerCase().startsWith('[select') &&
-                      <React.Fragment>
-                        <TextField
-                          className={classes.idText}
-                          id={`prompt-${ndx}`}
-                          key={`prompt-${ndx}`}
-                          select
-                          autoFocus={(ndx === reactData.focusOn) ? true : null}
-                          inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                          FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                          error={!!(errorText && errorText[ndx])}
-                          onContextMenu={async (e) => {
-                            e.preventDefault();
-                            cl(`right clicked ${prompt} at ndx=${ndx}`);
-                            if (prompt.toLowerCase().startsWith('[select/edit')) {
-                              handleChangeTextInput((textInput[ndx] || '*% select_new %*'), ndx, { edit: true });
-                            }
-                          }}
-                          value={textInput[ndx] || ''}
-                          onChange={(event) => {
-                            handleChangeTextInput(event.target.value, ndx);
-                          }}
-                          onKeyPress={(event) => {
-                            onCheckEnter(event);
-                          }}
-                          helperText={((errorText && errorText[ndx]) ? errorText[ndx] : (prompt.split(']').pop() || ''))}
-                          autoComplete='off'
-                        >
-                          {selectionList[ndx].map((sel, sX) => (
-                            <MenuItem
-                              key={`sel_${sX}`}
-                              value={((typeof (sel) === 'string') ? sel : sel.value)}
-                              onContextMenu={async (e) => {
-                                e.preventDefault();
-                                cl(`right clicked ${((typeof (sel) === 'string') ? sel : sel.value)}`);
-                                if (prompt.toLowerCase().startsWith('[select/edit')) {
-                                  handleChangeTextInput(((typeof (sel) === 'string') ? sel : sel.value), ndx, { edit: true });
+                  <React.Fragment>
+                    <Box display='flex'
+                      flexDirection='row'
+                      mt={0.5}
+                      mb={0.5}
+                      paddingLeft={2}
+                      paddingRight={2}
+                      alignItems={'center'}
+                      minWidth={'100%'}
+                      border={(textInput[ndx] || prompt.toLowerCase().startsWith('[select')) ? 1 : 0}
+                      borderRadius={'16px'}
+                      key={'fullRow' + ndx}
+                    >
+                      {prompt.toLowerCase().startsWith('[checkbox]') &&
+                        <React.Fragment>
+                          <Checkbox
+                            className={classes.radioButton}
+                            size="small"
+                            onClick={() => {
+                              toggleCheckbox(ndx);
+                            }}
+                            checked={(textInput[ndx] === 'checked')}
+                          />
+                          <Typography style={AVATextStyle({
+                            size: 1
+                          })}>
+                            {prompt.split(']').pop()}
+                          </Typography>
+                        </React.Fragment>
+                      }
+                      {prompt.toLowerCase().startsWith('[select') &&
+                        <React.Fragment>
+                          <Box
+                            //            paddingTop={prompt.toLowerCase().startsWith('[select') ? 1 : 0}
+                            key={`selectBox_${ndx}`}
+                            display='flex' flexGrow={1} flexDirection='column'
+                          >
+                            <Select
+                              options={selectionList[ndx].map(sel => {
+                                return {
+                                  value: (typeof (sel) === 'string') ? sel : sel.value,
+                                  label: (titleCase(((typeof (sel) === 'string') ? sel : (sel.key || sel.label || sel.display)).replace('_', ' ')))
+                                };
+                              })}
+                              searchBy={'label'}
+                              style={{
+                                fontSize: `${user_fontSize}rem`,
+                                marginLeft: -5,
+                                marginBottom: -4,
+                                marginTop: 1,
+                                borderWidth: 0
+                              }}
+                              dropdownHandle={true}
+                              clearOnSelect={true}
+                              clearOnBlur={true}
+                              key={`select_${ndx}`}
+                              searchable={true}
+                              multi={prompt.toLowerCase().startsWith('[selectmulti')}
+                              closeOnClickInput={true}
+                              closeOnSelect={true}
+                              create={false}
+                              keepSelectedInList={true}
+                              noDataLabel={"No matches found"}
+                              placeholder={displayValueArray[ndx]}
+                              onChange={(values) => {
+                                if (values.length > 0) {
+                                  handleChangeTextInput(values, ndx);
                                 }
                               }}
+                            />
+                            <Box display='flex'
+                              flexDirection='row'
+                              minWidth={'100%'}
+                              paddingTop={'4px'}
+                              borderTop={1}
+                              key={'borderTop' + ndx}
                             >
-                              {titleCase(((typeof (sel) === 'string') ? sel : (sel.key || sel.label)).replace('_', ' '))}
-                            </MenuItem>
-                          ))}
-
-                        </TextField>
-                      </React.Fragment>
-                    }
-                  </Box>
+                              <Typography
+                                style={AVATextStyle({
+                                  size: 0.8,
+                                  margin: { left: 0, top: 0, bottom: 0.5 }
+                                })}
+                              >
+                                {prompt.split(']').pop()}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </React.Fragment>
+                      }
+                    </Box>
+                  </React.Fragment>
                   :
                   <Box display='flex'
                     flexDirection='column'
@@ -506,7 +571,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
         </Box>
       }
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Box display='flex' style={{ marginTop: '2em' }} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+        <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
           {allowCancel &&
             <Button
               className={AVAClass.AVAButton}
@@ -578,5 +643,5 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
         </Box>
       </DialogActions>
     </Dialog>
-  )
+  );
 };
