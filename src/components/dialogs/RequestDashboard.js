@@ -240,6 +240,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       updateMode - preselect first item
       viewMode - no search field; no changes allowed; show "add new request"; onClose carries instruction for next step
       noSelect - suppress checkbox and buttons for updates, etc.
+      woNumber - edit work order number in foreign key
     }
   */
 
@@ -451,14 +452,25 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if (pOptions.enteredNote) {
       myNote = `Note added by ${await getPerson(session.user_id, 'name')} on ${AVAdate.absolute}: ${pOptions.enteredNote}`;
     }
+    let OGHistoryLine = historyLine;
     for (let x = 0; x < reactData.dataRows.length; x++) {
       let r = reactData.dataRows[x];
       rowChanged[x] = false;
       rowSelected[x] = false;
       statusChanged[x] = false;
       assignmentChanged[x] = false;
+      historyLine = OGHistoryLine;
       if (r.workData.checked && OKToDisplay(r)) {
         rowSelected[x] = true;
+        if (pOptions.woNumber && (pOptions.woNumber !== reactData.dataRows[x].foreign_key)) {
+          if (historyLine) {
+            historyLine += ` and `;
+          }
+          else {
+            historyLine = '';
+          }
+          historyLine += `Set Work Order number to ${pOptions.woNumber}`;
+        }
         if (historyLine) {
           if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
             reactData.dataRows[x].history.unshift(historyLine);
@@ -476,6 +488,11 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
             return (v.value.toLowerCase() === pOptions.newStatus.toLowerCase());
           })) {
           reactData.dataRows[x].last_status = pOptions.newStatus;
+          statusChanged[x] = true;
+          rowChanged[x] = true;
+        }
+        if (pOptions.woNumber && (pOptions.woNumber !== reactData.dataRows[x].foreign_key)) {
+          reactData.dataRows[x].foreign_key = pOptions.woNumber;
           statusChanged[x] = true;
           rowChanged[x] = true;
         }
@@ -917,6 +934,26 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
   }
 
+  function commonFKey() {
+    let commonKey;
+    let multipleKeys = reactData.dataRows.some(row => {
+      if (row.workData.checked) {
+        if (!commonKey) {
+          commonKey = row.foreign_key;
+          return false;
+        }
+        return (row.foreign_key !== commonKey);
+      }
+      return false;
+    });
+    if (multipleKeys) {
+      return null;
+    }
+    else {
+      return commonKey;
+    }
+  }
+
   function getRequestors() {
     let response = {};
     reactData.dataRows.forEach(r => {
@@ -943,7 +980,16 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
         }
       }
     });
-    return response;
+    let responseList = [];
+    for (let key in response) {
+      let this_obj = {
+        value: key,
+        label: response[key].name,
+        count: response[key].count
+      };
+      responseList.push(this_obj);
+    };
+    return responseList;
   }
 
   function anyRowsSelected() {
@@ -2513,29 +2559,71 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
               }}
             />
           }
-          {
-            reactData.showUpdateForm &&
-            <SelectFromList
-              prompt={['Status', 'Notes', 'Notifications']}
-              selectionsList={reactData.statusList.filter(s => {
-                return !s.hasOwnProperty('selectable') || s.selectable;
-              })}
-              options={{
-                'multiSelect': false,
-                'alreadyChecked': commonStatus(),
-                'allowNote': 'Add a note',
-                'allowNotify': getRequestors()
-              }}
+          {reactData.showUpdateForm && (options && options.woNumber) &&
+            <AVATextInput
+              titleText={`Update this Item`}
+              promptText={['WO Number', '[select]Status', 'Notes', '[selectmulti]Notify']}
+              valueText={[
+                commonFKey(),
+                '',
+                '',
+                ''
+              ]}
+              selectionList={[
+                null,
+                reactData.statusList.filter(s => {
+                  return !s.hasOwnProperty('selectable') || s.selectable;
+                }),
+                null,
+                getRequestors()
+              ]}
+              buttonText={'Update'}
               onCancel={() => {
                 updateReactData({
                   showUpdateForm: false
                 }, true);
               }}
-              onSelect={async (response) => {
+              onSave={async (response) => {
                 await handleUpdates({
-                  newStatus: ((response.selections && (response.selections.length > 0)) ? response.selections[0].value : null),
-                  enteredNote: response.enteredNote,
-                  notify: response.notify
+                  woNumber: response[0],
+                  newStatus: response[1],
+                  enteredNote: response[2],
+                  notify: response[3]
+                });
+                updateReactData({
+                  showUpdateForm: false
+                }, true);
+              }}
+            />
+          }
+          {reactData.showUpdateForm && (!options || !options.woNumber) &&
+            <AVATextInput
+              titleText={`Update this Item`}
+              promptText={['[select]Status', 'Notes', '[selectmulti]Notify']}
+              valueText={[
+                '',
+                '',
+                ''
+              ]}
+              selectionList={[
+                reactData.statusList.filter(s => {
+                  return !s.hasOwnProperty('selectable') || s.selectable;
+                }),
+                null,
+                getRequestors()
+              ]}
+              buttonText={'Update'}
+              onCancel={() => {
+                updateReactData({
+                  showUpdateForm: false
+                }, true);
+              }}
+              onSave={async (response) => {
+                await handleUpdates({
+                  woNumber: null,
+                  newStatus: response[0],
+                  enteredNote: response[1],
+                  notify: response[2]
                 });
                 updateReactData({
                   showUpdateForm: false
