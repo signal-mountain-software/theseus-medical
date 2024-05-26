@@ -203,7 +203,12 @@ export function makeDate(pInput, validation = null) {
         if (hour < 12) { dayPart = "morning"; }
         else if (hour < 17) { dayPart = "afternoon"; }
         else (dayPart = "evening");
-        if ((hour < 8) || (hour > 18)) { workingHours = "night"; };
+        if ((targetDate.getDay() % 6) === 0) {
+            workingHours = "weekend";
+        }
+        else if ((hour < 8) || (hour > 18)) {
+            workingHours = "night";
+        };
     }
     let targetDateYMD = targetDate.getFullYear()
         + '.' + (targetDate.getMonth() + 101).toString().slice(1)
@@ -478,7 +483,7 @@ export function makeTime(pTime) {
     if ((ampm === 'pm') && (hh < 12)) { numeric24 = ((hh + 12) * 100) + mm; }
     else { numeric24 = (hh * 100) + mm; }
     let dayPart;
-    let workingHours;
+    let workingHours = 'day';
     if (numeric24 < 1200) { dayPart = "morning"; }
     else if (numeric24 < 1700) { dayPart = "afternoon"; }
     else (dayPart = "evening");
