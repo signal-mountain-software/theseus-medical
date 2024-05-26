@@ -1173,59 +1173,81 @@ export default Component => props => {
     }
     // Get Client Defaults
     if (!currentSession || !currentSession.client_name) {
-      var customizationsRec = await dbClient
-        .query({
-          KeyConditionExpression: 'client_id = :c',
-          ExpressionAttributeValues: { ':c': currentSession.client_id },
-          TableName: "Customizations",
-        })
-        .promise()
-        .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
-      if (recordExists(customizationsRec)) {
-        for (let c = 0; c < customizationsRec.Items.length; c++) {
-          let cRec = customizationsRec.Items[c];
-          switch (cRec.custom_key) {
-            case 'logo': {
-              currentSession.client_logo = cRec.icon;
-              updateReactData({
-                currentClientLogo: cRec.icon
-              });
-              break;
-            }
-            case 'client_name': {
-              currentSession.client_name = cRec.customization_value;
-              break;
-            }
-            case 'group_assignments': {
-              currentSession.group_assignments = cRec.customization_value;
-              currentSession.inactiveGroupList = ['inactive'];
-              let inactiveAssignment = makeArray(currentSession?.group_assignments?.inactive);
-              if (inactiveAssignment.length > 0) {
-                currentSession.inactiveGroupList.push(...inactiveAssignment);
+      let client_list = ['*all', currentSession.client_id];
+      for (let cN = 0; cN < client_list.length; cN++) {
+        var customizationsRec = await dbClient
+          .query({
+            KeyConditionExpression: 'client_id = :c',
+            ExpressionAttributeValues: { ':c': client_list[cN] },
+            TableName: "Customizations",
+          })
+          .promise()
+          .catch(error => { console.log(`getGroup ERROR reading Customizations; caught error is: ${error}`); });
+        if (recordExists(customizationsRec)) {
+          for (let c = 0; c < customizationsRec.Items.length; c++) {
+            let cRec = customizationsRec.Items[c];
+            switch (cRec.custom_key) {
+              case 'logo': {
+                currentSession.client_logo = cRec.icon;
+                updateReactData({
+                  currentClientLogo: cRec.icon
+                });
+                break;
               }
-              break;
-            }
-            case 'greeting':
-            case 'greetings': {
-              let today = new Date();
-              let this_year = today.getFullYear();
-              let this_month = today.getMonth() + 1;
-              let this_day = today.getDate();
-              let mmdd = `${this_month}.${this_day}`;
-              let yymmdd = `${this_year % 100}.${mmdd}`;
-              if (cRec.customization_value.hasOwnProperty(yymmdd)) {
-                currentSession.custom_greeting = cRec.customization_value[yymmdd];
+              case 'client_name': {
+                currentSession.client_name = cRec.customization_value;
+                break;
               }
-              else if (cRec.customization_value.hasOwnProperty(mmdd)) {
-                currentSession.custom_greeting = cRec.customization_value[mmdd];
+              case 'group_assignments': {
+                currentSession.group_assignments = cRec.customization_value;
+                currentSession.inactiveGroupList = ['inactive'];
+                let inactiveAssignment = makeArray(currentSession?.group_assignments?.inactive);
+                if (inactiveAssignment.length > 0) {
+                  currentSession.inactiveGroupList.push(...inactiveAssignment);
+                }
+                break;
               }
-              break;
-            }
-            default: {
-              if (cRec.customization_value) {
-                currentSession[cRec.custom_key] = cRec.customization_value;
+              case 'greeting':
+              case 'greetings': {
+                let today = new Date();
+                let this_year = today.getFullYear();
+                let this_month = today.getMonth() + 1;
+                let this_day = today.getDate();
+                let mmdd = `${this_month}.${this_day}`;
+                let yymmdd = `${this_year % 100}.${mmdd}`;
+                if (cRec.customization_value.hasOwnProperty(yymmdd)) {
+                  currentSession.custom_greeting = cRec.customization_value[yymmdd];
+                }
+                else if (cRec.customization_value.hasOwnProperty(mmdd)) {
+                  currentSession.custom_greeting = cRec.customization_value[mmdd];
+                }
+                break;
               }
-              break;
+              case 'working_hours': {
+                currentSession['working_hours'] = cRec.customization_value;
+                currentSession['working_hours'].isHoliday = false;
+                if (cRec.customization_value.hasOwnProperty('holidays')) {
+                  let today = new Date();
+                  let this_year = today.getFullYear();
+                  let this_month = today.getMonth() + 1;
+                  let this_day = today.getDate();
+                  let mmdd = `${this_month}.${this_day}`;
+                  let yymmdd = `${this_year % 100}.${mmdd}`;
+                  if (cRec.customization_value.holidays.hasOwnProperty(yymmdd)) {
+                    currentSession['working_hours'].isHoliday = true;
+                  }
+                  else if (cRec.customization_value.holidays.hasOwnProperty(mmdd)) {
+                    currentSession['working_hours'].isHoliday = true;
+                  }
+                }
+                break;
+              }
+              default: {
+                if (cRec.customization_value) {
+                  currentSession[cRec.custom_key] = cRec.customization_value;
+                }
+                break;
+              }
             }
           }
         }
