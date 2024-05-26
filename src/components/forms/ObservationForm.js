@@ -502,7 +502,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   const handleDateExit = async (event, this_item) => {
-    let AVAdate = makeDate(event.target.value, 'noFuture');
+    let AVAdate = makeDate(event.target.value, { validation: 'noFuture' });
     reactData.textInput[this_item.text] = AVAdate.absolute;
     reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
     setReactData(reactData);
