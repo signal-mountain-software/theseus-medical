@@ -31,6 +31,7 @@ export function makeDate(pInput, validation = null) {
             'numeric': 20990101,
             'numeric$': '20990101',
             'dayPart': 'day',   // afternoon
+            'workingHours': 'day',   // day, night, weekend
             'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 6
             'weekday': '',   // 'weekend' or 'weekday' 
             'textOut': pInput
@@ -93,6 +94,7 @@ export function makeDate(pInput, validation = null) {
                 'numeric': 20990101,
                 'numeric$': '20990101',
                 'dayPart': 'day',
+                'workingHours': 'day',
                 'dayOfWeek': 9,
                 'weekday': 'invalid', 
                 'textOut': pInput
@@ -138,6 +140,7 @@ export function makeDate(pInput, validation = null) {
                 'numeric': 20990101,
                 'numeric$': '20990101',
                 'dayPart': 'day',
+                'workingHours': 'day',
                 'dayOfWeek': 9,
                 'weekday': 'invalid',
                 'textOut': pInput
@@ -190,6 +193,7 @@ export function makeDate(pInput, validation = null) {
     }
     oaDate = `on ${absDate}`;
     let dayPart = 'day';
+    let workingHours = 'day';
     if ((targetDate.getHours() > 0) || (targetDate.getMinutes() > 0)) {
         let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
         absDate += tOfDay;
@@ -199,6 +203,7 @@ export function makeDate(pInput, validation = null) {
         if (hour < 12) { dayPart = "morning"; }
         else if (hour < 17) { dayPart = "afternoon"; }
         else (dayPart = "evening");
+        if ((hour < 8) || (hour > 18)) { workingHours = "night"; };
     }
     let targetDateYMD = targetDate.getFullYear()
         + '.' + (targetDate.getMonth() + 101).toString().slice(1)
@@ -219,6 +224,7 @@ export function makeDate(pInput, validation = null) {
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
         'dayPart': dayPart,
+        'workingHours': workingHours,
         'dayOfWeek': targetDate.getDay(),
         'weekday': (((targetDate.getDay() % 6) === 0) ? 'weekend' : 'weekday'),
         'textOut': pInput
@@ -472,9 +478,11 @@ export function makeTime(pTime) {
     if ((ampm === 'pm') && (hh < 12)) { numeric24 = ((hh + 12) * 100) + mm; }
     else { numeric24 = (hh * 100) + mm; }
     let dayPart;
+    let workingHours;
     if (numeric24 < 1200) { dayPart = "morning"; }
     else if (numeric24 < 1700) { dayPart = "afternoon"; }
     else (dayPart = "evening");
+    if ((numeric24 < 800) || (numeric24 > 1800)) { workingHours = "night"; };
     if (mm === 0) { mm$ = '00'; }
     else if (mm < 10) { mm$ = mm.toString().padStart(2, '0'); }
     else { mm$ = mm.toString(); }
@@ -487,6 +495,7 @@ export function makeTime(pTime) {
         mm,
         ampm,
         numeric24,
-        dayPart
+        dayPart,
+        workingHours
     };
 }
