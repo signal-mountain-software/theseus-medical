@@ -217,6 +217,9 @@ export function sentenceCase(pString) {
     if (w.toLowerCase() === 'ava') {
       returnString += 'AVA';
     }
+    if (w.toLowerCase() === 'bbq') {
+      returnString += 'BBQ';
+    }
     else if (x === 0) {
       returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1).toLowerCase()}`;
     }
@@ -334,6 +337,7 @@ export function titleCase(pString) {
     if (x === 0) { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     else if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
     else if (w.toLowerCase() === 'ava') { returnString += 'AVA'; }
+    else if (w.toLowerCase() === 'bbq') { returnString += 'BBQ'; }
     else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     returnString += ' ';
   });
@@ -632,7 +636,11 @@ export async function resolveVariables(pKey, pSession, options = {}) {
             });
             instruction = oResponse.occArray[oResponse.occArray.length - 1];
           }
-          let keyDate = makeDate(instruction);
+          let dateOptions = {};
+          if (pSession.working_hours) {
+            dateOptions.working_hours = deepCopy(pSession.working_hours);
+          }
+          let keyDate = makeDate(instruction, dateOptions);
           if (!keyDate.error) { response.push(front, keyDate[dType || 'obs']); }
           else {
             let iParts = [];
@@ -734,7 +742,7 @@ export async function updateDb(pData) {
             });
         }
         else {
-          newRec = Object.assign({}, pData[t].data);
+          newRec = Object.assign({}, pData[t].key, pData[t].data);
         }
         await dbClient
           .put({
@@ -746,7 +754,7 @@ export async function updateDb(pData) {
             console.log(`caught error putting to ${pData[t].table}; error is:`, error);
             response.push(error);
           });
-        continue pData_loop;
+        continue pData_loop;   // this jumps out and doesn't add to the aNameObj and aValuesObj
       }
       let aKey = `n${k_num++}`;
       aNamesObj[`#${aKey}`] = pKey;
