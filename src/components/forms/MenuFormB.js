@@ -562,17 +562,27 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
     let useDate = (selectedMenu('value') === '%date%');
     let [, cKey] = this_observation.composite_key.split('~');
     let p = cKey.replace('all_day', 'all-day').split('_');
-    if (p[0] === displayed_category) {   // Client~entree_2024.5.22_lunch_bistro  OR  Client~entree_2024.5.22
-      if (p[1] !== (useDate ? selectedDate('value') : selectedMenu('value'))) {
-        return false;
+    if (p[0] === displayed_category) {   
+      if (p[1] === (useDate ? selectedDate('value') : selectedMenu('value'))) {
+        // Client~entree_2024.5.22_lunch_bistro  OR  Client~entree_2024.5.22
+        if (p.length < 3) {
+          return (selectedMealType('value') === 'all-day');   // if !meal, then room will also be missing and we can fast forward to true
+        }
+        else if (p[2] !== selectedMealType('value')) {  // third parm is present?  it needs to match the meal
+          return false;
+        }
+        return ((p.length < 4) || (p[3] === selectedArea('value')));
       }
-      if (p.length < 3) {
-        return (selectedMealType('value') === 'all-day');   // if !meal, then room will also be missing and we can fast forward to true
+      else if (p[1] === selectedMealType('value')) {
+        // Client~entree_lunch_2024.5.22_bistro 
+        if (p.length < 3) {
+          return (selectedMealType('value') === 'all-day');   // if !date, then room will also be missing and we can fast forward to true
+        }
+        else if (p[2] !== (useDate ? selectedDate('value') : selectedMenu('value'))) {  // third parm is present?  it needs to match the date
+          return false;
+        }
+        return ((p.length < 4) || (p[3] === selectedArea('value')));
       }
-      else if (p[2] !== selectedMealType('value')) {  // third parm is present?  it needs to match the meal
-        return false;
-      }
-      return ((p.length < 4) || (p[3] === selectedArea('value')));
     }
     else if (p[0] === (useDate ? selectedDate('value') : selectedMenu('value'))) {   // check for Client~always_lunch_entree or Client~2024.5.22_lunch_entree or Client~always_entree or Client~2024.5.22_entree
       if (p[1] === selectedMealType('value')) {
