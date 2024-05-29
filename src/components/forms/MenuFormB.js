@@ -417,7 +417,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
 
   const handleNewObservation = async (values, menu_category) => {
     // new style observations are composite_key as Client~entree_2024.5.22_lunch_bistro (client_id!category_date_meal_room)
-    let meal_type = selectedMealType();
+    let meal_type = selectedMealType('value');
     let useDate = selectedMenu('value');
     let menu_date = ((useDate === '%date%') ? selectedDate('value') : useDate);
     let newCompositeKey = `${state.session.client_id}~${menu_category}_${menu_date}_${meal_type}`;
