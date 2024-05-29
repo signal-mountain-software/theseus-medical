@@ -304,7 +304,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     if (!v || (v.trim() === '')) {
       return '';
     }
-    if (!selectionList[ndx]) {
+    if (!selectionList || !selectionList[ndx]) {
       return v;
     }
     let foundIt = selectionList[ndx].find(s => {

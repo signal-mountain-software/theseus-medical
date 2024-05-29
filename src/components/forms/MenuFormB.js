@@ -417,8 +417,9 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
 
   const handleNewObservation = async (values, menu_category) => {
     // new style observations are composite_key as Client~entree_2024.5.22_lunch_bistro (client_id!category_date_meal_room)
-    let menu_date = selectedDate('value');
     let meal_type = selectedMealType();
+    let useDate = selectedMenu('value');
+    let menu_date = ((useDate === '%date%') ? selectedDate('value') : useDate);
     let newCompositeKey = `${state.session.client_id}~${menu_category}_${menu_date}_${meal_type}`;
     let room = selectedArea('value');
     if (room && (room !== '')) {
@@ -433,7 +434,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
       composite_key: newCompositeKey,
       observation_code: sentenceCase((Array.isArray(values) ? values[0].label : values.label)),
       observation_key: new_okey,
-      date_key: selectedDate('ymd'),
+      date_key: ((useDate === '%date%') ? selectedDate('ymd') : useDate),
       client_id: state.session.client_id,
       observation_type: `${meal_type}_${menu_category}`,
       sort_order: `${meal_type}_${menu_category}`
