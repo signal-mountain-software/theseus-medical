@@ -927,7 +927,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
               style={{
                 paddingLeft: '4px',
                 minHeight: '350px',
-                maxHeight: `${reactData.visible_y - 500}px`
+                maxHeight: `${reactData.visible_y - 400}px`
               }}
               id='dialog-content'
             >
@@ -984,7 +984,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                           noDataLabel={"No matches found"}
                           placeholder={`Tap to add a${(['a', 'e', 'i', 'o', 'u'].includes(menu_category[0].toLowerCase())) ? 'n' : ''} ${titleCase(menu_category.replace('_', ' ').trim())}`}
                           onChange={async (values) => {
-                            if (values.length > 0) {
+                            if ((values.length > 0) && !reactData.addMode) {
                               await handleNewObservation(values, menu_category);
                               updateReactData({
                                 selectedObservation: {},
