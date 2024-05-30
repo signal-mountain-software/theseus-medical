@@ -891,7 +891,13 @@ export default Component => props => {
           enqueueSnackbar(`There is no internet connection.`, { variant: 'error', persist: true });
         }
         else {
-          await logAccessAttempt(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is ${JSON.stringify(error.message)}`);
+          let eMessageText = JSON.stringify(error.message);
+          if (eMessageText.startsWith('Signature not yet current')) {
+            enqueueSnackbar(`The clock on this device is incorrect.  Please sync your device's time settings.`, { variant: 'error', persist: true });
+          }
+          else {
+            await logAccessAttempt(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is ${JSON.stringify(error.message)}`);
+          }
         }
         console.log({ 'Bad get on Session - caught error is': error });
         goodIO = false;
