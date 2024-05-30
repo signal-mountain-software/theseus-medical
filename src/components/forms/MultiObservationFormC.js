@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray, s3 } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3, restAPI } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
@@ -2422,7 +2422,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   style={{ backgroundColor: 'blue', color: 'white' }}
                   startIcon={<CloudUploadIcon />}
                   size='small'
-                  onClick={handleFileUpload}
+                  onClick={() => {
+                    let TELS_personId = '3379881';
+                    let TELS_APIKey = 'Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU';
+                    restAPI({
+                      hostname: `integrations.tels.net`,
+                      path: `/customers/v1/contacts/${TELS_personId}/facilities`,
+                      method: 'GET',
+                      headers: {
+                        'X-API-Key': TELS_APIKey,
+                      },
+                    });
+                    handleFileUpload();
+                    console.log('upload done');
+                  }}
                 >
                   {'Attach'}
                 </Button>

@@ -800,3 +800,44 @@ export async function deleteDbRec(pData) {
   }
   return response;
 }
+
+export async function restAPI(options) {
+  const http = require('http');
+
+  /*
+  options = {
+    hostname: `integrations.tels.net`,
+    path: `/customers/v1/contacts/${TELS_personId}/facilities`,
+    method: 'GET',
+    headers: {
+      'X-API-Key': TELS_APIKey,
+  },
+  */
+
+  if (!options) {
+    return {};
+  };
+
+  const getPosts = () => {
+    let data = '';
+
+    const request = http.request(options, (response) => {
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      response.on('end', () => {
+        console.log(data);
+      });
+    });
+
+    request.on('error', (error) => {
+      console.error(error);
+    });
+
+    request.end();
+  };
+
+  getPosts();
+}
