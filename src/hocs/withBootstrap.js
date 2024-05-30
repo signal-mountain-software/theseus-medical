@@ -896,7 +896,7 @@ export default Component => props => {
             enqueueSnackbar(`The clock on this device is incorrect.  Please sync your device's time settings.`, { variant: 'error', persist: true });
           }
           else {
-            await logAccessAttempt(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is ${JSON.stringify(error.message)}`);
+            await logAccessAttempt(pSessionID.toLowerCase(), '', false, `Error reading SessionsV2 (case converted) is ${eMessageText}`);
           }
         }
         console.log({ 'Bad get on Session - caught error is': error });
