@@ -130,7 +130,7 @@ const useStyles = makeStyles(theme => ({
     paddingBottom: 16,
     marginRight: 32,
     fontSize: theme.typography.fontSize * 0.857,
-    color: '#0000008A'
+    color: (true ? 'black' : '#0000008A')
   },
   local_tiny: {
     paddingTop: 16,
@@ -1204,6 +1204,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                         classes={{ root: classes.idText }}
                         id={`loc-${local}`}
                         value={localData.local_data_display[local] || ' '}
+                        inputProps={{ style: { color: 'black' } }}
+                        FormHelperTextProps={{ style: { color: 'black' } }}
                         onChange={(event) => {
                           switch (state.session.local_data[local]) {
                             case 'phone': {
