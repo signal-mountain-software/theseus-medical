@@ -1032,6 +1032,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
   };
 
+  function OKtoShow(this_item) {
+    return true;
+  }
+
   async function applyExistingRequest(existingRequest, this_column, this_column_index) {
     this_column.request_to_update = existingRequest.requestToUse;
     if (!existingRequest.requestToUse.hasOwnProperty('current_request')) {
@@ -1510,7 +1514,33 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             this_row.textValue = 'Signature captured';
           }
         }
-        if (this_row.required && !this_row.textValue) {
+        if (this_row.checkbox && this_row.isChecked && this_row.qualData) {
+          this_row.qualData.forEach(this_qual => {
+            if (this_qual.min_required > 0) {
+              let qualCount = 0;
+              if (this_row.qualSelections && this_row.qualSelections.hasOwnProperty(this_qual.title)) {
+                qualCount = (Object.values(this_row.qualSelections[this_qual.title]).filter(this_value => {
+                  return this_value;
+                })).length;
+              }
+              if (qualCount < this_qual.min_required) {
+                confirmStatus = 'error'; 
+                warningsExist = true;
+                if (this_qual.max_allowed === this_qual.min_required) {
+                  warningSection.push(`[color:red][bold]You must select ${this_qual.min_required} from ${this_qual.title} since ${this_row.text} is selected`);
+                }
+                else {
+                  warningSection.push(`[color:red][bold]You must select at least ${this_qual.min_required} from ${this_qual.title} since ${this_row.text} is selected`);
+                }
+              }
+            }
+          })
+          reactData.columnList[column_number].rowDetails[row_number].error = "More information is needed";
+          updateReactData({
+            columnList: reactData.columnList
+          }, false);
+        }
+        else if (this_row.required && !this_row.textValue && !this_row.isChecked) {
           confirmStatus = 'error';
           if (pData.length > 1) {
             warningSection.push(`[color:red][bold]${columnName} is missing "${this_row.text}"`);
@@ -1835,6 +1865,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           <Paper component={Box} className={classes.page} overflow='auto' square>
             {(reactData.columnList.length > 0) &&
               (reactData.columnList[selectedColumn].rowDetails).map((this_item, this_index) => (
+                (OKtoShow(this_item) &&
                 <Box display='flex'
                   flexDirection='row'
                   borderRadius={'16px'}
@@ -2245,7 +2276,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       }
                     </React.Fragment>
                   }
-                </Box>
+                  </Box>
+                )
               ))
             }
             { /* Show list of already uploaded attachments (if applicable) */}
