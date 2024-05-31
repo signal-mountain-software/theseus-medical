@@ -360,42 +360,17 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
     let menus = {
       'special': {
         value: '%date%',
-        display_value: ['Specials']
+        display_value: ['Daily', 'Specials']
       },
       'everyday': {
         value: 'always',
         display_value: ['Everyday', 'Options']
       }
     };
-    /*
-    let meal_service = {
-      "breakfast": {
-        value: 'breakfast',
-        categories: ['entree', 'side'],
-        display_value: ['Breakfast']
-      },
-      "lunch": {
-        value: 'lunch',
-        categories: ['entree', 'side', 'soup', 'salad', 'bread', 'dessert'],
-        display_value: ['Lunch']
-      },
-      "dinner": {
-        value: 'dinner',
-        categories: ['entree', 'side', 'soup', 'salad', 'bread', 'dessert'],
-        display_value: ['Dinner']
-      },
-      "all_day": {
-        value: 'all-day',
-        categories: ['entree', 'side', 'soup', 'salad', 'bread', 'dessert'],
-        display_value: ['All', 'Day']
-      },
-    };
-    */
     local_service_details = {
       dining_area,
       dates,
       menus
-      //    meal_service
     };
     return local_service_details;
   };
@@ -563,7 +538,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
     let useDate = (selectedMenu('value') === '%date%');
     let [, cKey] = this_observation.composite_key.split('~');
     let p = cKey.replace('all_day', 'all-day').split('_');
-    if (p[0] === displayed_category) {   
+    if (p[0] === displayed_category) {
       if (p[1] === (useDate ? selectedDate('value') : selectedMenu('value'))) {
         // Client~entree_2024.5.22_lunch_bistro  OR  Client~entree_2024.5.22
         if (p.length < 3) {
@@ -619,315 +594,297 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
         {!reactData.observationItemMode && !reactData.loadMode && !reactData.deletePending &&
           <React.Fragment>
             { /* Selection Row */}
-            {(Object.keys(reactData.service_details).length > 1) &&
-              <Box display='flex'
-                flexDirection='column'
-                marginRight={2}
-                marginLeft={0}
-                marginTop={0}
-                marginBottom={0}
-                borderBottom={2}
-                paddingTop={1}
-                justifyContent='flex-start'
-                alignItems='flex-start'
-                key={`selectionBox-${selectedMealType()}-${reactData.dateKey.obs}`}
-                id={`selectionBox-${selectedMealType()}-${reactData.dateKey.obs}`}
-                className={classes.listItemSticky}
-              >
-                { /* Dining Rooms */
-                  (Object.keys(reactData.service_details['dining_area']).length > 1) &&
-                  <Box
-                    display='flex'
-                    flexDirection='row'
-                    mb={0.5}
-                    mt={0.5}
-                    minHeight={'80px'}
-                    key={'row_diningarea'}
-                    overflow={(Object.keys(reactData.service_details['dining_area']).length > 5) ? 'scroll' : null}
-                    justifyContent='flex-start'
-                    alignItems='center'
-                  >
+            <DialogContent
+              key={`category-detail-box-outside_${selectedMenu('value')}`}
+              style={{
+                paddingLeft: '4px',
+                paddingTop: 0,
+                minHeight: `100px`,
+                maxHeight: `${reactData.visible_y - ((selectedMenu('value') === '%date%') ? 425 : 350)}px`
+              }}
+              id='dialog-content'
+            >
+              {(Object.keys(reactData.service_details).length > 1) &&
+                <Box display='flex'
+                  flexDirection='column'
+                  marginRight={2}
+                  marginLeft={0}
+                  marginTop={0}
+                  marginBottom={0}
+                  paddingTop={1}
+                  justifyContent='flex-start'
+                  alignItems='flex-start'
+                  key={`selectionBox-${selectedMealType()}-${reactData.dateKey.obs}`}
+                  id={`selectionBox-${selectedMealType()}-${reactData.dateKey.obs}`}
+                >
+                  { /* Dining Rooms */
+                    (Object.keys(reactData.service_details['dining_area']).length > 1) &&
                     <Box
                       display='flex'
-                      flexDirection='column'
-
-                      marginLeft={0}
-                      paddingBottom={1}
-                      key={`radiobox-diningarea`}
-                      justifyContent='space-between'
+                      flexDirection='row'
+                      key={'row_diningarea'}
+                      marginBottom={2}
+                      overflow={(Object.keys(reactData.service_details['dining_area']).length > 5) ? 'scroll' : null}
+                      justifyContent='flex-start'
                       alignItems='center'
                     >
-                      <Typography key={`selectDiningWord_a`}
-                        style={AVATextStyle({ margin: { bottom: -0.2 } })}
-                      >
-                        {'Dining'}
-                      </Typography>
-                      <Typography key={`selectDiningWord_b`}>
-                        {'Room'}
-                      </Typography>
-                    </Box>
-                    {Object.keys(reactData.service_details['dining_area']).map((areaType_key, aTNdx) => (
                       <Box
                         display='flex'
                         flexDirection='column'
-
-                        marginLeft={5}
-                        key={`radiobox-areahead-${aTNdx}`}
-                        justifyContent='space-between'
-                        alignItems='center'
+                        marginLeft={0}
+                        width={'60px'}
+                        justifyContent='flex-start'
+                        key={`radiobox-diningarea`}
+                        alignItems='flex-start'
                       >
-                        <Typography key={`radiobox-areahead-${aTNdx}-title`}
-                          style={AVATextStyle({ size: 1, margin: { bottom: -0.2 } })}
+                        <Typography key={`selectDiningWord_a`}
+                          style={AVATextStyle({ margin: { bottom: -0.2 } })}
                         >
-                          {titleCase(local_service_details['dining_area'][areaType_key].display_value[0])}
+                          {'Dining'}
                         </Typography>
-                        {(local_service_details['dining_area'][areaType_key].display_value.length > 1) &&
-                          <Typography key={`radiobox-areahead-${aTNdx}-title2`}
-                            style={AVATextStyle({ size: 1, margin: { bottom: -0.2 } })}
+                        <Typography key={`selectDiningWord_b`}>
+                          {'Room'}
+                        </Typography>
+                      </Box>
+                      {Object.keys(reactData.service_details['dining_area']).map((areaType_key, aTNdx) => (
+                        <Box
+                          display='flex'
+                          flexDirection='row'
+                          marginLeft={5}
+                          key={`radiobox-areahead-${aTNdx}`}
+                          justifyContent='center'
+                          alignItems='center'
+                        >
+                          <Typography key={`radiobox-areahead-${aTNdx}-title`}
+                            style={AVATextStyle({ size: 1 })}
                           >
-                            {titleCase(local_service_details['dining_area'][areaType_key].display_value[1])}
+                            {titleCase(`${local_service_details['dining_area'][areaType_key].display_value[0]} ${local_service_details['dining_area'][areaType_key].display_value[1] || ''}`)}
                           </Typography>
-                        }
-                        <Radio
-                          key={`radiobox-areahead-${aTNdx}-${reactData.dateKey.obs}-radio`}
-                          checked={(selectedArea() === areaType_key)}
-                          value={(selectedArea() === areaType_key)}
-                          onClick={() => {
-                            updateReactData({
-                              selectedArea: areaType_key
-                            }, true);
-                          }}
-                          disableRipple
-                          className={classes.radioButton}
-                          size='small'
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                }
+                          <Radio
+                            key={`radiobox-areahead-${aTNdx}-${reactData.dateKey.obs}-radio`}
+                            checked={(selectedArea() === areaType_key)}
+                            value={(selectedArea() === areaType_key)}
+                            onClick={() => {
+                              updateReactData({
+                                selectedArea: areaType_key
+                              }, true);
+                            }}
+                            disableRipple
+                            className={classes.radioButton}
+                            size='small'
+                          />
+                        </Box>
+                      ))}
+                    </Box>
+                  }
 
-                { /* Date */}
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  key={`row_dates_${reactData.parm_keyDate}`}
-                  justifyContent='flex-start'
-                  alignItems='center'
-                >
-                  <Box
-                    display='flex'
-                    flexDirection='column'
-                    marginLeft={0}
-                    mb={0.5}
-                    mt={0.5}
-                    minHeight={'80px'}
-                    paddingBottom={1}
-                    key={`radiobox-dates-colhead`}
-                    justifyContent='center'
-                    alignItems='center'
-                  >
-                    <Typography key={`selectWord_dates_a`}>
-                      {'Date'}
-                    </Typography>
-
-                  </Box>
-                  <Box
-                    display='flex'
-                    flexDirection='row'
-                    flexWrap={'wrap'}
-                    key={`row_dates_${reactData.parm_keyDate}_c2`}
-                    justifyContent='flex-start'
-                    alignItems='center'
-                  >
-                    {Object.keys(local_service_details['dates']).map((menuDate_key, menuNDX) => (
-                      <Box
-                        display='flex'
-                        flexDirection='column'
-                        marginLeft={5}
-                        mb={0.5}
-                        mt={0.5}
-                        key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}`}
-                        justifyContent='space-between'
-                        alignItems='center'
-                      >
-                        <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title`}
-                          style={AVATextStyle({ size: 1, margin: { bottom: -0.2 }, wrap: 'nowrap' })}
-                        >
-                          {titleCase(local_service_details['dates'][menuDate_key].display_value)}
-                        </Typography>
-                        <Radio
-                          key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-radio`}
-                          checked={(selectedDate() === menuDate_key)}
-                          value={(selectedDate() === menuDate_key)}
-                          onClick={() => {
-                            updateReactData({
-                              selectedDateKey: menuDate_key
-                            }, true);
-                          }}
-                          disableRipple
-                          className={classes.radioButton}
-                          size='small'
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-
-                { /* Meal */
-                  (Object.keys(reactData.service_details['dining_area'][selectedArea()]['meal_service']).length > 1) &&
-                  <Box
-                    display='flex'
-                    flexDirection='row'
-                    mb={0.5}
-                    mt={0.5}
-                    minHeight={'80px'}
-                    key={'row_mealservice'}
-                    overflow={(Object.keys(reactData.service_details['dining_area'][selectedArea()]['meal_service']).length > 5) ? 'scroll' : null}
-                    justifyContent='flex-start'
-                    alignItems='center'
-                  >
+                  { /* Menu - "Daily Special" or "Everyday" */
                     <Box
                       display='flex'
-                      flexDirection='column'
-
-                      marginLeft={0}
-                      paddingBottom={1}
-                      key={`radiobox-datehead`}
-                      justifyContent='space-between'
+                      flexDirection='row'
+                      key={`row_dates_menus`}
+                      marginBottom={2}
+                      justifyContent='flex-start'
                       alignItems='center'
                     >
-                      <Typography key={`selectWord_a`}
-                        style={AVATextStyle({ margin: { bottom: -0.2 } })}
+                      <Box
+                        display='flex'
+                        flexDirection='column'
+                        marginLeft={0}
+                        width={'60px'}
+                        key={`radiobox-menus-colhead`}
+                        justifyContent='flex-start'
+                        alignItems='flex-start'
                       >
-                        {'Meal'}
-                      </Typography>
-                      <Typography key={`selectWord_b`}>
-                        {'Type'}
-                      </Typography>
+                        <Typography key={`selectWord_dates_a`}>
+                          {'Menu'}
+                        </Typography>
+                      </Box>
+                      {Object.keys(local_service_details['menus']).map((menuType_key, menuNDX) => (
+                        <Box
+                          display='flex'
+                          flexDirection='row'
+                          marginLeft={5}
+                          key={`radiobox-menuhead-${menuType_key}-${reactData.parm_keyDate}`}
+                          justifyContent='center'
+                          alignItems='center'
+                        >
+                          <Typography key={`radiobox-menuhead-${menuType_key}-title`}
+                            style={AVATextStyle({ size: 1 })}
+                          >
+                            {titleCase(`${local_service_details['menus'][menuType_key].display_value[0]} ${local_service_details['menus'][menuType_key].display_value[1] || ''}`)}
+                          </Typography>
+                          <Radio
+                            key={`radiobox-datehead-${menuType_key}-${reactData.parm_keyDate}-radio`}
+                            checked={(selectedMenu() === menuType_key)}
+                            value={(selectedMenu() === menuType_key)}
+                            onClick={() => {
+                              updateReactData({
+                                selectedMenu: menuType_key
+                              }, true);
+                            }}
+                            disableRipple
+                            className={classes.radioButton}
+                            size='small'
+                          />
+                        </Box>
+                      ))}
                     </Box>
-                    {Object.keys(reactData.service_details['dining_area'][selectedArea()]['meal_service']).map((menu_type, mtNDX) => (
+                  }
+
+                  { /* Date */
+                    (selectedMenu('value') === '%date%') &&
+                    <Box
+                      display='flex'
+                      flexDirection='row'
+                      marginBottom={2}
+                      key={`row_dates_${reactData.parm_keyDate}`}
+                      justifyContent='flex-start'
+                      alignItems='center'
+                    >
                       <Box
                         display='flex'
                         flexDirection='column'
+                        marginLeft={0}
+                        key={`radiobox-dates-colhead`}
+                        width={'60px'}
+                        justifyContent='flex-start'
+                        alignItems='flex-start'
+                      >
+                        <Typography key={`selectWord_dates_a`}>
+                          {'Date'}
+                        </Typography>
 
-                        marginLeft={5}
-                        key={`radiobox-mealhead-${menu_type}`}
-                        justifyContent='space-between'
+                      </Box>
+                      <Box
+                        display='flex'
+                        flexDirection='row'
+                        flexWrap={'no-wrap'}
+                        key={`row_dates_${reactData.parm_keyDate}_c2`}
+                        justifyContent='flex-start'
                         alignItems='center'
                       >
-                        <Typography key={`radiobox-mealhead-${mtNDX}-title`}
-                          style={AVATextStyle({ size: 1, margin: { bottom: -0.2 } })}
-                        >
-                          {titleCase(local_service_details['dining_area'][selectedArea()]['meal_service'][menu_type].display_value[0])}
-                        </Typography>
-                        {(local_service_details['dining_area'][selectedArea()]['meal_service'][menu_type].display_value.length > 1) &&
-                          <Typography key={`radiobox-mealhead-${mtNDX}-title2`}
-                            style={AVATextStyle({ size: 1, margin: { bottom: -0.2 } })}
+                        {Object.keys(local_service_details['dates']).map((menuDate_key, menuNDX) => (
+                          <Box
+                            display='flex'
+                            flexDirection='column'
+                            marginLeft={5}
+                            mt={0.5}
+                            key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}`}
+                            justifyContent='space-between'
+                            alignItems='center'
                           >
-                            {titleCase(local_service_details['dining_area'][selectedArea()]['meal_service'][menu_type].display_value[1])}
-                          </Typography>
-                        }
-                        <Radio
-                          key={`radiobox-mealhead-${menu_type}-${reactData.dateKey.obs}-radio`}
-                          checked={(selectedMealType() === menu_type)}
-                          value={(selectedMealType() === menu_type)}
-                          onClick={() => {
-                            updateReactData({
-                              selectedMealType: menu_type
-                            }, true);
-                          }}
-                          disableRipple
-                          className={classes.radioButton}
-                          size='small'
-                        />
+                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title`}
+                              style={AVATextStyle({ size: 1, margin: { bottom: -0.2 }, wrap: 'nowrap' })}
+                            >
+                              {titleCase(local_service_details['dates'][menuDate_key].display_value)}
+                            </Typography>
+                            <Radio
+                              key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-radio`}
+                              checked={(selectedDate() === menuDate_key)}
+                              value={(selectedDate() === menuDate_key)}
+                              onClick={() => {
+                                updateReactData({
+                                  selectedDateKey: menuDate_key
+                                }, true);
+                              }}
+                              disableRipple
+                              className={classes.radioButton}
+                              size='small'
+                            />
+                          </Box>
+                        ))}
                       </Box>
-                    ))}
-                  </Box>
-                }
+                    </Box>
+                  }
 
-                { /* Menu */}
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  key={`row_dates_menus`}
-                  justifyContent='flex-start'
-                  alignItems='center'
-                >
-                  <Box
-                    display='flex'
-                    flexDirection='column'
-                    marginLeft={0}
-                    mb={0.5}
-                    mt={0.5}
-                    minHeight={'80px'}
-                    paddingBottom={1}
-                    key={`radiobox-menus-colhead`}
-                    justifyContent='center'
-                    alignItems='center'
-                  >
-                    <Typography key={`selectWord_dates_a`}>
-                      {'Menu'}
-                    </Typography>
-
-                  </Box>
-                  <Box
-                    display='flex'
-                    flexDirection='row'
-                    flexWrap={'wrap'}
-                    key={`row_menus_c2`}
-                    justifyContent='flex-start'
-                    alignItems='center'
-                  >
-                    {Object.keys(local_service_details['menus']).map((menuType_key, menuNDX) => (
+                  { /* Meal - AKA "meal" - lunch, dinner, breakfast, allday, ... */
+                    (Object.keys(reactData.service_details['dining_area'][selectedArea()]['meal_service']).length > 1) &&
+                    <Box
+                      display='flex'
+                      flexDirection='row'
+                      key={'row_mealservice'}
+                      overflow={(Object.keys(reactData.service_details['dining_area'][selectedArea()]['meal_service']).length > 5) ? 'scroll' : null}
+                      justifyContent='flex-start'
+                      alignItems='flex-start'
+                    >
                       <Box
                         display='flex'
                         flexDirection='column'
-                        marginLeft={5}
-                        mb={0.5}
-                        mt={0.5}
-                        key={`radiobox-menuhead-${menuType_key}-${reactData.parm_keyDate}`}
-                        justifyContent='space-between'
-                        alignItems='center'
+                        marginLeft={0}
+                        width={'60px'}
+                        key={`radiobox-type-colhead`}
+                        justifyContent='flex-start'
+                        alignItems='flex-start'
                       >
-                        <Typography key={`radiobox-menuhead-${menuType_key}-title`}
-                          style={AVATextStyle({ size: 1, margin: { bottom: -0.2 } })}
+                        <Typography key={`selectWord_a`}
+                          style={AVATextStyle({ margin: { bottom: -0.2 } })}
                         >
-                          {titleCase(local_service_details['menus'][menuType_key].display_value[0])}
+                          {'Meal'}
                         </Typography>
-                        {(local_service_details['menus'][menuType_key].display_value.length > 1) &&
-                          <Typography key={`radiobox-menuhead-${menuType_key}-title2`}
-                            style={AVATextStyle({ size: 1, margin: { bottom: -0.2 } })}
-                          >
-                            {titleCase(local_service_details['menus'][menuType_key].display_value[1])}
-                          </Typography>
-                        }
-                        <Radio
-                          key={`radiobox-datehead-${menuType_key}-${reactData.parm_keyDate}-radio`}
-                          checked={(selectedMenu() === menuType_key)}
-                          value={(selectedMenu() === menuType_key)}
-                          onClick={() => {
-                            updateReactData({
-                              selectedMenu: menuType_key
-                            }, true);
-                          }}
-                          disableRipple
-                          className={classes.radioButton}
-                          size='small'
-                        />
+                        <Typography key={`selectWord_b`}>
+                          {'Type'}
+                        </Typography>
                       </Box>
-                    ))}
-                  </Box>
+                      {Object.keys(reactData.service_details['dining_area'][selectedArea()]['meal_service']).map((menu_type, mtNDX) => (
+                        <Box
+                          display='flex'
+                          flexDirection='row'
+                          marginLeft={5}
+                          key={`radiobox-typehead-${mtNDX}-${reactData.parm_keyDate}`}
+                          justifyContent='center'
+                          alignItems='center'
+                        >
+                          <Typography key={`radiobox-typehead-${mtNDX}-title`}
+                            style={AVATextStyle({ size: 1 })}
+                          >
+                            {titleCase(`${local_service_details['dining_area'][selectedArea()]['meal_service'][menu_type].display_value[0]} ${local_service_details['dining_area'][selectedArea()]['meal_service'][menu_type].display_value[1] || ''}`)}
+                          </Typography>
+                          <Radio
+                            key={`radiobox-typehead-${mtNDX}-${reactData.dateKey.obs}-radio`}
+                            checked={(selectedMealType() === menu_type)}
+                            value={(selectedMealType() === menu_type)}
+                            onClick={() => {
+                              updateReactData({
+                                selectedMealType: menu_type
+                              }, true);
+                            }}
+                            disableRipple
+                            className={classes.radioButton}
+                            size='small'
+                          />
+                        </Box>
+                      ))}
+                    </Box>
+                  }
+
                 </Box>
-              </Box>
-            }
+              }
+            </DialogContent>
+
+            <Box display='flex'
+              flexDirection='column'
+              marginRight={2}
+              marginLeft={0}
+              marginTop={0}
+              marginBottom={1}
+              borderBottom={2}
+              paddingTop={1}
+              justifyContent='flex-start'
+              alignItems='flex-start'
+              key={`drawALine`}
+              id={`drawALine`}
+            >
+            </Box>
 
             { /* Data rows */}
             <DialogContent
-              key={`category-detail-box-outside`}
+              key={`category-detail-box-outside2`}
+              maxHeight={'50%'}
               style={{
                 paddingLeft: '4px',
-                minHeight: '350px',
-                maxHeight: `${reactData.visible_y - 400}px`
+                minHeight: `${Math.min(reactData.visible_y - 400, 350)}px`,
+                maxHeight: `${reactData.visible_y - 425}px`
               }}
               id='dialog-content'
             >
