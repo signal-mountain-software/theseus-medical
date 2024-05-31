@@ -941,7 +941,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   minWidth={250}
                   maxWidth={250}
                   alt=''
-                  src={superSizeData.image}
+                  src={getImage(superSizeData.id)}
                 />
               </Box>
               <Typography className={classes.superSizeLast} >{superSizeData.name.last || superSizeData.display_name}</Typography>
