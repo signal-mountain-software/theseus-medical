@@ -1047,13 +1047,13 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           else {
             if (checkRow.checkbox) {    // checkbox 
               if (!checkValue) {
-                return checkRow.isChecked
+                return checkRow.isChecked;
               }
               else if (!checkRow.isChecked || !qualSelected || !checkRow.qualSelections) {
                 return false;
               }
               else {
-                return (checkRow.qualSelections.hasOwnProperty(checkValue) && checkRow.qualSelections[checkValue][qualSelected])
+                return (checkRow.qualSelections.hasOwnProperty(checkValue) && checkRow.qualSelections[checkValue][qualSelected]);
               }
             }
             else if (!checkValue) {    // not a checkbox... if we don't care if there is a vlue type in or not? 
@@ -2500,6 +2500,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       method: 'GET',
                       headers: {
                         'X-API-Key': TELS_APIKey,
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'GET, HEAD, PUT, PATCH, POST, DELETE'
                       },
                     });
                     handleFileUpload();
