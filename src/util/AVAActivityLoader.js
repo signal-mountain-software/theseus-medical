@@ -7,6 +7,7 @@ let sessionState;
 let checkbox = true;
 let ignore = false;
 let required = false;
+let rowTestArray = [];
 let multiColumn = false;
 let displayBold = false;
 let displayStyle = false;
@@ -240,6 +241,18 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           checkbox = (oValue.toLowerCase() === 'on');
           break;
         }
+        case 'display_if': 
+        case 'displayif': 
+        case 'displayIF': { 
+          rowTestArray.push(oValue);
+          break;
+        }
+        case 'end_if':
+        case 'endif':
+        case 'endIF': {
+          rowTestArray.pop();
+          break;
+        }
         case 'noOp': {
           doneWithTopBox = true;
           break;
@@ -302,6 +315,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         checkbox,
         isChecked: false,
         required,
+        rowTest: deepCopy(rowTestArray),
         multiColumn,
         text: instruction[0],
         observationKey: getKey(instruction[0]),
@@ -339,6 +353,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           checkbox: false,
           isChecked: false,
           required: false,
+          rowTest: deepCopy(rowTestArray),
           multiColumn,
           text: docRows,
           observationKey: null,
@@ -372,6 +387,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       let rObj = {
         checkbox: false,
         required,
+        rowTest: deepCopy(rowTestArray),
         multiColumn: false,
         text: this_instruction,
         textValue: defaults[this_instruction],
@@ -401,6 +417,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     displayRowList.push({
       checkbox: false,
       required: false,
+      rowTest: deepCopy(rowTestArray),
       multiColumn: false,
       text: instruction[1],
       observationKey: getKey(instruction[1]),
