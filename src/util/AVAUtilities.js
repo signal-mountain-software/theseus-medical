@@ -801,26 +801,32 @@ export async function deleteDbRec(pData) {
   return response;
 }
 
-export async function restAPI(options) {
-  const http = require('http');
-
-  /*
-  options = {
-    hostname: `integrations.tels.net`,
-    path: `/customers/v1/contacts/${TELS_personId}/facilities`,
-    method: 'GET',
-    headers: {
-      'X-API-Key': TELS_APIKey,
-  },
-  */
+export async function restAPI(path, options) {
 
   if (!options) {
     return {};
   };
 
-  const getPosts = () => {
+  const fetchPosts = async () => {
+    let response = await fetch(path, options);
+    let responseFromResponse = await response.json();
+    console.log(responseFromResponse);
+    let responseAsAStream = response.body;
+    console.log(responseAsAStream);
+    let responseAsJSON;
+    const enc = new TextDecoder("utf-8");
+    for await (const chunk of responseAsAStream) {
+      console.log(chunk);
+      let responseAsData = (enc.decode(chunk));
+      console.log(responseAsData);
+    }
+    console.log(responseAsJSON);
+  };
+
+  const requestPosts = async () => {
+    const http = require('http');
     let data = '';
-    const request = http.request(options, (response) => {
+    const request = await http.request(options, (response) => {
       response.setEncoding('utf8');
       response.on('data', (chunk) => {
         data += chunk;
@@ -835,5 +841,9 @@ export async function restAPI(options) {
     request.end();
   };
 
-  getPosts();
+  await fetchPosts()
+    .catch(err => {
+      console.error(err);
+    });
+  await requestPosts();
 }

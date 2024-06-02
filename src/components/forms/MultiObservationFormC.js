@@ -2491,13 +2491,15 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   style={{ backgroundColor: 'blue', color: 'white' }}
                   startIcon={<CloudUploadIcon />}
                   size='small'
-                  onClick={() => {
+                  onClick={async () => {
                     let TELS_personId = '3379881';
                     let TELS_APIKey = 'Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU';
-                    restAPI({
+                    let path = 'https://integrations.tels.net/customers/v1/contacts/3379881/facilities';
+                    await restAPI(path, {
                       hostname: `integrations.tels.net`,
                       path: `/customers/v1/contacts/${TELS_personId}/facilities`,
                       method: 'GET',
+                      mode: 'no-cors',
                       headers: {
                         'X-API-Key': TELS_APIKey,
                         'Access-Control-Allow-Origin': '*',
