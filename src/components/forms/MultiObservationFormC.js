@@ -2494,18 +2494,41 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   onClick={async () => {
                     let TELS_personId = '3379881';
                     let TELS_APIKey = 'Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU';
-                    let path = 'https://integrations.tels.net/customers/v1/contacts/3379881/facilities';
-                    await restAPI(path, {
-                      hostname: `integrations.tels.net`,
-                      path: `/customers/v1/contacts/${TELS_personId}/facilities`,
-                      method: 'GET',
-                      mode: 'no-cors',
+                    let url = 'https://integrations.tels.net/customers/v1/contacts/3379881/facilities';
+                    let options = {
+                      method: "GET", // *GET, POST, PUT, DELETE, etc.
+               //       mode: "no-cors", // no-cors, *cors, same-origin
+                      path: ``,
+                      credentials: "include", // include, *same-origin, omit
                       headers: {
-                        'X-API-Key': TELS_APIKey,
+                        'X-API-Key': 'Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU',
                         'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Methods': 'GET, HEAD, PUT, PATCH, POST, DELETE'
+                        'Access-Control-Allow-Methods': 'GET, HEAD, PUT, PATCH, POST, DELETE',
+                        'User-Agent': 'PostmanRuntime/7.39.0',
+                        'Accept': '*/*',
+                        'Postman-Token': '96ee2a83-48d6-4506-91e5-143669c36bbe',
+                        'Host': 'integrations.tels.net',
+                        'Accept-Encoding': 'gzip, deflate, br',
+                        'Connection': 'keep-alive'
                       },
-                    });
+                    };
+                    const response = await fetch(url, options)
+                      .catch(err => {
+                        console.error(err);
+                      });
+                    console.log(response.json());
+
+
+
+
+
+
+
+
+
+
+
+
                     handleFileUpload();
                     console.log('upload done');
                   }}

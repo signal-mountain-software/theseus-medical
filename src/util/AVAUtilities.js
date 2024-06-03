@@ -801,6 +801,7 @@ export async function deleteDbRec(pData) {
   return response;
 }
 
+/*
 export async function restAPI(path, options) {
 
   if (!options) {
@@ -808,7 +809,15 @@ export async function restAPI(path, options) {
   };
 
   const fetchPosts = async () => {
-    let response = await fetch(path, options);
+    fetch(path, options)
+      .then(data => {
+      return data,json()
+    })
+
+
+
+
+    console.log('after fetch');
     let responseFromResponse = await response.json();
     console.log(responseFromResponse);
     let responseAsAStream = response.body;
@@ -826,7 +835,7 @@ export async function restAPI(path, options) {
   const requestPosts = async () => {
     const http = require('http');
     let data = '';
-    const request = await http.request(options, (response) => {
+    const request = http.request(options, ((response) => {
       response.setEncoding('utf8');
       response.on('data', (chunk) => {
         data += chunk;
@@ -834,16 +843,20 @@ export async function restAPI(path, options) {
       response.on('end', () => {
         console.log(data);
       });
-    });
+      
+    }));
     request.on('error', (error) => {
       console.error(error);
     });
     request.end();
   };
 
+
   await fetchPosts()
     .catch(err => {
       console.error(err);
     });
+
   await requestPosts();
 }
+*/
