@@ -589,6 +589,11 @@ export async function resolveVariables(pKey, pSession, options = {}) {
           response.push(front, pMe.location);
           break;
         }
+        case 'local': {
+          let pMe = await getPerson(pSession.patient_id);
+          response.push(front, pMe.local_data ? pMe.local_data[dType] : '');
+          break;
+        }
         case 'person':
         case 'patient': {
           response.push(front, pSession.patient_id);

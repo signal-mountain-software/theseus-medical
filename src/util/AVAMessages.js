@@ -388,6 +388,12 @@ export async function resolveMessageVariables(inString = '', body) {
         workString = `${front}${body.activityName}${back}`;
         break;
       }
+      case 'env':
+      case 'environment': {
+        let env = window.location.href.split('//')[1].charAt(0).toLowerCase();
+        workString = `${front}${env}${back}`;
+        break;
+      }
       case 'memberOf': {
         let gList = await getGroupsBelongTo(body.client, body.author);
         workString = `${front}${Object.keys(gList).join(' ~ ')}${back}`;
