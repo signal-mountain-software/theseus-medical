@@ -1547,6 +1547,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             this_row.textValue = 'Signature captured';
           }
         }
+        reactData.columnList[column_number].rowDetails[row_number].error = false;
         if (this_row.checkbox && this_row.isChecked && this_row.qualData) {
           this_row.qualData.forEach(this_qual => {
             if (this_qual.min_required > 0) {
@@ -1559,30 +1560,34 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               if (qualCount < this_qual.min_required) {
                 confirmStatus = 'error';
                 warningsExist = true;
+                let warningMessage;
                 if (this_qual.max_allowed === this_qual.min_required) {
-                  warningSection.push(`[color:red][bold]You must select ${this_qual.min_required} from ${this_qual.title} since ${this_row.text} is selected`);
+                  warningMessage = `You must select ${this_qual.min_required} from ${this_qual.title} since ${this_row.text} is selected`;
                 }
                 else {
-                  warningSection.push(`[color:red][bold]You must select at least ${this_qual.min_required} from ${this_qual.title} since ${this_row.text} is selected`);
+                  warningMessage = `You must select at least ${this_qual.min_required} from ${this_qual.title} since ${this_row.text} is selected`;
                 }
+                warningSection.push(`[color:red][bold]${warningMessage}`);
+                reactData.columnList[column_number].rowDetails[row_number].error = warningMessage;
               }
             }
           });
-          reactData.columnList[column_number].rowDetails[row_number].error = "More information is needed";
           updateReactData({
             columnList: reactData.columnList
           }, false);
         }
         else if (this_row.required && !this_row.textValue && !this_row.isChecked) {
           confirmStatus = 'error';
+          let warningMessage;
           if (pData.length > 1) {
-            warningSection.push(`[color:red][bold]${columnName} is missing "${this_row.text}"`);
+            warningMessage = `${columnName} is missing "${this_row.text}"`;
           }
           else {
-            warningSection.push(`[color:red][bold]"${this_row.text}" is required`);
+            warningMessage = `"${this_row.text}" is required`;
           }
           warningsExist = true;
-          reactData.columnList[column_number].rowDetails[row_number].error = "This information is required";
+          warningSection.push(`[color:red][bold]${warningMessage}`);
+          reactData.columnList[column_number].rowDetails[row_number].error = warningMessage;
           updateReactData({
             columnList: reactData.columnList
           }, false);
@@ -2492,20 +2497,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   startIcon={<CloudUploadIcon />}
                   size='small'
                   onClick={async () => {
+
                     let TELS_personId = '3379881';
                     let TELS_APIKey = 'Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU';
                     let url = 'https://integrations.tels.net/customers/v1/contacts/3379881/facilities';
                     let options = {
                       method: "GET", // *GET, POST, PUT, DELETE, etc.
                //       mode: "no-cors", // no-cors, *cors, same-origin
-                      path: ``,
+                      path: 'https://integrations.tels.net/customers/v1/contacts/3379881/facilities',
                       credentials: "include", // include, *same-origin, omit
                       headers: {
                         'X-API-Key': 'Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU',
                         'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Methods': 'GET, HEAD, PUT, PATCH, POST, DELETE',
+                        'Access-Control-Allow-Methods': 'GET, HEAD, PUT, OPTIONS, PATCH, POST, DELETE',
                         'User-Agent': 'PostmanRuntime/7.39.0',
-                        'Accept': '*/*',
                         'Postman-Token': '96ee2a83-48d6-4506-91e5-143669c36bbe',
                         'Host': 'integrations.tels.net',
                         'Accept-Encoding': 'gzip, deflate, br',
@@ -2518,8 +2523,21 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                       });
                     console.log(response.json());
 
+/*
+                    const myHeaders = new Headers();
+                    myHeaders.append("X-API-KEY", "Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU");
 
+                    const requestOptions = {
+                      method: "GET",
+                      headers: myHeaders,
+                      redirect: "follow"
+                    };
 
+                    fetch("https://integrations.tels.net/customers/v1/contacts/3379881/facilities", requestOptions)
+                      .then((response) => response.text())
+                      .then((result) => console.log(result))
+                      .catch((error) => console.error(error));
+*/
 
 
 
