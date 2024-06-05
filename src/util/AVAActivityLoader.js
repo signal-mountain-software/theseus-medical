@@ -13,7 +13,7 @@ let displayBold = false;
 let displayStyle = false;
 let displayItalic = false;
 let doneWithTopBox = false;
-const defaultCheckedWords = ['checked', 'on', 'selected', 'true'];
+const defaultCheckedWords = ['checked', 'on', 'selected', 'true', 'always'];
 
 export async function getActivityDetail(pActRec, state) {
   sessionState = state;
@@ -344,6 +344,10 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           }
           else {
             rObj.isChecked = true;
+            if ((defaults.hasOwnProperty(instruction[0]) && (defaults[instruction[0]] === 'always')) // this item is checked off by default
+              || (observationDefaultValue === 'always')) { 
+              rObj.checkbox = false;
+            }
           }
         }
       }

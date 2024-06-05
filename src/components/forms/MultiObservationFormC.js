@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray, s3, restAPI } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3 } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
@@ -1045,7 +1045,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             return true;
           }
           else {
-            if (checkRow.checkbox) {    // checkbox 
+            if (checkRow.checkbox || checkRow.isChecked) {    // checkbox 
               if (!checkValue) {
                 return checkRow.isChecked;
               }
@@ -1548,7 +1548,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
         }
         reactData.columnList[column_number].rowDetails[row_number].error = false;
-        if (this_row.checkbox && this_row.isChecked && this_row.qualData) {
+        if (this_row.isChecked && this_row.qualData) {
           this_row.qualData.forEach(this_qual => {
             if (this_qual.min_required > 0) {
               let qualCount = 0;
@@ -1562,10 +1562,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 warningsExist = true;
                 let warningMessage;
                 if (this_qual.max_allowed === this_qual.min_required) {
-                  warningMessage = `You must select ${this_qual.min_required} from ${this_qual.title} since ${this_row.text} is selected`;
+                  warningMessage = `You must select ${this_qual.min_required} from ${this_row.text}`;
                 }
                 else {
-                  warningMessage = `You must select at least ${this_qual.min_required} from ${this_qual.title} since ${this_row.text} is selected`;
+                  warningMessage = `You must select at least ${this_qual.min_required} from ${this_row.text}`;
                 }
                 warningSection.push(`[color:red][bold]${warningMessage}`);
                 reactData.columnList[column_number].rowDetails[row_number].error = warningMessage;
@@ -1587,7 +1587,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
           warningsExist = true;
           warningSection.push(`[color:red][bold]${warningMessage}`);
-          reactData.columnList[column_number].rowDetails[row_number].error = warningMessage;
+          reactData.columnList[column_number].rowDetails[row_number].error = 'This field is required';
           updateReactData({
             columnList: reactData.columnList
           }, false);
@@ -2497,56 +2497,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   startIcon={<CloudUploadIcon />}
                   size='small'
                   onClick={async () => {
-
-                    let TELS_personId = '3379881';
-                    let TELS_APIKey = 'Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU';
-                    let url = 'https://integrations.tels.net/customers/v1/contacts/3379881/facilities';
-                    let options = {
-                      method: "GET", // *GET, POST, PUT, DELETE, etc.
-               //       mode: "no-cors", // no-cors, *cors, same-origin
-                      path: 'https://integrations.tels.net/customers/v1/contacts/3379881/facilities',
-                      credentials: "include", // include, *same-origin, omit
-                      headers: {
-                        'X-API-Key': 'Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU',
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Methods': 'GET, HEAD, PUT, OPTIONS, PATCH, POST, DELETE',
-                        'User-Agent': 'PostmanRuntime/7.39.0',
-                        'Postman-Token': '96ee2a83-48d6-4506-91e5-143669c36bbe',
-                        'Host': 'integrations.tels.net',
-                        'Accept-Encoding': 'gzip, deflate, br',
-                        'Connection': 'keep-alive'
-                      },
-                    };
-                    const response = await fetch(url, options)
-                      .catch(err => {
-                        console.error(err);
-                      });
-                    console.log(response.json());
-
-/*
-                    const myHeaders = new Headers();
-                    myHeaders.append("X-API-KEY", "Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU");
-
-                    const requestOptions = {
-                      method: "GET",
-                      headers: myHeaders,
-                      redirect: "follow"
-                    };
-
-                    fetch("https://integrations.tels.net/customers/v1/contacts/3379881/facilities", requestOptions)
-                      .then((response) => response.text())
-                      .then((result) => console.log(result))
-                      .catch((error) => console.error(error));
-*/
-
-
-
-
-
-
-
-
-
                     handleFileUpload();
                     console.log('upload done');
                   }}
