@@ -806,62 +806,48 @@ export async function deleteDbRec(pData) {
   return response;
 }
 
-/*
-export async function restAPI(path, options) {
-
-  if (!options) {
-    return {};
+export async function restAPI(pRequest, api_data) {
+  let finalReturn = {};
+  const TELSdefaults = {
+    hostname: 'integrations.tels.net',
+    path: '/workOrders/v1/workOrders',
+    method: 'POST',
+    headers: {
+      "X-API-Key": "Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU",
+      'Content-Type': 'application/json'
+    },
   };
 
-  const fetchPosts = async () => {
-    fetch(path, options)
-      .then(data => {
-      return data,json()
-    })
+  let requestHeaders = Object.assign({}, TELSdefaults.headers, pRequest.headers);
+  let request = Object.assign({}, TELSdefaults, pRequest, { headers: requestHeaders });
 
-
-
-
-    console.log('after fetch');
-    let responseFromResponse = await response.json();
-    console.log(responseFromResponse);
-    let responseAsAStream = response.body;
-    console.log(responseAsAStream);
-    let responseAsJSON;
-    const enc = new TextDecoder("utf-8");
-    for await (const chunk of responseAsAStream) {
-      console.log(chunk);
-      let responseAsData = (enc.decode(chunk));
-      console.log(responseAsData);
-    }
-    console.log(responseAsJSON);
+  let params = {
+    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:bookResourceReservation',
+    InvocationType: 'RequestResponse',
+    LogType: 'Tail',
+    Payload: ''
   };
 
-  const requestPosts = async () => {
-    const http = require('http');
-    let data = '';
-    const request = http.request(options, ((response) => {
-      response.setEncoding('utf8');
-      response.on('data', (chunk) => {
-        data += chunk;
-      });
-      response.on('end', () => {
-        console.log(data);
-      });
-      
-    }));
-    request.on('error', (error) => {
-      console.error(error);
-    });
-    request.end();
-  };
+  params.Payload = JSON.stringify({
+    options: request,
+    newTELSworkorder: api_data
+  });
 
-
-  await fetchPosts()
+  let invokeFailed = false;
+  const fResp = await lambda
+    .invoke(params)
+    .promise()
     .catch(err => {
-      console.error(err);
+      invokeFailed = true;
     });
 
-  await requestPosts();
+  if (!invokeFailed) {
+    let response = JSON.parse(fResp.Payload);
+    if (response.status === 200) {
+      cl({ 'good return from API': response });
+      finalReturn = response.Presponse;
+    }
+  };
+  return finalReturn;
+
 }
-*/

@@ -1,5 +1,5 @@
 import React from 'react';
-import { sentenceCase, deepCopy, makeArray, isMobile, cl, titleCase, dbClient, recordExists, listFromArray } from '../../util/AVAUtilities';
+import { sentenceCase, deepCopy, makeArray, isMobile, cl, titleCase, dbClient, recordExists, listFromArray, restAPI } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getImage, getPerson, makeName } from '../../util/AVAPeople';
 import { getMemberList } from '../../util/AVAGroups';
@@ -40,6 +40,7 @@ import OpenDoorIcon from '@material-ui/icons/MeetingRoom';
 import DashboardIcon from '@material-ui/icons/Dashboard';
 import ListIcon from '@material-ui/icons/List';
 import HomeIcon from '@material-ui/icons/Home';
+import SaveAltIcon from '@material-ui/icons/SaveAlt';
 
 import Button from '@material-ui/core/Button';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -697,6 +698,101 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     }
   }
 
+  async function handleCreateTELS() {
+    let sendList = [];
+    reactData.dataRows.forEach(r => {
+      if (r.workData.checked) { sendList.push(r); }
+      return;
+    });
+    for (let x = 0; x < reactData.dataRows.length; x++) {
+      let this_row = reactData.dataRows[x];
+      if (!this_row.workData.checked || !OKToDisplay(this_row)) {
+        continue;
+      }
+      // check for work order number already assigned
+      if (reactData.dataRows[x].foreign_key.startsWith('TELS:')) {
+        let woNum = reactData.dataRows[x].foreign_key.split('TELS:')[1].trim();
+        if (!!woNum) {
+          enqueueSnackbar(`The request you selected already has TELS work order number ${woNum} assigned.`, { variant: 'warning', persist: true });
+          continue;
+        }
+      }
+
+      let AVAdate = makeDate(new Date());
+      let summaryDescription = `On ${this_row.workData.display_date}, `;
+      if (this_row.workData.enteredBy !== this_row.requestor) {
+        summaryDescription += `${this_row.workData.enteredBy_name} on behalf of `;
+      }
+      summaryDescription += `${this_row.workData.requestor_name} said:\n\r`;
+      summaryDescription += this_row.workData.summary_request.filter((this_line) => {
+        return (this_line[0] !== 'head');
+      }).map(this_filteredLine => this_filteredLine[1]).join('\n\r');
+
+      let user_display_name = await makeName(state.session.user_id);
+
+      let newTELSworkorder = {
+        "facilityId": 138266,
+        "title": `AVA Request number ${this_row.local_key}`,
+        "description": summaryDescription,
+        "priority": 1,
+        "whereLocated": this_row.workData.requestor_location,
+        "categoryId": 1,
+        "customCategory": "",
+        "customArea": "",
+        "status": 1,
+        "hasPermissionToEnter": 1,
+        "comments": `${user_display_name} used AVA to auto-generate this workorder in TELS on ${AVAdate.absolute}`
+      };
+
+      let newTELSrequest = {
+        path: '/workOrders/v1/workOrders',
+        method: 'POST',
+      };
+
+      let response = await restAPI(newTELSrequest, newTELSworkorder);
+      cl(response);
+      let newWOassigned = response.entityIdentifier;
+      enqueueSnackbar(
+        <div>AVA request sent to TELS!<br />
+          TELS work order {newWOassigned} created.
+        </div>, { variant: 'success', persist: false });
+      reactData.dataRows[x].foreign_key = `TELS: ${newWOassigned}`;
+      let historyLine = `AVA request sent to TELS on ${AVAdate.absolute}, TELS work order ${newWOassigned} created`;
+      if (('history' in reactData.dataRows[x]) && Array.isArray(reactData.dataRows[x].history)) {
+        reactData.dataRows[x].history.unshift(historyLine);
+      }
+      else { reactData.dataRows[x].history = [historyLine]; }
+      reactData.dataRows[x].last_update = AVAdate.timestamp;
+      reactData.dataRows[x].workData.update_date = AVAdate.relative;
+      reactData.dataRows[x].workData.checked = false;
+      let newFormattedRequest = await buildRequestDetails(reactData.dataRows[x]);
+      reactData.dataRows[x].workData.formatted_request = newFormattedRequest.workData.formatted_request;
+      let notifyMessage = `The AVA request you entered on ${this_row.workData.display_date} has been issued a Work Order by ${user_display_name}.  `;
+      notifyMessage += `The Work Order number is ${newWOassigned}.`;
+      if (this_row.workData.enteredBy !== this_row.requestor) {
+        summaryDescription += `${this_row.workData.enteredBy_name} on behalf of `;
+      }
+      let messageObj = {
+        client: session.client_id,
+        author: session.user_id,
+        messageText: notifyMessage,
+        thread_id: `svc_${reactData.dataRows[x].request_type}/${reactData.dataRows[x].request_id}`,
+        recipientList: reactData.dataRows[x].workData.enteredBy,
+        subject: `Update to your ${reactData.dataRows[x].workData.formatted_type}`
+      };
+      await sendMessages(messageObj);
+      reactData.dataRows[x].messages.unshift(messageObj);
+      await updateServiceRequest([reactData.dataRows[x]].map(u => {
+        let w = Object.assign({}, u);
+        delete w.workData;
+        return w;
+      }));
+    }
+    updateReactData({
+      dataRows: reactData.dataRows
+    }, true);
+  }
+
   let filterTimeOut;
   const handleChangeFilter = vCheck => {
     clearTimeout(filterTimeOut);
@@ -974,6 +1070,12 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
   function anyRowsSelected() {
     return reactData.dataRows.some(r => {
       return (r.workData.checked && OKToDisplay(r));
+    });
+  }
+
+  function allowTELS() {
+    return reactData.dataRows.some(r => {
+      return (r.workData.checked && r.workData.allowTELS && OKToDisplay(r));
     });
   }
 
@@ -1401,11 +1503,13 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     if (session.service_request_types.hasOwnProperty(this_request.request_type)) {
       this_request.workData.formatted_type = session.service_request_types[this_request.request_type].description || `${titleCase(this_request.request_type)}`;
       this_request.workData.flavor = session.service_request_types[this_request.request_type].flavor || '';
+      this_request.workData.allowTELS = session.service_request_types[this_request.request_type].allowTELS || false;
     }
     else {
       cl(`request type "${this_request.request_type}" not in session.service_request_types`);
       this_request.workData.formatted_type = titleCase(this_request.request_type.replace('_', ' '));
       this_request.workData.flavor = '';
+      this_request.workData.allowTELS = false;
     }
     let [enteredBy, requestTimeStamp] = this_request.request_id.split('~');
     this_request.workData.enteredBy = enteredBy;
@@ -1438,7 +1542,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
     this_request.workData.textBased_request = [];
     this_request.workData.update_date = AVAupdateDate.relative;
     this_request.workData.requestTime = AVArequestDate.timestamp;
-    this_request.workData.orderForDate = makeDate(this_request.foreign_key);
+    this_request.workData.orderForDate = makeDate(this_request.foreign_key);  // result is intentionally an invalid date
     this_request.workData.this_status = sentenceCase(this_request.last_status);
     if (!options.textForm && !options.selectOnly) {
       let aName = '';
@@ -1450,6 +1554,9 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       }
     }
     if ((!options.shortForm) && (!options.textForm) && !options.selectOnly) {
+      if (this_request.foreign_key.startsWith('TELS:')) {
+        this_request.workData.formatted_request.push(['head', `TELS work order ${this_request.foreign_key.split('TELS:')[1].trim()}`]);
+      }
       if (AVAupdateDate.relative !== AVArequestDate.relative) {
         this_request.workData.formatted_request.push(['head', `Updated: ${this_request.workData.update_date}`]);
       }
@@ -2983,6 +3090,20 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       startIcon={<PrintIcon size="small" />}
                     >
                       {reactData.isMobile ? null : 'Print'}
+                    </Button>
+                  }
+                  {allowTELS()
+                    &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'green', color: 'white', paddingRight: (reactData.isMobile ? '4px' : '') }}
+                      size='small'
+                      onClick={async () => {
+                        await handleCreateTELS();
+                      }}
+                      startIcon={<SaveAltIcon size="small" />}
+                    >
+                      {'Send to TELS'}
                     </Button>
                   }
                 </Box>
