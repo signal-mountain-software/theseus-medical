@@ -782,8 +782,8 @@ export function formatServiceRequestDetails(pInput, options = {}) {
       let choices = [];
       let qualifiers = [];
       if (!this_request.textInput[s]) {
-        let unTrimmed_selection;
-        [unTrimmed_selection, ...choices] = s.split(/[();,]/);
+        let unTrimmed_selection = s;
+    //    [unTrimmed_selection, ...choices] = s.split(/[();,]/);
         selection = unTrimmed_selection.trim();
       }
       if (this_request.qualifiers?.[selection]) {
