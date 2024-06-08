@@ -3150,7 +3150,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   >
                     {reactData.isMobile ? 'Exit' : 'Close'}
                   </Button>
-                  <Button
+                  {false && <Button
                     className={AVAClass.AVAButton}
                     style={{ backgroundColor: 'green', color: 'white' }}
                     size='small'
@@ -3161,6 +3161,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                   >
                     {reactData.isMobile ? 'Add New' : 'Add a New Request'}
                   </Button>
+                  }
                 </Box>
               </Box>
             </DialogActions>
