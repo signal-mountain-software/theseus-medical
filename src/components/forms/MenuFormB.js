@@ -39,7 +39,7 @@ const useStyles = makeStyles(theme => ({
   innerBox: {
     paddingLeft: '4px',
     minHeight: '500px',
-    maxHeight: '90%'
+    //   maxHeight: '90%'
   },
   recipeCode: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -304,6 +304,13 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
     return oKey;
   }
 
+  function filterRecipeList(menu_category) {
+    let response = recipeList.filter(this_recipe => {
+      return (this_recipe.type && this_recipe.type.includes(menu_category));
+    });
+    return response;
+  }
+
   function menuTypeList() {
     let dining_area = state.session.dining_structure.dining_area;
     /*
@@ -537,12 +544,15 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
   function OKtoShow(this_observation, displayed_category) {
     let useDate = (selectedMenu('value') === '%date%');
     let [, cKey] = this_observation.composite_key.split('~');
-    let p = cKey.replace('all_day', 'all-day').split('_');
+    let s = cKey.replace('all_day', '%RESTORE%').split('_');
+    let p = s.map(e => {
+      return (e === '%RESTORE%' ? 'all_day' : e);
+    }) 
     if (p[0] === displayed_category) {
       if (p[1] === (useDate ? selectedDate('value') : selectedMenu('value'))) {
         // Client~entree_2024.5.22_lunch_bistro  OR  Client~entree_2024.5.22
         if (p.length < 3) {
-          return (selectedMealType('value') === 'all-day');   // if !meal, then room will also be missing and we can fast forward to true
+          return (['all-day', 'all_day', 'allDay'].includes(selectedMealType('value')));   // if !meal, then room will also be missing and we can fast forward to true
         }
         else if (p[2] !== selectedMealType('value')) {  // third parm is present?  it needs to match the meal
           return false;
@@ -552,7 +562,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
       else if (p[1] === selectedMealType('value')) {
         // Client~entree_lunch_2024.5.22_bistro 
         if (p.length < 3) {
-          return (selectedMealType('value') === 'all-day');   // if !date, then room will also be missing and we can fast forward to true
+          return (['all-day', 'all_day', 'allDay'].includes(selectedMealType('value')));   // if !meal, then room will also be missing and we can fast forward to true
         }
         else if (p[2] !== (useDate ? selectedDate('value') : selectedMenu('value'))) {  // third parm is present?  it needs to match the date
           return false;
@@ -597,10 +607,18 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
             <DialogContent
               key={`category-detail-box-outside_${selectedMenu('value')}`}
               style={{
-                paddingLeft: '4px',
-                paddingTop: 0,
+                position: 'sticky',
+                top: 0,
+                opacity: 1,
+                zIndex: 1100,
+                backgroundColor: 'white',
+                marginBottom: 1,
+                borderBottom: 2,
+                marginLeft: '-10px',
+                paddingLeft: '16px',
+                paddingTop: '10px',
                 minHeight: `100px`,
-                maxHeight: `${reactData.visible_y - ((selectedMenu('value') === '%date%') ? 425 : 350)}px`
+                //            maxHeight: `${reactData.visible_y - ((selectedMenu('value') === '%date%') ? 425 : 350)}px`
               }}
               id='dialog-content'
             >
@@ -610,8 +628,10 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                   marginRight={2}
                   marginLeft={0}
                   marginTop={0}
-                  marginBottom={0}
+                  marginBottom={1}
+                  borderBottom={2}
                   paddingTop={1}
+                  paddingBottom={2}
                   justifyContent='flex-start'
                   alignItems='flex-start'
                   key={`selectionBox-${selectedMealType()}-${reactData.dateKey.obs}`}
@@ -862,29 +882,14 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
               }
             </DialogContent>
 
-            <Box display='flex'
-              flexDirection='column'
-              marginRight={2}
-              marginLeft={0}
-              marginTop={0}
-              marginBottom={1}
-              borderBottom={2}
-              paddingTop={1}
-              justifyContent='flex-start'
-              alignItems='flex-start'
-              key={`drawALine`}
-              id={`drawALine`}
-            >
-            </Box>
-
             { /* Data rows */}
-            <DialogContent
+            <Box
               key={`category-detail-box-outside2`}
-              maxHeight={'50%'}
+              //            maxHeight={'50%'}
               style={{
                 paddingLeft: '4px',
                 minHeight: `${Math.min(reactData.visible_y - 400, 350)}px`,
-                maxHeight: `${reactData.visible_y - 425}px`
+                //              maxHeight: `${reactData.visible_y - 425}px`
               }}
               id='dialog-content'
             >
@@ -927,7 +932,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                         display='flex' flexGrow={1} flexDirection='column'
                       >
                         <Select
-                          options={recipeList}
+                          options={filterRecipeList(menu_category)}
                           searchBy={'label'}
                           dropdownHandle={false}
                           clearOnSelect={true}
@@ -1176,7 +1181,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                   }
                 </React.Fragment>
               ))}
-            </DialogContent>
+            </Box>
           </React.Fragment>
         }
         {

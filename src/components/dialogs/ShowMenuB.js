@@ -1,5 +1,5 @@
 import React from 'react';
-import { getObservations, getObservationKeys } from '../../util/AVAObservations';
+import { getObservations } from '../../util/AVAObservations';
 import { sentenceCase, dbClient, cl, recordExists } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 
@@ -71,11 +71,11 @@ const useStyles = makeStyles(theme => ({
     // color: theme.palette.confirm[theme.palette.type],
   },
   dialogBox: {
-    paddingTop: theme.spacing(1),
+    paddingTop: 0,
     paddingBottom: theme.spacing(1),
     minWidth: '100%',
     overflowX: 'auto',
-    overflowY: 'hidden'
+ //   overflowY: 'hidden'
   },
   reject: {
     backgroundColor: theme.palette.reject[theme.palette.type],
@@ -126,14 +126,7 @@ export default ({ pClient, showMenu, onClose }) => {
   };
 
   async function buildRecipeList() {
-    if (!recipeList || (recipeList.length === 0)) {
-      let recipeRecs = await getObservationKeys({ characteristic: 'observation_name' });
-      let unsortedRecipeList = recipeRecs.map(r => {
-        return {
-          label: `${sentenceCase(r.display_value)}`.trim(),
-          value: r.observation_key
-        };
-      });
+    if (!recipeList || (recipeList.length === 0)) {      
       let oDate = makeDate(addDays(new Date(), -120)).ymd;
       let oldObservations = await dbClient
         .query({
@@ -149,15 +142,17 @@ export default ({ pClient, showMenu, onClose }) => {
         unsortedObservations = oldObservations.Items.map((r, x) => {
           return {
             label: `${sentenceCase(r.observation_code)}`.trim(),
-            value: r.observation_key || `*noKey~${x}`
+            value: r.observation_key || `*noKey~${x}`,
+            type: (`${r.composite_key}_${r.sort_order}`).toLowerCase()
           };
         });
       }
-      let response = (unsortedRecipeList.concat(unsortedObservations)).sort((a, b) => {
+      let response = (unsortedObservations).sort((a, b) => {
         return ((a.label < b.label) ? -1 : 1);
       });
       var seenLabel = {};
       let seenValue = {};
+      let seenType = {};
       response.forEach((item, x) => {
         if (seenLabel.hasOwnProperty(item.label)) {
           // label already exists; do we need to put a better value in?  (we shuold if the value is missing or '*nokey...')
@@ -173,6 +168,9 @@ export default ({ pClient, showMenu, onClose }) => {
             seenLabel[item.label] = item.value;
             seenValue[item.value] = true;
           }
+          if (!seenType[item.label] && item.type) {
+            seenType[item.label] = item.type;
+          }
         }
         else {
           if (!item.value) {
@@ -183,13 +181,15 @@ export default ({ pClient, showMenu, onClose }) => {
           }
           seenLabel[item.label] = item.value;
           seenValue[item.value] = true;
+          seenType[item.label] = item.type;
         }
       });
       let finalAnswer = [];
       for (let label in seenLabel) {
         finalAnswer.push({
           label: label,
-          value: seenLabel[label]
+          value: seenLabel[label],
+          type: seenType[label]
         })
       }
       return finalAnswer;
