@@ -13,7 +13,7 @@ import DialogContentText from '@material-ui/core/DialogContentText';
 import Button from '@material-ui/core/Button';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import LoadIcon from '@material-ui/icons/GetApp';
-import CloseIcon from '@material-ui/icons/HighlightOff';
+import PlaylistAddCheckIcon from '@material-ui/icons/PlaylistAddCheck';
 import FileCopyIcon from '@material-ui/icons/FileCopy';
 
 import CopyMenu from '../forms/CopyMenu';
@@ -353,21 +353,21 @@ export default ({ pClient, showMenu, onClose }) => {
         <DialogActions style={{ justifyContent: 'center' }}>
           <Button
             className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'red', color: 'white' }}
+            style={{ backgroundColor: 'green', color: 'white' }}
             size='small'
             onClick={handleAbort}
-            startIcon={<CloseIcon size="small" />}
+            startIcon={<PlaylistAddCheckIcon size="small" />}
           >
             {'Done'}
           </Button>
           <Button
             className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
+            style={{ backgroundColor: 'blue', color: 'white' }}
             size='small'
             onClick={handleLoad}
             startIcon={<LoadIcon size="small" />}
           >
-            {'Load'}
+            {'Upload from Template'}
           </Button>
           {false && <Button
             className={AVAClass.AVAButton}

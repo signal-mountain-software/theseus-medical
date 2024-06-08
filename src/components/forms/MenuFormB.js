@@ -361,7 +361,8 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
       dates[this_date.ymd] = {
         value: this_date.obs,
         ymd: this_date.ymd,
-        display_value: this_date.dateOnly
+        display_value: this_date.dateOnly,
+        display_value_day: (this_date.relative === 'Today' ? 'Today' : this_date.absolute.slice(0,3))
       };
     }
     let menus = {
@@ -489,7 +490,13 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
       return local_service_details['dining_area'][selectedArea()]['meal_service'][check_key].categories;
     }
     else {
-      return local_service_details['dining_area'][selectedArea()]['meal_service'][check_key].display_value;
+      let resp = local_service_details['dining_area'][selectedArea()]['meal_service'][check_key].display_value;
+      if (Array.isArray(resp)) {
+        return resp.join(' ');
+      }
+      else {
+        return resp;
+      }
     };
   };
 
@@ -794,6 +801,11 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                             justifyContent='space-between'
                             alignItems='center'
                           >
+                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title`}
+                              style={AVATextStyle({ size: 1, margin: { bottom: -0.2 }, wrap: 'nowrap' })}
+                            >
+                              {titleCase(local_service_details['dates'][menuDate_key].display_value_day)}
+                            </Typography>
                             <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title`}
                               style={AVATextStyle({ size: 1, margin: { bottom: -0.2 }, wrap: 'nowrap' })}
                             >
