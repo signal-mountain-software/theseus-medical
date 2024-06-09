@@ -61,7 +61,7 @@ export async function getServiceRequests(body) {
   let rP = body.person_id || body.person || body.requestor;
   let rT;
   if (body.request_type) {
-    if (Array.isArray(body.request_type) && (body.request_type.length === 0)) {}
+    if (Array.isArray(body.request_type) && (body.request_type.length === 0)) { }
     else {
       rT = body.request_type;
     }
@@ -173,7 +173,7 @@ export async function getServiceRequests(body) {
     if (recordExists(qR)) {
       unSortedList = unSortedList.concat(qR.Items);
       qQ.ExclusiveStartKey = qR.LastEvaluatedKey;
-    }   
+    }
     loopCount++;
   } while (qQ.ExclusiveStartKey && (loopCount < 10) && (unSortedList.length < (body.limit || 100)));
   if (!sortInstructions.sort) {
@@ -255,7 +255,7 @@ export async function putServiceRequest(body) {
     serviceRequestRec.composite_key = serviceRequestRec.foreign_key + '%';
   }
   serviceRequestRec.composite_key += `${serviceRequestRec.request_type}%${serviceRequestRec.last_status}`;
-  
+
   // WRITE REQUEST
   let goodWrite = true;
   cl({ 'adding ServiceRequestRec as': serviceRequestRec });
@@ -269,7 +269,7 @@ export async function putServiceRequest(body) {
       clt({ 'Bad put to ServiceRequests - caught error is': error });
       goodWrite = false;
     });
-  
+
   // WRITE REQUEST LOG
   let requestLogRec = {
     "client_id": serviceRequestRec.client_id,
@@ -292,7 +292,7 @@ export async function putServiceRequest(body) {
       clt({ 'Bad put to ServiceRequestLog - caught error is': error });
       goodWrite = false;
     });
-  
+
   // HANDLE MESSAGING IF NEEDED
   if (goodWrite && body.messaging) {
     await handleServiceRequestMessaging(body, serviceRequestRec);
@@ -307,93 +307,93 @@ export async function putServiceRequest(body) {
 }
 
 export async function handleServiceRequestMessaging(body, serviceRequestRec) {
-/*
-SERVICE REQUEST FLOW (NEW) -
- Messaging attribute will be an object;
- The object will be keyed by request_status, ie. {
-   submitted: [ {
-    document_type: <value>, 
-    distribution_method: {message: {}, print: {}, ...},
-    test: [<special instructions that may change the document_type or distribution_method>]
-  }, ... ],
-   assigned: [],
-   in_process: [],
-   ...
- }
- Each array entry represents a different output that is associated with the Activity.
- For each individual messaging entry:
-   1. document_type (string) tells how to prepare the request data
-       output -> string containing html, string containing plain text, & encoding from which a PDF can be rendered
-         factForm (default) - 8 1/2 x 11 sheet primarily to list selections and options (this is the default)
-         mealOrder - 8 1/2 x 11 factForm with wording and sequencing specifically required for a meal order
-         document - 8 1/2 x 11 built primarily around template with selections used as variables 
-         singleTicket - 3" format primarily for selections and options
-         mealTicket - same as singleTicket                      
-         none - no document output
-   2. distribution_method (object) tells how to distribute the results
-         message - send using AVA
-               {
-                 subject: text with variables that can be pointed at selections and options
-                 attachment_method: "attachment" (default) or "link" (if "link", key S3_save is implied)
-                 message_body: text with variables that can be pointed at selections and options
-                 force_method: always send via "phone", "email", "text"
-                 recipient_list: [array of AVA IDs to receive this message] (these can be variables such as author or obo)
-               }
-         print - when complete, send the output to a printer or open the print dialog on user's device
-               {
-                 target: "pop-up" or <printer_queue_name>
-               }
-         S3_save - save the document in S3
-               {
-                 filename: text with variables that can be pointed at selections and options
-                 file_type: 
-                 bucket: text with variables that can be pointed at selections and options
-               }
-         local_save - save the document locally in default downloads folder
-               {
-                 filename: text with variables that can be pointed at selections and options
-                 file_type: 
-               }
-*/
+  /*
+  SERVICE REQUEST FLOW (NEW) -
+   Messaging attribute will be an object;
+   The object will be keyed by request_status, ie. {
+     submitted: [ {
+      document_type: <value>, 
+      distribution_method: {message: {}, print: {}, ...},
+      test: [<special instructions that may change the document_type or distribution_method>]
+    }, ... ],
+     assigned: [],
+     in_process: [],
+     ...
+   }
+   Each array entry represents a different output that is associated with the Activity.
+   For each individual messaging entry:
+     1. document_type (string) tells how to prepare the request data
+         output -> string containing html, string containing plain text, & encoding from which a PDF can be rendered
+           factForm (default) - 8 1/2 x 11 sheet primarily to list selections and options (this is the default)
+           mealOrder - 8 1/2 x 11 factForm with wording and sequencing specifically required for a meal order
+           document - 8 1/2 x 11 built primarily around template with selections used as variables 
+           singleTicket - 3" format primarily for selections and options
+           mealTicket - same as singleTicket                      
+           none - no document output
+     2. distribution_method (object) tells how to distribute the results
+           message - send using AVA
+                 {
+                   subject: text with variables that can be pointed at selections and options
+                   attachment_method: "attachment" (default) or "link" (if "link", key S3_save is implied)
+                   message_body: text with variables that can be pointed at selections and options
+                   force_method: always send via "phone", "email", "text"
+                   recipient_list: [array of AVA IDs to receive this message] (these can be variables such as author or obo)
+                 }
+           print - when complete, send the output to a printer or open the print dialog on user's device
+                 {
+                   target: "pop-up" or <printer_queue_name>
+                 }
+           S3_save - save the document in S3
+                 {
+                   filename: text with variables that can be pointed at selections and options
+                   file_type: 
+                   bucket: text with variables that can be pointed at selections and options
+                 }
+           local_save - save the document locally in default downloads folder
+                 {
+                   filename: text with variables that can be pointed at selections and options
+                   file_type: 
+                 }
+  */
   let rTime = makeDate(new Date().getTime());
   let rMsg;
   if (Array.isArray(body.messaging)) {   // if messaging is an array, send everything in the array
     // for (let msgNum = 0; msgNum < body.messaging.length; msgNum++) {
-      //let this_message = body.messaging[msgNum];
-      //if (this_message.format) {   // old style
-        //if (this_message.format.method === 'hold') {
-          //serviceRequestRec.last_status = 'Prepared & Held';
-          //rMsg = `Held for future processing ${rTime.oaDate}`;
-        //}
-        // else {
-        //  Object.assign(body, this_message);
-          let preparedMessages = await prepareMessage(body, serviceRequestRec);
-          if (preparedMessages.length > 0) {
-            preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
-            serviceRequestRec.messages = preparedMessages;
-            serviceRequestRec.last_update = rTime.timestamp;
-            let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
-            if (!sendResults.sent) {
-              serviceRequestRec.last_status = 'Failed to send';
-              rMsg = `Failed to send ${rTime.oaDate}`;
-            }
-            else {
-              // serviceRequestRec.last_status = 'Sent';
-              rMsg = `Sent for processing ${rTime.oaDate}`;
-            }
-          }
-        //}
-        if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
-          serviceRequestRec.history.unshift(rMsg);
-        }
-        else { serviceRequestRec.history = [rMsg]; }
-        await updateServiceRequest(serviceRequestRec);
-     // }
+    //let this_message = body.messaging[msgNum];
+    //if (this_message.format) {   // old style
+    //if (this_message.format.method === 'hold') {
+    //serviceRequestRec.last_status = 'Prepared & Held';
+    //rMsg = `Held for future processing ${rTime.oaDate}`;
+    //}
+    // else {
+    //  Object.assign(body, this_message);
+    let preparedMessages = await prepareMessage(body, serviceRequestRec);
+    if (preparedMessages.length > 0) {
+      preparedMessages.forEach((m, x) => { preparedMessages[x].thread_id = `svc_${body.requestType}/${body.requestID}`; });
+      serviceRequestRec.messages = preparedMessages;
+      serviceRequestRec.last_update = rTime.timestamp;
+      let sendResults = (await sendMessages(preparedMessages)).pop();   // send all the messages in the queue.  THe service request status will reflect the results of the last message (pop)
+      if (!sendResults.sent) {
+        serviceRequestRec.last_status = 'Failed to send';
+        rMsg = `Failed to send ${rTime.oaDate}`;
+      }
+      else {
+        // serviceRequestRec.last_status = 'Sent';
+        rMsg = `Sent for processing ${rTime.oaDate}`;
+      }
+    }
+    //}
+    if (('history' in serviceRequestRec) && Array.isArray(serviceRequestRec.history)) {
+      serviceRequestRec.history.unshift(rMsg);
+    }
+    else { serviceRequestRec.history = [rMsg]; }
+    await updateServiceRequest(serviceRequestRec);
+    // }
     // }
   }
   else {      // if messaging is an object, send only the key that matches the current status
     // are there instructions for this status?
-    if (!body.messaging.hasOwnProperty(serviceRequestRec.last_status)) {    
+    if (!body.messaging.hasOwnProperty(serviceRequestRec.last_status)) {
       return;
     }
     // we have one or more instructions to follow for this status
@@ -407,7 +407,7 @@ SERVICE REQUEST FLOW (NEW) -
     for (let instructionNumber = 0; instructionNumber < instructionList.length; instructionNumber++) {
       let this_instruction = instructionList[instructionNumber];
       if (this_instruction.hasOwnProperty('test')) {
-        this_instruction = handleTest(this_instruction, serviceRequestRec)
+        this_instruction = handleTest(this_instruction, serviceRequestRec);
       }
       let SRDocument = await prepareSRDocuments(this_instruction.document_type, serviceRequestRec);
       await sendSRDocuments(this_instruction.distribution_method, SRDocument, serviceRequestRec);
@@ -434,7 +434,7 @@ SERVICE REQUEST FLOW (NEW) -
         break;
       }
       default: {
-        
+
       }
     }
     return SRDocuments;
@@ -463,7 +463,7 @@ SERVICE REQUEST FLOW (NEW) -
             htmlMessageText: SRDocObj.html,
             recipientList: distribution_method.message.recipient_list,
             subject: distribution_method.message.subject
-          }
+          };
           if (distribution_method.message.attachment_method === 'link') {
             let goodS3 = true;
             let s3Resp = await s3
@@ -490,7 +490,7 @@ SERVICE REQUEST FLOW (NEW) -
               type: 'application/pdf',
               disposition: 'attachment',
               content_id: serviceRequestRec.local_key
-            }
+            };
           }
           if (distribution_method.message.force_method) {
             messageObj.preffered_method = distribution_method.message.force_method;
@@ -499,10 +499,10 @@ SERVICE REQUEST FLOW (NEW) -
           break;
         }
         default: {
-          
+
         }
       }
-    } 
+    }
   }
 }
 
@@ -630,7 +630,7 @@ export async function updateServiceRequest(body) {
         'ServiceRequests': this_Request_group,
         'ServiceRequestLog': this_Log_group
       }
-    };  
+    };
     let goodWrite = true;
     let writeResponse = await dbClient
       .batchWrite(requestObject)
@@ -639,10 +639,10 @@ export async function updateServiceRequest(body) {
         clt({ 'Bad batch write on ServiceRequests - caught error is': error });
         this_Request_group.forEach(k => {
           clt(`request_id = ${k.PutRequest.Item.request_id}`);
-        })
+        });
         this_Log_group.forEach(k => {
           clt(`log_time = ${k.PutRequest.Item.log_time}`);
-        })
+        });
         goodWrite = false;
       });
     if (writeResponse
@@ -675,8 +675,9 @@ export async function updateServiceRequest(body) {
   return returnMessage;
 }
 
-export function formatServiceRequestDetails(pInput) {
+export function formatServiceRequestDetails(pInput, options = {}) {
   let this_request;
+  let total_fees = 0;
   /*  
   TAKES INPUT IN THIS FORMAT
   { 
@@ -737,12 +738,13 @@ export function formatServiceRequestDetails(pInput) {
         textValue: <string>
       }, ...
     ],
-    */
+    */   
     this_request = {
       selections: [],
       options: {},
       textInput: {},
-      rowType: {}
+      rowType: {},
+      fees: {}
     };
     pInput.rowDetails.forEach(row => {
       if (row.isChecked || row.textValue) {
@@ -751,6 +753,22 @@ export function formatServiceRequestDetails(pInput) {
         this_request.options[selection] = row.qualSelections;
         this_request.textInput[selection] = row.textValue;
         this_request.rowType[selection] = row.input;
+        if (options.includeFees) {
+          if (row.fee) {
+            this_request.fees[selection] = row.fee;
+          }
+          if (row.qualData) {
+            row.qualData.forEach(type => {
+              if (type.option && Array.isArray(type.option)) {
+                type.option.forEach(option => {
+                  if (option.fee) {
+                    this_request.fees[`${selection}~${option.display}`] = option.fee;
+                  }
+                });
+              }
+            });
+          }
+        }
       }
     });
   }
@@ -764,12 +782,20 @@ export function formatServiceRequestDetails(pInput) {
       let choices = [];
       let qualifiers = [];
       if (!this_request.textInput[s]) {
-        let unTrimmed_selection;
-        [unTrimmed_selection, ...choices] = s.split(/[();,]/);
+        let unTrimmed_selection = s;
+    //    [unTrimmed_selection, ...choices] = s.split(/[();,]/);
         selection = unTrimmed_selection.trim();
       }
       if (this_request.qualifiers?.[selection]) {
         Object.values(this_request.qualifiers?.[selection]).forEach(v => {
+          if (this_request.fees[`${selection}~${v}`]) {
+            let this_fee = Number(this_request.fees[`${selection}~${v}`]);
+            v += ' (' + new Intl.NumberFormat('en-US', {
+              style: 'currency',
+              currency: 'USD',
+            }).format(this_fee) + ')';
+            total_fees += this_fee;
+          }
           qualifiers.push(...v);
         });
       };
@@ -777,15 +803,40 @@ export function formatServiceRequestDetails(pInput) {
         for (let this_choice in this_request.options?.[selection][this_option]) {
           if (typeof (this_request.options?.[selection][this_option][this_choice]) === 'boolean') {
             if (this_request.options?.[selection][this_option][this_choice]) {
+              if (this_request.fees[`${selection}~${this_choice}`]) {
+                let this_fee = Number(Number(this_request.fees[`${selection}~${this_choice}`]));
+                this_choice += ' (' + new Intl.NumberFormat('en-US', {
+                  style: 'currency',
+                  currency: 'USD',
+                }).format(this_fee) + ')';
+                total_fees += this_fee;
+              }
               qualifiers.push(this_choice);
             }
           }
           else {
-            qualifiers.push(this_request.options?.[selection][this_option][this_choice]);
+            let pushIt = this_request.options?.[selection][this_option][this_choice];
+            if (this_request.fees[`${selection}~${this_choice}`]) {
+              let this_fee = Number(this_request.fees[`${selection}~${this_choice}`]);
+              pushIt += ' (' + new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+              }).format(this_fee) + ')';
+              total_fees += this_fee;
+            }
+            qualifiers.push(pushIt);
           }
         };
       }
       let options = [];
+      if (this_request.fees?.[selection]) {
+        let this_fee = Number(this_request.fees?.[selection]);
+        options.push(new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+        }).format(this_fee));
+        total_fees += this_fee;
+      };
       (choices.concat(qualifiers)).forEach(e => {
         if (e && !options.includes(e.trim())) {
           options.push(e.trim());
@@ -805,6 +856,13 @@ export function formatServiceRequestDetails(pInput) {
         requestDetailsObj[selection].push(this_request.textInput[selection]);
       }
     }
+  }
+  if (total_fees > 0) {
+    let fee_string = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(total_fees)
+    requestDetailsObj[`Total: ${fee_string}`] = [];
   }
   return requestDetailsObj;
 }

@@ -118,15 +118,11 @@ export default ({
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
   const updateReactData = (newData, force = false) => {
-    for (let oKey in newData) {
-      setReactData((prevValues) => ({
-        ...prevValues,
-        [oKey]: newData[oKey],
-      }));
-    }
-    if (force) {
-      setForceRedisplay(forceRedisplay => !forceRedisplay);
-    }
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
   };
 
   const handleChangeTextField = (vText) => {

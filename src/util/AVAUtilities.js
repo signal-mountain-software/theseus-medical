@@ -217,6 +217,9 @@ export function sentenceCase(pString) {
     if (w.toLowerCase() === 'ava') {
       returnString += 'AVA';
     }
+    if (w.toLowerCase() === 'bbq') {
+      returnString += 'BBQ';
+    }
     else if (x === 0) {
       returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1).toLowerCase()}`;
     }
@@ -334,6 +337,7 @@ export function titleCase(pString) {
     if (x === 0) { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     else if ((w.length < 3) || (w === 'and') || (w === 'the')) { returnString += w; }
     else if (w.toLowerCase() === 'ava') { returnString += 'AVA'; }
+    else if (w.toLowerCase() === 'bbq') { returnString += 'BBQ'; }
     else { returnString += `${w.slice(0, 1).toUpperCase()}${w.slice(1)}`; }
     returnString += ' ';
   });
@@ -585,6 +589,11 @@ export async function resolveVariables(pKey, pSession, options = {}) {
           response.push(front, pMe.location);
           break;
         }
+        case 'local': {
+          let pMe = await getPerson(pSession.patient_id);
+          response.push(front, pMe.local_data ? pMe.local_data[dType] : '');
+          break;
+        }
         case 'person':
         case 'patient': {
           response.push(front, pSession.patient_id);
@@ -632,7 +641,11 @@ export async function resolveVariables(pKey, pSession, options = {}) {
             });
             instruction = oResponse.occArray[oResponse.occArray.length - 1];
           }
-          let keyDate = makeDate(instruction);
+          let dateOptions = {};
+          if (pSession.working_hours) {
+            dateOptions.working_hours = deepCopy(pSession.working_hours);
+          }
+          let keyDate = makeDate(instruction, dateOptions);
           if (!keyDate.error) { response.push(front, keyDate[dType || 'obs']); }
           else {
             let iParts = [];
@@ -734,7 +747,7 @@ export async function updateDb(pData) {
             });
         }
         else {
-          newRec = Object.assign({}, pData[t].data);
+          newRec = Object.assign({}, pData[t].key, pData[t].data);
         }
         await dbClient
           .put({
@@ -746,7 +759,7 @@ export async function updateDb(pData) {
             console.log(`caught error putting to ${pData[t].table}; error is:`, error);
             response.push(error);
           });
-        continue pData_loop;
+        continue pData_loop;   // this jumps out and doesn't add to the aNameObj and aValuesObj
       }
       let aKey = `n${k_num++}`;
       aNamesObj[`#${aKey}`] = pKey;
@@ -791,4 +804,50 @@ export async function deleteDbRec(pData) {
     response.push('OK');
   }
   return response;
+}
+
+export async function restAPI(pRequest, api_data) {
+  let finalReturn = {};
+  const TELSdefaults = {
+    hostname: 'integrations.tels.net',
+    path: '/workOrders/v1/workOrders',
+    method: 'POST',
+    headers: {
+      "X-API-Key": "Ej8NR7sTFj1TvpG1p2ADz9os9aIu5Q3n7E4QeaIU",
+      'Content-Type': 'application/json'
+    },
+  };
+
+  let requestHeaders = Object.assign({}, TELSdefaults.headers, pRequest.headers);
+  let request = Object.assign({}, TELSdefaults, pRequest, { headers: requestHeaders });
+
+  let params = {
+    FunctionName: 'arn:aws:lambda:us-east-1:125549937716:function:bookResourceReservation',
+    InvocationType: 'RequestResponse',
+    LogType: 'Tail',
+    Payload: ''
+  };
+
+  params.Payload = JSON.stringify({
+    options: request,
+    newTELSworkorder: api_data
+  });
+
+  let invokeFailed = false;
+  const fResp = await lambda
+    .invoke(params)
+    .promise()
+    .catch(err => {
+      invokeFailed = true;
+    });
+
+  if (!invokeFailed) {
+    let response = JSON.parse(fResp.Payload);
+    if (response.status === 200) {
+      cl({ 'good return from API': response });
+      finalReturn = response.Presponse;
+    }
+  };
+  return finalReturn;
+
 }

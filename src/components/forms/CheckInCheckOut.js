@@ -225,7 +225,7 @@ export default ({ onSave, onClose }) => {
     });
     let last10checkout = [reqRec.history[0]];
     if (reactData.personRec.hasOwnProperty('checkout_recent_history')) {
-      last10checkout.push(...reactData.personRec.checkout_recent_history.slice(0, 9))
+      last10checkout.push(...reactData.personRec.checkout_recent_history.slice(0, 9));
     }
     await dbClient
       .update({
@@ -472,11 +472,13 @@ export default ({ onSave, onClose }) => {
               <AVATextInput
                 titleText={[
                   makeGreeting(reactData.personRec.name.first),
+                  ` `,
                   `[italic]You are currently checked in`,
+                  ` `,
                   `Tap below to check out`
                 ]}
                 promptText={state.session.resident_checkout_prompts || []}
-                buttonText={['Confirm', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
+                buttonText={['Check out', (reactData.kiosk_mode ? 'Start over' : 'Back')]}
                 onCancel={() => {
                   reactData.validated_user = false;
                   setReactData(reactData);
@@ -502,12 +504,12 @@ export default ({ onSave, onClose }) => {
                     reactData.currentStatus.reqRec.current_request = { textInput };
                   }
                   await putCheckout(reactData.currentStatus.reqRec);
-                  enqueueSnackbar(`Got it!  Thank you!`, { variant: 'success', persist: false });
+                  enqueueSnackbar(`Got it!  You have successfully checked out.  Thank you!`, { variant: 'success', persist: false });
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else { reset(); }
                 }}
                 allowCancel={true}
-                  options={{ save_on_enter: (state.session.resident_checkout_prompts && (state.session.resident_checkout_prompts.length === 1)) }}
+                options={{ save_on_enter: (state.session.resident_checkout_prompts && (state.session.resident_checkout_prompts.length === 1)) }}
 
               />
               :
@@ -534,7 +536,7 @@ export default ({ onSave, onClose }) => {
                   let hNote = `Checked in on ${now.absolute}`;
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   await putCheckout(reactData.currentStatus.reqRec);
-                  enqueueSnackbar(`You're all set!`, { variant: 'success', persist: false });
+                  enqueueSnackbar(`You're all set!  You have successfully checked in.`, { variant: 'success', persist: false });
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else { reset(); }
                 }}

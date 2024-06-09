@@ -1,39 +1,30 @@
 import React from 'react';
 
-import { titleCase, makeArray, sentenceCase, s3, cl } from '../../util/AVAUtilities';
+import { titleCase, makeArray, s3 } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 
-import Dialog from '@material-ui/core/Dialog';
-import DialogActions from '@material-ui/core/DialogActions';
-import DialogContent from '@material-ui/core/DialogContent';
-import MenuItem from '@material-ui/core/MenuItem';
+import { Dialog, DialogActions, DialogContent, TextField, Box, Button, Typography, Checkbox } from '@material-ui/core';
 
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import DeleteIcon from '@material-ui/icons/Delete';
 import LinearProgress from '@material-ui/core/LinearProgress';
-
-import TextField from '@material-ui/core/TextField';
-import Box from '@material-ui/core/Box';
-import Button from '@material-ui/core/Button';
-import Typography from '@material-ui/core/Typography';
-import Checkbox from '@material-ui/core/Checkbox';
+import Select from "react-dropdown-select";
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
-  containerBox: {
-    marginTop: theme.spacing(3),
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    marginBottom: 0
-  },
   contentBox: {
-    minWidth: '100%'
+    minWidth: '100%',
+    dividers: {
+      paddingTop: theme.spacing(1),
+      paddingBottom: theme.spacing(1),
+      minWidth: '100%',
+    }
   },
   radioButton: {
     marginTop: 0,
@@ -69,6 +60,10 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
+  },
+  placeHolder: {
+    marginLeft: 0,
+    color: 'black'
   },
   idText: {
     minWidth: '100%',
@@ -125,7 +120,19 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
 
   const handleChangeTextInput = (inputValue, ndx, options = {}) => {
     if (!reactData.saving) {
-      textInput[ndx] = inputValue;
+      if (Array.isArray(inputValue)) {
+        if (inputValue.length > 1) {
+          textInput[ndx] = inputValue.map(v => {
+            return v.value;
+          });
+        }
+        else {
+          textInput[ndx] = inputValue[0].value;
+        }
+      }
+      else {
+        textInput[ndx] = inputValue;
+      }
       setTextInput(textInput);
       if (inputValue === '*% select_new %*') {
         updateReactData({ saving: true }, false);
@@ -248,11 +255,17 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
   };
 
   const handleSave = () => {
+    let attachments = [];
+    if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
+      attachments = reactData.attachmentList.map(a => {
+        return a.Location;
+      });
+    }
     if (Array.isArray(promptText)) {
-      onSave(textInput, keyPressed);
+      onSave(textInput, keyPressed, attachments);
     }
     else {
-      onSave(textInput[0], keyPressed);
+      onSave(textInput[0], keyPressed, attachments);
     }
   };
 
@@ -280,7 +293,28 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     promptArray = [promptText];
     if (!titleText) { titleText = titleCase(promptText); }
   }
+  let minHeight = 0;
+  promptArray.forEach(p => {
+    if (p.startsWith('[select')) {
+      minHeight = 350;
+    }
+  });
   let titleArray = makeArray(titleText);
+  let displayValueArray = makeArray(valueText).map((v, ndx) => {
+    if (!v || (v.trim() === '')) {
+      return '';
+    }
+    if (!selectionList || !selectionList[ndx]) {
+      return v;
+    }
+    let foundIt = selectionList[ndx].find(s => {
+      return (s.value.toLowerCase().trim() === v.toLowerCase().trim());
+    });
+    if (foundIt) {
+      return (foundIt.key || foundIt.label || foundIt.display);
+    }
+    return '';
+  });
 
 
   let buttonArray = [];
@@ -293,44 +327,62 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
   // **************************
 
   return (
-    <Dialog open={forceRedisplay || true} fullWidth className={classes.containerBox}>
+    <Dialog open={forceRedisplay || true} fullWidth>
+
       <Box display='flex'
         grow={1}
-        mb={0}
+        mb={3}
+        ml={2}
+        mr={2}
+        mt={3}
         flexDirection='column'
         justifyContent='center'
         alignItems='flex-start'
       >
-        <DialogContent id='dialog-title'>
-          {titleText && titleArray.map((t, tx) => (
-            <Typography key={`title-${tx}`}
-              style={AVATextStyle({
-                size: ((tx === 0) ? 1.3 : 1.0),
-                bold: (tx === 0),
-                italic: (t.includes('[italic]')),
-                marginTop: ((!t || t.trim() === '') ? 1.5 : 0)
-              })}
-              className={classes.titleRow}>
-              {t.replace('[italic]', '')}
-            </Typography>
-          ))}
-        </DialogContent>
-        {promptArray && (promptArray.length > 0) &&
-          <DialogContent className={classes.contentBox} id='dialog-content'>
-            <Box
-              display='flex'
-              grow={1}
-              pt={1}
-              mb={0}
-              id={`contentsColumn`}
-              key={`contentsColumn`}
-              flexDirection='column'
-              justifyContent='center'
-              alignItems='flex-start'
-            >
-              {promptArray.map((prompt, ndx) => (
-                <React.Fragment key={`frag-${ndx}`}>
-                  {prompt && (prompt.toLowerCase().startsWith('[')) ?
+        {titleText && titleArray.map((t, tx) => (
+          <Typography key={`title-${tx}`}
+            style={AVATextStyle({
+              size: ((tx === 0) ? 1.3 : 1.0),
+              bold: (tx === 0),
+              italic: (t.includes('[italic]')),
+              marginTop: ((!t || t.trim() === '') ? 1.5 : 0)
+            })}
+            className={classes.titleRow}>
+            {t.replace('[italic]', '')}
+          </Typography>
+        ))}
+      </Box>
+
+      {promptArray && (promptArray.length > 0) &&
+        <DialogContent
+          dividers={true}
+          style={{
+            minWidth: '100%',
+            dividers: {
+              paddingTop: 8,
+              paddingBottom: 8,
+              minWidth: '100%',
+            },
+            minHeight: `${minHeight}px`,
+            marginBottom: '1em'
+          }}
+          id='dialog-content'
+        >
+          <Box
+            display='flex'
+            grow={1}
+            pt={1}
+            mb={0}
+            id={`contentsColumn`}
+            key={`contentsColumn`}
+            flexDirection='column'
+            justifyContent='center'
+            alignItems='flex-start'
+          >
+            {promptArray.map((prompt, ndx) => (
+              <React.Fragment key={`frag-${ndx}`}>
+                {prompt && (prompt.toLowerCase().startsWith('[')) ?
+                  <React.Fragment>
                     <Box display='flex'
                       flexDirection='row'
                       mt={0.5}
@@ -339,7 +391,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                       paddingRight={2}
                       alignItems={'center'}
                       minWidth={'100%'}
-                      border={textInput[ndx] ? 1 : 0}
+                      border={(textInput[ndx] || prompt.toLowerCase().startsWith('[select')) ? 1 : 0}
                       borderRadius={'16px'}
                       key={'fullRow' + ndx}
                     >
@@ -362,150 +414,164 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                       }
                       {prompt.toLowerCase().startsWith('[select') &&
                         <React.Fragment>
-                          <TextField
-                            className={classes.idText}
-                            id={`prompt-${ndx}`}
-                            key={`prompt-${ndx}`}
-                            select
-                            autoFocus={(ndx === reactData.focusOn) ? true : null}
-                            inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                            FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                            error={!!(errorText && errorText[ndx])}
-                            onContextMenu={async (e) => {
-                              e.preventDefault();
-                              cl(`right clicked ${prompt} at ndx=${ndx}`);
-                              if (prompt.toLowerCase().startsWith('[select/edit')) {
-                                handleChangeTextInput((textInput[ndx] || '*% select_new %*'), ndx, { edit: true });
-                              }
-                            }}
-                            value={textInput[ndx] || ''}
-                            onChange={(event) => {
-                              handleChangeTextInput(event.target.value, ndx);
-                            }}
-                            onKeyPress={(event) => {
-                              onCheckEnter(event);
-                            }}
-                            helperText={((errorText && errorText[ndx]) ? errorText[ndx] : (prompt.split(']').pop() || ''))}
-                            autoComplete='off'
+                          <Box
+                            //            paddingTop={prompt.toLowerCase().startsWith('[select') ? 1 : 0}
+                            key={`selectBox_${ndx}`}
+                            display='flex' flexGrow={1} flexDirection='column'
                           >
-                            {selectionList[ndx].map((sel, sX) => (
-                              <MenuItem
-                                key={`sel_${sX}`}
-                                value={((typeof (sel) === 'string') ? sel : sel.value)}
-                                onContextMenu={async (e) => {
-                                  e.preventDefault();
-                                  cl(`right clicked ${((typeof (sel) === 'string') ? sel : sel.value)}`);
-                                  if (prompt.toLowerCase().startsWith('[select/edit')) {
-                                    handleChangeTextInput(((typeof (sel) === 'string') ? sel : sel.value), ndx, { edit: true });
-                                  }
-                                }}
+                            <Select
+                              options={selectionList[ndx].map(sel => {
+                                return {
+                                  value: (typeof (sel) === 'string') ? sel : sel.value,
+                                  label: (titleCase(((typeof (sel) === 'string') ? sel : (sel.key || sel.label || sel.display)).replace('_', ' ')))
+                                };
+                              })}
+                              searchBy={'label'}
+                              style={{
+                                fontSize: `${user_fontSize}rem`,
+                                marginLeft: -5,
+                                marginBottom: -4,
+                                marginTop: 1,
+                                borderWidth: 0
+                              }}
+                              dropdownHandle={true}
+                              clearOnSelect={true}
+                              clearOnBlur={true}
+                              key={`select_${ndx}`}
+                              searchable={true}
+                              multi={prompt.toLowerCase().startsWith('[selectmulti')}
+                              closeOnClickInput={true}
+                              closeOnSelect={true}
+                              create={false}
+                              keepSelectedInList={true}
+                              noDataLabel={"No matches found"}
+                              placeholder={displayValueArray[ndx]}
+                              onChange={(values) => {
+                                if (values.length > 0) {
+                                  handleChangeTextInput(values, ndx);
+                                }
+                              }}
+                            />
+                            <Box display='flex'
+                              flexDirection='row'
+                              minWidth={'100%'}
+                              paddingTop={'4px'}
+                              borderTop={1}
+                              key={'borderTop' + ndx}
+                            >
+                              <Typography
+                                style={AVATextStyle({
+                                  size: 0.8,
+                                  margin: { left: 0, top: 0, bottom: 0.5 }
+                                })}
                               >
-                                {sentenceCase(((typeof (sel) === 'string') ? sel : sel.key))}
-                              </MenuItem>
-                            ))}
-
-                          </TextField>
+                                {prompt.split(']').pop()}
+                              </Typography>
+                            </Box>
+                          </Box>
                         </React.Fragment>
                       }
                     </Box>
-                    :
-                    <Box display='flex'
-                      flexDirection='column'
-                      mt={0.5}
-                      mb={0.5}
-                      paddingLeft={2}
-                      paddingRight={2}
-                      minWidth={'100%'}
-                      justifyContent={'center'}
-                      minHeight={`${user_fontSize * 2}rem`}
-                      // border={textInput[ndx] ? 1 : 0}
-                      border={!!(errorText && errorText[ndx]) ? 4 : (textInput[ndx] ? 1 : 'none')}
-                      borderColor={!!(errorText && errorText[ndx]) ? 'red' : 'black'}
-                      borderRadius={'16px'}
-                      key={'fullRow' + ndx}
-                    >
-                      <TextField
-                        className={classes.idText}
-                        id={`prompt-${ndx}`}
-                        key={`prompt-${ndx}`}
-                        multiline
-                        autoFocus={(ndx === reactData.focusOn) ? true : null}
-                        inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                        FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                        error={!!(errorText && errorText[ndx])}
-                        value={textInput[ndx] || ''}
-                        onChange={(event) => {
-                          handleChangeTextInput(event.target.value, ndx);
-                        }}
-                        onKeyPress={(event) => {
-                          onCheckEnter(event);
-                        }}
-                        helperText={(errorText && errorText[ndx]) ? errorText[ndx] : ((prompt === titleText) ? '' : (prompt || ''))}
-                        autoComplete='off'
-                      />
-                    </Box>
-                  }
-                </React.Fragment>
-              ))}
-            </Box>
-          </DialogContent>
-        }
-        {(options.allowAttach && reactData.attachmentList && reactData.attachmentList.length > 0) &&
-          <Box display='flex' flexDirection='column' pl={'24px'} justifyContent='flex-start'
-            alignItems='flex-start' key={'qrOpt_attachmentlist'}
-          >
-            <Typography className={classes.radioHead}>Attachments:</Typography>
-            {reactData.attachmentList.map((a, x) => (
-              <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                alignItems='center' key={`qrOpt_attachmentLine-${x}`}
-              >
-                <DeleteIcon
-                  className={classes.radioButton}
-                  size="small"
-                  onClick={() => {
-                    reactData.attachmentList.splice(x, 1);
-                    reactData.forceRedisplay = !reactData.forceRedisplay;
-                    if (loadingInProgress(x)) {
-                      reactData.loadProgress[x].loading = 'abort';
-                    }
-                    setReactData(reactData);
-                    setForceRedisplay(forceRedisplay => !forceRedisplay);
-                  }}
-                />
-                {loadingInProgress(x) &&
-                  <React.Fragment>
-                    <LinearProgress
-                      variant="determinate"
-                      className={classes.progressBar}
-                      style={{ width: reactData.loadProgress[x].total }}
-                      value={reactData.loadProgress[x].progress}
-                    />
                   </React.Fragment>
+                  :
+                  <Box display='flex'
+                    flexDirection='column'
+                    mt={0.5}
+                    mb={0.5}
+                    paddingLeft={2}
+                    paddingRight={2}
+                    minWidth={'100%'}
+                    justifyContent={'center'}
+                    minHeight={`${user_fontSize * 2}rem`}
+                    // border={textInput[ndx] ? 1 : 0}
+                    border={!!(errorText && errorText[ndx]) ? 4 : (textInput[ndx] ? 1 : 'none')}
+                    borderColor={!!(errorText && errorText[ndx]) ? 'red' : 'black'}
+                    borderRadius={'16px'}
+                    key={'fullRow' + ndx}
+                  >
+                    <TextField
+                      className={classes.idText}
+                      id={`prompt-${ndx}`}
+                      key={`prompt-${ndx}`}
+                      multiline
+                      autoFocus={(ndx === reactData.focusOn) ? true : null}
+                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                      error={!!(errorText && errorText[ndx])}
+                      value={textInput[ndx] || ''}
+                      onChange={(event) => {
+                        handleChangeTextInput(event.target.value, ndx);
+                      }}
+                      onKeyPress={(event) => {
+                        onCheckEnter(event);
+                      }}
+                      helperText={(errorText && errorText[ndx]) ? errorText[ndx] : ((prompt === titleText) ? '' : (prompt || ''))}
+                      autoComplete='off'
+                    />
+                  </Box>
                 }
-                <Typography
-                  style={AVATextStyle({
-                    size: 0.6,
-                    color: ((loadingInProgress(x)) ? 'gray' : 'black'),
-                    margin: { left: 0.3, right: 3 }
-                  })}
-                >
-                  {a.Key}
-                </Typography>
-                <Box
-                  component="img"
-                  mb={2}
-                  minWidth={150}
-                  maxWidth={150}
-                  alt=''
-                  src={a.Location}
-                />
-              </Box>
+              </React.Fragment>
             ))}
           </Box>
-        }
-      </Box>
+        </DialogContent>
+      }
+      {(options.allowAttach && reactData.attachmentList && reactData.attachmentList.length > 0) &&
+        <Box display='flex' flexDirection='column' pl={1.5} mt={1} justifyContent='flex-start'
+          alignItems='flex-start' key={'qrOpt_attachmentlist'}
+        >
+          <Typography className={classes.radioHead}>
+            {(typeof (options.allowAttach) === 'string') ? options.allowAttach : 'Attachments'}:
+          </Typography>
+          {reactData.attachmentList.map((a, x) => (
+            <Box display='flex' flexDirection='row' justifyContent='flex-start'
+              alignItems='center' key={`qrOpt_attachmentLine-${x}`}
+            >
+              <DeleteIcon
+                className={classes.radioButton}
+                size="small"
+                onClick={() => {
+                  reactData.attachmentList.splice(x, 1);
+                  reactData.forceRedisplay = !reactData.forceRedisplay;
+                  if (loadingInProgress(x)) {
+                    reactData.loadProgress[x].loading = 'abort';
+                  }
+                  setReactData(reactData);
+                  setForceRedisplay(forceRedisplay => !forceRedisplay);
+                }}
+              />
+              {loadingInProgress(x) &&
+                <React.Fragment>
+                  <LinearProgress
+                    variant="determinate"
+                    className={classes.progressBar}
+                    style={{ width: reactData.loadProgress[x].total }}
+                    value={reactData.loadProgress[x].progress}
+                  />
+                </React.Fragment>
+              }
+              <Typography
+                style={AVATextStyle({
+                  size: 0.6,
+                  color: ((loadingInProgress(x)) ? 'gray' : 'black'),
+                  margin: { left: 0.3, right: 3 }
+                })}
+              >
+                {a.Key}
+              </Typography>
+              <Box
+                component="img"
+                mb={2}
+                minWidth={150}
+                maxWidth={150}
+                alt=''
+                src={a.Location}
+              />
+            </Box>
+          ))}
+        </Box>
+      }
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Box display='flex' style={{ marginTop: '2em' }} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+        <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
           {allowCancel &&
             <Button
               className={AVAClass.AVAButton}
@@ -560,7 +626,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                 startIcon={<CloudUploadIcon />}
                 onClick={handleFileUpload}
               >
-                {(typeof (options.allowAttach) === 'string') ? options.allowAttach : 'Attach'}
+                Add {(typeof (options.allowAttach) === 'string') ? options.allowAttach : 'Attachment'}
               </Button>
               <input
                 type="file"

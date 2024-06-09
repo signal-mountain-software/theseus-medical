@@ -29,8 +29,26 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   let activityHistory = {};
 
   function makeVersion(inStr) {
-    let [vYr, vDay] = inStr.split(/\.(.*)/);
-    return ((Number(vYr) % 100) * 100) + parseFloat(vDay);
+    let p = inStr.split('.');
+    let response = p.reduce((ans, s) => { 
+      let n = Number(s);
+      if (isNaN(n)) {
+        return ans;
+      }
+      else {
+        return (ans * 100) + n;
+      }
+    }, 0)
+    if (response < 100) {
+      return 999999
+    }
+    else if (response < 10000) {
+        let today = new Date();
+        return ((today.getFullYear() % 100) * 10000) + response;
+    }
+    else {
+      return response;
+    }
   }
 
   function makeNumber(inStr) {
@@ -804,7 +822,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       addClient = true;
     }
     for (let p = 1; p < parts.length; p++) {
-      let [iType, iData] = parts[p].split(/[=%\]]/);
+      let [iType, iData] = parts[p].split(/[<>=%\]]/);
       switch (iType) {
         case 'default': {
           overrideDefault = await resolveVariables(iData, { client_id: pClient, patient_id: pPerson, user_id: pPerson });
@@ -818,8 +836,8 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
           break;
         }
         case 'env': {
-          if ((parts[p].toLowerCase() === 'test') && (!['T', 'L'].includes(ava_env))) { return {}; }
-          else if ((parts[p].toLowerCase() === 'dev') && (ava_env !== 'D')) { return {}; }
+          if ((iData.toLowerCase() === 'test') && (!['T', 'L'].includes(ava_env))) { return {}; }
+          else if ((iData.toLowerCase() === 'dev') && (ava_env !== 'D')) { return {}; }
           break;
         }
         case 'vers':
@@ -827,8 +845,12 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         case 'version':
         case 'release': {
           let checkVer = makeVersion(iData);
-          if ((checkVer >= 9999) && (!['T', 'L'].includes(ava_env))) { return {}; }
-          if ((parts[p].includes('<') && (ava_version_number >= checkVer))
+          if (checkVer >= 999900) {
+            if (!['T', 'L'].includes(ava_env)) {   // special case; vers 9999.99 only runs in test envs
+              return {};
+            }
+          }
+          else if ((parts[p].includes('<') && (ava_version_number >= checkVer))
             || (parts[p].includes('>') && (ava_version_number <= checkVer))
             || (parts[p].includes('=') && (checkVer !== ava_version_number))) {
             activityObj[pActivityCode] = {};
@@ -904,8 +926,12 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         case 'version':
         case 'release': {
           let checkVer = makeVersion(iData);
-          if ((checkVer >= 9999) && (!['T', 'L'].includes(ava_env))) { return {}; }
-          if ((iData.includes('<') && (ava_version_number >= checkVer))
+          if (checkVer >= 9999) {
+            if (!['T', 'L'].includes(ava_env)) {   // special case; vers 9999.99 only runs in test envs
+              return {};
+            }
+          }
+          else if ((iData.includes('<') && (ava_version_number >= checkVer))
             || (iData.includes('>') && (ava_version_number <= checkVer))
             || (iData.includes('=') && (checkVer !== ava_version_number))) {
             return {};

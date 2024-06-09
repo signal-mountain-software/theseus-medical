@@ -7,12 +7,13 @@ let sessionState;
 let checkbox = true;
 let ignore = false;
 let required = false;
+let rowTestArray = [];
 let multiColumn = false;
 let displayBold = false;
 let displayStyle = false;
 let displayItalic = false;
 let doneWithTopBox = false;
-const defaultCheckedWords = ['checked', 'on', 'selected', 'true'];
+const defaultCheckedWords = ['checked', 'on', 'selected', 'true', 'always'];
 
 export async function getActivityDetail(pActRec, state) {
   sessionState = state;
@@ -240,6 +241,18 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           checkbox = (oValue.toLowerCase() === 'on');
           break;
         }
+        case 'display_if': 
+        case 'displayif': 
+        case 'displayIF': { 
+          rowTestArray.push(oValue);
+          break;
+        }
+        case 'end_if':
+        case 'endif':
+        case 'endIF': {
+          rowTestArray.pop();
+          break;
+        }
         case 'noOp': {
           doneWithTopBox = true;
           break;
@@ -302,10 +315,12 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         checkbox,
         isChecked: false,
         required,
+        rowTest: deepCopy(rowTestArray),
         multiColumn,
         text: instruction[0],
         observationKey: getKey(instruction[0]),
-        desc: getDescription(instruction[0]),
+        desc: getQualifier(instruction[0], 'description'),
+        fee: getQualifier(instruction[0], 'fee'),
         input: false,
         bold: displayBold,
         style: displayStyle,
@@ -329,6 +344,10 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           }
           else {
             rObj.isChecked = true;
+            if ((defaults.hasOwnProperty(instruction[0]) && (defaults[instruction[0]] === 'always')) // this item is checked off by default
+              || (observationDefaultValue === 'always')) { 
+              rObj.checkbox = false;
+            }
           }
         }
       }
@@ -338,6 +357,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           checkbox: false,
           isChecked: false,
           required: false,
+          rowTest: deepCopy(rowTestArray),
           multiColumn,
           text: docRows,
           observationKey: null,
@@ -371,13 +391,15 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       let rObj = {
         checkbox: false,
         required,
+        rowTest: deepCopy(rowTestArray),
         multiColumn: false,
         text: this_instruction,
         textValue: defaults[this_instruction],
         obo_line: ((defaults.obo || defaults.onBehalfOf) === this_instruction),
         location_line: (defaults[this_instruction] && (defaults[this_instruction] === '[person.location]')),
         observationKey: instruction[3] || getKey(this_instruction),
-        desc: getDescription(this_instruction),
+        desc: getQualifier(this_instruction, 'description'),
+        fee: getQualifier(this_instruction, 'fee'),
         input: instruction[1].trim().toLowerCase(),
         header: false,
         row_qualifier: this_qualifier
@@ -399,10 +421,12 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     displayRowList.push({
       checkbox: false,
       required: false,
+      rowTest: deepCopy(rowTestArray),
       multiColumn: false,
       text: instruction[1],
       observationKey: getKey(instruction[1]),
-      desc: getDescription(instruction[1]),
+      desc: getQualifier(instruction[1], 'description'),
+      fee: getQualifier(instruction[1], 'fee'),
       input: false,
       header: true
     });
@@ -420,9 +444,9 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
     return null;
   }
 
-  function getDescription(pText) {
+  function getQualifier(pText, pQual) {
     if (qualifiers.hasOwnProperty(pText)) {
-      return qualifiers[pText].description;
+      return qualifiers[pText][pQual];
     }
     else {
       return null;

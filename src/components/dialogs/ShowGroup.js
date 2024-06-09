@@ -91,8 +91,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
   async function getGroupMemberList(pGroupArray) {
     reactData.progressMessage = 'Getting accounts';
     let memberInfo;
-    if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])
-      || (state.session.hasOwnProperty('last_state') && (state.session.client_id === pSession.client_id))) {
+    if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])) {
       if (pGroupArray.includes('*all')) {
         memberInfo = {
           peopleList: state.accessList?.[state.session.client_id]?.list || state.session.last_state.list
@@ -118,6 +117,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       enqueueSnackbar(`AVA couldn't find any members in that Group.`, { variant: 'error' });
       reactData.showGroupSelect = true;
       setReactData(reactData);
+      onAbort();
+      return [];
     }
     reactData.groupMemberList = memberInfo.peopleList;
     if (pGroupArray.length === 1) {
@@ -214,12 +215,26 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       if (groupList && groupList.length > 0) {
         reactData.groupList = groupList;
         if (showList === 'select') {
-          reactData.groupsManagedObject = await prepareGroupObject(groupList);
-          reactData.showGroupSelect = true;
+          if (!state.groups || !state.groups.adminHierarchy) {
+            enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+            onAbort();
+            return;
+          }
+          else {
+            reactData.groupsManagedObject = await prepareGroupObject(groupList);
+            reactData.showGroupSelect = true;
+          }
         }
         else {
-          await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
-          reactData.showGroupSelect = false;
+          if (!state.accessList || !state.accessList.hasOwnProperty(state.session.client_id)) { 
+            enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
+            onAbort();
+            return;
+          }
+          else {
+            await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
+            reactData.showGroupSelect = false;
+          }
         }
       }
       else {

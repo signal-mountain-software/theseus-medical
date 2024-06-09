@@ -16,6 +16,9 @@ export function putMessage_nonAsync(body) {
 */
 
 export async function getObservationItems(pObsKey) {
+  if (!pObsKey) {
+    return {};
+  }
   let returnObj = {};
   let pObsQkey = {
     KeyConditionExpression: 'observation_key = :c',
@@ -88,6 +91,17 @@ export async function getObservations(pClient, pKey, options = {}) {
       .promise()
       .catch(error => { cl(`ERROR reading Observations by date *** caught error is: ${error}`); });
   }
+  else if (options && options.always) {
+    observations = await dbClient
+      .query({
+        KeyConditionExpression: 'client_id = :c and date_key = :d',
+        ExpressionAttributeValues: { ':c': pClient, ':d': 'always' },
+        TableName: "Observations",
+        IndexName: "date_key-index"
+      })
+      .promise()
+      .catch(error => { cl(`ERROR reading Observations by date *** caught error is: ${error}`); });
+  }
   else {
     pKey = await resolveVariables(pKey, options.session);
     let qQ = {
@@ -111,8 +125,15 @@ export async function getObservations(pClient, pKey, options = {}) {
       oList.push(oRec);
       valueList.push(oRec.observation_code);
       let qualObj = {};
-      if (oRec.description) { qualObj.description = oRec.description; }
-      if (oRec.image_url) { qualObj.image_url = oRec.image_url; }
+      if (oRec.fee) {
+        qualObj.fee = oRec.fee;
+      }
+      if (oRec.description) {
+        qualObj.description = oRec.description;
+      }
+      if (oRec.image_url) {
+        qualObj.image_url = oRec.image_url;
+      }
       if ('qualifiers' in oRec) {
         if (oRec.qualifiers.minimum_required) { qualObj.minimum_required = oRec.qualifiers.minimum_required; }
         if (oRec.qualifiers.maximum_allowed) { qualObj.maximum_allowed = oRec.qualifiers.maximum_allowed; }

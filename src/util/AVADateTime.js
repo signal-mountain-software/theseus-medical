@@ -14,7 +14,7 @@ export function daysDiff(d1, d2) {
     return Math.abs(Math.floor((d2.getTime() - d1.getTime() - ((d2DST - d1DST) * oneMinute)) / one_day));
 }
 
-export function makeDate(pInput, validation = null) {
+export function makeDate(pInput, options = {}) {
     if (!pInput) {
         return {
             'error': true,
@@ -31,6 +31,7 @@ export function makeDate(pInput, validation = null) {
             'numeric': 20990101,
             'numeric$': '20990101',
             'dayPart': 'day',   // afternoon
+            'workingHours': 'day',   // day, night, weekend
             'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 6
             'weekday': '',   // 'weekend' or 'weekday' 
             'textOut': pInput
@@ -93,6 +94,7 @@ export function makeDate(pInput, validation = null) {
                 'numeric': 20990101,
                 'numeric$': '20990101',
                 'dayPart': 'day',
+                'workingHours': `${pInput} is not a valid date`,
                 'dayOfWeek': 9,
                 'weekday': 'invalid', 
                 'textOut': pInput
@@ -104,9 +106,9 @@ export function makeDate(pInput, validation = null) {
     let beginningOfCurrentDay = currentDate.setHours(0, 0, 0, 0);
 
     // validation
-    if (validation) {
+    if (options.validation) {
         let foundError;
-        switch (validation) {
+        switch (options.validation) {
             case 'noFuture': {
                 if (targetDate > currentDate) {
                     foundError =
@@ -138,6 +140,7 @@ export function makeDate(pInput, validation = null) {
                 'numeric': 20990101,
                 'numeric$': '20990101',
                 'dayPart': 'day',
+                'workingHours': foundError,
                 'dayOfWeek': 9,
                 'weekday': 'invalid',
                 'textOut': pInput
@@ -189,16 +192,58 @@ export function makeDate(pInput, validation = null) {
         if (daysDiff(targetDate, new Date()) > 21) { relDate += ` ${targetDate.getFullYear()}`; }
     }
     oaDate = `on ${absDate}`;
-    let dayPart = 'day';
     if ((targetDate.getHours() > 0) || (targetDate.getMinutes() > 0)) {
         let tOfDay = ` at ${targetDate.toLocaleString([], { hour: 'numeric', minute: '2-digit' })}`;
         absDate += tOfDay;
         oaDate += tOfDay;
         relDate += tOfDay;
-        let hour = targetDate.getHours();
-        if (hour < 12) { dayPart = "morning"; }
-        else if (hour < 17) { dayPart = "afternoon"; }
-        else (dayPart = "evening");
+    }
+    let dayPart = 'day';
+    let workingHours = 'day';
+    let hour = targetDate.getHours();
+    if (hour < 12) { dayPart = "morning"; }
+    else if (hour < 17) { dayPart = "afternoon"; }
+    else (dayPart = "evening");
+    if (options.working_hours) {
+        if ((options.working_hours.hasOwnProperty('isHoliday')) && (options.working_hours.isHoliday)) {
+            workingHours = "holiday";
+        }
+        else if ((options.working_hours.hasOwnProperty('weekend')) && (options.working_hours.weekend) && ((targetDate.getDay() % 6) === 0)) {
+            workingHours = "weekend";
+        }
+        else { 
+            let startTime = 800;
+            if (options.working_hours.hasOwnProperty('start')) {
+                let try_start = Number(options.working_hours.start);
+                if (!isNaN(try_start)) {
+                    if (try_start < 100) {
+                        try_start *= 100;
+                    }
+                    startTime = try_start;
+                }
+            }
+            let endTime = 1800;
+            if (options.working_hours.hasOwnProperty('end')) {
+                let try_end = Number(options.working_hours.end);
+                if (!isNaN(try_end)) {
+                    if (try_end < 100) {
+                        try_end *= 100;
+                    }
+                    endTime = try_end;
+                }
+            }
+            if (((hour * 100) < startTime) || ((hour * 100) > endTime)) {
+                workingHours = "night";
+            };
+        }
+    }
+    else {
+        if ((targetDate.getDay() % 6) === 0) {
+            workingHours = "weekend";
+        }
+        else if ((hour < 8) || (hour > 18)) {
+            workingHours = "night";
+        };
     }
     let targetDateYMD = targetDate.getFullYear()
         + '.' + (targetDate.getMonth() + 101).toString().slice(1)
@@ -219,6 +264,7 @@ export function makeDate(pInput, validation = null) {
         'numeric': Number(targetDateYMD.replace(/\./g, '')),
         'numeric$': targetDateYMD.replace(/\./g, ''),
         'dayPart': dayPart,
+        'workingHours': workingHours,
         'dayOfWeek': targetDate.getDay(),
         'weekday': (((targetDate.getDay() % 6) === 0) ? 'weekend' : 'weekday'),
         'textOut': pInput

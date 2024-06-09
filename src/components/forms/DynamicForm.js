@@ -36,6 +36,7 @@ import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
 import DynamicSignup from './DynamicSignup';
 import AVAInHome from '../sections/AVAInHome';
+import ShowMenuB from '../dialogs/ShowMenuB';
 
 export default ({
   open,
@@ -456,6 +457,14 @@ export default ({
     case 'show_menu':
       return (
         <ShowMenu
+          pClient={session.client_id}
+          showMenu={true}
+          onClose={onSave}
+        />
+      );
+    case 'show_menuB':
+      return (
+        <ShowMenuB
           pClient={session.client_id}
           showMenu={true}
           onClose={onSave}
