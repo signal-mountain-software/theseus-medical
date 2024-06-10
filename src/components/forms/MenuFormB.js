@@ -619,6 +619,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                 opacity: 1,
                 zIndex: 1100,
                 backgroundColor: 'white',
+                color: ' black',
                 marginBottom: 1,
                 borderBottom: 2,
                 marginLeft: '-10px',
