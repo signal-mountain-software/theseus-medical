@@ -936,6 +936,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                     id={`category-title-box-${menu_category}`}
                     minWidth={'95%'}
                     flexGrow={1}
+                    marginBottom={((catNdx + 1) < reactData.service_details['dining_area'][selectedArea()]['meal_service'][selectedMealType()].categories.length) ? 0 : 40}
                     justifyContent='flex-start'
                     alignItems='center'
                   >
