@@ -545,6 +545,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   };
 
   const handleChangeTextField = (vText, columnNumber, rowNumber) => {
+    reactData.columnList[columnNumber].columnActivated = true;
     if (!reactData.columnList[columnNumber].rowDetails[rowNumber].hasOwnProperty('textValue')) {
       reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = {};
     }
@@ -868,6 +869,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         this_row.moreInfo = deepCopy(qualResponse.moreInfo);
       }
     }
+    reactData.columnList[columnNumber].columnActivated = true;
     reactData.columnList[columnNumber].rowDetails[rowNumber] = this_row;
     updateReactData({ columnList: reactData.columnList }, true);
   }
@@ -993,6 +995,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
         }
       }
+      myDefaultColumns[c].columnActivated = false;
       myDefaultColumns[c].rowDetails.forEach((dRow, r) => {
         if (dRow.textValue) {
           if (dRow.textValue === '[person.location]') {
@@ -1325,144 +1328,146 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       let image_location = {};
       let oBo;
       let this_column = pData[columnNumber];
-      if (this_column.person_id) {
-        oBo = await makeName(this_column.person_id);
-      }
-      else {
-        oBo = await makeName(reactData.defaultPerson ? reactData.defaultPerson.person_id : state.patient.person_id);
-      }
-      for (let rowNumber = 0; rowNumber < this_column.rowDetails.length; rowNumber++) {
-        let this_row = this_column.rowDetails[rowNumber];
-        if (this_row.isChecked) {
-          let choices_list = [];
-          if (this_row.input === 'signature') {
-            let s3Response = await s3
-              .upload({
-                Bucket: 'theseus-medical-storage',
-                Key: `${this_column.person_id || reactData.defaultPerson.person_id || state.patient.person_id}_signature`,
-                Body: this_row.image,
-                ACL: 'public-read-write',
-                ContentType: 'image/png'
-              })
-              .promise()
-              .catch(err => {
-                enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-              });
-            image_location[this_row.text] = s3Response.Location;
-            images[this_row.text] = this_row.image;
-          }
-          else {
-            for (let this_option in this_row.qualSelections) {
-              for (let this_choice in this_row.qualSelections[this_option]) {
-                if (!options.hasOwnProperty(this_row.text)) {
-                  options[this_row.text] = {};
-                }
-                if (!options[this_row.text].hasOwnProperty(this_option)) {
-                  options[this_row.text][this_option] = {};
-                }
-                options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
-                if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
-                  if (this_row.qualSelections[this_option][this_choice]) {
-                    choices_list.push(this_choice);
+      if (this_column.columnActivated) {
+        if (this_column.person_id) {
+          oBo = await makeName(this_column.person_id);
+        }
+        else {
+          oBo = await makeName(reactData.defaultPerson ? reactData.defaultPerson.person_id : state.patient.person_id);
+        }
+        for (let rowNumber = 0; rowNumber < this_column.rowDetails.length; rowNumber++) {
+          let this_row = this_column.rowDetails[rowNumber];
+          if (this_row.isChecked) {
+            let choices_list = [];
+            if (this_row.input === 'signature') {
+              let s3Response = await s3
+                .upload({
+                  Bucket: 'theseus-medical-storage',
+                  Key: `${this_column.person_id || reactData.defaultPerson.person_id || state.patient.person_id}_signature`,
+                  Body: this_row.image,
+                  ACL: 'public-read-write',
+                  ContentType: 'image/png'
+                })
+                .promise()
+                .catch(err => {
+                  enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+                });
+              image_location[this_row.text] = s3Response.Location;
+              images[this_row.text] = this_row.image;
+            }
+            else {
+              for (let this_option in this_row.qualSelections) {
+                for (let this_choice in this_row.qualSelections[this_option]) {
+                  if (!options.hasOwnProperty(this_row.text)) {
+                    options[this_row.text] = {};
                   }
-                }
-                else {
-                  choices_list.push(this_row.qualSelections[this_option][this_choice]);
+                  if (!options[this_row.text].hasOwnProperty(this_option)) {
+                    options[this_row.text][this_option] = {};
+                  }
+                  options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
+                  if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
+                    if (this_row.qualSelections[this_option][this_choice]) {
+                      choices_list.push(this_choice);
+                    }
+                  }
+                  else {
+                    choices_list.push(this_row.qualSelections[this_option][this_choice]);
+                  }
                 }
               }
             }
+            let pushText = this_row.text;
+            if (choices_list.length > 0) {
+              pushText += ` (${choices_list.join('; ')})`;
+            }
+            selections.push(pushText);
           }
-          let pushText = this_row.text;
-          if (choices_list.length > 0) {
-            pushText += ` (${choices_list.join('; ')})`;
-          }
-          selections.push(pushText);
-        }
-        if (this_row.textValue) {
-          // special Values/
-          if ((this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text))
-            || (this_row.input === 'obo')) {
-            oBo = this_row.textValue;
-          }
-          else {
-            textInput[this_row.text] = this_row.textValue;
-          }
-        }
-      }
-      if ((selections.length > 0) || (Object.keys(textInput).length > 0)) {
-        // We are ready to save this service request
-        let svc_messaging = null;
-        if (!fact.new_messaging && fact.messaging) {
-          if ((Array.isArray(fact.messaging) && (fact.messaging.every(m => { return (m.format && (m.format.type !== 'mealTicket')); })))
-            || (!Array.isArray(fact.messaging) && (fact.messaging.format && (fact.messaging.format.type !== 'mealTicket')))) {
-            svc_messaging = fact.messaging;
-            local_key = null;
-          }
-        }
-        let putSR = {};
-        if (this_column.request_to_update) {
-          putSR = deepCopy(this_column.request_to_update);
-        }
-        Object.assign(putSR, {
-          client: state.session.client_id,
-          author: this_column.person_id || state.session.patient_id,
-          proxy_user: state.session.user_id,
-          requestType: this_column.requestType,
-          activity_key: this_column.activity_key,
-          request: {},
-          onBehalfOf: oBo,
-          messaging: svc_messaging
-        });
-        if (local_key) {
-          putSR.local_key = local_key;
-        }
-        if (this_column.request_to_update) {
-          if (putSR.history.length === 0) {
-            putSR.history = [];
-          };
-          putSR.history.unshift(`Request updated ${currentTime.oaDate}`);
-          // putSR.original_request = {
-          putSR.current_request = {
-            selections,
-            options,
-            textInput,
-            image_location,
-            images
-          };
-          await updateServiceRequest(putSR);
-          writtenRecords.push(putSR);
-        }
-        else {
-          putSR.history = [`Request submitted ${currentTime.oaDate}`];
-          putSR.request = {
-            selections,
-            options,
-            textInput,
-            image_location,
-            images
-          };
-          putSR.foreign_key = await resolveMessageVariables(this_column.foreignKey, textInput);
-          if (fact?.value?.freeText?.assign_to) {
-            // if there is an assign_to value, we'll assigne this SR to that ID
-            putSR.assign_to = fact?.value?.freeText?.assign_to;
-            let this_name = await getPerson(fact?.value?.freeText?.assign_to, 'name');
-            putSR.history.unshift(`Auto-Assigned to ${this_name}`);
-            if (validRequestStatus(this_column.requestType, 'assigned', state.session)) {
-              putSR.requestStatus = 'assigned';
+          if (this_row.textValue) {
+            // special Values/
+            if ((this_column.defaultValues.hasOwnProperty('onBehalfOf') && (this_column.defaultValues['onBehalfOf'] === this_row.text))
+              || (this_row.input === 'obo')) {
+              oBo = this_row.textValue;
+            }
+            else {
+              textInput[this_row.text] = this_row.textValue;
             }
           }
-          else {
-            putSR.assign_to = 'unassigned';
-          }
-          if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
-            putSR.attachments = reactData.attachmentList;
-            if (defaultValue.requestType === 'file') {
+        }
+        if ((selections.length > 0) || (Object.keys(textInput).length > 0)) {
+          // We are ready to save this service request
+          let svc_messaging = null;
+          if (!fact.new_messaging && fact.messaging) {
+            if ((Array.isArray(fact.messaging) && (fact.messaging.every(m => { return (m.format && (m.format.type !== 'mealTicket')); })))
+              || (!Array.isArray(fact.messaging) && (fact.messaging.format && (fact.messaging.format.type !== 'mealTicket')))) {
+              svc_messaging = fact.messaging;
+              local_key = null;
             }
           }
-          let result = await putServiceRequest(putSR);
-          local_key = result.requestRec.local_key;
-          message_body = result.body;
-          writtenRecords.push(result.requestRec);
+          let putSR = {};
+          if (this_column.request_to_update) {
+            putSR = deepCopy(this_column.request_to_update);
+          }
+          Object.assign(putSR, {
+            client: state.session.client_id,
+            author: this_column.person_id || state.session.patient_id,
+            proxy_user: state.session.user_id,
+            requestType: this_column.requestType,
+            activity_key: this_column.activity_key,
+            request: {},
+            onBehalfOf: oBo,
+            messaging: svc_messaging
+          });
+          if (local_key) {
+            putSR.local_key = local_key;
+          }
+          if (this_column.request_to_update) {
+            if (putSR.history.length === 0) {
+              putSR.history = [];
+            };
+            putSR.history.unshift(`Request updated ${currentTime.oaDate}`);
+            // putSR.original_request = {
+            putSR.current_request = {
+              selections,
+              options,
+              textInput,
+              image_location,
+              images
+            };
+            await updateServiceRequest(putSR);
+            writtenRecords.push(putSR);
+          }
+          else {
+            putSR.history = [`Request submitted ${currentTime.oaDate}`];
+            putSR.request = {
+              selections,
+              options,
+              textInput,
+              image_location,
+              images
+            };
+            putSR.foreign_key = await resolveMessageVariables(this_column.foreignKey, textInput);
+            if (fact?.value?.freeText?.assign_to) {
+              // if there is an assign_to value, we'll assigne this SR to that ID
+              putSR.assign_to = fact?.value?.freeText?.assign_to;
+              let this_name = await getPerson(fact?.value?.freeText?.assign_to, 'name');
+              putSR.history.unshift(`Auto-Assigned to ${this_name}`);
+              if (validRequestStatus(this_column.requestType, 'assigned', state.session)) {
+                putSR.requestStatus = 'assigned';
+              }
+            }
+            else {
+              putSR.assign_to = 'unassigned';
+            }
+            if (reactData.attachmentList && (reactData.attachmentList.length > 0)) {
+              putSR.attachments = reactData.attachmentList;
+              if (defaultValue.requestType === 'file') {
+              }
+            }
+            let result = await putServiceRequest(putSR);
+            local_key = result.requestRec.local_key;
+            message_body = result.body;
+            writtenRecords.push(result.requestRec);
+          }
         }
       }
     };
@@ -1589,102 +1594,108 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       */
       let selectionText = [];
       let columnName = columnUniqueName(this_column).string;
-      /*  Check for errors */
-      this_column.rowDetails.forEach((this_row, row_number) => {
-        if (this_row.input === 'signature') {
-          if (signatureRef.current.isEmpty() && this_row.required) {
-            this_row.textValue = false;
-          }
-          else {
-            // reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.toDataURL('image/png');
-            reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
-            this_row.textValue = 'Signature captured';
-          }
-        }
-        reactData.columnList[column_number].rowDetails[row_number].error = false;
-        if (this_row.isChecked && this_row.qualData) {
-          this_row.qualData.forEach(this_qual => {
-            if (this_qual.min_required > 0) {
-              let qualCount = 0;
-              if (this_row.qualSelections && this_row.qualSelections.hasOwnProperty(this_qual.title)) {
-                qualCount = (Object.values(this_row.qualSelections[this_qual.title]).filter(this_value => {
-                  return this_value;
-                })).length;
-              }
-              if (qualCount < this_qual.min_required) {
-                confirmStatus = 'error';
-                warningsExist = true;
-                let warningMessage;
-                if (this_qual.max_allowed === this_qual.min_required) {
-                  warningMessage = `You must select ${this_qual.min_required} from ${this_row.text} (${this_qual.title})`;
-                }
-                else {
-                  warningMessage = `You must select at least ${this_qual.min_required} from ${this_row.text} (${this_qual.title})`;
-                }
-                warningSection.push(`[color:red][bold]${warningMessage}`);
-                reactData.columnList[column_number].rowDetails[row_number].error = warningMessage;
-              }
-            }
-          });
-          updateReactData({
-            columnList: reactData.columnList
-          }, false);
-        }
-        else if (this_row.required && !this_row.textValue && !this_row.isChecked) {
-          confirmStatus = 'error';
-          let warningMessage;
-          if (pData.length > 1) {
-            warningMessage = `${columnName} is missing "${this_row.text}"`;
-          }
-          else {
-            warningMessage = `"${this_row.text}" is required`;
-          }
-          warningsExist = true;
-          warningSection.push(`[color:red][bold]${warningMessage}`);
-          reactData.columnList[column_number].rowDetails[row_number].error = 'This field is required';
-          updateReactData({
-            columnList: reactData.columnList
-          }, false);
-        }
-        else if (this_row.error) {
-          confirmStatus = 'error';
-          if (pData.length > 1) {
-            warningSection.push(`[color:red][bold]${columnName} has an error on "${this_row.text}".  The error is: ${this_row.error}.`);
-          }
-          else {
-            warningSection.push(`[color:red][bold]Error on "${this_row.text}".  The error is: ${this_row.error}.`);
-          }
-          warningsExist = true;
-        }
-      });
-      let options = {};
-      if (reactData.collectPayment) {
-        options.includeFees = true;
-      }
-      for (const [this_selection, optionList] of Object.entries(formatServiceRequestDetails(this_column, options))) {
-        selectionText.push(`[style={size:1}]${sentenceCase(this_selection)}`);
-        optionList.forEach(option => {
-          selectionText.push(`[indent=1][italic][style={size:0.4}]${option}`);
-        });
-      };
-      // that's all the rows for this column
-      if (selectionText.length === 0) {
-        if (pData.length > 1) {
-          warningSection.push(`[color:red][bold]${columnName} has no entries at all`);
-        }
-        else {
-          warningSection.push(`[color:red][bold]No entries were made`);
-        }
+      if (!this_column.columnActivated) {
+        warningSection.push(`[color:red][bold]Nothing was entered${columnName ? (' for ' + columnName) : ''}.`);
         warningsExist = true;
       }
       else {
-        if (confirmStatus !== 'error') {
-          if (columnName) {
-            responseArray.push(`[bold]${columnName}`);
-          };
-          responseArray.push(...selectionText);
-          responseArray.push('[style = { bottom: 3 }] ');
-          dataExists = true;
+        /*  Check for errors */
+        this_column.rowDetails.forEach((this_row, row_number) => {
+          if (this_row.input === 'signature') {
+            if (signatureRef.current.isEmpty() && this_row.required) {
+              this_row.textValue = false;
+            }
+            else {
+              // reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.toDataURL('image/png');
+              reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
+              this_row.textValue = 'Signature captured';
+            }
+          }
+          reactData.columnList[column_number].rowDetails[row_number].error = false;
+          if (this_row.isChecked && this_row.qualData) {
+            this_row.qualData.forEach(this_qual => {
+              if (this_qual.min_required > 0) {
+                let qualCount = 0;
+                if (this_row.qualSelections && this_row.qualSelections.hasOwnProperty(this_qual.title)) {
+                  qualCount = (Object.values(this_row.qualSelections[this_qual.title]).filter(this_value => {
+                    return this_value;
+                  })).length;
+                }
+                if (qualCount < this_qual.min_required) {
+                  confirmStatus = 'error';
+                  warningsExist = true;
+                  let warningMessage;
+                  if (this_qual.max_allowed === this_qual.min_required) {
+                    warningMessage = `You must select ${this_qual.min_required} from ${this_row.text} (${this_qual.title})`;
+                  }
+                  else {
+                    warningMessage = `You must select at least ${this_qual.min_required} from ${this_row.text} (${this_qual.title})`;
+                  }
+                  warningSection.push(`[color:red][bold]${warningMessage}`);
+                  reactData.columnList[column_number].rowDetails[row_number].error = warningMessage;
+                }
+              }
+            });
+            updateReactData({
+              columnList: reactData.columnList
+            }, false);
+          }
+          else if (this_row.required && !this_row.textValue && !this_row.isChecked) {
+            confirmStatus = 'error';
+            let warningMessage;
+            if (pData.length > 1) {
+              warningMessage = `${columnName} is missing "${this_row.text}"`;
+            }
+            else {
+              warningMessage = `"${this_row.text}" is required`;
+            }
+            warningsExist = true;
+            warningSection.push(`[color:red][bold]${warningMessage}`);
+            reactData.columnList[column_number].rowDetails[row_number].error = 'This field is required';
+            updateReactData({
+              columnList: reactData.columnList
+            }, false);
+          }
+          else if (this_row.error) {
+            confirmStatus = 'error';
+            if (pData.length > 1) {
+              warningSection.push(`[color:red][bold]${columnName} has an error on "${this_row.text}".  The error is: ${this_row.error}.`);
+            }
+            else {
+              warningSection.push(`[color:red][bold]Error on "${this_row.text}".  The error is: ${this_row.error}.`);
+            }
+            warningsExist = true;
+          }
+        });
+        let options = {};
+        if (reactData.collectPayment) {
+          options.includeFees = true;
+        }
+        for (const [this_selection, optionList] of Object.entries(formatServiceRequestDetails(this_column, options))) {
+          selectionText.push(`[style={size:1}]${sentenceCase(this_selection)}`);
+          optionList.forEach(option => {
+            selectionText.push(`[indent=1][italic][style={size:0.4}]${option}`);
+          });
+        };
+        // that's all the rows for this column
+        if (selectionText.length === 0) {
+          if (pData.length > 1) {
+            warningSection.push(`[color:red][bold]${columnName} has no entries at all`);
+          }
+          else {
+            warningSection.push(`[color:red][bold]No entries were made`);
+          }
+          warningsExist = true;
+        }
+        else {
+          if (confirmStatus !== 'error') {
+            if (columnName) {
+              responseArray.push(`[bold]${columnName}`);
+            };
+            responseArray.push(...selectionText);
+            responseArray.push('[style = { bottom: 3 }] ');
+            dataExists = true;
+          }
         }
       }
     });
@@ -2297,6 +2308,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                                   }
                                                 });
                                               }
+                                              reactData.columnList[selectedColumn].columnActivated = true;
                                               updateReactData({
                                                 columnList: reactData.columnList
                                               }, true);
