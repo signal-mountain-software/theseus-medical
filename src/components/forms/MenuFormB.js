@@ -503,7 +503,15 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
   const selectedDate = (return_type = 'key') => {
     // AKA "menu" - always, weekend, tuesday, 2024.5.22, ...
     // return_type is 'key', 'display', or 'value'
-    let check_key = reactData.selectedDateKey || Object.keys(local_service_details['dates'])[0];
+    let check_key = reactData.selectedDateKey;
+    if (!reactData.selectedDateKey) {
+      if (return_type === 'display') {
+        return 'Always Available';
+      }
+      else {
+        check_key = Object.keys(local_service_details['dates'])[0];
+      }
+    } 
     if (return_type === 'key') {
       return check_key;
     }
