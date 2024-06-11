@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray, s3 } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
@@ -75,6 +75,10 @@ const useStyles = makeStyles(theme => ({
   },
   confirm: {
     backgroundColor: theme.palette.confirm[theme.palette.type],
+  },
+  rootNoPadding: {
+    paddingBottom: 0,
+    paddingTop: 0,
   },
   inputRow: {
     marginTop: theme.spacing(1.5),
@@ -1039,31 +1043,81 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     let response = true;
     if (this_item.rowTest.length > 0) {
       response = this_item.rowTest.every(thisTest => {
-        let [checkField, checkValue, qualSelected] = thisTest.split('%%');
-        return reactData.columnList[selectedColumn].rowDetails.every(checkRow => {
-          if (checkRow.text !== checkField) {  // this test doesn't apply
-            return true;
-          }
-          else {
-            if (checkRow.checkbox || checkRow.isChecked) {    // checkbox 
-              if (!checkValue) {
-                return checkRow.isChecked;
-              }
-              else if (!checkRow.isChecked || !qualSelected || !checkRow.qualSelections) {
-                return false;
-              }
-              else {
-                return (checkRow.qualSelections.hasOwnProperty(checkValue) && checkRow.qualSelections[checkValue][qualSelected]);
-              }
-            }
-            else if (!checkValue) {    // not a checkbox... if we don't care if there is a vlue type in or not? 
-              return !!checkRow.textValue;
-            }
-            else {  // if we do care...
-              return checkRow.textValue.toLowerCase().includes(checkValue.toLowerCase());
-            }
-          }
+        let test;
+        let display = true;
+        if (isObject(thisTest)) {
+          test = thisTest.test;
+          display = (thisTest.type === 'display');
+        }
+        else {
+          test = thisTest;
+          display = true;
+        };
+        let [checkField, checkValue, qualSelected] = test.split('%%');
+        let checkRow = reactData.columnList[selectedColumn].rowDetails.find(row => {
+          return (row.text === checkField);
         });
+        let innerResponse;
+        if (checkRow) {
+          if (checkRow.checkbox || checkRow.isChecked) {    // checkbox 
+            if (!checkValue) {
+              innerResponse = checkRow.isChecked;
+            }
+            else if (!checkRow.isChecked || !qualSelected || !checkRow.qualSelections) {
+              innerResponse = false;
+            }
+            else {
+              innerResponse = (checkRow.qualSelections.hasOwnProperty(checkValue) && checkRow.qualSelections[checkValue][qualSelected]);
+            }
+          }
+          else if (!checkValue) {    // not a checkbox... if we don't care if there is a vlue type in or not? 
+            innerResponse = !!checkRow.textValue;
+          }
+          else {  // if we do care...
+            innerResponse = checkRow.textValue.toLowerCase().includes(checkValue.toLowerCase());
+          }
+        }
+        else if (reactData.columnList[selectedColumn].defaultValues.hasOwnProperty(checkField)) {
+          // no row matched this test field; perhaps a default value does?
+          innerResponse = (reactData.columnList[selectedColumn].defaultValues[checkField] === checkValue);
+        }
+        if (display) {
+          return innerResponse;
+        }
+        else {
+          return !innerResponse;
+        }
+        /*      return reactData.columnList[selectedColumn].rowDetails.every(checkRow => {
+                if (checkRow.text !== checkField) {  // this test doesn't apply
+                  return true;
+                }
+                else {
+                  let innerResponse;
+                  if (checkRow.checkbox || checkRow.isChecked) {    // checkbox 
+                    if (!checkValue) {
+                      innerResponse = checkRow.isChecked;
+                    }
+                    else if (!checkRow.isChecked || !qualSelected || !checkRow.qualSelections) {
+                      innerResponse = false;
+                    }
+                    else {
+                      innerResponse = (checkRow.qualSelections.hasOwnProperty(checkValue) && checkRow.qualSelections[checkValue][qualSelected]);
+                    }
+                  }
+                  else if (!checkValue) {    // not a checkbox... if we don't care if there is a vlue type in or not? 
+                    innerResponse = !!checkRow.textValue;
+                  }
+                  else {  // if we do care...
+                    innerResponse = checkRow.textValue.toLowerCase().includes(checkValue.toLowerCase());
+                  }
+                  if (display) {
+                    return innerResponse;
+                  }
+                  else {
+                    return !innerResponse;
+                  }
+                }
+              });  */
       });
     }
     return response;
@@ -1562,10 +1616,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 warningsExist = true;
                 let warningMessage;
                 if (this_qual.max_allowed === this_qual.min_required) {
-                  warningMessage = `You must select ${this_qual.min_required} from ${this_row.text}`;
+                  warningMessage = `You must select ${this_qual.min_required} from ${this_row.text} (${this_qual.title})`;
                 }
                 else {
-                  warningMessage = `You must select at least ${this_qual.min_required} from ${this_row.text}`;
+                  warningMessage = `You must select at least ${this_qual.min_required} from ${this_row.text} (${this_qual.title})`;
                 }
                 warningSection.push(`[color:red][bold]${warningMessage}`);
                 reactData.columnList[column_number].rowDetails[row_number].error = warningMessage;
@@ -2266,14 +2320,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                             size="small"
                                             checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
                                           />
-                                          <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>{opt.display}</Typography>
+                                          <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
+                                            {opt.display}:
+                                          </Typography>
                                           <TextField
                                             key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
                                             id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
+                                            style={AVATextStyle({ 'line-height': 1, size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
                                             defaultValue={getQualTextValue(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
                                             variant={'standard'}
-                                            multiline
+                                            inputProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                                            FormHelperTextProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                                             onChange={(event) => {
                                               optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display, event.target.value);
                                               updateReactData({
