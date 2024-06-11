@@ -244,7 +244,13 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         case 'display_if': 
         case 'displayif': 
         case 'displayIF': { 
-          rowTestArray.push(oValue);
+          rowTestArray.push({ test: oValue, type: 'display' });
+          break;
+        }
+        case 'ignore_if':
+        case 'ignoreif':
+        case 'ignoreIF': {
+          rowTestArray.push({ test: oValue, type: 'ignore' });
           break;
         }
         case 'end_if':
