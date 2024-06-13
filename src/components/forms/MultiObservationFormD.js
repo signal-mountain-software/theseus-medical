@@ -2047,7 +2047,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                             justifyContent="flex-start"
                             alignItems='flex-start'
                             onClick={async () => {
-                              if (this_item.checkbox) {
+                              if (this_item.checkbox && !this_item.noUpdate) {
                                 await itemSelected(selectedColumn, this_index);
                               }
                             }}
@@ -2059,7 +2059,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                               justifyContent="flex-start"
                               alignItems='center'
                             >
-                              {!reactData.viewOnly &&
+                              {!reactData.viewOnly && !this_item.noUpdate &&
                                 <IconButton aria-label="select this item">
                                   {this_item.isChecked ? <RemoveShoppingCartIcon /> : <AddShoppingCartIcon />}
                                 </IconButton>
@@ -2260,8 +2260,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                                   checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
                                                 />
                                               }
-                                                  <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
-                                                    {opt.display}:
+                                              <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
+                                                {opt.display}:
                                               </Typography>
                                               {!reactData.viewOnly &&
                                                 <TextField

@@ -365,15 +365,21 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
         display_value_day: (this_date.relative === 'Today' ? 'Today' : this_date.absolute.slice(0, 3))
       };
     }
-    let menus = {
-      'special': {
-        value: '%date%',
-        display_value: ['Daily', 'Specials']
-      },
-      'everyday': {
-        value: 'always',
-        display_value: ['Everyday', 'Options']
-      }
+    let menus;
+    if (state.session.dining_structure.hasOwnProperty('menus')) {
+      menus = state.session.dining_structure.menus;
+    }
+    else {
+      menus = {
+        'special': {
+          value: '%date%',
+          display_value: ['Daily', 'Specials']
+        },
+        'everyday': {
+          value: 'always',
+          display_value: ['Everyday', 'Options']
+        }
+      };
     };
     local_service_details = {
       dining_area,
@@ -567,22 +573,24 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
       if (p[1] === (useDate ? selectedDate('value') : selectedMenu('value'))) {
         // Client~entree_2024.5.22_lunch_bistro  OR  Client~entree_2024.5.22
         if (p.length < 3) {
-          return (['all-day', 'all_day', 'allDay'].includes(selectedMealType('value')));   // if !meal, then room will also be missing and we can fast forward to true
+          // with only 2 parts (date and category),  we have to assume "all day" and "main" dining
+          return ((['all-day', 'all_day', 'allDay'].includes(selectedMealType('value'))) && ((selectedArea('value')) === 'main'));
         }
         else if (p[2] !== selectedMealType('value')) {  // third parm is present?  it needs to match the meal
           return false;
         }
-        return ((p.length < 4) || (p[3] === selectedArea('value')));
+        return (((p.length < 4) && (selectedArea('value')) === 'main') || (p[3] === selectedArea('value')));
       }
       else if (p[1] === selectedMealType('value')) {
         // Client~entree_lunch_2024.5.22_bistro 
         if (p.length < 3) {
-          return (['all-day', 'all_day', 'allDay'].includes(selectedMealType('value')));   // if !meal, then room will also be missing and we can fast forward to true
+          // with only 2 parts (category and meal),  we have to assume "all day" and "main" dining
+          return ((['all-day', 'all_day', 'allDay'].includes(selectedMealType('value'))) && ((selectedArea('value')) === 'main'));
         }
         else if (p[2] !== (useDate ? selectedDate('value') : selectedMenu('value'))) {  // third parm is present?  it needs to match the date
           return false;
         }
-        return ((p.length < 4) || (p[3] === selectedArea('value')));
+        return(((p.length < 4) && (selectedArea('value')) === 'main') || (p[3] === selectedArea('value')));
       }
     }
     else if (p[0] === (useDate ? selectedDate('value') : selectedMenu('value'))) {   // check for Client~always_lunch_entree or Client~2024.5.22_lunch_entree or Client~always_entree or Client~2024.5.22_entree
@@ -810,12 +818,12 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                             justifyContent='space-between'
                             alignItems='center'
                           >
-                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title`}
+                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title1`}
                               style={AVATextStyle({ size: 1, margin: { bottom: -0.2 }, wrap: 'nowrap' })}
                             >
                               {titleCase(local_service_details['dates'][menuDate_key].display_value_day)}
                             </Typography>
-                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title`}
+                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title2`}
                               style={AVATextStyle({ size: 1, margin: { bottom: -0.2 }, wrap: 'nowrap' })}
                             >
                               {titleCase(local_service_details['dates'][menuDate_key].display_value)}
@@ -986,8 +994,12 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                         observationList.map((this_item, this_index) => (
                           OKtoShow(this_item, menu_category)
                           &&
-                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                            <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                              key={`row_box_grandparent-${this_item.id}-reactData.rowOpen[this_index]`}
+                            >
+                              <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'
+                                key={`row_box_parent-${this_item.id}-reactData.rowOpen[this_index]`}
+                              >
                               <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
                                 key={`row_box_${this_item.id}-reactData.rowOpen[this_index]`}
                               >
@@ -1058,7 +1070,10 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                                   })}>
                                     {this_item.observation_code.replace(/~/g, '')}
                                   </Typography>
-                                  {(this_item.observation_key || (this_item.description && (this_item.description.trim() !== ''))) &&
+                                    {(this_item.observation_key
+                                      || (this_item.description && (this_item.description.trim() !== ''))
+                                      || (this_item.fee && (Number(this_item.fee) > 0))
+                                    ) &&
                                     (!reactData.rowOpen[this_index] ? <ExpandMoreIcon /> : <ExpandLessIcon />)
                                   }
                                 </Box>
@@ -1092,7 +1107,19 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                                         >
                                           {`Description: ${this_item.description}`}
                                         </Typography>
-                                      }
+                                        }
+                                        {this_item.fee && (Number(this_item.fee) > 0) &&
+                                          <Typography
+                                            key={`fee-${menu_category}-${this_index}`}
+                                            id={`fee-${menu_category}-${this_index}`}
+                                            style={AVATextStyle({ margin: { left: 1 } })}
+                                          >
+                                            {`Fee: ${new Intl.NumberFormat('en-US', {
+                                              style: 'currency',
+                                              currency: 'USD',
+                                            }).format(this_item.fee)}`}
+                                          </Typography>
+                                        }
                                       {this_item.moreInfo &&
                                         Object.keys(this_item.moreInfo).map((opt, oX) => (
                                           <React.Fragment
