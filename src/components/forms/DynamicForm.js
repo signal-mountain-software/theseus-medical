@@ -10,6 +10,7 @@ import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 
 import MultiObservationFormC from '../forms/MultiObservationFormC';
+import MultiObservationFormD from '../forms/MultiObservationFormD';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
 import RequestDashboard from '../dialogs/RequestDashboard';
 import CalendarDashboard from '../dialogs/CalendarDashboard';
@@ -366,6 +367,21 @@ export default ({
     case 'multi_observation_type3':
       return (
         <MultiObservationFormC
+          fact={newFact}
+          factName={factName}
+          defaultValue={defaultObject}
+          prompt={message}
+          pClient={session.client_id}
+          qualifiers={qualifierTable}
+          listValues={values}
+          onSave={onSave}
+          onClose={onClose}
+        />
+      );
+    case 'multi_observation_type4':
+    case 'multi_observation_image_based':
+      return (
+        <MultiObservationFormD
           fact={newFact}
           factName={factName}
           defaultValue={defaultObject}
