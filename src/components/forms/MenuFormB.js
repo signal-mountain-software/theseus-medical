@@ -590,7 +590,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
         else if (p[2] !== (useDate ? selectedDate('value') : selectedMenu('value'))) {  // third parm is present?  it needs to match the date
           return false;
         }
-        return(((p.length < 4) && (selectedArea('value')) === 'main') || (p[3] === selectedArea('value')));
+        return (((p.length < 4) && (selectedArea('value')) === 'main') || (p[3] === selectedArea('value')));
       }
     }
     else if (p[0] === (useDate ? selectedDate('value') : selectedMenu('value'))) {   // check for Client~always_lunch_entree or Client~2024.5.22_lunch_entree or Client~always_entree or Client~2024.5.22_entree
@@ -995,16 +995,16 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                           OKtoShow(this_item, menu_category)
                           &&
                           <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                              key={`row_box_grandparent-${this_item.id}-reactData.rowOpen[this_index]`}
+                            key={`row_box_grandparent-${this_item.id}-${this_index}-${reactData.rowOpen[this_index]}`}
+                          >
+                            <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'
+                              key={`row_box_parent-${this_item.id}-${this_index}-${reactData.rowOpen[this_index]}`}
                             >
-                              <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'
-                                key={`row_box_parent-${this_item.id}-reactData.rowOpen[this_index]`}
-                              >
                               <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                                key={`row_box_${this_item.id}-reactData.rowOpen[this_index]`}
+                                key={`row_box-${this_item.id}-${this_index}-${reactData.rowOpen[this_index]}`}
                               >
                                 <IconButton
-                                  aria-label="search_icon"
+                                  aria-label="pencil_icon"
                                   onClick={() => {
                                     handleEditObservation(deepCopy(this_item), this_index, selectedMealType(), menu_category);
                                   }}
@@ -1013,7 +1013,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                                   {<EditIcon />}
                                 </IconButton>
                                 <IconButton
-                                  aria-label="search_icon"
+                                  aria-label="trash_icon"
                                   onClick={() => {
                                     this_item.listIndex = this_index;
                                     updateReactData({
@@ -1070,10 +1070,10 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                                   })}>
                                     {this_item.observation_code.replace(/~/g, '')}
                                   </Typography>
-                                    {(this_item.observation_key
-                                      || (this_item.description && (this_item.description.trim() !== ''))
-                                      || (this_item.fee && (Number(this_item.fee) > 0))
-                                    ) &&
+                                  {(!!this_item.observation_key
+                                    || !!(this_item.description && (this_item.description.trim() !== ''))
+                                    || !!(this_item.fee && (Number(this_item.fee) > 0))
+                                  ) &&
                                     (!reactData.rowOpen[this_index] ? <ExpandMoreIcon /> : <ExpandLessIcon />)
                                   }
                                 </Box>
@@ -1107,19 +1107,19 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                                         >
                                           {`Description: ${this_item.description}`}
                                         </Typography>
-                                        }
-                                        {this_item.fee && (Number(this_item.fee) > 0) &&
-                                          <Typography
-                                            key={`fee-${menu_category}-${this_index}`}
-                                            id={`fee-${menu_category}-${this_index}`}
-                                            style={AVATextStyle({ margin: { left: 1 } })}
-                                          >
-                                            {`Fee: ${new Intl.NumberFormat('en-US', {
-                                              style: 'currency',
-                                              currency: 'USD',
-                                            }).format(this_item.fee)}`}
-                                          </Typography>
-                                        }
+                                      }
+                                      {this_item.fee && (Number(this_item.fee) > 0) &&
+                                        <Typography
+                                          key={`fee-${menu_category}-${this_index}`}
+                                          id={`fee-${menu_category}-${this_index}`}
+                                          style={AVATextStyle({ margin: { left: 1 } })}
+                                        >
+                                          {`${new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD',
+                                          }).format(this_item.fee)}`}
+                                        </Typography>
+                                      }
                                       {this_item.moreInfo &&
                                         Object.keys(this_item.moreInfo).map((opt, oX) => (
                                           <React.Fragment
