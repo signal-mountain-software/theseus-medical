@@ -9,6 +9,7 @@ import MessageForm from '../forms/MessageForm';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 
+import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
 import MultiObservationFormD from '../forms/MultiObservationFormD';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
@@ -437,6 +438,16 @@ export default ({
     case 'new_event':
       return (
         <NewCalendarEvent
+          patient={session}
+          peopleList={values}
+          picture={null}
+          showNewEvent={true}
+          onClose={onSave}
+        />
+      );
+    case 'edit_marquee':
+      return (
+        <MarqueeMaintenance
           patient={session}
           peopleList={values}
           picture={null}

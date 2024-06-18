@@ -1,7 +1,7 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda, deepCopy } from '../../util/AVAUtilities';
+import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda, deepCopy, getMarqueeMessage } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getActivity } from '../../util/AVAObservations';
@@ -10,6 +10,7 @@ import { AVATextStyle, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyle
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
+import Marquee from "react-fast-marquee";
 
 import { useCookies } from 'react-cookie';
 import { useIdleTimer } from 'react-idle-timer';
@@ -272,7 +273,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     lastActiveTime: new Date(),
     idleState: true,
     menu_reloaded: false,
-    loadedMenuVersion: 1
+    loadedMenuVersion: 1,
+    marqueeData: [],
+    marqueeVersion: 0
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -341,16 +344,27 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
 
   const onAction = async () => {
     let now = new Date();
+    let refresh = false;
     if (reactData.idleState) {
       cl(`Action at ${now.toLocaleString()}.  Was idle since ${new Date(getLastActiveTime()).toLocaleString()}`);
+      let options = {
+        belongsTo: (state.groups ? state.groups.belongsTo : {}),
+        client_weather: state.session.client_weather
+      }
+      let marqueeData = await getMarqueeMessage(session.client_id, options);
+      updateReactData({
+        marqueeData: marqueeData,
+        marqueeVersion: reactData.marqueeVersion++
+      }, false);
+      refresh = true;
     }
     if (!reactData.menu_reloaded) {
       await checkReload();
     }
     updateReactData({
       lastActiveTime: now,
-      idleState: false
-    }, false);
+      idleState: false,
+    }, refresh);
     reset();
   };
 
@@ -833,6 +847,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);
         await buildMenu();
+        let options = {
+          belongsTo: (state.groups ? state.groups.belongsTo : {}),
+          client_weather: state.session.client_weather
+        }
+        let marqueeData = await getMarqueeMessage(session.client_id, options);
+        updateReactData({
+          marqueeData: marqueeData,
+          marqueeVersion: reactData.marqueeVersion++
+        }, false);
         setLoading(false);
         setForceRedisplay(!forceRedisplay);
       }
@@ -1538,33 +1561,44 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
                       {`AVA version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
                     </Typography>
+                    {loading.startsWith('Common activities')
+                      ?
+                      <Box
+                        display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                        flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                        key={'groupActivitiesBox'}
+                        id={'groupActivitiesBox'}
+                      >
+                        <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
+                        <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
+                      </Box>
+                      :
+                      <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
+                    }
+                    <LinearProgress variant="determinate" className={classes.progressBar}
+                      style={AVATextStyle({ width: pWidth, margin: { top: 1 } })}
+                      value={progress} />
                   </React.Fragment>
                 }
-                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
-                  {`AVA for ${state.session.client_name}`}
-                </Typography>
-                {loading && loading.startsWith('Common activities') &&
-                  <Box
-                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                    key={'groupActivitiesBox'}
-                    id={'groupActivitiesBox'}
-                  >
-                    <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
-                    <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
-                  </Box>
-                }
-                {loading && !loading.startsWith('Common activities') &&
-                  <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
-                }
               </Box>
-              {loading &&
-                <React.Fragment>
-                  <LinearProgress variant="determinate" className={classes.progressBar}
-                    style={AVATextStyle({ width: pWidth, margin: { top: 1 } })}
-                    value={progress} />
-                </React.Fragment>
-              }
+              <Marquee
+                pauseOnClick={true}
+                pauseOnHover={true}
+                speed={75}
+              >
+                {([{
+                  message: `${greetingWords}, ${greetingName}!`
+                },
+                {
+                  message: `AVA for ${state.session.client_name}`
+                }].concat(reactData.marqueeData)).map((marqueeLine, marqueeIndex) => (
+                  <Typography
+                    key={`marquee_${marqueeIndex}_${reactData.marqueeVersion}`}
+                    style={AVATextStyle(marqueeLine.style || { size: 2, margin: { left: 20 }, bold: true, align: 'center' })} >
+                    {marqueeLine.message}
+                  </Typography>
+                ))}
+              </Marquee>
             </React.Fragment>
           </Box>
         }

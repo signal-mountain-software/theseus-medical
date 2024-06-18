@@ -1,8 +1,17 @@
 import { titleCase } from '../util/AVAUtilities';
 
 export function addDays(pDate, pDays) {
-    let copy = makeDate(pDate).date;
-    copy.setDate(copy.getDate() + pDays);
+    let copy;
+    try {
+        copy = makeDate(pDate).date;
+        if (copy.error) {
+            return copy;
+        }
+        copy.setDate(copy.getDate() + pDays);
+    }
+    catch {
+        console.log(`tried ${pDate} and failed`)
+    }
     return copy;
 }
 
@@ -279,6 +288,7 @@ export function makeDate(pInput, options = {}) {
         }
         let daysToAdd = 0;
         let words, plusMinus, days$;
+        let timePart;
         let validString = pString.match(/(\d+[/\-.]\s*\d+[/\-.]\s*\d+)\s*(([+-])(.*))?/);
         if (validString) {
             [, words, , plusMinus, days$] = validString;
@@ -297,6 +307,13 @@ export function makeDate(pInput, options = {}) {
         }
         if (/^\d+$/.test(pString)) { pString = parseInt(pString, 10); }      // a string that is all numbers
         else {
+            // extract time if it is present (time will be in group 2)
+            let mTime = pString.match(/([\s\w/]*)\s((\d+:*\d*)\s*([PpAa].*[Mm])*)/);
+            if (mTime && mTime.length > 2) {
+                timePart = makeTime(mTime[2]);
+                timePart.exists = true;
+                pString = pString.replace(mTime[2], '');
+            }
             let pStringPieces = pString.split(/[./-]/gm);
             if (pStringPieces.length > 1) {        // two or three strings separated by "." or "-" or "/"
                 let yearAt = pStringPieces.findIndex(p => { return (p > 2000); });
@@ -330,21 +347,16 @@ export function makeDate(pInput, options = {}) {
                 pString = pString.replace(m[0], `${m[1]}${m[2]}`);
             }
             let pWords = pString.split(/\s+/);
-            let currentDate, timePart;
+            let currentDate;
             pWords = pWords.filter(f => {      // filter expression will consume words that successfully contribute to the date 
                 let culledDate = dateFromText(f);
-                if (!culledDate) {
-                    if (f.match(/\d+/)) {
-                        timePart = makeTime(f);
-                        timePart.exists = true;
-                        return false;
-                    }
-                }
-                else {
+                if (culledDate) {
                     currentDate = culledDate;
                     return false;
                 }
-                return true;
+                else {
+                    return true;
+                }
             });
             if (!isDate(currentDate)) {
                 return { date: null, leftOver_text: pString };

@@ -72,6 +72,83 @@ export function recordExists(recordId) {
   else { return ((recordId.hasOwnProperty("Item") || recordId.hasOwnProperty("Items"))); }
 }
 
+export async function getLocalWeather(client_weather = {
+  "place_name": "AVA HQ",
+  "nws_x": 21,
+  "nws_y": 10,
+  "nws_office": "MRX"
+}) {
+  let weather = await restAPI({
+    hostname: 'api.weather.gov',
+    path: `/gridpoints/${client_weather.nws_office}/${client_weather.nws_x},${client_weather.nws_y}/forecast`,
+    method: 'GET',
+    headers: {
+      "User-Agent": "(AVASeniorConnect.com, rsteele@avaseniorconnect.com)"
+    }
+  }, '');
+  cl(weather);
+  if (!weather || weather.status || !weather.properties) {
+    return `Weather not available at this time`;
+  }
+  else {
+    return `Weather at ${client_weather.place_name} ${weather.properties.periods[0].name.toLowerCase()} - ${weather.properties.periods[0].detailedForecast}`;
+  };
+}
+
+export async function getMarqueeMessage(client_id, options = {}) {
+  let response = [];
+  if (options.client_weather) {
+    let weather = await getLocalWeather(options.client_weather);
+    if (weather) {
+      response.push({
+        style: null,
+        message: weather
+      });
+    }
+  }
+  let now = new Date().getTime();
+  let mRecs = await dbClient
+    .query({
+      KeyConditionExpression: 'client_id = :c and end_time > :now',
+      ExpressionAttributeValues: {
+        ':c': client_id,
+        ':now': now
+      },
+      TableName: "MarqueeMessages",
+      IndexName: "end_time-index"
+    })
+    .promise()
+    .catch(error => {
+      clt(`Error reading MarqueeMessages`, error);
+    });
+  if (recordExists(mRecs)) {
+    let selectedMRecs = mRecs.Items.filter(mRec => {
+      if (!options.future_OK && (mRec.start_date > now)) {
+        return false;
+      }
+      if (!options.belongsTo) {
+        return true;
+      }
+      if (mRec.groups && (mRec.groups.length > 0)) {
+        return (mRec.groups.some((allowedGroup) => {
+          return (options.belongsTo.hasOwnProperty(allowedGroup));
+        }));
+      }
+      return true;
+    });
+    if (options.rawData) {
+      return selectedMRecs;
+    }
+    selectedMRecs.forEach(sRec => {
+      response.push({
+        style: sRec.style,
+        message: sRec.message,
+      });
+    });
+  }
+  return response;
+}
+
 export function deepCopy(pValue) {
   if (!pValue) {
     return pValue;

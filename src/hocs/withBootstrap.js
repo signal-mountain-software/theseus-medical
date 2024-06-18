@@ -1295,7 +1295,7 @@ export default Component => props => {
       .catch(e => {
         console.log(e);
       });
-
+    
     // localStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
     // sessionStorage.setItem('AVASessionData', JSON.stringify({ currentSession, currentProfile, currentPatient, sessionInfo }));
     bakeCookie(currentSession.session_id, currentSession.client_id, currentPatient.person_id);
