@@ -4,6 +4,7 @@ import { dbClient, getMarqueeMessage } from '../../util/AVAUtilities';
 import { AVAclasses } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 import { getGroup } from '../../util/AVAGroups';
+import AVAConfirm from '../forms/AVAConfirm';
 
 import { Checkbox, List, TextField, Button, IconButton, Typography, Paper, Toolbar, Box, AppBar } from '@material-ui/core';
 import { RadioGroup, Radio } from '@material-ui/core';
@@ -13,6 +14,7 @@ import { Dialog, DialogActions } from '@material-ui/core';
 import { useSnackbar } from 'notistack';
 
 import CloseIcon from '@material-ui/icons/Close';
+import DeleteIcon from '@material-ui/icons/TimerOff';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import useSession from '../../hooks/useSession';
@@ -179,7 +181,8 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     restrictToGroups: [],
     slotObjList: [],
     selectedGroups: [],
-    messageList: []
+    messageList: [],
+    deleteKeyPending: false
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -206,13 +209,13 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const handleUpdate = async () => {
     let putMarquee = {
       "client_id": state.session.client_id,
+      "message_key": new Date().getTime(),
       "start_time": StartAsADateObj.timestamp,
       "end_time": EndAsADateObj.timestamp,
       "groups": (reactData.selectedGroups ? Object.keys(reactData.selectedGroups) : []),
       "message": description,
       "style": "",
-      "author": state.session.user_id,
-      "created_time": new Date().getTime()
+      "author": state.session.user_id
     };
     let goodPut = true;
     await dbClient
@@ -235,13 +238,34 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     onClose();
   };
 
+  async function stopMessage(messageKey) {
+    let response = true;
+    dbClient
+      .update({
+        Key: {
+          client_id: state.session.client_id,
+          message_key: messageKey
+        },
+        UpdateExpression: 'set end_time = :now',
+        ExpressionAttributeValues: {
+          ':now': new Date().getTime()
+        },
+        TableName: "MarqueeMessages",
+      })
+      .promise()
+      .catch(error => {
+        response = false;
+      });
+    return response;
+  }
+
 
   React.useEffect(() => {
     async function initialize() {
       let options = {
         futureOK: true,
         rawData: true
-      }
+      };
       let marqueeData = await getMarqueeMessage(state.session.client_id, options);
       for (let m = 0; m < marqueeData.length; m++) {
         if (marqueeData[m].groups && (marqueeData[m].groups.length > 0)) {
@@ -595,23 +619,42 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                   marginBottom={1}
                   key={`paper_row_${index}`}
                 >
+
                   <Box display='flex'
-                    flexDirection='column'                    
+                    flexDirection='row'
                   >
-                    <Typography className={classes.radioText} style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-                      {this_message.message}
-                    </Typography>
-                    <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
-                      {`Start: ${makeDate(this_message.start_time).absolute}`}
-                    </Typography>
-                    <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
-                      {`End: ${makeDate(this_message.end_time).absolute}`}
-                    </Typography>
-                    {this_message.groups && (this_message.groups.length > 0) &&
-                      <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
-                        {`Restricted to: ${this_message.groupNames.sort().join(', ')}`}
+                    <Box display='flex'
+                      flexDirection='column'
+                      alignItems={'center'}
+                      justifyContent={'center'}
+                      marginRight={2}
+                    >
+                      <DeleteIcon
+                        onClick={() => {
+                          updateReactData({
+                            deleteKeyPending: this_message.message_key
+                          }, true);
+                        }}
+                      />
+                    </Box>
+                    <Box display='flex'
+                      flexDirection='column'
+                    >
+                      <Typography className={classes.radioText} style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                        {this_message.message}
                       </Typography>
-                    }
+                      <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
+                        {`Start: ${makeDate(this_message.start_time).absolute}`}
+                      </Typography>
+                      <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
+                        {`End: ${makeDate(this_message.end_time).absolute}`}
+                      </Typography>
+                      {this_message.groups && (this_message.groups.length > 0) &&
+                        <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
+                          {`Restricted to: ${this_message.groupNames.sort().join(', ')}`}
+                        </Typography>
+                      }
+                    </Box>
                   </Box>
                 </Paper>
               ))}
@@ -619,6 +662,23 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
           </Paper>
         </Box>
       </React.Fragment>
+      {reactData.deleteKeyPending &&
+        <AVAConfirm
+          promptText={'Please confirm.  This message will stop playing.'}
+          onCancel={() => {
+            updateReactData({
+              deleteKeyPending: false
+            }, true);
+          }}
+          onConfirm={() => {
+            stopMessage(reactData.deleteKeyPending);
+            updateReactData({
+              deleteKeyPending: false
+            }, true);
+          }}
+        >
+        </AVAConfirm>
+      }
       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
         <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
           <DialogActions className={classes.buttonArea} >
