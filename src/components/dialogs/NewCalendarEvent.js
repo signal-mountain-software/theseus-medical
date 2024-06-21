@@ -2,9 +2,8 @@ import React from 'react';
 
 import { prepareTargets } from '../../util/AVAGroups';
 import { makeArray } from '../../util/AVAUtilities';
-import { addEvent, getAllOccurrences } from '../../util/AVACalendars';
+import { addEvent } from '../../util/AVACalendars';
 import { AVAclasses } from '../../util/AVAStyles';
-import { addDays } from '../../util/AVADateTime';
 
 import ClientsSection from '../sections/ClientsSection';
 import EditList from '../forms/EditList';
@@ -35,7 +34,6 @@ import FormControlLabel from '@material-ui/core/FormControlLabel';
 import FormControl from '@material-ui/core/FormControl';
 
 import ListItem from '@material-ui/core/ListItem';
-import { SET_CALENDAR } from '../../contexts/Session/actions';
 
 import useSession from '../../hooks/useSession';
 
@@ -187,7 +185,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
-  const { state, dispatch } = useSession();
+  const { state } = useSession();
   const { session } = state;
   const [owner_targets, setOwnerTargets] = React.useState();
   const [ownerTargetInfo, setOwnerTargetInfo] = React.useState();
@@ -292,7 +290,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       }
     };
     let response = await addEvent(payload);
-    let rightNow = new Date();
+    /*
     getAllOccurrences(
       {
         client_id: patient.client_id,
@@ -306,6 +304,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
       });
+      */
     closeSnackbar();
     if (response) {
       enqueueSnackbar(`${response.eventData.event_data.description} has been saved!`, { variant: 'success' });
