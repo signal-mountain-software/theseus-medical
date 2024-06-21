@@ -86,12 +86,11 @@ export async function getLocalWeather(client_weather = {
       "User-Agent": "(AVASeniorConnect.com, rsteele@avaseniorconnect.com)"
     }
   }, '');
-  cl(weather);
   if (!weather || weather.status || !weather.properties) {
-    return `Weather not available at this time`;
+    return `Forecast for ${client_weather.place_name} not available at this time`;
   }
   else {
-    return `Weather at ${client_weather.place_name} ${weather.properties.periods[0].name.toLowerCase()} - ${weather.properties.periods[0].detailedForecast}`;
+    return `Forecast for ${client_weather.place_name} ${weather.properties.periods[0].name.toLowerCase()} - ${weather.properties.periods[0].detailedForecast}`;
   };
 }
 
@@ -921,7 +920,6 @@ export async function restAPI(pRequest, api_data) {
   if (!invokeFailed) {
     let response = JSON.parse(fResp.Payload);
     if (response.status === 200) {
-      cl({ 'good return from API': response });
       finalReturn = response.Presponse;
     }
   };

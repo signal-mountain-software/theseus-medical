@@ -345,14 +345,15 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const onAction = async () => {
     let now = new Date();
     let refresh = false;
-    if (reactData.idleState) {
-      cl(`Action at ${now.toLocaleString()}.  Was idle since ${new Date(getLastActiveTime()).toLocaleString()}`);
+    if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
+      cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
       let options = {
         belongsTo: (state.groups ? state.groups.belongsTo : {}),
         client_weather: state.session.client_weather
       }
       let marqueeData = await getMarqueeMessage(session.client_id, options);
       updateReactData({
+        lastActiveTime: now,
         marqueeData: marqueeData,
         marqueeVersion: reactData.marqueeVersion++
       }, false);
@@ -362,13 +363,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       await checkReload();
     }
     updateReactData({
-      lastActiveTime: now,
       idleState: false,
     }, refresh);
     reset();
   };
 
-  const { start, reset, getLastActiveTime } = useIdleTimer({
+  const { start, reset } = useIdleTimer({
     onIdle,
     onAction,
     timeout: msBeforeSleeping,
