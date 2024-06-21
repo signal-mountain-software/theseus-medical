@@ -166,12 +166,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   const AVAClass = AVAclasses();
 
   const { state } = useSession();
-  const [description, setDescription] = React.useState(' ');
-  const [eventStartDisplayDate, setEventStartDate] = React.useState(' ');
-  const [eventEndDisplayDate, setEventEndDate] = React.useState(' ');
 
-  const [StartAsADateObj, setStartDateObj] = React.useState();
-  const [EndAsADateObj, setEndDateObj] = React.useState();
   const [specificPeople, setSpecificPeople] = React.useState(' ');
 
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
@@ -182,7 +177,11 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     slotObjList: [],
     selectedGroups: [],
     messageList: [],
-    deleteKeyPending: false
+    deleteKeyPending: false,
+    description: '',
+    eventStartDisplayDate: '',
+    StartAsADateObj: {},
+    EndAsADateObj: {}
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -210,10 +209,10 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     let putMarquee = {
       "client_id": state.session.client_id,
       "message_key": new Date().getTime(),
-      "start_time": StartAsADateObj.timestamp,
-      "end_time": EndAsADateObj.timestamp,
+      "start_time": reactData.StartAsADateObj.timestamp,
+      "end_time": reactData.EndAsADateObj.timestamp,
       "groups": (reactData.selectedGroups ? Object.keys(reactData.selectedGroups) : []),
-      "message": description,
+      "message": reactData.description,
       "style": "",
       "author": state.session.user_id
     };
@@ -230,12 +229,20 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       });
     closeSnackbar();
     if (goodPut) {
-      enqueueSnackbar(`Message Added!`, { variant: 'success' });
+      putMarquee.groupNames = [];
+      for (let g = 0; g < putMarquee.groups.length; g++) {
+        let gObj = await getGroup(putMarquee.groups[g]);
+        putMarquee.groupNames.push(gObj.name);
+      }
+      reactData.messageList.push(putMarquee);
+      updateReactData({
+        messageList: reactData.messageList,
+        description: '',
+      }, true)
     }
     else {
       enqueueSnackbar(`Sorry.  AVA could not save this message!`, { variant: 'error' });
     }
-    onClose();
   };
 
   async function stopMessage(messageKey) {
@@ -286,49 +293,46 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   // **************************
 
   function OK2Save() {
-    /*
-    return ((description.trim() !== '')
-      && (event_start_date && (event_start_date.trim() !== ''))
-      && (event_end_date && (event_end_date.trim() !== '')));
-      */
-    return true;
+    return ((reactData.description.trim() !== '')
+      && (reactData.StartAsADateObj && !reactData.StartAsADateObj.error)
+      && (reactData.EndAsADateObj && !reactData.EndAsADateObj.error))
   }
 
   const handleChangeDescription = vCheck => {
-    setDescription(vCheck);
+    updateReactData({
+      description: vCheck
+    }, true)
   };
 
   const handleChangeDateFrom = vCheck => {
-    if (vCheck.length === 0) {
-      setEventStartDate('');
-    }
-    else {
-      setEventStartDate(vCheck);
-    }
+    updateReactData({
+      eventStartDisplayDate: (vCheck.length === 0 ? '' : vCheck)
+    }, true)
   };
 
   const resolveFromDate = vCheck => {
     let goodDate = makeDate(vCheck);
     if (!goodDate.error) {
-      setEventStartDate(goodDate.absolute);
-      setStartDateObj(goodDate);
+      updateReactData({
+        eventStartDisplayDate: goodDate.absolute,
+        StartAsADateObj: goodDate
+      }, true)
     }
   };
 
   const handleChangeDateTo = vCheck => {
-    if (vCheck.length === 0) {
-      setEventEndDate('');
-    }
-    else {
-      setEventEndDate(vCheck);
-    }
+    updateReactData({
+      eventEndDisplayDate: (vCheck.length === 0 ? '' : vCheck)
+    }, true)
   };
 
   const resolveToDate = vCheck => {
     let goodDate = makeDate(vCheck);
     if (!goodDate.error) {
-      setEventEndDate(goodDate.absolute);
-      setEndDateObj(goodDate);
+      updateReactData({
+        eventEndDisplayDate: goodDate.absolute,
+        EndAsADateObj: goodDate
+      }, true)
     }
   };
 
@@ -386,7 +390,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                     variant={'standard'}
                     autoComplete='off'
                     id='description'
-                    value={description}
+                    value={reactData.description}
                     fullWidth
                     onChange={event => (handleChangeDescription(event.target.value))}
                   />
@@ -401,7 +405,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                     className={classes.freeInput}
                     id={'date-selection'}
                     variant={'standard'}
-                    value={eventStartDisplayDate}
+                    value={reactData.eventStartDisplayDate}
                     autoComplete='off'
                     onBlur={(event) => {
                       resolveFromDate(event.target.value);
@@ -421,7 +425,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                     inputProps={{ style: { color: 'black', fontSize: `1.5rem`, lineHeight: `1.7rem` } }}
                     FormHelperTextProps={{ style: { color: 'black', fontSize: `1remrem`, lineHeight: `0.9rem` } }}
                     variant={'standard'}
-                    value={eventEndDisplayDate}
+                    value={reactData.eventEndDisplayDate}
                     autoComplete='off'
                     onBlur={(event) => {
                       resolveToDate(event.target.value);
@@ -632,7 +636,8 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       <DeleteIcon
                         onClick={() => {
                           updateReactData({
-                            deleteKeyPending: this_message.message_key
+                            deleteKeyPending: this_message.message_key,
+                            deleteTextPending: this_message.message
                           }, true);
                         }}
                       />
@@ -664,15 +669,24 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       </React.Fragment>
       {reactData.deleteKeyPending &&
         <AVAConfirm
-          promptText={'Please confirm.  This message will stop playing.'}
+          promptText={`Please confirm.  AVA will stop playing the message that says: ${reactData.deleteTextPending}`}
           onCancel={() => {
             updateReactData({
               deleteKeyPending: false
             }, true);
           }}
-          onConfirm={() => {
-            stopMessage(reactData.deleteKeyPending);
+          onConfirm={async () => {
+            let removed = await stopMessage(reactData.deleteKeyPending);
+            if (removed) {
+              let foundAt = reactData.messageList.findIndex(m => {
+                return (m.message_key === reactData.deleteKeyPending);
+              });
+              if (foundAt > -1) {
+                reactData.messageList.splice(foundAt, 1);
+              }
+            }
             updateReactData({
+              messageList: reactData.messageList,
               deleteKeyPending: false
             }, true);
           }}
@@ -693,8 +707,8 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
             </Button>
             {OK2Save() &&
               <Button
-                onClick={() => {
-                  handleUpdate();
+                onClick={async () => {
+                  await handleUpdate();
                 }}
                 className={AVAClass.AVAButton}
                 style={{ backgroundColor: 'green', color: 'white' }}

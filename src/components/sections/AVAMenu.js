@@ -1594,7 +1594,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 }].concat(reactData.marqueeData)).map((marqueeLine, marqueeIndex) => (
                   <Typography
                     key={`marquee_${marqueeIndex}_${reactData.marqueeVersion}`}
-                    style={AVATextStyle(marqueeLine.style || { size: 2, margin: { left: 20 }, bold: true, align: 'center' })} >
+                    style={AVATextStyle(marqueeLine.style || { size: 2, margin: { left: 20, bottom: 2 }, bold: true, align: 'center' })} >
                     {marqueeLine.message}
                   </Typography>
                 ))}
