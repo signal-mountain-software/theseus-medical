@@ -142,6 +142,7 @@ export async function getMarqueeMessage(client_id, options = {}) {
       response.push({
         style: sRec.style,
         message: sRec.message,
+        criticalMessage: sRec.criticalMessage
       });
     });
   }

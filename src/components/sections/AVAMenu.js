@@ -272,6 +272,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [reactData, setReactData] = React.useState({
     lastActiveTime: new Date(),
     idleState: true,
+    enteredIdleStateTime: new Date(),
     menu_reloaded: false,
     loadedMenuVersion: 1,
     marqueeData: [],
@@ -303,17 +304,48 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   };
 
   const onIdle = async () => {
-    cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
     let now = new Date();
-    if (((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
+    let minutesSinceActive = 0;
+    if (!reactData.idleState) {
+      cl(`Entering idle state at ${now.toLocaleString()}.`);
+      updateReactData({
+        idleState: true,
+        enteredIdleStateTime: now,
+      }, true);
+    }
+    else {
+      minutesSinceActive = Math.floor((now.getTime() - reactData.enteredIdleStateTime.getTime()) / oneMinute);
+      cl(`Still idle at ${new Date().toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
+    }
+    if ((minutesSinceActive > 60) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
     else if (!reactData.menu_reloaded) {
       await checkReload();
     }
-    updateReactData({
-      idleState: true,
-    }, true);
+    else if ((now.getTime() - reactData.lastActiveTime.getTime()) > (5 * oneMinute)) {
+      cl(`Update while idle at ${now.toLocaleString()}.`);
+      let options = {
+        belongsTo: (state.groups ? state.groups.belongsTo : {}),
+        client_weather: state.session.client_weather
+      };
+      let marqueeData = [
+        { message: `${greetingWords}, ${greetingName}!` },
+        { message: `AVA for ${state.session.client_name}` }
+      ];
+      marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
+      let urgentMessage = marqueeData.find(m => {
+        return (m.criticalMessage);
+      });
+      if (urgentMessage) {
+        marqueeData = [urgentMessage];
+      }
+      updateReactData({
+        lastActiveTime: now,
+        marqueeData: marqueeData,
+        marqueeVersion: reactData.marqueeVersion++
+      }, true);
+    }
     reset();
   };
 
@@ -342,7 +374,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
   };
 
-  const onAction = async () => {
+  async function onAction() {
     let now = new Date();
     let refresh = false;
     if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
@@ -351,7 +383,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
         belongsTo: (state.groups ? state.groups.belongsTo : {}),
         client_weather: state.session.client_weather
       }
-      let marqueeData = await getMarqueeMessage(session.client_id, options);
+      let marqueeData = [
+        { message: `${greetingWords}, ${greetingName}!` },
+        { message: `AVA for ${state.session.client_name}` }
+      ];
+      marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
+      let urgentMessage = marqueeData.find(m => {
+        return (m.criticalMessage);
+      });
+      if (urgentMessage) {
+        marqueeData = [urgentMessage];
+      }
       updateReactData({
         lastActiveTime: now,
         marqueeData: marqueeData,
@@ -842,8 +884,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       async () => {
         setLoading('Getting your Information');
         setForceRedisplay(!forceRedisplay);
-        makeGreetingName(patient.hasOwnProperty('name') ? patient.name.first : (session.patient_display_name || pPerson));
-        makeGreeting();
+        let tempName = makeGreetingName(patient.hasOwnProperty('name') ? patient.name.first : (session.patient_display_name || pPerson));
+        let tempGreeting = makeGreeting();
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);
         await buildMenu();
@@ -851,7 +893,17 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
           belongsTo: (state.groups ? state.groups.belongsTo : {}),
           client_weather: state.session.client_weather
         }
-        let marqueeData = await getMarqueeMessage(session.client_id, options);
+        let marqueeData = [
+          { message: `${tempGreeting}, ${tempName}!` },
+          { message: `AVA for ${state.session.client_name}` }
+        ];
+        marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
+        let urgentMessage = marqueeData.find(m => { 
+          return (m.criticalMessage)
+        });
+        if (urgentMessage) {
+          marqueeData = [urgentMessage];
+        }
         updateReactData({
           marqueeData: marqueeData,
           marqueeVersion: reactData.marqueeVersion++
@@ -1586,15 +1638,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 pauseOnHover={true}
                 speed={75}
               >
-                {([{
-                  message: `${greetingWords}, ${greetingName}!`
-                },
-                {
-                  message: `AVA for ${state.session.client_name}`
-                }].concat(reactData.marqueeData)).map((marqueeLine, marqueeIndex) => (
+                {reactData.marqueeData &&
+                  reactData.marqueeData.map((marqueeLine, marqueeIndex) => (
                   <Typography
                     key={`marquee_${marqueeIndex}_${reactData.marqueeVersion}`}
-                    style={AVATextStyle(marqueeLine.style || { size: 2, margin: { left: 20, bottom: 2 }, bold: true, align: 'center' })} >
+                      style={AVATextStyle(Object.assign({ size: 2, margin: { left: 20, bottom: 2 }, bold: true, align: 'center' }, marqueeLine.style))} >
                     {marqueeLine.message}
                   </Typography>
                 ))}

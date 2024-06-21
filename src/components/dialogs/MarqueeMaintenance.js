@@ -167,8 +167,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
 
   const { state } = useSession();
 
-  const [specificPeople, setSpecificPeople] = React.useState(' ');
-
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const [reactData, setReactData] = React.useState({
@@ -181,7 +179,9 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     description: '',
     eventStartDisplayDate: '',
     StartAsADateObj: {},
-    EndAsADateObj: {}
+    EndAsADateObj: {},
+    specificPeople: '',
+    criticalMessage: ''
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -213,8 +213,9 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       "end_time": reactData.EndAsADateObj.timestamp,
       "groups": (reactData.selectedGroups ? Object.keys(reactData.selectedGroups) : []),
       "message": reactData.description,
-      "style": "",
-      "author": state.session.user_id
+      "style": (reactData.criticalMessage ? { color: 'red' } : ""),
+      "author": state.session.user_id,
+      "criticalMessage": reactData.criticalMessage
     };
     let goodPut = true;
     await dbClient
@@ -337,8 +338,16 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   };
 
   const handleChangePeopleToggle = event => {
-    setSpecificPeople(event.target.value);
+    updateReactData({
+      specificPeople: event.target.value
+    }, true)
   };
+
+  const handleChangeCriticalToggle = event => {
+    updateReactData({
+      criticalMessage: event.target.value
+    }, true)
+  }
 
   // **************************
 
@@ -444,6 +453,48 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                   flexDirection='column'
                   justifyContent="center"
                 >
+                  <Typography className={classes.radioText}>
+                    {`Critical message?  This will display in red, and be the only message on the screen.`}
+                  </Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup
+                      row
+                      defaultValue={'no'}
+                      aria-label="critical"
+                      name="critical"
+                      value={reactData.criticalMessage}
+                      onChange={handleChangeCriticalToggle}
+                    >
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="no"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            No
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="yes"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Yes
+                          </Typography>}
+                      />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  pl={1}
+                  mt={3.5}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
                   <Typography className={classes.radioText}>Do you wish to restrict this event to specific groups only?</Typography>
                   <FormControl className={classes.formControl} component="fieldset">
                     <RadioGroup
@@ -451,7 +502,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       defaultValue={'no'}
                       aria-label="restrictions"
                       name="restrictions"
-                      value={specificPeople}
+                      value={reactData.specificPeople}
                       onChange={handleChangePeopleToggle}
                     >
                       <FormControlLabel
@@ -477,7 +528,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                 </Box>
               </form>
             </Box>
-            {(specificPeople === 'yes') &&
+            {(reactData.specificPeople === 'yes') &&
               <React.Fragment>
                 <Box marginTop={2} marginLeft={4} display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
                   <Typography className={classes.HeadText}>{`Administrative Groups`}</Typography>
@@ -645,7 +696,12 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                     <Box display='flex'
                       flexDirection='column'
                     >
-                      <Typography className={classes.radioText} style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                      {this_message.criticalMessage && 
+                        <Typography className={classes.radioText} style={{ marginBottom: '-10px', color: 'red', fontSize: '1rem', italics: true }} >
+                          {`*** Critical Message - All others hidden ***`}
+                        </Typography>
+                      }
+                      <Typography className={classes.radioText} style={{ color: (this_message.criticalMessage ? 'red' : 'black'), fontSize: '1.5rem', fontWeight: 'bold' }}>
                         {this_message.message}
                       </Typography>
                       <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
