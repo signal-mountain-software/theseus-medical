@@ -244,7 +244,13 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
         case 'display_if': 
         case 'displayif': 
         case 'displayIF': { 
-          rowTestArray.push(oValue);
+          rowTestArray.push({ test: oValue, type: 'display' });
+          break;
+        }
+        case 'ignore_if':
+        case 'ignoreif':
+        case 'ignoreIF': {
+          rowTestArray.push({ test: oValue, type: 'ignore' });
           break;
         }
         case 'end_if':
@@ -314,6 +320,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
       let rObj = {
         checkbox,
         isChecked: false,
+        noUpdate: false,
         required,
         rowTest: deepCopy(rowTestArray),
         multiColumn,
@@ -346,7 +353,7 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
             rObj.isChecked = true;
             if ((defaults.hasOwnProperty(instruction[0]) && (defaults[instruction[0]] === 'always')) // this item is checked off by default
               || (observationDefaultValue === 'always')) { 
-              rObj.checkbox = false;
+              rObj.noUpdate = true;
             }
           }
         }

@@ -1,49 +1,40 @@
 import React from 'react';
 
+import { useSnackbar } from 'notistack';
+
+import useSession from '../../hooks/useSession';
+
+import PersonFilter from './PersonFilter';
+import AVAConfirm from './AVAConfirm';
+
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
 import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
 import { putServiceRequest, getServiceRequests, updateServiceRequest, formatServiceRequestDetails, validRequestStatus } from '../../util/AVAServiceRequest';
-import PersonFilter from './PersonFilter';
-import { useSnackbar } from 'notistack';
-
-import SignatureCanvas from 'react-signature-canvas';
-
-import useSession from '../../hooks/useSession';
-import TextField from '@material-ui/core/TextField';
+import { mealTicketFormat, prepareMessage, sendMessages, resolveMessageVariables } from '../../util/AVAMessages';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
+import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 
-import Checkbox from '@material-ui/core/Checkbox';
-import Dialog from '@material-ui/core/Dialog';
-import DialogActions from '@material-ui/core/DialogActions';
-import Typography from '@material-ui/core/Typography';
-import Button from '@material-ui/core/Button';
-import Box from '@material-ui/core/Box';
-import Paper from '@material-ui/core/Paper';
+import { Card, CardActions } from '@material-ui/core';
+import { Button, IconButton, TextField } from '@material-ui/core';
+import { Dialog, DialogActions } from '@material-ui/core';
+import { Box, Paper, Typography, Checkbox, Radio, Avatar } from '@material-ui/core';
+import { Menu, MenuList, MenuItem } from '@material-ui/core';
+
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import CheckIcon from '@material-ui/icons/Check';
 import DeleteIcon from '@material-ui/icons/Delete';
 import GroupAddIcon from '@material-ui/icons/GroupAdd';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
-import LinearProgress from '@material-ui/core/LinearProgress';
-
+import AddShoppingCartIcon from '@material-ui/icons/AddShoppingCart';
+import RemoveShoppingCartIcon from '@material-ui/icons/RemoveShoppingCart';
 import HomeIcon from '@material-ui/icons/Home';
 import AutorenewIcon from '@material-ui/icons/Autorenew';
-
-import Avatar from '@material-ui/core/Avatar';
-import Menu from '@material-ui/core/Menu';
-import MenuList from '@material-ui/core/MenuList';
-import MenuItem from '@material-ui/core/MenuItem';
-
-import Radio from '@material-ui/core/Radio';
-
-import AVAConfirm from './AVAConfirm';
-import { mealTicketFormat, prepareMessage, sendMessages, resolveMessageVariables } from '../../util/AVAMessages';
-
-import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   smallTextLine: {
@@ -88,6 +79,14 @@ const useStyles = makeStyles(theme => ({
   listItem: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
+  },
+  backGroundRed: {
+    backgroundColor: 'red'
+  },
+  backGroundGreen: {
+    backgroundColor: 'green'
+  },
+  backGroundNone: {
   },
   hiddenItem: {
     display: 'none',
@@ -144,9 +143,11 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     columnList: [],
     loadProgress: [],
     attachmentList: [],
+    viewOnly: false,
     allowAttachments: false,
     errorOnScreen: false,
-    factName: factName
+    factName: factName,
+    expanded: []
   });
 
   const [records2Update, setRecords2Update] = React.useState([]);
@@ -237,8 +238,23 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         let fDate = makeDate(this_foreignKey);
         let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(','))));
         localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
+        let rowDetails = await buildDisplayRows(listValues, defaultObj, qualifiers);
+        for (let r = 0; r < rowDetails.length; r++) {
+          if (rowDetails[r].checkbox && rowDetails[r].observationKey && !rowDetails[r].qualData) {
+            let qualResponse = await buildQualifiers(rowDetails[r].observationKey);
+            if (Object.keys(qualResponse.selections).length > 0) {
+              rowDetails[r].qualSelections = deepCopy(qualResponse.selections);
+            }
+            if (Object.keys(qualResponse.data).length > 0) {
+              rowDetails[r].qualData = deepCopy(qualResponse.data);
+            }
+            if (Object.keys(qualResponse.moreInfo).length > 0) {
+              rowDetails[r].moreInfo = deepCopy(qualResponse.moreInfo);
+            }
+          }
+        }
         defaultColumnList.push({
-          rowDetails: await buildDisplayRows(listValues, defaultObj, qualifiers),
+          rowDetails: rowDetails,
           activity_key: fact.activity_code,
           foreignKey: this_foreignKey,
           requestType: this_requestType,
@@ -277,8 +293,23 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           let fDate = makeDate(this_foreignKey);
           let dName = ([' ', ' ', ' '].concat(this_requestName.split(' ').slice(-3)).concat(fDate.error ? [] : ((fDate.absolute).split(/,\s*/))));
           localData_maxDName = Math.max((localData_maxDName || 0), dName.length);
+          let rowDetails = await buildDisplayRows(defaultValue.activities[a].activityRec.valid_values_list, defaultsToUse, qualifiers);
+          for (let r = 0; r < rowDetails.length; r++) {
+            if (rowDetails[r].checkbox && rowDetails[r].observationKey && !rowDetails[r].qualData) {
+              let qualResponse = await buildQualifiers(rowDetails[r].observationKey);
+              if (Object.keys(qualResponse.selections).length > 0) {
+                rowDetails[r].qualSelections = deepCopy(qualResponse.selections);
+              }
+              if (Object.keys(qualResponse.data).length > 0) {
+                rowDetails[r].qualData = deepCopy(qualResponse.data);
+              }
+              if (Object.keys(qualResponse.moreInfo).length > 0) {
+                rowDetails[r].moreInfo = deepCopy(qualResponse.moreInfo);
+              }
+            }
+          }
           defaultColumnList.push({
-            rowDetails: await buildDisplayRows(defaultValue.activities[a].activityRec.valid_values_list, defaultsToUse, qualifiers),
+            rowDetails: rowDetails,
             activity_key: this_activityKey,
             foreignKey: this_foreignKey,
             requestType: this_requestType,
@@ -341,6 +372,10 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               updateReactData({ allowAttachments: true }, false);
               break;
             }
+            case ('viewOnly'): {
+              updateReactData({ viewOnly: true }, false);
+              break;
+            }
             case ('allowRemovePeople'): {
               setAllowRemovePeople(defaultValue.allowRemovePeople);
               break;
@@ -381,7 +416,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       initialize();
     }
   }, [defaultValue]);  // eslint-disable-line react-hooks/exhaustive-deps
-
 
   function columnUniqueName(my_column) {
     let commonRows = ([' ', ' ', ' ', ' ', ' '].concat(reactData.columnList[0].dName)).slice(-10);
@@ -456,8 +490,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     setForceRedisplay(!forceRedisplay);
   };
-
-  const signatureRef = React.useRef(null);
 
   const hiddenFileInput = React.useRef(null);
   const handleFileUpload = event => {
@@ -771,6 +803,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         reactData.columnList[c].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(winnerList[0].option[0].dName.split(/\s+/).splice(-3))));
         resetTitleName();
         reactData.columnList[c].rowDetails[rowNumber].isChecked = true;
+        reactData.columnList[c].rowDetails[rowNumber].isExpanded = true;
+        reactData.columnList[c].rowDetails[rowNumber].version = new Date().getTime();
         reactData.columnList[c].rowDetails[rowNumber].qualData = winnerList;
         reactData.columnList[c].rowDetails[rowNumber].qualSelections = {
           [winnerList[0].title]: {
@@ -788,20 +822,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     });
     updateReactData({ columnList: reactData.columnList }, true);
   };
-
-  function loadingInProgress(index = 'all') {
-    if (!reactData.loadProgress) {
-      return false;
-    }
-    if (index !== 'all') {
-      return (reactData.loadProgress[index] && reactData.loadProgress[index].loading);
-    }
-    else {
-      return (reactData.loadProgress.some(i => {
-        return (i.loading);
-      }));
-    }
-  }
 
   function resetTitleName() {
     let workingTitle = {};
@@ -856,6 +876,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
   async function itemSelected(columnNumber, rowNumber) {
     let this_row = reactData.columnList[columnNumber].rowDetails[rowNumber];
     this_row.isChecked = !this_row.isChecked;
+    this_row.isExpanded = this_row.isChecked;
+    this_row.version++;
     if (this_row.isChecked && this_row.observationKey && !this_row.qualData) {
       // let [myQualSelections, myQualData] = await buildQualifiers(this_row.observationKey);
       let qualResponse = await buildQualifiers(this_row.observationKey);
@@ -895,6 +917,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     if (optionAt < 0) {
       return;
     }
+    rowData.version++;
     let qualRules = rowData.qualData[optionAt];
     // which option in rowData.qualData[optionAt] contains the qChoice information?
 
@@ -1060,6 +1083,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         let checkRow = reactData.columnList[selectedColumn].rowDetails.find(row => {
           return (row.text === checkField);
         });
+        if (checkValue === 'true') {
+          checkValue = true;
+        }
+        else if (checkValue === 'false') {
+          checkValue = false;
+        }
         let innerResponse;
         if (checkRow) {
           if (checkRow.checkbox || checkRow.isChecked) {    // checkbox 
@@ -1081,8 +1110,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           }
         }
         else if (reactData.columnList[selectedColumn].defaultValues.hasOwnProperty(checkField)) {
-          // no row matched this test field; perhaps a default value does?
+          // no row matched this test field; perhaps a default value does?          
           innerResponse = (reactData.columnList[selectedColumn].defaultValues[checkField] === checkValue);
+        }
+        else if (defaultValue.hasOwnProperty(checkField)) {
+          // maybe a global default?          
+          innerResponse = (defaultValue[checkField] === checkValue);
         }
         if (display) {
           return innerResponse;
@@ -1090,37 +1123,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
         else {
           return !innerResponse;
         }
-        /*      return reactData.columnList[selectedColumn].rowDetails.every(checkRow => {
-                if (checkRow.text !== checkField) {  // this test doesn't apply
-                  return true;
-                }
-                else {
-                  let innerResponse;
-                  if (checkRow.checkbox || checkRow.isChecked) {    // checkbox 
-                    if (!checkValue) {
-                      innerResponse = checkRow.isChecked;
-                    }
-                    else if (!checkRow.isChecked || !qualSelected || !checkRow.qualSelections) {
-                      innerResponse = false;
-                    }
-                    else {
-                      innerResponse = (checkRow.qualSelections.hasOwnProperty(checkValue) && checkRow.qualSelections[checkValue][qualSelected]);
-                    }
-                  }
-                  else if (!checkValue) {    // not a checkbox... if we don't care if there is a vlue type in or not? 
-                    innerResponse = !!checkRow.textValue;
-                  }
-                  else {  // if we do care...
-                    innerResponse = checkRow.textValue.toLowerCase().includes(checkValue.toLowerCase());
-                  }
-                  if (display) {
-                    return innerResponse;
-                  }
-                  else {
-                    return !innerResponse;
-                  }
-                }
-              });  */
       });
     }
     return response;
@@ -1139,6 +1141,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       });
       if (rowNumber > -1) {
         this_column.rowDetails[rowNumber].isChecked = true;
+        this_column.rowDetails[rowNumber].isExpanded = true;
+        this_column.rowDetails[rowNumber].version = new Date().getTime();
         if (this_column.rowDetails[rowNumber].observationKey && !this_column.rowDetails[rowNumber].qualData) {
           let qualResponse = await buildQualifiers(this_column.rowDetails[rowNumber].observationKey);
           if (Object.keys(qualResponse.selections).length > 0) {
@@ -1339,40 +1343,22 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           let this_row = this_column.rowDetails[rowNumber];
           if (this_row.isChecked) {
             let choices_list = [];
-            if (this_row.input === 'signature') {
-              let s3Response = await s3
-                .upload({
-                  Bucket: 'theseus-medical-storage',
-                  Key: `${this_column.person_id || reactData.defaultPerson.person_id || state.patient.person_id}_signature`,
-                  Body: this_row.image,
-                  ACL: 'public-read-write',
-                  ContentType: 'image/png'
-                })
-                .promise()
-                .catch(err => {
-                  enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                });
-              image_location[this_row.text] = s3Response.Location;
-              images[this_row.text] = this_row.image;
-            }
-            else {
-              for (let this_option in this_row.qualSelections) {
-                for (let this_choice in this_row.qualSelections[this_option]) {
-                  if (!options.hasOwnProperty(this_row.text)) {
-                    options[this_row.text] = {};
+            for (let this_option in this_row.qualSelections) {
+              for (let this_choice in this_row.qualSelections[this_option]) {
+                if (!options.hasOwnProperty(this_row.text)) {
+                  options[this_row.text] = {};
+                }
+                if (!options[this_row.text].hasOwnProperty(this_option)) {
+                  options[this_row.text][this_option] = {};
+                }
+                options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
+                if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
+                  if (this_row.qualSelections[this_option][this_choice]) {
+                    choices_list.push(this_choice);
                   }
-                  if (!options[this_row.text].hasOwnProperty(this_option)) {
-                    options[this_row.text][this_option] = {};
-                  }
-                  options[this_row.text][this_option][this_choice] = this_row.qualSelections[this_option][this_choice];
-                  if (typeof (this_row.qualSelections[this_option][this_choice]) === 'boolean') {
-                    if (this_row.qualSelections[this_option][this_choice]) {
-                      choices_list.push(this_choice);
-                    }
-                  }
-                  else {
-                    choices_list.push(this_row.qualSelections[this_option][this_choice]);
-                  }
+                }
+                else {
+                  choices_list.push(this_row.qualSelections[this_option][this_choice]);
                 }
               }
             }
@@ -1601,16 +1587,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       else {
         /*  Check for errors */
         this_column.rowDetails.forEach((this_row, row_number) => {
-          if (this_row.input === 'signature') {
-            if (signatureRef.current.isEmpty() && this_row.required) {
-              this_row.textValue = false;
-            }
-            else {
-              // reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.toDataURL('image/png');
-              reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
-              this_row.textValue = 'Signature captured';
-            }
-          }
           reactData.columnList[column_number].rowDetails[row_number].error = false;
           if (this_row.isChecked && this_row.qualData) {
             this_row.qualData.forEach(this_qual => {
@@ -1966,245 +1942,217 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
           { /* Data rows */}
           <Paper component={Box} className={classes.page} overflow='auto' square>
-            {(reactData.columnList.length > 0) &&
-              (reactData.columnList[selectedColumn].rowDetails).map((this_item, this_index) => (
-                <React.Fragment
-                  key={`frag_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
-                >
-                  {OKtoShow(this_item) &&
-                    <Box display='flex'
-                      flexDirection='row'
-                      borderRadius={'16px'}
-                      marginLeft={2}
-                      marginRight={2}
-                      marginBottom={(this_item.header ? 0 : 0.5)}
-                      paddingBottom={(this_item.header ? 0 : 1)}
-                      marginTop={(this_item.header ? 0 : 0.5)}
-                      paddingTop={(this_item.header ? 0 : 1)}
-                      border={(!!this_item.error || this_item.isChecked || (this_item.textValue && (this_item.textValue !== ''))) ? (!!this_item.error ? 4 : 1) : 'none'}
-                      borderColor={!!this_item.error ? 'red' : 'black'}
-                      key={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
-                      id={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
-                    >
-                      <Box display='flex'
-                        flexDirection='column'
-                        flexGrow={1}
-                        key={`rowmainboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
-                        id={`rowmainboxwrap_${selectedColumn}.${this_index}-${this_item.isChecked}-${!!this_item.error ? 'err' : 'ok'}`}
+            <Box
+              key={`thewholething`}
+              id={`thewholething`}
+              display="flex"
+              flexDirection='row'
+              flexWrap={'wrap'}
+              justifyContent="flex-start"
+              alignItems='flex-start'
+            >
+
+              {(reactData.columnList.length > 0) &&
+                (reactData.columnList[selectedColumn].rowDetails).map((this_item, this_index) => (
+                  OKtoShow(this_item) &&
+                  <Box display='flex'
+                    flexDirection='row'
+                    borderRadius={'16px'}
+                    marginLeft={2}
+                    marginRight={2}
+                    maxWidth={this_item.checkbox ? 400 : 'auto'}
+                    width={!this_item.checkbox ? '100%' : 'auto'}
+                    marginTop={(this_item.header ? 0 : 2)}
+                    marginBottom={(this_item.header ? 1 : 2)}
+                    padding={(this_item.header ? 0 : 1)}
+                    border={(!reactData.viewOnly && (!!this_item.error || this_item.isChecked || (this_item.textValue && (this_item.textValue !== ''))))
+                      ? 4
+                      : (this_item.checkbox ? 4 : 'none')
+                    }
+                    className={!!this_item.error ? classes.backGroundRed : (this_item.isChecked ? classes.backGroundGreen : classes.backGroundNone)}
+                    borderColor={!!this_item.error ? 'red' : (this_item.isChecked ? 'green' : 'lightgray')}
+                    key={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.version}-${!!this_item.error ? 'err' : 'ok'}`}
+                    id={`rowboxwrap_${selectedColumn}.${this_index}-${this_item.version}-${!!this_item.error ? 'err' : 'ok'}`}
+                  >
+                    { /* Descriptive text - headers and info that is text only */}
+                    {!this_item.input && !this_item.checkbox &&
+                      <Box
+                        display='flex'
+                        flexDirection='row'
+                        key={`textoutbox_${selectedColumn}.${this_index}`}
+                        id={`textoutbox_${selectedColumn}.${this_index}`}
+                        className={classes.listItem}
+                        justifyContent='flex-start'
+                        alignItems='center'
                       >
-                        <Box
-                          display='flex'
-                          flexDirection='row'
-                          key={`rowbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                          id={`rowbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                          className={classes.listItem}
-                          mb={0.5}
-                          mt={0.5}
-                          justifyContent='flex-start'
-                          onClick={async () => {
-                            if (this_item.checkbox) {
-                              await itemSelected(selectedColumn, this_index);
-                            }
-                          }}
-                          alignItems='center'
-                        >
-                          {this_item.checkbox &&
-                            <Radio
-                              key={`checkbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                              id={`checkbox_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                              checked={this_item.isChecked}
-                              value={this_item.isChecked}
-                              disableRipple
-                              className={classes.radioButton}
-                              size='small'
-                            />
+                        <Typography
+                          key={`textout_${selectedColumn}.${this_index}`}
+                          id={`textout_${selectedColumn}.${this_index}`}
+                          style={this_item.style
+                            ? AVATextStyle(this_item.style)
+                            : (this_item.header
+                              ? AVATextStyle({ size: 1.5, bold: true, margin: { top: 2 } })
+                              : AVATextStyle({ size: 1.3, margin: { right: 0.5 } }))
                           }
-                          { /* Descriptive text for this row - every row has some */}
-                          {!this_item.input &&
-                            <Box
-                              display='flex'
+                        >
+                          {this_item.bold
+                            ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
+                            : (this_item.italic ? <i>{this_item.text}</i> : `${this_item.text}`)}
+                        </Typography>
+                      </Box>
+                    }
+                    { /* Text prompt line for this row - headers don't have this */}
+                    {this_item.input && !reactData.viewOnly &&
+                      <TextField
+                        className={classes.freeInput}
+                        variant={'standard'}
+                        key={`inputtextprompt_${selectedColumn}.${this_index}`}
+                        id={`inputtextprompt_${selectedColumn}.${this_index}`}
+                        helperText={(this_item.error ? (`${this_item.error} - `) : '') + this_item.text}
+                        multiline
+                        inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                        onChange={event => {
+                          if (!event.target.value) {
+                            reactData.errorOnScreen = false;
+                          }
+                          handleChangeTextField(event.target.value, selectedColumn, this_index);
+                        }}
+                        FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                        onKeyPress={(event) => {
+                          onCheckEnter(event, selectedColumn, this_index);
+                        }}
+                        onBlur={(event) => {
+                          onCheckEnter(event, selectedColumn, this_index);
+                        }}
+                        autoComplete='off'
+                        value={this_item.textValue || ''}
+                      />
+                    }
+                    {this_item.checkbox && !this_item.header &&
+                      <Card elevation={(this_item.isChecked || this_item.isExpanded) ? 0 : 0} sx={{ maxWidth: 345 }}>
+                        <Box
+                          key={`cardboxmaster_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                          id={`cardboxmaster_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                          display="flex"
+                          padding={1}
+                          flexDirection='column'
+                          justifyContent="flex-start"
+                          alignItems='flex-start'
+                        >
+                          <Box
+                            key={`cardboxmasterrow_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                            id={`cardboxmasterrow_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                            display="flex"
+                            flexDirection='column'
+                            justifyContent="flex-start"
+                            alignItems='flex-start'
+                            onClick={async () => {
+                              if (this_item.checkbox && !this_item.noUpdate) {
+                                await itemSelected(selectedColumn, this_index);
+                              }
+                            }}
+                          >
+                            <Box key={`cardboxmasterrow_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                              id={`cardboxmasterrow_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                              display="flex"
                               flexDirection='row'
-                              key={`textoutbox_${selectedColumn}.${this_index}`}
-                              id={`textoutbox_${selectedColumn}.${this_index}`}
-                              className={classes.listItem}
-                              justifyContent='flex-start'
+                              justifyContent="flex-start"
                               alignItems='center'
                             >
-                              <Typography
-                                key={`textout_${selectedColumn}.${this_index}`}
-                                id={`textout_${selectedColumn}.${this_index}`}
-                                style={this_item.style
-                                  ? AVATextStyle(this_item.style)
-                                  : (this_item.header
-                                    ? AVATextStyle({ size: 1.3, bold: true, margin: { top: 2 } })
-                                    : AVATextStyle({ size: 1.2, margin: { right: 0.5 } }))
-                                }
+                              {!reactData.viewOnly && !this_item.noUpdate &&
+                                <IconButton aria-label="select this item">
+                                  {this_item.isChecked ? <RemoveShoppingCartIcon /> : <AddShoppingCartIcon />}
+                                </IconButton>
+                              }
+                              <Box
+                                key={`cardboxmastercolumn_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                                id={`cardboxmastercolumn_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                                display="flex"
+                                flexDirection='column'
+                                justifyContent="flex-start"
+                                alignItems='flex-start'
                               >
-                                {this_item.bold
-                                  ? (this_item.italic ? <b><i>{this_item.text}</i></b> : <b>{this_item.text}</b>)
-                                  : (this_item.italic ? <i>{this_item.text}</i> : `${this_item.text}`)}
-                              </Typography>
-                            </Box>
-                          }
-                          { /* Text prompt line for this row - headers don't have this */}
-                          {this_item.input && (this_item.input !== 'signature') && (this_item.input !== 'docLines') &&
-                            <TextField
-                              className={classes.freeInput}
-                              variant={'standard'}
-                              key={`inputtextprompt_${selectedColumn}.${this_index}`}
-                              id={`inputtextprompt_${selectedColumn}.${this_index}`}
-                              helperText={(this_item.error ? (`${this_item.error} - `) : '') + this_item.text}
-                              multiline
-                              inputProps={{ style: { fontSize: `${user_fontSize * 1}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                              onChange={event => {
-                                if (!event.target.value) {
-                                  reactData.errorOnScreen = false;
-                                }
-                                handleChangeTextField(event.target.value, selectedColumn, this_index);
-                              }}
-                              FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                              onKeyPress={(event) => {
-                                onCheckEnter(event, selectedColumn, this_index);
-                              }}
-                              onBlur={(event) => {
-                                onCheckEnter(event, selectedColumn, this_index);
-                              }}
-                              autoComplete='off'
-                              value={this_item.textValue || ''}
-                            />
-                          }
-                          {this_item.input && (this_item.input === 'docLines') &&
-                            <div
-                              dangerouslySetInnerHTML={{ '__html': this_item.text }}
-                            />
-                          }
-                          {this_item.input && (this_item.input === 'signature') &&
-                            <Box
-                              display='flex'
-                              flexDirection='column'
-                              key={`sigbox_${selectedColumn}.${this_index}`}
-                              id={`sigbox_${selectedColumn}.${this_index}`}
-                              justifyContent='flex-start'
-                              alignItems='flex-start'
-                              width='97%'
-                            >
-                              <SignatureCanvas
-                                ref={signatureRef}
-                                canvasProps={{
-                                  style: {
-                                    backgroundColor: 'beige',
-                                    width: '35%',
-                                    marginLeft: '10px',
-                                    marginRight: '10px',
-                                    marginTop: '2px',
-                                    height: '88px'
+                                <Typography
+                                  key={`textout_${selectedColumn}.${this_index}`}
+                                  id={`textout_${selectedColumn}.${this_index}`}
+                                  style={this_item.style
+                                    ? AVATextStyle(this_item.style)
+                                    : AVATextStyle({ size: 1.5, margin: { right: 2 } })
                                   }
-                                }}
-                              />
-                              <Typography
-                                key={`sigboxtxt_${selectedColumn}.${this_index}`}
-                                id={`sigboxtxt_${selectedColumn}.${this_index}`}
-                                style={AVATextStyle({ size: 0.6, margin: { left: 1, bottom: 0.5 } })}
-                              >
-                                {this_item.text}
-                              </Typography>
-                              <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                                {signatureRef.current && !signatureRef.current.isEmpty() &&
-                                  <Button
-                                    className={AVAClass.AVAMicroButton}
-                                    style={{ backgroundColor: 'white', color: 'red' }}
-                                    size='small'
-                                    onClick={() => {
-                                      signatureRef.current.clear();
-                                      setForceRedisplay(!forceRedisplay);
-                                    }}
+                                >
+                                  {this_item.text}
+                                </Typography>
+                                {this_item.moreInfo && this_item.moreInfo.fee &&
+                                  <Typography
+                                    key={`feetext_${selectedColumn}.${this_index}-${this_item.version}`}
+                                    id={`feetext_${selectedColumn}.${this_index}-${this_item.version}`}
+                                    style={AVATextStyle({ size: 1.2, margin: { right: 3 } })}
                                   >
-                                    {'Clear'}
-                                  </Button>
+                                    {new Intl.NumberFormat('en-US', {
+                                      style: 'currency',
+                                      currency: 'USD',
+                                    }).format(this_item.moreInfo.fee)}
+                                  </Typography>
                                 }
-                                {reactData.storedSignature &&
-                                  <Button
-                                    className={AVAClass.AVAMicroButton}
-                                    style={{ backgroundColor: 'lightgreen', color: 'black', margin: { bottom: 0 } }}
-                                    size='small'
-                                    onClick={async () => {
-                                      signatureRef.current.clear();
-                                      var params = {
-                                        Bucket: 'theseus-medical-storage',
-                                        Key: reactData.storedSignature.split('/').pop()
-                                      };
-                                      let data = await s3
-                                        .getObject(params)
-                                        .promise()
-                                        .catch(err => {
-                                          console.log(`error at getS3Object is`, err);
-                                        });
-                                      if (data) {
-                                        let s64 = data.Body.toString("base64");
-                                        console.log(s64);
-                                        let b64 = 'data:image/png;base64,' + data.Body.toString("base64");
-                                        signatureRef.current.fromDataURL(b64);
-                                      }
-                                      setForceRedisplay(!forceRedisplay);
-                                    }}
+                                {this_item.desc &&
+                                  <Typography
+                                    key={`descriptiontext_${selectedColumn}.${this_index}-${this_item.version}`}
+                                    id={`descritpiontext_${selectedColumn}.${this_index}-${this_item.version}`}
+                                    style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
                                   >
-                                    {'Use Existing'}
-                                  </Button>
+                                    {this_item.desc}
+                                  </Typography>
                                 }
                               </Box>
                             </Box>
-                          }
-                        </Box>
-                        {this_item.isChecked && this_item.desc &&
-                          <Typography
-                            key={`descriptiontext_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                            id={`descritpiontext_${selectedColumn}.${this_index}-${this_item.isChecked}`}
-                            style={AVATextStyle({ size: 0.7, margin: { left: 1, bottom: 0.8, right: 3 } })}
-                          >
-                            {this_item.desc}
-                          </Typography>
-                        }
-                        {this_item.isChecked
-                          && this_item.moreInfo &&
+                            {this_item.moreInfo && this_item.moreInfo.image &&
+                              <Box
+                                component="img"
+                                minWidth={150}
+                                maxWidth={300}
+                                minHeight={150}
+                                marginLeft={1.2}
+                                marginRight={1}
+                                marginBottom={2}
+                                marginTop={1}
+                                src={this_item.moreInfo.image}
+                              />
+                            }
+                          </Box>
                           <Box
-                            key={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.isChecked}`}
-                            id={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.isChecked}`}
+                            key={`cardinfowrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                            id={`cardinfowrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
                             display="flex"
-                            style={AVATextStyle({
-                              margin: { right: 1 },
-                              padding: { left: 0, right: 3 }
-                            })}
                             flexDirection='column'
-                            justifyContent="center"
+                            justifyContent="flex-start"
+                            alignItems='flex-start'
                           >
-                            <Box display='flex' flexDirection='column' justifyContent='center'
-                              key={`qualbox_${selectedColumn}.${this_index}.moreInfo-${this_item.isChecked}`}
-                              id={`qualbox_${selectedColumn}.${this_index}.moreInfo-${this_item.isChecked}`}
-                              alignItems='flex-start'>
-                              <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                key={`optionbox_${selectedColumn}.${this_index}.moreInfo-${this_item.isChecked}`}
-                                id={`optionbox_${selectedColumn}.${this_index}.moreInfo-${this_item.isChecked}`}
-                                alignItems='center' flexWrap='wrap'
+                            {(this_item.isChecked || this_item.isExpanded)
+                              && this_item.moreInfo &&
+                              <Box
+                                key={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                                id={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.version}`}
+                                display="flex"
+                                style={AVATextStyle({
+                                  margin: { right: 1 },
+                                  padding: { left: 0, right: 3 }
+                                })}
+                                flexDirection='column'
+                                justifyContent="center"
+                                alignItems='flex-start'
                               >
                                 {Object.keys(this_item.moreInfo).map((opt, oX) => (
                                   <React.Fragment
-                                    key={`optionbox_${selectedColumn}.${this_index}.fragment-${this_item.isChecked}-${oX}`}
+                                    key={`optionbox_${selectedColumn}.${this_index}.fragment-${this_item.version}-${oX}`}
                                   >
-                                    {(opt !== 'image') && (opt !== 'restriction') &&
-                                      <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                        key={`option_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                        id={`option_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                        style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
-                                        alignItems='center'
+                                    {(opt !== 'image') && (opt !== 'fee') && (opt !== 'restriction') &&
+                                      <Typography
+                                        key={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.version}`}
+                                        id={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.version}`}
+                                        style={AVATextStyle({ size: 0.75, margin: { left: 1 } })}
                                       >
-                                        <Typography
-                                          key={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                          id={`optionchecktext_${selectedColumn}.${this_index}.moreInfo.${oX}-${this_item.isChecked}`}
-                                          style={AVATextStyle({ size: 0.75, margin: { left: 1 } })}
-                                        >
-                                          {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
-                                        </Typography>
-                                      </Box>
+                                        {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
+                                      </Typography>
                                     }
                                     {(opt === 'restriction')
                                       && (
@@ -2217,14 +2165,14 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                       )
                                       &&
                                       <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                        key={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
-                                        id={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
+                                        key={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
+                                        id={`option_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
                                         style={AVATextStyle({ size: 0.7, margin: { right: 3 } })}
                                         alignItems='center'
                                       >
                                         <Typography
-                                          key={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
-                                          id={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
+                                          key={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
+                                          id={`optionchecktext_${selectedColumn}.${this_index}.restriction.${oX}-${this_item.version}`}
                                           style={AVATextStyle({ color: 'red', style: 'bold', size: 1.2, margin: { left: 1 } })}
                                         >
                                           {`*** THIS ITEM IS NOT RECOMMENDED FOR ${reactData.columnList[selectedColumn].display_name.toUpperCase()} ***`}
@@ -2234,209 +2182,138 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                   </React.Fragment>
                                 ))}
                               </Box>
-                            </Box>
-                          </Box>
-                        }
-                        {this_item.isChecked
-                          && this_item.qualData
-                          && makeArray(this_item.qualData).map((qR, qRndx) => (
-                            <Box
-                              key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
-                              id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
-                              display="flex"
-                              style={AVATextStyle({
-                                margin: { left: 1.5, right: 1 },
-                                padding: { left: 0, right: 3 }
-                              })}
-                              flexDirection='column'
-                              justifyContent="center"
-                            >
-                              <Box display='flex' flexDirection='column' justifyContent='center'
-                                key={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
-                                id={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
-                                alignItems='flex-start'>
-                                <Typography
-                                  key={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
-                                  id={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
+                            }
+                            {(this_item.isChecked || this_item.isExpanded)
+                              && this_item.qualData
+                              && makeArray(this_item.qualData).map((qR, qRndx) => (
+                                <Box
+                                  key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                  id={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                  display="flex"
                                   style={AVATextStyle({
-                                    margin: { top: 0.8, bottom: 0, left: 0 },
-                                    padding: { left: 0, right: 3 },
-                                    size: 1
+                                    margin: { left: 1, right: 1 },
+                                    padding: { left: 0, right: 3 }
                                   })}
+                                  flexDirection='column'
+                                  justifyContent="center"
                                 >
-                                  {qR.title}
-                                </Typography>
-                                <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                  key={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
-                                  id={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
-                                  alignItems='center' flexWrap='wrap'
-                                >
-                                  {qR.option && qR.option.map((opt, oX) => (
-                                    <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                      key={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                      id={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                      alignItems='center'
+                                  <Box display='flex' flexDirection='column' justifyContent='center'
+                                    key={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                    id={`qualbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                    alignItems='flex-start'>
+                                    <Typography
+                                      key={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                      id={`qualboxtitle_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                      style={AVATextStyle({
+                                        margin: { top: 0.8, bottom: 0, left: 0 },
+                                        padding: { left: 0, right: 3 },
+                                        size: 1
+                                      })}
                                     >
-                                      {(!opt.type || (opt.type === 'checkbox')) &&
-                                        <React.Fragment>
-                                          <Checkbox
-                                            key={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            id={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            className={classes.radioButton}
-                                            size="small"
-                                            onClick={() => {
-                                              optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
-                                              if (reactData.columnList[selectedColumn].rowDetails[this_index].obo_line) {
-                                                console.log('There I am Gary!');
-                                                // which qualSelection is true?
-                                                let allPossibilitiesObj = Object.values(reactData.columnList[selectedColumn].rowDetails[this_index].qualSelections)[0];
-                                                let selectedOBOkey = Object.keys(allPossibilitiesObj).find((k) => {
-                                                  return allPossibilitiesObj[k];
-                                                });
-                                                let allQualsList = reactData.columnList[selectedColumn].rowDetails[this_index].qualData[0].option;
-                                                let qualPicked = allQualsList.findIndex((i) => {
-                                                  return (i.display === selectedOBOkey);
-                                                });
-                                                reactData.columnList[selectedColumn].person_id = allQualsList[qualPicked].person_id;
-                                                reactData.columnList[selectedColumn].display_name = allQualsList[qualPicked].dName;
-                                                reactData.columnList[selectedColumn].dName.splice(-3, 3, ...([' ', ' ', ' '].concat(allQualsList[qualPicked].dName.split(/\s+/).splice(-3))));
-                                                resetTitleName();
-                                                reactData.columnList[selectedColumn].rowDetails[this_index].textValue = titleCase(allQualsList[qualPicked].dName);
-                                                reactData.columnList[selectedColumn].rowDetails.forEach((checkRow, r) => {
-                                                  if (checkRow.location_line) {
-                                                    reactData.columnList[selectedColumn].rowDetails[r].textValue = allQualsList[qualPicked].location || '';
-                                                  }
-                                                });
+                                      {qR.title}
+                                    </Typography>
+                                    <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                      key={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                      id={`optionbox_${selectedColumn}.${this_index}.${qRndx}-${this_item.version}`}
+                                      alignItems='center' flexWrap='wrap'
+                                    >
+                                      {qR.option && qR.option.map((opt, oX) => (
+                                        <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                          key={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                          id={`option_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                          alignItems='center'
+                                        >
+                                          {(!opt.type || (opt.type === 'checkbox')) &&
+                                            <React.Fragment>
+                                              {!reactData.viewOnly &&
+                                                <Checkbox
+                                                  key={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                                  id={`optioncheckbox_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                                  className={classes.radioButton}
+                                                  size="small"
+                                                  onClick={() => {
+                                                    optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
+                                                    reactData.columnList[selectedColumn].columnActivated = true;
+                                                    updateReactData({
+                                                      columnList: reactData.columnList
+                                                    }, true);
+                                                  }}
+                                                  checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
+                                                />
                                               }
-                                              reactData.columnList[selectedColumn].columnActivated = true;
-                                              updateReactData({
-                                                columnList: reactData.columnList
-                                              }, true);
-                                            }}
-                                            checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
-                                          />
-                                          <Typography
-                                            key={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            id={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>
-                                            {opt.display}
-                                          </Typography>
-                                        </React.Fragment>
-                                      }
-                                      {opt.type === 'prompt' &&
-                                        <React.Fragment>
-                                          <Checkbox
-                                            className={classes.radioButton}
-                                            key={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            size="small"
-                                            checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
-                                          />
-                                          <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
-                                            {opt.display}:
-                                          </Typography>
-                                          <TextField
-                                            key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            style={AVATextStyle({ 'line-height': 1, size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
-                                            defaultValue={getQualTextValue(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
-                                            variant={'standard'}
-                                            inputProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                                            FormHelperTextProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                                            onChange={(event) => {
-                                              optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display, event.target.value);
-                                              updateReactData({
-                                                columnList: reactData.columnList
-                                              }, true);
-                                            }}
-                                            autoComplete='off'
-                                          />
-                                        </React.Fragment>
-                                      }
+                                              <Typography
+                                                key={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                                id={`optionchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}`}
+                                                style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}>
+                                                {opt.display}
+                                              </Typography>
+                                            </React.Fragment>
+                                          }
+                                          {opt.type === 'prompt' &&
+                                            <React.Fragment>
+                                              {!reactData.viewOnly &&
+                                                <Checkbox
+                                                  className={classes.radioButton}
+                                                  key={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                  id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                  size="small"
+                                                  checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
+                                                />
+                                              }
+                                              <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
+                                                {opt.display}:
+                                              </Typography>
+                                              {!reactData.viewOnly &&
+                                                <TextField
+                                                  key={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                  id={`optionpromptchecktext_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.version}`}
+                                                  style={AVATextStyle({ 'line-height': 1, size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 3 } })}
+                                                  defaultValue={getQualTextValue(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
+                                                  variant={'standard'}
+                                                  inputProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                                                  FormHelperTextProps={{ style: { paddingBottom: 0, paddingTop: 0, fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                                                  onChange={(event) => {
+                                                    optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display, event.target.value);
+                                                    updateReactData({
+                                                      columnList: reactData.columnList
+                                                    }, true);
+                                                  }}
+                                                  autoComplete='off'
+                                                />
+                                              }
+                                            </React.Fragment>
+                                          }
+                                        </Box>
+                                      ))}
                                     </Box>
-                                  ))}
+                                  </Box>
                                 </Box>
-                              </Box>
-                            </Box>
-                          ))
-                        }
-                      </Box>
-                      {this_item.isChecked
-                        && this_item.moreInfo &&
-                        <React.Fragment>
-                          {
-                            Object.keys(this_item.moreInfo).map((opt, oX) => (
-                              (opt === 'image') &&
-                              <Box
-                                component="img"
-                                key={`obs_image_${oX}`}
-                                mt={0}
-                                mb={1}
-                                mr={2}
-                                alignSelf={'center'}
-                                border={1}
-                                minWidth={100}
-                                maxWidth={100}
-                                minHeight={100}
-                                maxHeight={100}
-                                alt=''
-                                src={this_item.moreInfo[opt]}
-                              />
-                            ))
+                              ))
+                            }
+                          </Box>
+                          {false && (this_item.moreInfo || this_item.qualData) &&
+                            <CardActions disableSpacing>
+                              <IconButton
+                                aria-label="view qual"
+                                onClick={async () => {
+                                  reactData.columnList[selectedColumn].rowDetails[this_index].isExpanded = !reactData.columnList[selectedColumn].rowDetails[this_index].isExpanded;
+                                  updateReactData({
+                                    columnList: reactData.columnList
+                                  }, true);
+                                }
+                                }
+                              >
+                                {this_item.isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                              </IconButton>
+                            </CardActions>
                           }
-                        </React.Fragment>
-                      }
-                    </Box>
-                  }
-                </React.Fragment>
-              ))
-            }
-            { /* Show list of already uploaded attachments (if applicable) */}
-            {(reactData.attachmentList.length > 0) &&
-              <Box display='flex' flexDirection='column' pl={'24px'} justifyContent='flex-start'
-                alignItems='flex-start' key={'qrOpt_attachmentlist'}
-              >
-                <Typography className={classes.radioHead}>Attachments:</Typography>
-                {reactData.attachmentList.map((a, x) => (
-                  <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                    alignItems='center' key={`qrOpt_attachmentLine-${x}`}
-                  >
-                    <DeleteIcon
-                      className={classes.radioButton}
-                      size="small"
-                      onClick={() => {
-                        reactData.attachmentList.splice(x, 1);
-                        reactData.forceRedisplay = !reactData.forceRedisplay;
-                        if (loadingInProgress(x)) {
-                          reactData.loadProgress[x].loading = 'abort';
-                        }
-                        setReactData(reactData);
-                        setForceRedisplay(forceRedisplay => !forceRedisplay);
-                      }}
-                    />
-                    {loadingInProgress(x) &&
-                      <React.Fragment>
-                        <LinearProgress
-                          variant="determinate"
-                          className={classes.progressBar}
-                          style={{ width: reactData.loadProgress[x].total }}
-                          value={reactData.loadProgress[x].progress}
-                        />
-                      </React.Fragment>
+                        </Box>
+                      </Card>
                     }
-                    <Typography
-                      style={AVATextStyle({
-                        size: 0.6,
-                        color: ((loadingInProgress(x)) ? 'gray' : 'black'),
-                        margin: { left: 0.3, right: 3 }
-                      })}
-                    >
-                      {a.Key}
-                    </Typography>
                   </Box>
-                ))}
-              </Box>
-            }
+                ))
+              }
+            </Box>
           </Paper>
         </React.Fragment>
       }
@@ -2583,7 +2460,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 />
               </React.Fragment>
             }
-            {(!factType || (factType !== 'list')) &&
+            {(!factType || (factType !== 'list')) && !reactData.viewOnly &&
               <Button
                 className={AVAClass.AVAButton}
                 style={reactData.errorOnScreen ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
@@ -2615,7 +2492,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                   {'Add People'}
                 </Button>
               }
-              {allowRemovePeople && (reactData.columnList.length > 1) &&
+              {allowRemovePeople && (reactData.columnList.length > 1) && !reactData.viewOnly &&
                 <Button
                   className={AVAClass.AVAButton}
                   style={{ backgroundColor: 'red', color: 'white' }}

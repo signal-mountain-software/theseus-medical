@@ -362,18 +362,24 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
         value: this_date.obs,
         ymd: this_date.ymd,
         display_value: this_date.dateOnly,
-        display_value_day: (this_date.relative === 'Today' ? 'Today' : this_date.absolute.slice(0,3))
+        display_value_day: (this_date.relative === 'Today' ? 'Today' : this_date.absolute.slice(0, 3))
       };
     }
-    let menus = {
-      'special': {
-        value: '%date%',
-        display_value: ['Daily', 'Specials']
-      },
-      'everyday': {
-        value: 'always',
-        display_value: ['Everyday', 'Options']
-      }
+    let menus;
+    if (state.session.dining_structure.hasOwnProperty('menus')) {
+      menus = state.session.dining_structure.menus;
+    }
+    else {
+      menus = {
+        'special': {
+          value: '%date%',
+          display_value: ['Daily', 'Specials']
+        },
+        'everyday': {
+          value: 'always',
+          display_value: ['Everyday', 'Options']
+        }
+      };
     };
     local_service_details = {
       dining_area,
@@ -503,7 +509,15 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
   const selectedDate = (return_type = 'key') => {
     // AKA "menu" - always, weekend, tuesday, 2024.5.22, ...
     // return_type is 'key', 'display', or 'value'
-    let check_key = reactData.selectedDateKey || Object.keys(local_service_details['dates'])[0];
+    let check_key = reactData.selectedDateKey;
+    if (!reactData.selectedDateKey) {
+      if (return_type === 'display') {
+        return 'Always Available';
+      }
+      else {
+        check_key = Object.keys(local_service_details['dates'])[0];
+      }
+    }
     if (return_type === 'key') {
       return check_key;
     }
@@ -554,27 +568,29 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
     let s = cKey.replace('all_day', '%RESTORE%').split('_');
     let p = s.map(e => {
       return (e === '%RESTORE%' ? 'all_day' : e);
-    }) 
+    });
     if (p[0] === displayed_category) {
       if (p[1] === (useDate ? selectedDate('value') : selectedMenu('value'))) {
         // Client~entree_2024.5.22_lunch_bistro  OR  Client~entree_2024.5.22
         if (p.length < 3) {
-          return (['all-day', 'all_day', 'allDay'].includes(selectedMealType('value')));   // if !meal, then room will also be missing and we can fast forward to true
+          // with only 2 parts (date and category),  we have to assume "all day" and "main" dining
+          return ((['all-day', 'all_day', 'allDay'].includes(selectedMealType('value'))) && ((selectedArea('value')) === 'main'));
         }
         else if (p[2] !== selectedMealType('value')) {  // third parm is present?  it needs to match the meal
           return false;
         }
-        return ((p.length < 4) || (p[3] === selectedArea('value')));
+        return (((p.length < 4) && (selectedArea('value')) === 'main') || (p[3] === selectedArea('value')));
       }
       else if (p[1] === selectedMealType('value')) {
         // Client~entree_lunch_2024.5.22_bistro 
         if (p.length < 3) {
-          return (['all-day', 'all_day', 'allDay'].includes(selectedMealType('value')));   // if !meal, then room will also be missing and we can fast forward to true
+          // with only 2 parts (category and meal),  we have to assume "all day" and "main" dining
+          return ((['all-day', 'all_day', 'allDay'].includes(selectedMealType('value'))) && ((selectedArea('value')) === 'main'));
         }
         else if (p[2] !== (useDate ? selectedDate('value') : selectedMenu('value'))) {  // third parm is present?  it needs to match the date
           return false;
         }
-        return ((p.length < 4) || (p[3] === selectedArea('value')));
+        return (((p.length < 4) && (selectedArea('value')) === 'main') || (p[3] === selectedArea('value')));
       }
     }
     else if (p[0] === (useDate ? selectedDate('value') : selectedMenu('value'))) {   // check for Client~always_lunch_entree or Client~2024.5.22_lunch_entree or Client~always_entree or Client~2024.5.22_entree
@@ -619,6 +635,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                 opacity: 1,
                 zIndex: 1100,
                 backgroundColor: 'white',
+                color: ' black',
                 marginBottom: 1,
                 borderBottom: 2,
                 marginLeft: '-10px',
@@ -801,12 +818,12 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                             justifyContent='space-between'
                             alignItems='center'
                           >
-                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title`}
+                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title1`}
                               style={AVATextStyle({ size: 1, margin: { bottom: -0.2 }, wrap: 'nowrap' })}
                             >
                               {titleCase(local_service_details['dates'][menuDate_key].display_value_day)}
                             </Typography>
-                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title`}
+                            <Typography key={`radiobox-datehead-${menuDate_key}-${reactData.parm_keyDate}-title2`}
                               style={AVATextStyle({ size: 1, margin: { bottom: -0.2 }, wrap: 'nowrap' })}
                             >
                               {titleCase(local_service_details['dates'][menuDate_key].display_value)}
@@ -897,11 +914,9 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
             { /* Data rows */}
             <Box
               key={`category-detail-box-outside2`}
-              //            maxHeight={'50%'}
               style={{
                 paddingLeft: '4px',
                 minHeight: `${Math.min(reactData.visible_y - 400, 350)}px`,
-                //              maxHeight: `${reactData.visible_y - 425}px`
               }}
               id='dialog-content'
             >
@@ -935,62 +950,61 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                     id={`category-title-box-${menu_category}`}
                     minWidth={'95%'}
                     flexGrow={1}
+                    marginBottom={((catNdx + 1) < reactData.service_details['dining_area'][selectedArea()]['meal_service'][selectedMealType()].categories.length) ? 0 : 40}
                     justifyContent='flex-start'
-                    alignItems='center'
+                    alignItems='flex-start'
                   >
-                    <React.Fragment key={`new_row_new_item.id_${menu_category}`}>
-                      <Box className={classes.listItem}
-                        key={`selectBox_${menu_category}_${selectedDate()}_${observationList.length}`}
-                        display='flex' flexGrow={1} flexDirection='column'
-                      >
-                        <Select
-                          options={filterRecipeList(menu_category)}
-                          searchBy={'label'}
-                          dropdownHandle={false}
-                          clearOnSelect={true}
-                          clearOnBlur={true}
-                          key={`select_${menu_category}_${selectedDate()}_${observationList.length}`}
-                          searchable={true}
-                          create={true}
-                          closeOnClickInput={true}
-                          closeOnSelect={true}
-                          style={{ lineHeight: `2.2rem`, fontSize: `1.8rem`, marginLeft: 0, marginBottom: 1, borderWidth: 0 }}
-                          noDataLabel={"No matches found"}
-                          placeholder={`Tap to add a${(['a', 'e', 'i', 'o', 'u'].includes(menu_category[0].toLowerCase())) ? 'n' : ''} ${titleCase(menu_category.replace('_', ' ').trim())}`}
-                          onChange={async (values) => {
-                            if ((values.length > 0) && !reactData.addMode) {
-                              await handleNewObservation(values, menu_category);
-                              updateReactData({
-                                selectedObservation: {},
-                                addMode: false
-                              }, true);
-                            }
-                          }}
-                          onCreateNew={async (values) => {
+                    <Box
+                      key={`selectBox_${menu_category}_${selectedDate()}_${observationList.length}`}
+                      display='flex' flexGrow={1} flexDirection='column'
+                    >
+                      <Select
+                        options={filterRecipeList(menu_category)}
+                        searchBy={'label'}
+                        dropdownHandle={false}
+                        clearOnSelect={true}
+                        clearOnBlur={true}
+                        key={`select_${menu_category}_${selectedDate()}_${observationList.length}`}
+                        searchable={true}
+                        create={true}
+                        closeOnClickInput={true}
+                        closeOnSelect={true}
+                        style={{ lineHeight: `2.2rem`, fontSize: `1.8rem`, marginLeft: 0, marginBottom: 1, borderWidth: 0 }}
+                        noDataLabel={"No matches found"}
+                        placeholder={`Tap to add a${(['a', 'e', 'i', 'o', 'u'].includes(menu_category[0].toLowerCase())) ? 'n' : ''} ${titleCase(menu_category.replace('_', ' ').trim())}`}
+                        onChange={async (values) => {
+                          if ((values.length > 0) && !reactData.addMode) {
                             await handleNewObservation(values, menu_category);
                             updateReactData({
                               selectedObservation: {},
                               addMode: false
                             }, true);
-                          }}
-                        />
-                      </Box>
-                    </React.Fragment>
-                  </Box>
-                  { /* Existing observations in this category */}
-                  {
-                    observationList.map((this_item, this_index) => (
-                      OKtoShow(this_item, menu_category)
-                      &&
-                      <React-fragment key={this_item.composite_key + 'frag' + this_index} >
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                          <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'>
-                            <React.Fragment key={`act_box_${this_item.id}-reactData.rowOpen[this_index]`}>
+                          }
+                        }}
+                        onCreateNew={async (values) => {
+                          await handleNewObservation(values, menu_category);
+                          updateReactData({
+                            selectedObservation: {},
+                            addMode: false
+                          }, true);
+                        }}
+                      />
+                      { /* Existing observations in this category */}
+                      {
+                        observationList.map((this_item, this_index) => (
+                          OKtoShow(this_item, menu_category)
+                          &&
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                            key={`row_box_grandparent-${this_item.id}-${this_index}-${reactData.rowOpen[this_index]}`}
+                          >
+                            <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'
+                              key={`row_box_parent-${this_item.id}-${this_index}-${reactData.rowOpen[this_index]}`}
+                            >
                               <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                                key={`row_box_${this_item.id}-reactData.rowOpen[this_index]`}
+                                key={`row_box-${this_item.id}-${this_index}-${reactData.rowOpen[this_index]}`}
                               >
                                 <IconButton
-                                  aria-label="search_icon"
+                                  aria-label="pencil_icon"
                                   onClick={() => {
                                     handleEditObservation(deepCopy(this_item), this_index, selectedMealType(), menu_category);
                                   }}
@@ -999,7 +1013,7 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                                   {<EditIcon />}
                                 </IconButton>
                                 <IconButton
-                                  aria-label="search_icon"
+                                  aria-label="trash_icon"
                                   onClick={() => {
                                     this_item.listIndex = this_index;
                                     updateReactData({
@@ -1056,141 +1070,156 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
                                   })}>
                                     {this_item.observation_code.replace(/~/g, '')}
                                   </Typography>
-                                  {(this_item.observation_key || (this_item.description && (this_item.description.trim() !== ''))) &&
+                                  {(!!this_item.observation_key
+                                    || !!(this_item.description && (this_item.description.trim() !== ''))
+                                    || !!(this_item.fee && (Number(this_item.fee) > 0))
+                                  ) &&
                                     (!reactData.rowOpen[this_index] ? <ExpandMoreIcon /> : <ExpandLessIcon />)
                                   }
                                 </Box>
                               </Box>
-                            </React.Fragment>
-                            <Collapse in={reactData.rowOpen[this_index]} timeout="auto" unmountOnExit>
-                              <Box
-                                key={`moreInfo-${menu_category}-${this_index}`}
-                                id={`moreInfo-${menu_category}-${this_index}`}
-                                display="flex"
-                                style={AVATextStyle({
-                                  margin: { top: -0.5 },
-                                  padding: { bottom: 1 }
-                                })}
-                                flexDirection='column'
-                                justifyContent="center"
-                              >
-                                <Box display='flex' flexDirection='row' justifyContent='space-between'
-                                  key={`optionbox_moreInfo-${menu_category}-${this_index}`}
-                                  id={`optionbox_moreInfo-${menu_category}-${this_index}`}
-                                  alignItems='center' flexWrap='nowrap'
+                              <Collapse in={reactData.rowOpen[this_index]} timeout="auto" unmountOnExit>
+                                <Box
+                                  key={`moreInfo-${menu_category}-${this_index}`}
+                                  id={`moreInfo-${menu_category}-${this_index}`}
+                                  display="flex"
+                                  style={AVATextStyle({
+                                    margin: { top: -0.5 },
+                                    padding: { bottom: 1 }
+                                  })}
+                                  flexDirection='column'
+                                  justifyContent="center"
                                 >
-                                  <Box display='flex' flexDirection='column' justifyContent='center'
-                                    key={`qualbox_moreInfo-${menu_category}-${this_index}`}
-                                    id={`qualbox_moreInfo-${menu_category}-${this_index}`}
-                                    alignItems='flex-start'>
-                                    {this_item.description &&
-                                      <Typography
-                                        key={`description-${menu_category}-${this_index}`}
-                                        id={`description-${menu_category}-${this_index}`}
-                                        style={AVATextStyle({ margin: { left: 1 } })}
-                                      >
-                                        {`Description: ${this_item.description}`}
-                                      </Typography>
-                                    }
-                                    {this_item.moreInfo &&
-                                      Object.keys(this_item.moreInfo).map((opt, oX) => (
-                                        <React.Fragment
-                                          key={`optionbox_moreInfo-${menu_category}-${this_index}-${oX}-wrapper`}
+                                  <Box display='flex' flexDirection='row' justifyContent='space-between'
+                                    key={`optionbox_moreInfo-${menu_category}-${this_index}`}
+                                    id={`optionbox_moreInfo-${menu_category}-${this_index}`}
+                                    alignItems='center' flexWrap='nowrap'
+                                  >
+                                    <Box display='flex' flexDirection='column' justifyContent='center'
+                                      key={`qualbox_moreInfo-${menu_category}-${this_index}`}
+                                      id={`qualbox_moreInfo-${menu_category}-${this_index}`}
+                                      alignItems='flex-start'>
+                                      {this_item.description &&
+                                        <Typography
+                                          key={`description-${menu_category}-${this_index}`}
+                                          id={`description-${menu_category}-${this_index}`}
+                                          style={AVATextStyle({ margin: { left: 1 } })}
                                         >
-                                          {(opt !== 'image') && (opt !== 'restriction') &&
-                                            <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                              key={`optionbox_moreInfo-${menu_category}-${this_index}-${oX}`}
-                                              id={`optionbox_moreInfo-${menu_category}-${this_index}-${oX}`}
-                                              style={AVATextStyle({ margin: { right: 3 } })}
-                                              alignItems='center'
-                                            >
-                                              <Typography
-                                                key={`optionchecktext_moreInfo-${menu_category}-${this_index}-${oX}`}
-                                                id={`optionchecktext_moreInfo-${menu_category}-${this_index}-${oX}`}
-                                                style={AVATextStyle({ margin: { left: 1 } })}
-                                              >
-                                                {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
-                                              </Typography>
-                                            </Box>
-                                          }
-                                          {(opt === 'restriction')
-                                            && (state?.groups?.belongsTo?.[this_item.moreInfo[opt].trim()].group_name)
-                                            &&
-                                            <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                                              key={`option_moreInfo-${menu_category}-${this_index}-${oX}`}
-                                              id={`option_moreInfo-${menu_category}-${this_index}-${oX}`}
-                                              style={AVATextStyle({ margin: { right: 3 } })}
-                                              alignItems='center'
-                                            >
-                                              <Typography
-                                                key={`optionchecktext_${selectedMealType()}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
-                                                id={`optionchecktext_${selectedMealType()}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
-                                                style={AVATextStyle({ color: 'red', margin: { left: 1 } })}
-                                              >
-                                                {`Show warning for ${state?.groups?.belongsTo?.[this_item.moreInfo[opt].trim()].group_name}`}
-                                              </Typography>
-                                            </Box>
-                                          }
-                                        </React.Fragment>
-                                      ))}
-                                    {this_item.qualData
-                                      && makeArray(this_item.qualData).map((qR, qRndx) => (
-                                        <Box display='flex' flexDirection='column' justifyContent='flex-start'
-                                          key={`qualBox-${menu_category}-${this_index}-${qRndx}`}
-                                          id={`qualBox-${menu_category}-${this_index}-${qRndx}`}
-                                          style={AVATextStyle({ margin: { right: 3 } })}
-                                          alignItems='flex-start'
+                                          {`Description: ${this_item.description}`}
+                                        </Typography>
+                                      }
+                                      {this_item.fee && (Number(this_item.fee) > 0) &&
+                                        <Typography
+                                          key={`fee-${menu_category}-${this_index}`}
+                                          id={`fee-${menu_category}-${this_index}`}
+                                          style={AVATextStyle({ margin: { left: 1 } })}
                                         >
-                                          <Typography
-                                            key={`qualBoxText-${menu_category}-${this_index}-${qRndx}`}
-                                            id={`qualBoxText-${menu_category}-${this_index}-${qRndx}`}
-                                            style={AVATextStyle({ margin: { left: 1 } })}
+                                          {`${new Intl.NumberFormat('en-US', {
+                                            style: 'currency',
+                                            currency: 'USD',
+                                          }).format(this_item.fee)}`}
+                                        </Typography>
+                                      }
+                                      {this_item.moreInfo &&
+                                        Object.keys(this_item.moreInfo).map((opt, oX) => (
+                                          <React.Fragment
+                                            key={`optionbox_moreInfo-${menu_category}-${this_index}-${oX}-wrapper`}
                                           >
-                                            {((qR.max_allowed === 1) || (qR.option.length === 1)) ?
-                                              (`You ${(qR.min_required > 0) ? 'must' : 'may'} select one ${qR.title} option`)
-                                              :
-                                              (`${(qR.min_required > 0) ? 'You must select from' + qR.min_required : 'You may choose up'} to ${(qR.max_allowed > 20) ? qR.option.length : qR.max_allowed} ${qR.title} options`)
+                                            {(opt !== 'image') && (opt !== 'restriction') &&
+                                              <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                                key={`optionbox_moreInfo-${menu_category}-${this_index}-${oX}`}
+                                                id={`optionbox_moreInfo-${menu_category}-${this_index}-${oX}`}
+                                                style={AVATextStyle({ margin: { right: 3 } })}
+                                                alignItems='center'
+                                              >
+                                                <Typography
+                                                  key={`optionchecktext_moreInfo-${menu_category}-${this_index}-${oX}`}
+                                                  id={`optionchecktext_moreInfo-${menu_category}-${this_index}-${oX}`}
+                                                  style={AVATextStyle({ margin: { left: 1 } })}
+                                                >
+                                                  {`${sentenceCase(opt.replace('_', ' '))}${this_item.moreInfo[opt].trim() ? (': ' + this_item.moreInfo[opt]) : ''}`}
+                                                </Typography>
+                                              </Box>
                                             }
-                                          </Typography>
-                                          {qR.option.map((qROpt, qROx) => (
+                                            {(opt === 'restriction')
+                                              && (state?.groups?.belongsTo?.[this_item.moreInfo[opt].trim()].group_name)
+                                              &&
+                                              <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                                                key={`option_moreInfo-${menu_category}-${this_index}-${oX}`}
+                                                id={`option_moreInfo-${menu_category}-${this_index}-${oX}`}
+                                                style={AVATextStyle({ margin: { right: 3 } })}
+                                                alignItems='center'
+                                              >
+                                                <Typography
+                                                  key={`optionchecktext_${selectedMealType()}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
+                                                  id={`optionchecktext_${selectedMealType()}.${this_index}.restriction.${oX}-${this_item.isChecked}`}
+                                                  style={AVATextStyle({ color: 'red', margin: { left: 1 } })}
+                                                >
+                                                  {`Show warning for ${state?.groups?.belongsTo?.[this_item.moreInfo[opt].trim()].group_name}`}
+                                                </Typography>
+                                              </Box>
+                                            }
+                                          </React.Fragment>
+                                        ))}
+                                      {this_item.qualData
+                                        && makeArray(this_item.qualData).map((qR, qRndx) => (
+                                          <Box display='flex' flexDirection='column' justifyContent='flex-start'
+                                            key={`qualBox-${menu_category}-${this_index}-${qRndx}`}
+                                            id={`qualBox-${menu_category}-${this_index}-${qRndx}`}
+                                            style={AVATextStyle({ margin: { right: 3 } })}
+                                            alignItems='flex-start'
+                                          >
                                             <Typography
-                                              key={`qualBoxOptText-${menu_category}-${this_index}-${qRndx}-${qROx}`}
-                                              id={`qualBoxOptText-${menu_category}-${this_index}-${qRndx}-${qROx}`}
-                                              style={AVATextStyle({ margin: { left: 2 }, size: 0.8 })}
+                                              key={`qualBoxText-${menu_category}-${this_index}-${qRndx}`}
+                                              id={`qualBoxText-${menu_category}-${this_index}-${qRndx}`}
+                                              style={AVATextStyle({ margin: { left: 1 } })}
                                             >
-                                              {qROpt.display}
+                                              {((qR.max_allowed === 1) || (qR.option.length === 1)) ?
+                                                (`You ${(qR.min_required > 0) ? 'must' : 'may'} select one ${qR.title} option`)
+                                                :
+                                                (`${(qR.min_required > 0) ? 'You must select from' + qR.min_required : 'You may choose up'} to ${(qR.max_allowed > 20) ? qR.option.length : qR.max_allowed} ${qR.title} options`)
+                                              }
                                             </Typography>
-                                          ))}
-                                        </Box>
-                                      ))
+                                            {qR.option.map((qROpt, qROx) => (
+                                              <Typography
+                                                key={`qualBoxOptText-${menu_category}-${this_index}-${qRndx}-${qROx}`}
+                                                id={`qualBoxOptText-${menu_category}-${this_index}-${qRndx}-${qROx}`}
+                                                style={AVATextStyle({ margin: { left: 2 }, size: 0.8 })}
+                                              >
+                                                {qROpt.display}
+                                              </Typography>
+                                            ))}
+                                          </Box>
+                                        ))
+                                      }
+                                    </Box>
+                                    {this_item.moreInfo &&
+                                      this_item.moreInfo.image &&
+                                      <Box
+                                        component="img"
+                                        key={`obs_image-${menu_category}-${this_index}`}
+                                        mt={0}
+                                        mb={0}
+                                        mr={2}
+                                        alignSelf={'center'}
+                                        border={1}
+                                        minWidth={50}
+                                        maxWidth={50}
+                                        minHeight={50}
+                                        maxHeight={50}
+                                        alt=''
+                                        src={this_item.moreInfo.image}
+                                      />
                                     }
                                   </Box>
-                                  {this_item.moreInfo &&
-                                    this_item.moreInfo.image &&
-                                    <Box
-                                      component="img"
-                                      key={`obs_image-${menu_category}-${this_index}`}
-                                      mt={0}
-                                      mb={0}
-                                      mr={2}
-                                      alignSelf={'center'}
-                                      border={1}
-                                      minWidth={50}
-                                      maxWidth={50}
-                                      minHeight={50}
-                                      maxHeight={50}
-                                      alt=''
-                                      src={this_item.moreInfo.image}
-                                    />
-                                  }
                                 </Box>
-                              </Box>
-                            </Collapse>
+                              </Collapse>
+                            </Box>
                           </Box>
-                        </Box>
-                      </React-fragment>
-                    ))
-                  }
+                        ))
+                      }
+                    </Box>
+                  </Box>
                 </React.Fragment>
               ))}
             </Box>

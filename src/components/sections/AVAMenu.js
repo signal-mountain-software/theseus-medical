@@ -1,7 +1,7 @@
 import React from 'react';
 import { Auth } from '@aws-amplify/auth';
 import { useSnackbar } from 'notistack';
-import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda, deepCopy } from '../../util/AVAUtilities';
+import { recordExists, isObject, cl, switchActiveAccount, makeArray, s3, dbClient, lambda, deepCopy, getMarqueeMessage } from '../../util/AVAUtilities';
 import { makeDate, makeTime } from '../../util/AVADateTime';
 import { getImage } from '../../util/AVAPeople';
 import { getActivity } from '../../util/AVAObservations';
@@ -10,6 +10,7 @@ import { AVATextStyle, AVADefaults, hexToRgb, isDark } from '../../util/AVAStyle
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
+import Marquee from "react-fast-marquee";
 
 import { useCookies } from 'react-cookie';
 import { useIdleTimer } from 'react-idle-timer';
@@ -271,8 +272,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [reactData, setReactData] = React.useState({
     lastActiveTime: new Date(),
     idleState: true,
+    enteredIdleStateTime: new Date(),
     menu_reloaded: false,
-    loadedMenuVersion: 1
+    loadedMenuVersion: 1,
+    marqueeData: [],
+    marqueeVersion: 0
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
@@ -300,17 +304,48 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   };
 
   const onIdle = async () => {
-    cl(`Idle fired at ${new Date().toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}.`);
     let now = new Date();
-    if (((now.getTime() - reactData.lastActiveTime.getTime()) > oneHour) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
+    let minutesSinceActive = 0;
+    if (!reactData.idleState) {
+      cl(`Entering idle state at ${now.toLocaleString()}.`);
+      updateReactData({
+        idleState: true,
+        enteredIdleStateTime: now,
+      }, true);
+    }
+    else {
+      minutesSinceActive = Math.floor((now.getTime() - reactData.enteredIdleStateTime.getTime()) / oneMinute);
+      cl(`Still idle at ${new Date().toLocaleString()}.  Idle for ${minutesSinceActive} minutes.`);
+    }
+    if ((minutesSinceActive > 60) || (state.session?.kiosk_mode && state.profile?.kiosk_mode)) {
       window.location.replace(`${window.location.href.split('?')[0]}?rel=${now.getTime()}`);
     }
     else if (!reactData.menu_reloaded) {
       await checkReload();
     }
-    updateReactData({
-      idleState: true,
-    }, true);
+    else if ((now.getTime() - reactData.lastActiveTime.getTime()) > (5 * oneMinute)) {
+      cl(`Update while idle at ${now.toLocaleString()}.`);
+      let options = {
+        belongsTo: (state.groups ? state.groups.belongsTo : {}),
+        client_weather: state.session.client_weather
+      };
+      let marqueeData = [
+        { message: `${greetingWords}, ${greetingName}!` },
+        { message: `AVA for ${state.session.client_name}` }
+      ];
+      marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
+      let urgentMessage = marqueeData.find(m => {
+        return (m.criticalMessage);
+      });
+      if (urgentMessage) {
+        marqueeData = [urgentMessage];
+      }
+      updateReactData({
+        lastActiveTime: now,
+        marqueeData: marqueeData,
+        marqueeVersion: reactData.marqueeVersion++
+      }, true);
+    }
     reset();
   };
 
@@ -339,22 +374,43 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     }
   };
 
-  const onAction = async () => {
+  async function onAction() {
     let now = new Date();
-    if (reactData.idleState) {
-      cl(`Action at ${now.toLocaleString()}.  Was idle since ${new Date(getLastActiveTime()).toLocaleString()}`);
+    let refresh = false;
+    if ((reactData.idleState) || ((now.getTime() - reactData.lastActiveTime.getTime()) > oneMinute)) {
+      cl(`Action/Update at ${now.toLocaleString()}.  Last active at ${reactData.lastActiveTime.toLocaleString()}`);
+      let options = {
+        belongsTo: (state.groups ? state.groups.belongsTo : {}),
+        client_weather: state.session.client_weather
+      }
+      let marqueeData = [
+        { message: `${greetingWords}, ${greetingName}!` },
+        { message: `AVA for ${state.session.client_name}` }
+      ];
+      marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
+      let urgentMessage = marqueeData.find(m => {
+        return (m.criticalMessage);
+      });
+      if (urgentMessage) {
+        marqueeData = [urgentMessage];
+      }
+      updateReactData({
+        lastActiveTime: now,
+        marqueeData: marqueeData,
+        marqueeVersion: reactData.marqueeVersion++
+      }, false);
+      refresh = true;
     }
     if (!reactData.menu_reloaded) {
       await checkReload();
     }
     updateReactData({
-      lastActiveTime: now,
-      idleState: false
-    }, false);
+      idleState: false,
+    }, refresh);
     reset();
   };
 
-  const { start, reset, getLastActiveTime } = useIdleTimer({
+  const { start, reset } = useIdleTimer({
     onIdle,
     onAction,
     timeout: msBeforeSleeping,
@@ -828,11 +884,30 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
       async () => {
         setLoading('Getting your Information');
         setForceRedisplay(!forceRedisplay);
-        makeGreetingName(patient.hasOwnProperty('name') ? patient.name.first : (session.patient_display_name || pPerson));
-        makeGreeting();
+        let tempName = makeGreetingName(patient.hasOwnProperty('name') ? patient.name.first : (session.patient_display_name || pPerson));
+        let tempGreeting = makeGreeting();
         setLoading('Building your AVA menu');
         setForceRedisplay(!forceRedisplay);
         await buildMenu();
+        let options = {
+          belongsTo: (state.groups ? state.groups.belongsTo : {}),
+          client_weather: state.session.client_weather
+        }
+        let marqueeData = [
+          { message: `${tempGreeting}, ${tempName}!` },
+          { message: `AVA for ${state.session.client_name}` }
+        ];
+        marqueeData.push(...(await getMarqueeMessage(session.client_id, options)));
+        let urgentMessage = marqueeData.find(m => { 
+          return (m.criticalMessage)
+        });
+        if (urgentMessage) {
+          marqueeData = [urgentMessage];
+        }
+        updateReactData({
+          marqueeData: marqueeData,
+          marqueeVersion: reactData.marqueeVersion++
+        }, false);
         setLoading(false);
         setForceRedisplay(!forceRedisplay);
       }
@@ -1538,33 +1613,40 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
                       {`AVA version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}
                     </Typography>
+                    {loading.startsWith('Common activities')
+                      ?
+                      <Box
+                        display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                        flexWrap='wrap' textOverflow='ellipsis' width='100%'
+                        key={'groupActivitiesBox'}
+                        id={'groupActivitiesBox'}
+                      >
+                        <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
+                        <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
+                      </Box>
+                      :
+                      <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
+                    }
+                    <LinearProgress variant="determinate" className={classes.progressBar}
+                      style={AVATextStyle({ width: pWidth, margin: { top: 1 } })}
+                      value={progress} />
                   </React.Fragment>
                 }
-                <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >
-                  {`AVA for ${state.session.client_name}`}
-                </Typography>
-                {loading && loading.startsWith('Common activities') &&
-                  <Box
-                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                    key={'groupActivitiesBox'}
-                    id={'groupActivitiesBox'}
-                  >
-                    <Typography style={AVATextStyle({ size: 0.8 })}>{'Common activities for'}</Typography>
-                    <Typography style={AVATextStyle({ size: 0.8 })}>{loading.split(' for ')[1]}</Typography>
-                  </Box>
-                }
-                {loading && !loading.startsWith('Common activities') &&
-                  <Typography style={AVATextStyle({ size: 0.8 })}>{loading}</Typography>
-                }
               </Box>
-              {loading &&
-                <React.Fragment>
-                  <LinearProgress variant="determinate" className={classes.progressBar}
-                    style={AVATextStyle({ width: pWidth, margin: { top: 1 } })}
-                    value={progress} />
-                </React.Fragment>
-              }
+              <Marquee
+                pauseOnClick={true}
+                pauseOnHover={true}
+                speed={75}
+              >
+                {reactData.marqueeData &&
+                  reactData.marqueeData.map((marqueeLine, marqueeIndex) => (
+                  <Typography
+                    key={`marquee_${marqueeIndex}_${reactData.marqueeVersion}`}
+                      style={AVATextStyle(Object.assign({ size: 2, margin: { left: 20, bottom: 2 }, bold: true, align: 'center' }, marqueeLine.style))} >
+                    {marqueeLine.message}
+                  </Typography>
+                ))}
+              </Marquee>
             </React.Fragment>
           </Box>
         }

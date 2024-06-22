@@ -105,11 +105,25 @@ export default ({ pClient, showMenu, onClose }) => {
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
 
-  const buildObservationList = async (pDate) => {
+  async function buildObservationList(pDate) {
     let obsList = [];
     for (let d = 0; d < 7; d++) {
       let this_date = addDays(pDate, d);
       let [todayList,] = await getObservations(pClient, '', { date: this_date, sort: true, return: 'records' });
+      /*
+      todayList.forEach((this_observation, this_index) => {
+        let [, cKey] = this_observation.composite_key.split('~');
+        let s = cKey.replace('all_day', '%RESTORE%').split('_');
+        let p = s.map(e => {
+          return (e === '%RESTORE%' ? 'all_day' : e);
+        });
+        // now p has up to 4 parts; figure out what each part means
+        todayList[this_index].encoding = {};
+        p.forEach(this_part => {
+          if (this_part)
+        })
+      })
+      */
       obsList.push(...todayList);
     }
     let buildAlways;
@@ -280,9 +294,12 @@ export default ({ pClient, showMenu, onClose }) => {
 
   // **************************
 
-  if (!observationList) {
-    buildObservationList(new Date().toDateString());
-  }
+  React.useEffect(() => {
+    async function initialize() {
+      await buildObservationList(new Date().toDateString());
+    }
+    if (!observationList) { initialize(); }
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     (showMenu &&

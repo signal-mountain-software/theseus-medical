@@ -889,23 +889,23 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                                 </Tooltip>
                               }
                             </Box>
-                            {/* Image and Name */}
-                            <Box
-                              component="img"
-                              mr={1}
-                              minWidth={50}
-                              maxWidth={50}
-                              minHeight={50}
-                              maxHeight={50}
-                              border={1}
-                              alt=''
-                              src={(state.user.account_class
+                              {/* Image and Name */}
+                              {(!(state.user.account_class
                                 && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
                                 && !(isEventOwner || isSlotOwner(this_item.slotData))
-                              ) ? null
-                                : getImage(this_item.slotData.owner)
+                              )) &&
+                                <Box
+                                  component="img"
+                                  mr={1}
+                                  minWidth={50}
+                                  maxWidth={50}
+                                  minHeight={50}
+                                  maxHeight={50}
+                                  border={1}
+                                  alt=''
+                                  src={getImage(this_item.slotData.owner)}
+                                />
                               }
-                            />
                             <Box display='flex' flexWrap='wrap' flexDirection='column' flexGrow={1}>
                               <Typography style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}  >
                                 {(state.user.account_class
@@ -914,11 +914,6 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                                 ) ? 'Reserved' : this_item.slotData.display_name
                                 }
                               </Typography>
-                              {this_item.slotData.owner_location &&
-                                <Typography style={AVATextStyle({ size: 0.8, margin: { right: 1 } })}  >
-                                  {this_item.slotData.owner_location}
-                                </Typography>
-                              }
                               {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
                                 (editNoteNumber === index ?
                                   <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>

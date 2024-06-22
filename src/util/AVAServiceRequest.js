@@ -757,6 +757,9 @@ export function formatServiceRequestDetails(pInput, options = {}) {
           if (row.fee) {
             this_request.fees[selection] = row.fee;
           }
+          if (row.moreInfo && row.moreInfo.fee) {
+            this_request.fees[selection] = row.moreInfo.fee;
+          }
           if (row.qualData) {
             row.qualData.forEach(type => {
               if (type.option && Array.isArray(type.option)) {

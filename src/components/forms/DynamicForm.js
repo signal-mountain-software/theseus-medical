@@ -9,7 +9,9 @@ import MessageForm from '../forms/MessageForm';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 
+import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
+import MultiObservationFormD from '../forms/MultiObservationFormD';
 import CheckInCheckOut from '../forms/CheckInCheckOut';
 import RequestDashboard from '../dialogs/RequestDashboard';
 import CalendarDashboard from '../dialogs/CalendarDashboard';
@@ -377,6 +379,21 @@ export default ({
           onClose={onClose}
         />
       );
+    case 'multi_observation_type4':
+    case 'multi_observation_image_based':
+      return (
+        <MultiObservationFormD
+          fact={newFact}
+          factName={factName}
+          defaultValue={defaultObject}
+          prompt={message}
+          pClient={session.client_id}
+          qualifiers={qualifierTable}
+          listValues={values}
+          onSave={onSave}
+          onClose={onClose}
+        />
+      );
     case 'checkout':
       return (
         <CheckInCheckOut
@@ -421,6 +438,16 @@ export default ({
     case 'new_event':
       return (
         <NewCalendarEvent
+          patient={session}
+          peopleList={values}
+          picture={null}
+          showNewEvent={true}
+          onClose={onSave}
+        />
+      );
+    case 'edit_marquee':
+      return (
+        <MarqueeMaintenance
           patient={session}
           peopleList={values}
           picture={null}
