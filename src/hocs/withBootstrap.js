@@ -1261,6 +1261,7 @@ export default Component => props => {
     }
 
     belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.patient_id, { sort: true });
+    dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }) });
 
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {
@@ -1338,8 +1339,10 @@ export default Component => props => {
     let dPromise = getAllOccurrences(
       {
         client_id: pSession.client_id,
+        this_person: pSession.patient_id,
         start_date: rightNow,
-        end_date: addDays(rightNow, 90)
+        end_date: addDays(rightNow, 90),
+        filter: { group: belongsTo }
       },
     ).then(occList => {
       dispatch({ type: SET_CALENDAR, payload: occList });
