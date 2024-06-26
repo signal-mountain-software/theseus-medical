@@ -245,9 +245,7 @@ export default ({
       request.voiceMail = voiceMailText.trim();
     }
     if (state.session.user_id !== state.session.patient_id) {
-      let pName = await makeName(state.session.patient_id);
-      let hMessage = request.messageText;
-      request.messageText = `[This message was sent by ${senderName} while accessing ${pName}'${(pName.charAt(pName.length - 1) !== 's' ? 's' : '')} account.]\r\n\n${hMessage}`;
+      request.messageText += `\r\n\n(sent by ${senderName})`;
     }
     if (reactData.attachmentList.length > 0) { request.attachments = reactData.attachmentList.map(a => { return a.Location; }); }
     if (reactData.isUrgent) { request.preffered_method = 'urgent'; }
@@ -394,7 +392,7 @@ export default ({
   // **************************
 
   return (
-    <Dialog open={reactData.forceRedisplay || true} fullScreen className={classes.containerBox}>
+    <Dialog open={reactData.forceRedisplay || true} className={classes.containerBox}>
       {(typeof reactData.recipientID === 'string') && (reactData.recipientID === '*select') &&
         <SendMessageDialog
           open={true}
