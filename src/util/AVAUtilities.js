@@ -587,8 +587,9 @@ export function isPromise(p) {
 export function isEmpty(o) {
   if (!o) { return true; }
   else if (Array.isArray(o)) { return (o.length === 0); }
+  else if (o instanceof Date) { return isNaN(o); }
   else if (typeof (o) === 'object') { return (Object.keys(o).length === 0); }
-  else if (typeof (o) === 'string') { return (o.length === 0); }
+  else if (typeof (o) === 'string') { return (o.trim().length === 0); }
   else if (typeof (o) === 'number') { return (o === 0); }
   else { return false; }
 }

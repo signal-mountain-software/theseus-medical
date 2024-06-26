@@ -42,6 +42,7 @@ export function makeDate(pInput, options = {}) {
             'dayPart': 'day',   // afternoon
             'workingHours': 'day',   // day, night, weekend
             'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 6
+            'dayOfWeek_word': 'Sunday',
             'weekday': '',   // 'weekend' or 'weekday' 
             'textOut': pInput
         };
@@ -49,6 +50,9 @@ export function makeDate(pInput, options = {}) {
     let originalInput = pInput;
     let targetDateStamp, targetDate;
     if (pInput instanceof Date) {
+        if (options.noTime) {
+            pInput.setHours(0, 0, 0, 0);
+        }
         targetDateStamp = pInput.getTime();
         targetDate = new Date(pInput);
     }
@@ -105,6 +109,7 @@ export function makeDate(pInput, options = {}) {
                 'dayPart': 'day',
                 'workingHours': `${pInput} is not a valid date`,
                 'dayOfWeek': 9,
+                'dayOfWeek_word': 'invalid',
                 'weekday': 'invalid', 
                 'textOut': pInput
             };
@@ -151,9 +156,17 @@ export function makeDate(pInput, options = {}) {
                 'dayPart': 'day',
                 'workingHours': foundError,
                 'dayOfWeek': 9,
+                'dayOfWeek_word': 'invalid',
                 'weekday': 'invalid',
                 'textOut': pInput
             };
+        }
+    }
+
+    // force this date to be in the future
+    if (options.forceForward) {
+        if (targetDate < currentDate) {
+            targetDate.setFullYear(currentDate.getFullYear() + 1)
         }
     }
    
@@ -275,6 +288,7 @@ export function makeDate(pInput, options = {}) {
         'dayPart': dayPart,
         'workingHours': workingHours,
         'dayOfWeek': targetDate.getDay(),
+        'dayOfWeek_word': `${targetDate.toLocaleString([], { weekday: 'long' })}`,
         'weekday': (((targetDate.getDay() % 6) === 0) ? 'weekend' : 'weekday'),
         'textOut': pInput
     };
@@ -545,6 +559,7 @@ export function makeTime(pTime) {
         mm,
         ampm,
         numeric24,
+        string24: `0000${numeric24}`.slice(-4),
         dayPart
     };
 }

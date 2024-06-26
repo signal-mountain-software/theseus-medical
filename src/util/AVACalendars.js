@@ -1,4 +1,4 @@
-import { clt, cl, recordExists, makeArray, makeString, makeNumber, uuid, dbClient, titleCase } from './AVAUtilities';
+import { clt, cl, recordExists, getCustomizations, makeArray, makeString, makeNumber, uuid, dbClient, titleCase, isEmpty, isObject } from './AVAUtilities';
 import { makeName, getPerson, formatPhone } from './AVAPeople';
 import { addDays, daysDiff, makeDate, makeTime } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
@@ -52,7 +52,7 @@ export async function addEvent(body) {
         description: body.calendar_info.description,
         owner: makeArray(body.calendar_info.owner),
         groups: setRestrictions(body.calendar_info.restrictions),
-        type: body.calendar_info.signup_type,
+        type: body.calendar_info.personal_event ? 'personal' : body.calendar_info.signup_type,
         image: body.calendar_info.image,
         location: {
           // code:  (future)
@@ -384,72 +384,6 @@ export async function getCalendarEntries(body, statusUpdate) {
   // end of loop for requested types
   // at this point, returnArr has all of the records requested
 
-  /*  THIS CODE REPLACES THE "CANDIDATE FOR DEPRECIATION" CODE BELOW BUT IS ALSO NOT NECESSARY
-  // get a list of (up to 10) occurrences for this event over the next 90 days
-  let today = makeDate(new Date());
-  for (let a = 0; a < returnArr.length; a++) {
-    if (returnArr[a].record_type === 'event') {
-      let start_date = makeDate(returnArr[a].eventData.last_written_occurrence || today.date).date;
-      if (start_date < today.date) { start_date = today.date; }
-      let end_date = addDays(start_date, 90);
-      let oDates = occurrenceDateBuilder(returnArr[a], start_date, end_date);
-      oDates.forEach(o => { 
-        if (returnArr.every(r => { return (r.occurrence_date !== o); })) {
-          returnArr.push({
-            client: returnArr[a].client,
-            event_id: returnArr[a].event_id,
-            event_key: `${returnArr[a].event_id}#${o}`,
-            occurrence_date: o,
-            record_type: 'occurrence'
-          });
-        }
-      })
-    }
-  }
-  */
-
-  /*  CANDIDATE FOR DEPRECIATION
-  // AVA will automatically create new occurrences where needed
-  // for every occurrence record found, look for the next occurrence of that same event (if any)
-  // add that entry to the array
-  let prevDate, showDate;
-  for (let a = 0; a < returnArr.length; a++) {
-    if (returnArr[a].occurrence_date && (returnArr[a].occurrence_date < end_Date)) {
-      if (statusUpdate) {
-        if (returnArr[a].occurrence_date !== prevDate) {
-          showDate = makeDate(returnArr[a].occurrence_date).relative;
-          prevDate = returnArr[a].occurrence_date;
-        }
-        statusUpdate(showDate, returnArr.length, ((a / returnArr.length) * 100));
-      }
-      let nextOcc = await getOccurenceList({
-        client: returnArr[a].client,
-        event: returnArr[a].event_id,
-        from_date: makeDate(addDays(makeDate(returnArr[a].occurrence_date).date, 1)).numeric,
-        to_date: makeDate(addDays(makeDate(end_Date).date, 366)).numeric,
-        number_of_occurrences: 10
-      });
-      if (nextOcc
-        && nextOcc.occArray
-        && (nextOcc.occArray.length > 0)
-        && nextOcc.occArray[0]
-        && (nextOcc.occArray[0] <= end_Date)
-      ) {
-        let newKey = `${returnArr[a].event_id}#${nextOcc.occArray[0]}`;
-        if (returnArr.some(a => { return (a.event_key === newKey); })) { continue; }    // found occurrence was already in retrunArr
-        else {
-          returnArr.push({
-            client: returnArr[a].client,
-            event_id: returnArr[a].event_id,
-            event_key: `${returnArr[a].event_id}#${nextOcc.occArray[0]}`,
-            occurrence_date: nextOcc.occArray[0]
-          });
-        }
-      }
-    }
-  }
-  */
-
   // return the list of calendar entries sorted by date/slot in event key (oldest first)
   return returnArr.sort((a, b) => {
     if ((a.event_key.split(/#(.*)/)[1] || null) > (b.event_key.split(/#(.*)/)[1] || null)) { return 1; }
@@ -557,7 +491,7 @@ export async function getSlotList(request) {
         if (hh > 12) {
           hh -= 12;
         }
-        slot_description = `${hh}:${s.slice(2)} ${show_ampm}`.trim()
+        slot_description = `${hh}:${s.slice(2)} ${show_ampm}`.trim();
       }
       let slot_sort = s;
       if (eventRec.eventData.slot_object_list) {
@@ -675,7 +609,7 @@ export async function copySlots(client_id, from_occ, to_occ) {
   });
   let from_event = slotRecs.find(r => {
     return r.hasOwnProperty('eventData');
-  })
+  });
   for (let rNum = 0; rNum < slotRecs.length; rNum++) {
     let r = slotRecs[rNum];
     if (r.slotData && r.slotData.owner && (r.slotData.status && (r.slotData.status.current !== 'released'))) {
@@ -700,8 +634,8 @@ export async function copySlots(client_id, from_occ, to_occ) {
         readableName = (`${this_person.name.first || ''} ${this_person.name.last || ''}`).trim();
       }
       let this_slotObj = from_event.eventData.slot_object_list.find(o => {
-        return (slotKey === o.key)
-      })
+        return (slotKey === o.key);
+      });
       slotObj[slotKey] = Object.assign(newSlot, {
         status: (newSlot.status ? newSlot.status.current : "undefined"),
         show_this_slot: (newSlot.hasOwnProperty('show_this_slot') ? newSlot.show_this_slot : true),
@@ -1012,7 +946,13 @@ export async function writeSlot(body) {
   let [event_id, occ_id] = makeString(body.event, 1).split('#');
   let occurrence = body.occurrence_date || occ_id;
   if (!body.slot && body.id) { body.slot = body.id; }
-  let event_key = `${event_id}#${occurrence}#${body.slot}`;
+  let event_key;
+  if (occ_id) {
+    event_key = `${event_id}#${occ_id}#${body.slot}`;
+  }
+  else {
+    event_key = `${event_id}#${occurrence}#${body.slot}`;
+  }
   let [slotRec] = await getCalendarEntries({ client: body.client, event: event_key, type: 'slot' });
   let slotHistory = [];
   if (slotRec) {
@@ -1090,46 +1030,45 @@ export async function writeSlot(body) {
   else {
     let [eventRec] = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'event' });
     if (eventRec.eventData && (!eventRec.eventData.messaging || (eventRec.eventData.messaging.length === 0))) {
-      let subjectLine = '';
+      let subjectText = '';
       let messageText = '';
-      let notesLine = '';
-      if (eventRec.eventData.event_data) {
-        subjectLine = eventRec.eventData.event_data.description;
-        if (slotDataObj.notes) { notesLine = `  \r\n\nNotes - ${slotDataObj.notes}`; }
-      }
-      else if (eventRec.calData) {
-        subjectLine = eventRec.calData.description;
-      }
-      else { subjectLine = 'Your event'; }
-      subjectLine += ` on ${makeDate(occurrence).absolute}`;
-      messageText += `${subjectLine} - ${slotDataObj.name}`;
-      subjectLine += ` - ${slotDataObj.name}`;
+
       if (body.status === 'released') {
-        messageText += ` removed`;
-        subjectLine += ` removed`;
+        subjectText = `${slotDataObj.name} was removed from `;
       }
       else {
-        messageText += ` added`;
+        subjectText = `${slotDataObj.name} signed up `;
         if (slotDataObj.slot) {
           let maybeTime = makeSlotName(slotDataObj.slot);
           if (maybeTime.includes(':')) {
-            messageText += ` in the ${makeTime(slotDataObj.slot).time} slot.`;
+            subjectText += ` in the ${makeTime(slotDataObj.slot).time} slot `;
           }
-          else {
-            messageText += `.`;
-          }
-          messageText += notesLine;
         }
-        subjectLine += ` added`;
+        subjectText += 'for ';
       }
-      messageText += `  \r\n\nThe current sign-up sheet is available in AVA.`;
+      if (body.override_description) {
+        subjectText += body.override_description;
+      }
+      else if (eventRec.eventData.event_data) {
+        subjectText += eventRec.eventData.event_data.description;
+      }
+      else if (eventRec.calData) {
+        subjectText += eventRec.calData.description;
+      }
+      else { subjectText += 'your event'; }
+      subjectText += ` on ${makeDate(occurrence).absolute}`;
+
+      messageText = (slotDataObj.notes ? `${slotDataObj.notes}\r\n\n` : '');
+      let pName = await makeName(body.person_id);
+      messageText += `AVA Automated Message from ${pName}`;
+
       let ownerList;
       if (eventRec.eventData.event_data) { ownerList = makeArray(eventRec.eventData.event_data.owner); }
       else if (eventRec.calData) { ownerList = eventRec.calData.owner; }
       eventRec.eventData.messaging = {
         action: (body.status === 'released' ? "released" : "selected"),
         format: {
-          subject: subjectLine,
+          subject: subjectText,
           text: messageText
         },
         recipientList: ownerList
@@ -1169,8 +1108,9 @@ export async function writeSlot(body) {
   return putCalendar;
 }
 
+/*
 export async function updateSlotStatus(request) {
-  /* request is
+  request is
     {
       client, 
       body: [
@@ -1190,7 +1130,7 @@ export async function updateSlotStatus(request) {
         {}...
       ];
     }
-  */
+  
   let responseMessage = [];
   let reqArray = makeArray(request.body);
   for (let r = 0; r < reqArray.length; r++) {
@@ -1245,7 +1185,7 @@ export async function updateSlotStatus(request) {
   }
   return responseMessage;
 }
-
+*/
 
 export async function createNewOccurrences(request) {
   // expect request to contain
@@ -1751,6 +1691,7 @@ export async function eventData(body) {
           if (!returnObj.groups || (returnObj.groups.length === 0)) {
             returnObj.groups = ['*all'];
           }
+          returnObj.owner = this_rec.eventData.event_data.owner || [];
           returnObj.time = this_rec.eventData.event_data.time.from;
           if (this_rec.eventData.event_data.time.to && (this_rec.eventData.event_data.time.to.trim() !== '')) {
             returnObj.time += ` to ${this_rec.eventData.event_data.time.to}`;
@@ -1758,7 +1699,7 @@ export async function eventData(body) {
           eventRec = this_rec;
           start_date = makeDate(this_rec.eventData.last_written_occurrence || this_rec.start_date || today.date).date;
           if (start_date < today.date) { start_date = today.date; }
-          end_date = makeDate(this_rec.end_date || addDays(start_date, 90)).date;
+          end_date = makeDate(this_rec.end_date || addDays(start_date, 35)).date;
           returnObj.occurrences.future = occurrenceDateBuilder(eventRec, start_date, end_date);
           break;
         }
@@ -1924,16 +1865,19 @@ export async function occurrenceData(body) {
 };
 
 export async function getAllOccurrences(body, screenStatus = () => { }) {
-  // body should contain
-  // client or client_id
-  // start_date - use today if missing
-  // end_date - use 14 days from start date if missing
-  /*  
-  pass in a client, with option start and end dates; get a list of events between those dates
-  body = {
-      client (or client_id)
+  /*
+  get a list of events by date
+  requestBody = {
+      client (or client_id or [list of client_id's])
       start_date - today if missing
       end_date - start + 14 days if missing
+      format 
+         'object' means return an object with one key for every date, and an "entries" value that is the return list below
+         'list' or 'array' or missing/null means return list list only
+      filter {
+         group: [...values] - only include entries that are valid for one of these groups
+         person: person_id - only include entries where this person is a slot owner
+        }
   }
   returnList = [{
     date (as yyyymmdd string)
@@ -1946,20 +1890,29 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   }]
   */
 
+  const [start_date, end_date] = setDateRange(body.start_date, body.end_date);
+
   let qQ = { TableName: 'Calendar' };
-  qQ.IndexName = 'record_type-index';
+  qQ.IndexName = 'occurrence_date-index';
 
+  const this_client = body.client || body.client_id;
   qQ.KeyConditionExpression = 'client = :c';
-  qQ.ExpressionAttributeValues = { ':c': body.client || body.client_id };
+  qQ.ExpressionAttributeValues = { ':c': this_client };
 
-  qQ.KeyConditionExpression += ' and record_type = :t';
-  qQ.ExpressionAttributeValues[':t'] = 'occurrence';
+  qQ.KeyConditionExpression += ' AND occurrence_date BETWEEN :s and :e';
+  qQ.ExpressionAttributeValues[':s'] = makeDate(start_date, { noTime: true }).numeric$;
+  qQ.ExpressionAttributeValues[':e'] = makeDate(end_date, { noTime: true }).numeric$;
 
-  qQ.FilterExpression = 'occurrence_date BETWEEN :s and :e';
-  qQ.ExpressionAttributeValues[':s'] = makeDate((body.start_date || new Date())).numeric$;
-  qQ.ExpressionAttributeValues[':e'] = makeDate((body.end_date || addDays(qQ.ExpressionAttributeValues[':s'], 14))).numeric$;
+  let response = {};
+  for (let date = start_date; date <= end_date; date = addDays(date, 1)) {
+    let thisDate = makeDate(date);
+    response[thisDate.numeric] = {
+      events: {},
+      date_words: thisDate.relative
+    };
+  };
 
-  let returnList = [];
+  // let returnList = [];
   let calendarRecs = await dbClient
     .query(qQ)
     .promise()
@@ -1970,57 +1923,158 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       cl(`Error reading ${qQ.TableName} in getAllOccurrences - error is: ${error}`);
       cl(qQ);
     });
-  if (!recordExists(calendarRecs)) { return returnList; }
+  if (!recordExists(calendarRecs)) { return response; }
 
   let ccL = calendarRecs.Items.length;
-  calendarRecs.Items.sort((a, b) => {
-    return (a.occurrence_date < b.occurrence_date ? -1 : 1);
-  });
   let screenDate = 0;
-  for (let c = 0; c < ccL; c++) {
-    let occurrenceRec = calendarRecs.Items[c];
+  calendarRecs.Items.forEach((occurrenceRec, c) => {
     if (occurrenceRec.occurrence_date !== screenDate) {  // send a message back... now processing date xxxx
       screenDate = occurrenceRec.occurrence_date;
       screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ((c / ccL) * 100), ((ccL / 40) + .75));
     }
-    let eventRec = {};
-    if (occurrenceRec.description
-      && occurrenceRec.location
-      && occurrenceRec.time) { }
-    else {
-      eventRec = await eventData({
-        client_id: qQ.ExpressionAttributeValues[':c'],
-        event_id: occurrenceRec.event_id,
-        info: 'basic'
-      });
+    if (!response[occurrenceRec.occurrence_date].events.hasOwnProperty(occurrenceRec.event_id)) {
+      response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id] = {
+        slot_owners: {}
+      };
     }
-    let oTime;
-    if (occurrenceRec.time) {
-      oTime = occurrenceRec.time.from;
-      if (occurrenceRec.time.to && (occurrenceRec.time.to.trim() !== '')) {
-        oTime = occurrenceRec.time.to;
+    if (occurrenceRec.record_type === 'occurrence') {
+      Object.assign(response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
+    }
+    else if ((occurrenceRec.record_type === 'slot') && (occurrenceRec.slotData.status.current === 'selected')) {
+      response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] = occurrenceRec.slotData.slot;
+    }
+  });
+
+  let found_events = {};
+  screenStatus('Wrapping things up', 100, ((ccL / 40) + .85));
+
+  let greetings = await getCustomizations('greetings', this_client);
+  let greetingsAll = await getCustomizations('greetings', '*all');
+  let holidays = Object.assign({}, greetingsAll.customization_value, greetings.customization_value);
+
+  for (let this_date in response) {
+    let today = makeDate(this_date);
+    let mmdd = today.obs.slice(5);
+    let yymmdd = `${today.obs.slice(2,4)}.${mmdd}`;
+    if (holidays.hasOwnProperty(today.obs)) {
+      response[this_date].events[`#greeting_${yymmdd}#`] = {
+        description: holidays[today.obs],
+        sort24: `0000-${holidays[today.obs]}`,
+        slot_owners: [],
+        type: 'holiday'
       }
     }
-    else { oTime = eventRec.time; }
-    let occurrenceObj = {
-      date: occurrenceRec.occurrence_date,
-      client: qQ.ExpressionAttributeValues[':c'],
-      event_key: occurrenceRec.event_key,
-      description: occurrenceRec.description || eventRec.description,
-      location: occurrenceRec.location || eventRec.location,
-      time: oTime,
-      time24: makeTime(oTime).numeric24,
-      groups: eventRec.groups
-    };
-    returnList.push(occurrenceObj);
+    else if (holidays.hasOwnProperty(yymmdd)) {
+      response[this_date].events[`#greeting_${yymmdd}#`] = {
+        description: holidays[yymmdd],
+        sort24: `0000-${holidays[yymmdd]}`,
+        slot_owners: [],
+        type: 'holiday'
+      };
+    }
+    else if (holidays.hasOwnProperty(mmdd)) {
+      response[this_date].events[`#greeting_${yymmdd}#`] = {
+        description: holidays[mmdd],
+        sort24: `0000-${holidays[mmdd]}`,
+        slot_owners: [],
+        type: 'holiday'
+      };
+    }
+    for (let this_event in response[this_date].events) {
+      if (!found_events.hasOwnProperty(this_event)) {
+        found_events[this_event] = await eventData({
+          client_id: this_client,
+          event_id: this_event,
+          info: 'basic'
+        });
+        if (!found_events[this_event].hasOwnProperty('time')
+          || (isObject(found_events[this_event].time) && isEmpty(found_events[this_event].time.from))
+          || (isEmpty(found_events[this_event].time))) {
+          found_events[this_event].sort24 = `0001-${found_events[this_event].description}`;
+        }
+        else if (isObject(found_events[this_event].time)) {
+          found_events[this_event].sort24 = makeTime(found_events[this_event].time.from).string24;
+        }
+        else { 
+          found_events[this_event].sort24 = makeTime(found_events[this_event].time.split(' to')[0]).string24;
+        }
+      }
+      let allowed_event = true;
+      if ((found_events[this_event].type === 'personal') &&
+        body.this_person &&
+        (!found_events[this_event].owner.includes(body.this_person))) {
+        allowed_event = false;
+      }
+      else if ((body.filter.group) && (found_events[this_event]?.eventData?.event_data?.groups)) {
+        // event must allow *all OR must allow a group that is in the filter.group list
+        if (found_events[this_event].eventData.event_data.groups.includes('*all')) { }
+        else {
+          allowed_event = found_events[this_event].eventData.event_data.groups.some(allowed_group => {
+            return body.filter.group.includes(allowed_group);
+          });
+        }
+      }
+      if (!allowed_event) {
+        delete response[this_date].events[this_event];
+      }
+      else {
+        response[this_date].events[this_event] = Object.assign({}, found_events[this_event], response[this_date].events[this_event]);
+      }
+    }
   }
-  returnList.sort((a, b) => {
-    if (a.date < b.date) { return -1; }
-    else if (a.date > b.date) { return 1; }
-    else if (a.time24 < b.time24) { return -1; }
-    else { return 1; }
-  });
-  return returnList;
+
+  return response;
+
+  function setDateRange(start_date, end_date) {
+    let this_start, this_end;
+    let candidate = makeDate(start_date);
+    if (candidate.error || isEmpty(start_date)) {
+      if (isEmpty(end_date)) {
+        this_start = new Date();
+        this_end = addDays(this_start, 14);
+      }
+      else if (isObject(end_date)) {
+        this_end = end_date;
+        this_start = addDays(this_end, -14);
+      }
+      else {
+        let candidate = makeDate(end_date);
+        if (candidate.error) {
+          this_start = new Date();
+          this_end = addDays(this_start, 14);
+        }
+        else {
+          this_end = candidate.date;
+          this_start = addDays(this_end, -14);
+        }
+      }
+    }
+    else {
+      this_start = candidate.date;
+      if (isEmpty(end_date)) {
+        this_end = addDays(this_start, 14);
+      }
+      else if (isObject(end_date)) {
+        this_end = end_date;
+      }
+      else {
+        let candidate = makeDate(end_date);
+        if (candidate.error) {
+          this_end = addDays(this_start, 14);
+        }
+        else {
+          this_end = candidate.date;
+        }
+      }
+    }
+
+    if (this_end < this_start) {
+      return [this_end, this_start];
+    }
+    else {
+      return [this_start, this_end];
+    }
+  }
 }
 
 export function occurrenceDateBuilder(eventRec, start_date, end_date) {

@@ -1,5 +1,6 @@
 import { cl, clt, recordExists, makeArray, getCustomizations, dbClient, deepCopy } from './AVAUtilities';
 import { AVAname, getPerson, getSession } from '../util/AVAPeople';
+import { makeDate } from './AVADateTime';
 
 let profile, session;
 let groupRecs = {};
@@ -50,6 +51,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
   let myClass;
   let accessList = {};
   let proxyList = [];
+  let birthdayList = {};
   if (myPeopleRec.account_class) {
     myClass = myPeopleRec.account_class;
   }
@@ -203,7 +205,17 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
           }
         }
         if (myMaxAccessLevelToThisPerson > 0) { accessLevel = accessLevelTable[myMaxAccessLevelToThisPerson]; }
-        if (accessLevel !== 'none') {
+        if (accessLevel !== 'none') {          
+          if (p?.local_data?.['date of birth']) {
+            let dob = makeDate(p.local_data['date of birth'], {forceForward: true});
+            if (!birthdayList.hasOwnProperty(dob.numeric$)) {
+              birthdayList[dob.numeric$] = [];
+            }
+            birthdayList[dob.numeric$].push({
+              person_id: p.person_id,
+              display_name: `${p.name.first} ${p.name.last}`,
+            })
+          }
           if ((accessLevel === 'proxy') || (accessLevel === 'full')) {
             proxyList.push(p.person_id);
           };
@@ -261,6 +273,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
       }
     }
   }
+  accessList.birthdayList = deepCopy(birthdayList);
   return accessList;
 }
 

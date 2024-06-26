@@ -181,7 +181,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
+export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -280,6 +280,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         "occDays": oDays,
         "location": location,
         "owner": ownerList,
+        "personal_event": !!personalEvent,
         "restrictions": reactData.restrictToGroups,
         "signup_type": signup_type,
         "slot_max_seats": slot_max_seats,
@@ -290,21 +291,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       }
     };
     let response = await addEvent(payload);
-    /*
-    getAllOccurrences(
-      {
-        client_id: patient.client_id,
-        start_date: rightNow,
-        end_date: addDays(rightNow, 90)
-      },
-    ).then(occList => {
-      dispatch({ type: SET_CALENDAR, payload: occList });
-      console.log(`done with loadSyncInfo Calendar. Loaded ${occList.length} ocurrence`);
-    })
-      .catch(error => {
-        console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
-      });
-      */
     closeSnackbar();
     if (response) {
       enqueueSnackbar(`${response.eventData.event_data.description} has been saved!`, { variant: 'success' });
@@ -312,7 +298,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     else {
       enqueueSnackbar(`Sorry.  AVA could not save this event!`, { variant: 'error' });
     }
-    onClose();
+    onClose(response);
   };
 
   // **************************
@@ -685,19 +671,23 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       open={showNewEvent}
       onClose={handleAbort}
       TransitionComponent={Transition}
-      fullScreen
+      fullScreen={!personalEvent}
     >
-      <AppBar>
-        <Toolbar>
-          <IconButton color='inherit' edge='start' onClick={handleAbort}>
-            <CloseIcon />
-          </IconButton>
-          <Typography variant='h6' className={classes.title}>
-            {'Create a New Event'}
-          </Typography>
-        </Toolbar>
-      </AppBar>
-      <Toolbar />
+      {!personalEvent &&
+        <React.Fragment>
+          <AppBar>
+            <Toolbar>
+              <IconButton color='inherit' edge='start' onClick={handleAbort}>
+                <CloseIcon />
+              </IconButton>
+              <Typography variant='h6' className={classes.title}>
+                {'Create a New Event'}
+              </Typography>
+            </Toolbar>
+          </AppBar>
+          <Toolbar />
+        </React.Fragment>
+      }
       {showNewEvent && !customizeButton &&
         <React.Fragment>
           <Box m={2}>
@@ -983,7 +973,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       />
                     </div>
                   }
-                  {prefMethod && (prefMethod !== 'specific_date') &&
+                  {prefMethod && (prefMethod !== 'specific_date') && !personalEvent &&
                     <Box
                       display="flex"
                       pt={2}
@@ -1051,53 +1041,55 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       helperText='End time'
                     />
                   </div>
-                  <Box
-                    display="flex"
-                    pt={2}
-                    pb={1}
-                    flexDirection='column'
-                    justifyContent="center"
-                  >
-                    <Typography className={classes.radioText}>Does this event require sign-up?</Typography>
-                    <FormControl className={classes.formControl} component="fieldset">
-                      <RadioGroup
-                        row
-                        defaultValue={signup_type}
-                        aria-label="SignUp"
-                        name="signup"
-                        value={signup_type}
-                        onChange={handleChangeSignUp}
-                      >
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          value="none"
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                          label={
-                            <Typography className={classes.radioText}>
-                              Open/Unlimited
-                            </Typography>}
-                        />
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          value="seats"
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                          label={
-                            <Typography className={classes.radioText}>
-                              Limited to a maximum number of Participants
-                            </Typography>}
-                        />
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          value="time"
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                          label={
-                            <Typography className={classes.radioText}>
-                              Schedule appointments at specific intervals
-                            </Typography>}
-                        />
-                      </RadioGroup>
-                    </FormControl>
-                  </Box>
+                  {!personalEvent &&
+                    <Box
+                      display="flex"
+                      pt={2}
+                      pb={1}
+                      flexDirection='column'
+                      justifyContent="center"
+                    >
+                      <Typography className={classes.radioText}>Does this event require sign-up?</Typography>
+                      <FormControl className={classes.formControl} component="fieldset">
+                        <RadioGroup
+                          row
+                          defaultValue={signup_type}
+                          aria-label="SignUp"
+                          name="signup"
+                          value={signup_type}
+                          onChange={handleChangeSignUp}
+                        >
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            value="none"
+                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                            label={
+                              <Typography className={classes.radioText}>
+                                Open/Unlimited
+                              </Typography>}
+                          />
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            value="seats"
+                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                            label={
+                              <Typography className={classes.radioText}>
+                                Limited to a maximum number of Participants
+                              </Typography>}
+                          />
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            value="time"
+                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                            label={
+                              <Typography className={classes.radioText}>
+                                Schedule appointments at specific intervals
+                              </Typography>}
+                          />
+                        </RadioGroup>
+                      </FormControl>
+                    </Box>
+                  }
                   {(signup_type === 'seats') &&
                     <div>
                       <TextField
@@ -1170,44 +1162,46 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       </Box>
                     </Box>
                   }
-                  <Box
-                    display="flex"
-                    pt={2}
-                    pb={1}
-                    flexDirection='column'
-                    justifyContent="center"
-                  >
-                    <Typography className={classes.radioText}>Do you wish to restrict this event to specific groups only?</Typography>
-                    <FormControl className={classes.formControl} component="fieldset">
-                      <RadioGroup
-                        row
-                        defaultValue={'no'}
-                        aria-label="restrictions"
-                        name="restrictions"
-                        value={specificPeople}
-                        onChange={handleChangePeopleToggle}
-                      >
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          value="no"
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                          label={
-                            <Typography className={classes.radioText}>
-                              No
-                            </Typography>}
-                        />
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          value="yes"
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                          label={
-                            <Typography className={classes.radioText}>
-                              Yes
-                            </Typography>}
-                        />
-                      </RadioGroup>
-                    </FormControl>
-                  </Box>
+                  {!personalEvent &&
+                    <Box
+                      display="flex"
+                      pt={2}
+                      pb={1}
+                      flexDirection='column'
+                      justifyContent="center"
+                    >
+                      <Typography className={classes.radioText}>Do you wish to restrict this event to specific groups only?</Typography>
+                      <FormControl className={classes.formControl} component="fieldset">
+                        <RadioGroup
+                          row
+                          defaultValue={'no'}
+                          aria-label="restrictions"
+                          name="restrictions"
+                          value={specificPeople}
+                          onChange={handleChangePeopleToggle}
+                        >
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            value="no"
+                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                            label={
+                              <Typography className={classes.radioText}>
+                                No
+                              </Typography>}
+                          />
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            value="yes"
+                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                            label={
+                              <Typography className={classes.radioText}>
+                                Yes
+                              </Typography>}
+                          />
+                        </RadioGroup>
+                      </FormControl>
+                    </Box>
+                  }
                   {(specificPeople === 'yes') &&
                     <ClientsSection
                       person={patient}
@@ -1223,44 +1217,46 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       }}
                     />
                   }
-                  <Box
-                    display="flex"
-                    pt={2}
-                    pb={1}
-                    flexDirection='column'
-                    justifyContent="center"
-                  >
-                    <Typography className={classes.radioText}>Show someone other than you be listed as an event owner?</Typography>
-                    <FormControl className={classes.formControl} component="fieldset">
-                      <RadioGroup
-                        row
-                        defaultValue={'no'}
-                        aria-label="ownership"
-                        name="ownership"
-                        value={specificOwners}
-                        onChange={handleChangeOwnersToggle}
-                      >
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          value="no"
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                          label={
-                            <Typography className={classes.radioText}>
-                              No
-                            </Typography>}
-                        />
-                        <FormControlLabel
-                          className={classes.formControlLbl}
-                          value="yes"
-                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                          label={
-                            <Typography className={classes.radioText}>
-                              Yes
-                            </Typography>}
-                        />
-                      </RadioGroup>
-                    </FormControl>
-                  </Box>
+                  {!personalEvent &&
+                    <Box
+                      display="flex"
+                      pt={2}
+                      pb={1}
+                      flexDirection='column'
+                      justifyContent="center"
+                    >
+                      <Typography className={classes.radioText}>Show someone other than you be listed as an event owner?</Typography>
+                      <FormControl className={classes.formControl} component="fieldset">
+                        <RadioGroup
+                          row
+                          defaultValue={'no'}
+                          aria-label="ownership"
+                          name="ownership"
+                          value={specificOwners}
+                          onChange={handleChangeOwnersToggle}
+                        >
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            value="no"
+                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                            label={
+                              <Typography className={classes.radioText}>
+                                No
+                              </Typography>}
+                          />
+                          <FormControlLabel
+                            className={classes.formControlLbl}
+                            value="yes"
+                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                            label={
+                              <Typography className={classes.radioText}>
+                                Yes
+                              </Typography>}
+                          />
+                        </RadioGroup>
+                      </FormControl>
+                    </Box>
+                  }
                   {(specificOwners === 'yes') &&
                     <div>
                       {ownerList.length > 0 ?

@@ -1341,8 +1341,8 @@ export default Component => props => {
         client_id: pSession.client_id,
         this_person: pSession.patient_id,
         start_date: rightNow,
-        end_date: addDays(rightNow, 90),
-        filter: { group: belongsTo }
+        end_date: addDays(rightNow, 35),
+        filter: { group: belongsTo },
       },
     ).then(occList => {
       dispatch({ type: SET_CALENDAR, payload: occList });
