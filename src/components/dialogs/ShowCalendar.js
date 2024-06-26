@@ -4,7 +4,7 @@ import { useSnackbar } from 'notistack';
 
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays } from '../../util/AVADateTime';
-import { isEmpty, isObject } from '../../util/AVAUtilities';
+import { isEmpty, isObject, deepCopy } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { getGroupsBelongTo, getMemberList } from '../../util/AVAGroups';
 
@@ -126,7 +126,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     defaultValues: defaultValues,
     selectedEvent: (currentEvent && !isObject(currentEvent[0]) ? currentEvent[0] : ''),
     myCalendar: ((isEmpty(currentEvent) || !eList) ? [] : eList.eventList),
-    loading: false
+    loading: (eList.eventList.loadError || isEmpty(eList))
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -281,7 +281,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
 
   React.useEffect(() => {
     async function initialize() {
-      let reactLoad = {};
       // single event you're looking for?  
       if (reactData.selectedEvent) {
         let calendarEntry = await setCalendar();
@@ -289,29 +288,38 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           enqueueSnackbar(`AVA couldn't load that event`, { variant: 'error' });
         }
         else {
-          reactLoad.myCalendar = calendarEntry;
+          updateReactData({
+            myCalendar: calendarEntry
+          }, false);
         }
+        return;
       }
-      else if (isEmpty(currentEvent) && isEmpty(reactData.myCalendar)) {
+      if (reactData.myCalendar && !reactData.myCalendar.loadError && reactData.birthdayList) {
+        return;
+      }
+      let oList = {};
+      if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError) {
         let rightNow = new Date();
         let belongsTo = await getGroupsBelongTo(patient.client_id, patient.patient_id, { sort: true });
-        let oList = await getAllOccurrences(
+        oList = await getAllOccurrences(
           {
             client_id: patient.client_id,
             this_person: patient.patient_id,
             start_date: rightNow,
             end_date: addDays(rightNow, 35),
             filter: { group: belongsTo }
-          },
+          }, onStatusUpdate
         );
-        reactLoad.myCalendar = oList;
+      }
+      else {
+        oList = deepCopy(reactData.myCalendar);
       }
       if (!reactData.birthdayList) {
         if (state.accessList && state.accessList.birthdayList) {
           for (let keyDate in state.accessList.birthdayList) {
-            if (reactData.myCalendar.hasOwnProperty(keyDate)) {
+            if (oList.hasOwnProperty(keyDate)) {
               state.accessList.birthdayList[keyDate].forEach(p => {
-                reactData.myCalendar[keyDate].events[`#birthday_${p.person_id}#`] = {
+                oList[keyDate].events[`#birthday_${p.person_id}#`] = {
                   description: `Happy Birthday ${p.display_name}`,
                   sort24: `0000z-${p.display_name}`,
                   slot_owners: [],
@@ -329,17 +337,17 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
             if (p.local_data?.['date of birth']) {
               let keyDate;
               let bDay = `${this_year}${p.local_data['date of birth'].slice(4)}`;
-              if (reactData.myCalendar.hasOwnProperty(bDay)) {
+              if (oList.hasOwnProperty(bDay)) {
                 keyDate = bDay;
               }
               else {
                 bDay = `${next_year}${p.local_data['date of birth'].slice(4)}`;
-                if (reactData.myCalendar.hasOwnProperty(bDay)) {
+                if (oList.hasOwnProperty(bDay)) {
                   keyDate = bDay;
                 }
               }
               if (keyDate) {
-                reactData.myCalendar[keyDate].events[`#birthday_${p.person_id}#`] = {
+                oList[keyDate].events[`#birthday_${p.person_id}#`] = {
                   description: `Happy Birthday ${p.name.first} ${p.name.last}`,
                   sort24: `0000z-${p.name.first} ${p.name.last}`,
                   slot_owners: [],
@@ -349,10 +357,12 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
             }
           });
         }
-        reactLoad.myCalendar = reactData.myCalendar;
-        reactLoad.birthdayList = true;
       }
-      updateReactData(reactLoad, true);
+      updateReactData({
+        myCalendar: oList,
+        birthdayList: true,
+        loading: false
+      }, true);
     }
     initialize();
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps

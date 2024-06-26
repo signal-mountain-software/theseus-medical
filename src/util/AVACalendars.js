@@ -1108,85 +1108,6 @@ export async function writeSlot(body) {
   return putCalendar;
 }
 
-/*
-export async function updateSlotStatus(request) {
-  request is
-    {
-      client, 
-      body: [
-        { 
-          person: [p1:<opt pName>, p2...], 
-          event, 
-          occurrence 
-            -OR- 
-          date: { 
-            from: string -> makeDate.date
-            to: string -> makeDate.date
-          },
-          slot (if missing, use person_id), 
-          status 
-          show_this_slot
-        }, 
-        {}...
-      ];
-    }
-  
-  let responseMessage = [];
-  let reqArray = makeArray(request.body);
-  for (let r = 0; r < reqArray.length; r++) {
-    let this_request = reqArray[r];
-    // figure out occurrences
-    let occArray = [];
-    if ('occurrence' in this_request) {
-      occArray = makeArray(this_request.occurrence);
-    }
-    else {
-      if (!('date' in this_request)) {
-        responseMessage.push(`No occurrence data`);
-        continue;
-      }
-      else if (typeof (this_request.date) === 'string') { occArray.push(makeDate(this_request.date).numeric); }
-      else if (Array.isArray(this_request.date)) {
-        this_request.date.forEach(d => { occArray.push(makeDate(d).numeric); });
-      }
-      else {
-        let from_date, to_date;
-        if ('from' in this_request.date) { from_date = makeDate(this_request.date.from).date; }
-        else { from_date = new Date(); }
-        if ('to' in this_request.date) { to_date = makeDate(this_request.date.to).date; }
-        else { to_date = addDays(from_date, 7); }
-        let rBody = {
-          client: request.client,
-          event: this_request.event,
-          from_date,
-          to_date
-        };
-        let oResponse = await getOccurenceList(rBody);
-        occArray = oResponse.occArray;
-      }
-    }
-    let peopleArray = makeArray(this_request.person);
-    for (let o = 0; o < occArray.length; o++) {
-      await putEventOccurrence(request.client, this_request.event, occArray[o]);
-      for (let p = 0; p < peopleArray.length; p++) {
-        let [pID, pName] = peopleArray[p].split(':');
-        await writeSlot({
-          client: request.client,
-          event: this_request.event,
-          occurrence_date: occArray[o],
-          owner: pID,
-          override_name: pName,
-          slot: this_request.slot,
-          status: this_request.status,
-          show_this_slot: this_request.show_this_slot || true
-        });
-      }
-    }
-  }
-  return responseMessage;
-}
-*/
-
 export async function createNewOccurrences(request) {
   // expect request to contain
   //  client => 
@@ -1927,11 +1848,51 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
 
   let ccL = calendarRecs.Items.length;
   let screenDate = 0;
-  calendarRecs.Items.forEach((occurrenceRec, c) => {
+  let found_events = {};
+  for (let c = 0; c < ccL; c++) {
+    let occurrenceRec = calendarRecs.Items[c];
     if (occurrenceRec.occurrence_date !== screenDate) {  // send a message back... now processing date xxxx
       screenDate = occurrenceRec.occurrence_date;
       screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ((c / ccL) * 100), ((ccL / 40) + .75));
     }
+    if (!found_events.hasOwnProperty(occurrenceRec.event_id)) {
+      // for each event we come across, gather event data (eventData) and create any missing occurrences in this date range (getOccurrenceList)
+      // found_events[occurrenceRec.event_id] = await eventData({
+      //   client_id: this_client,
+      //   event_id: occurrenceRec.event_id,
+      //   info: 'basic'
+      // });
+      let newOcc = await getOccurenceList({
+        client: this_client,
+        event: occurrenceRec.event_id,
+        from_date: start_date,
+        to_date: end_date
+      });
+      found_events[occurrenceRec.event_id] = newOcc.eventRec.eventData.event_data;
+      if (!found_events[occurrenceRec.event_id].hasOwnProperty('time')
+        || (isObject(found_events[occurrenceRec.event_id].time) && isEmpty(found_events[occurrenceRec.event_id].time.from))
+        || (isEmpty(found_events[occurrenceRec.event_id].time))) {
+        found_events[occurrenceRec.event_id].sort24 = `0001-${found_events[occurrenceRec.event_id].description}`;
+      }
+      else if (isObject(found_events[occurrenceRec.event_id].time)) {
+        found_events[occurrenceRec.event_id].sort24 = makeTime(found_events[occurrenceRec.event_id].time.from).string24;
+      }
+      else {
+        found_events[occurrenceRec.event_id].sort24 = makeTime(found_events[occurrenceRec.event_id].time.split(' to')[0]).string24;
+      }
+      // for occurrences that were created, add them to the appropriate response[date].events object 
+      for (let newDate in newOcc.occRec) {
+        if (response.hasOwnProperty(newDate)) {
+          if (!response[newDate].events.hasOwnProperty(newOcc.occRec[newDate].event_id)) {
+            response[newDate].events[newOcc.occRec[newDate].event_id] = {
+              slot_owners: {}
+            };
+          }
+          Object.assign(response[newDate].events[newOcc.occRec[newDate].event_id], newOcc.eventRec.eventData.event_data, newOcc.occRec[newDate]);
+        }
+      }
+    }
+    // find and add this event in the proper date
     if (!response[occurrenceRec.occurrence_date].events.hasOwnProperty(occurrenceRec.event_id)) {
       response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id] = {
         slot_owners: {}
@@ -1943,16 +1904,15 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     else if ((occurrenceRec.record_type === 'slot') && (occurrenceRec.slotData.status.current === 'selected')) {
       response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] = occurrenceRec.slotData.slot;
     }
-  });
+  };
 
-  let found_events = {};
   screenStatus('Wrapping things up', 100, ((ccL / 40) + .85));
-
   let greetings = await getCustomizations('greetings', this_client);
   let greetingsAll = await getCustomizations('greetings', '*all');
   let holidays = Object.assign({}, greetingsAll.customization_value, greetings.customization_value);
 
   for (let this_date in response) {
+    // Add Holidays from the Greetings or Holidays Customization
     let today = makeDate(this_date);
     let mmdd = today.obs.slice(5);
     let yymmdd = `${today.obs.slice(2,4)}.${mmdd}`;
@@ -1981,37 +1941,21 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       };
     }
     for (let this_event in response[this_date].events) {
-      if (!found_events.hasOwnProperty(this_event)) {
-        found_events[this_event] = await eventData({
-          client_id: this_client,
-          event_id: this_event,
-          info: 'basic'
-        });
-        if (!found_events[this_event].hasOwnProperty('time')
-          || (isObject(found_events[this_event].time) && isEmpty(found_events[this_event].time.from))
-          || (isEmpty(found_events[this_event].time))) {
-          found_events[this_event].sort24 = `0001-${found_events[this_event].description}`;
-        }
-        else if (isObject(found_events[this_event].time)) {
-          found_events[this_event].sort24 = makeTime(found_events[this_event].time.from).string24;
-        }
-        else { 
-          found_events[this_event].sort24 = makeTime(found_events[this_event].time.split(' to')[0]).string24;
-        }
-      }
       let allowed_event = true;
-      if ((found_events[this_event].type === 'personal') &&
-        body.this_person &&
-        (!found_events[this_event].owner.includes(body.this_person))) {
-        allowed_event = false;
-      }
-      else if ((body.filter.group) && (found_events[this_event]?.eventData?.event_data?.groups)) {
-        // event must allow *all OR must allow a group that is in the filter.group list
-        if (found_events[this_event].eventData.event_data.groups.includes('*all')) { }
-        else {
-          allowed_event = found_events[this_event].eventData.event_data.groups.some(allowed_group => {
-            return body.filter.group.includes(allowed_group);
-          });
+      if (found_events[this_event]) {
+        if ((found_events[this_event].type === 'personal') &&
+          body.this_person &&
+          (!found_events[this_event].owner.includes(body.this_person))) {
+          allowed_event = false;
+        }
+        else if ((body.filter.group) && (found_events[this_event]?.eventData?.event_data?.groups)) {
+          // event must allow *all OR must allow a group that is in the filter.group list
+          if (found_events[this_event].eventData.event_data.groups.includes('*all')) { }
+          else {
+            allowed_event = found_events[this_event].eventData.event_data.groups.some(allowed_group => {
+              return body.filter.group.includes(allowed_group);
+            });
+          }
         }
       }
       if (!allowed_event) {
