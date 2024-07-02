@@ -1634,8 +1634,6 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 }
               </Box>
               <Marquee
-                pauseOnClick={true}
-                pauseOnHover={true}
                 speed={75}
               >
                 {reactData.marqueeData &&
