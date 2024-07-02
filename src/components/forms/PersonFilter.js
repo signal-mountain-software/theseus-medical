@@ -319,12 +319,18 @@ export default ({
                   />
                   {!listEntry.split(':')[1].startsWith('GRP//') ?
                     <Box display='flex' flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                      <Typography style={AVATextVariableStyle(makeLastName(listEntry), { bold: true })}>{`${makeLastName(listEntry)}`}</Typography>
-                      <Typography style={AVATextVariableStyle(makeFirstName(listEntry), { size: 0.8 })}>{makeFirstName(listEntry)}</Typography>
+                      <Typography style={AVATextVariableStyle(makeLastName(listEntry), { bold: true, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
+                        {`${makeLastName(listEntry)}`}
+                      </Typography>
+                      <Typography style={AVATextVariableStyle(makeFirstName(listEntry), { size: 0.8, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
+                        {makeFirstName(listEntry)}
+                      </Typography>
                       {(x > 0) && (x < (peopleList.length - 1)) &&
                         ((peopleList[x - 1].split(':')[0] === listEntry.split(':')[0])
                           || (peopleList[x + 1].split(':')[0] === listEntry.split(':')[0])) &&
-                        <Typography style={AVATextVariableStyle(listEntry.split(/[:]/)[1], { size: 0.8 })}>({listEntry.split(/[:]/)[1]})</Typography>
+                        <Typography style={AVATextVariableStyle(listEntry.split(/[:]/)[1], { size: 0.8, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
+                          ({listEntry.split(/[:]/)[1]})
+                        </Typography>
                       }
                     </Box>
                     :
