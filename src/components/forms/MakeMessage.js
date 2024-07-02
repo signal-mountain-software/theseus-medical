@@ -4,8 +4,6 @@ import { makeName, getImage } from '../../util/AVAPeople';
 import { makeArray, s3, dbClient } from '../../util/AVAUtilities';
 import Paper from '@material-ui/core/Paper';
 import Dialog from '@material-ui/core/Dialog';
-import DialogActions from '@material-ui/core/DialogActions';
-import DialogContent from '@material-ui/core/DialogContent';
 
 import { useSnackbar } from 'notistack';
 import CloseIcon from '@material-ui/icons/HighlightOff';
