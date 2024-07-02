@@ -2,7 +2,7 @@ import React from 'react';
 import { sendMessages } from '../../util/AVAMessages';
 import { makeName, getImage } from '../../util/AVAPeople';
 import { makeArray, s3, dbClient } from '../../util/AVAUtilities';
-
+import Paper from '@material-ui/core/Paper';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
@@ -29,10 +29,8 @@ import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   containerBox: {
-    marginTop: theme.spacing(3),
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    marginBottom: 0
+    margin: theme.spacing(2),
+    minWidth: '90%'
   },
   contentBox: {
     minWidth: '100%',
@@ -44,8 +42,7 @@ const useStyles = makeStyles(theme => ({
     minWidth: '100%',
   },
   title: {
-    marginTop: theme.spacing(3),
-    marginLeft: theme.spacing(2),
+    marginTop: 0,
     marginRight: theme.spacing(2),
     marginBottom: 0,
     fontSize: '1.3rem',
@@ -56,6 +53,7 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '100px',
     marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
+    marginBottom: theme.spacing(2),
   },
   buttonArea: {
     justifyContent: 'center',
@@ -121,7 +119,7 @@ export default ({
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
-  let user_fontSize = AVADefaults({fontSize: 'get'});
+  let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   const setFocus = React.useRef(null);
 
@@ -205,10 +203,10 @@ export default ({
     let senderName = await makeName(state.session.user_id);
     let principalMessageText = '';
     let voiceMailText = '';
-    let subjectText = '';   
+    let subjectText = '';
     if (reactData.textInput.length > 1) {
       if (!promptUse) {
-        promptUse = ['subject', 'message', 'voicemail']
+        promptUse = ['subject', 'message', 'voicemail'];
       }
       else {
         promptUse = makeArray(promptUse);
@@ -218,7 +216,7 @@ export default ({
           switch (u) {
             case 'subject': { subjectText += ' ' + reactData.textInput[n]; break; }
             case 'voicemail': {
-              voiceMailText += ' ' + reactData.textInput[n]; 
+              voiceMailText += ' ' + reactData.textInput[n];
               if (!principalMessageText) {
                 principalMessageText = voiceMailText;
               }
@@ -365,7 +363,7 @@ export default ({
     if (rArray.length === 1) {
       if (rArray[0].startsWith('GRP//')) {
         reactData.multipleRecipients = true;
-        response += `to members of ${nArray[0]}`;
+        response += `to ${nArray[0]}`;
       }
       else {
         let [last, first] = nArray[0].split(/,/);
@@ -377,7 +375,7 @@ export default ({
       reactData.multipleRecipients = true;
       let random = Math.floor(Math.random() * rArray.length);
       if (rArray[random].startsWith('GRP//')) {
-        response += `to multiple people, including members of ${nArray[random]}`;
+        response += `to multiple people, including ${nArray[random]}`;
       }
       else {
         let [last, first] = nArray[random].split(/,/);
@@ -392,7 +390,13 @@ export default ({
   // **************************
 
   return (
-    <Dialog open={reactData.forceRedisplay || true} className={classes.containerBox}>
+    <Dialog fullWidth open={true}>
+    <Paper
+      open={reactData.forceRedisplay || true}
+      className={classes.containerBox}
+        style={{ minWidth: '90%' }}
+        elevation={0}
+    >
       {(typeof reactData.recipientID === 'string') && (reactData.recipientID === '*select') &&
         <SendMessageDialog
           open={true}
@@ -424,6 +428,9 @@ export default ({
           <Box display='flex'
             grow={1}
             mb={0}
+            pb={2}
+            ml={2}
+            width={'95%'}
             flexDirection='column'
             justifyContent='center'
             alignItems='flex-start'
@@ -431,7 +438,6 @@ export default ({
             <Typography style={AVATextStyle({
               size: 1.3, bold: true, margin: {
                 top: 3,
-                left: 2,
                 right: 2,
               }
             })} id='scroll-dialog-title'>
@@ -445,12 +451,12 @@ export default ({
                 src={getImage(reactData.selectID)}
               />
             }
-            <DialogContent className={classes.contentBox}>
               <Box
                 display='flex'
                 grow={1}
                 mb={0}
-                ml={0}
+              ml={0}
+              minWidth={'100%'}
                 flexDirection='column'
                 justifyContent='center'
                 alignItems='flex-start'
@@ -580,9 +586,8 @@ export default ({
                   </Box>
                 }
               </Box>
-            </DialogContent>
           </Box>
-          <DialogActions style={{ justifyContent: 'center' }}>
+          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
             <Box display='flex' flexDirection='row' justifyContent='flex-start'
               alignItems='center' key={'qrOpt_attachmentbox'}
             >
@@ -637,10 +642,10 @@ export default ({
                 {buttonText}
               </Button>
             </Box>
-          </DialogActions>
+          </Box>
         </React.Fragment >
       }
-    </Dialog >
-
+    </Paper >
+    </Dialog>
   );
 };
