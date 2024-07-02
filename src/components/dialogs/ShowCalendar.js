@@ -139,7 +139,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   };
 
   const [statusMessage, setStatusMessage] = React.useState('Initializing');
-  const [progress, setProgress] = React.useState(100);
+  const [progress, setProgress] = React.useState(1);
   const [pWidth, setPWidth] = React.useState(60);
 
   const classes = useStyles();

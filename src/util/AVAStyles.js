@@ -220,7 +220,7 @@ export function hexToRgb(hex, opacity = 1) {
     throw new Error('Bad Hex');
 }
 
-export function isDark(hex) {
+export function isDark(hex) {    // report if this hex color is dark (to correct overlaid content when necessary)
     var h = hex.substring(1);      // strip #
     var rgb = parseInt(h, 16);   // convert rrggbb to decimal
     var r = (rgb >> 16) & 0xff;  // extract red

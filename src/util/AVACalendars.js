@@ -1792,9 +1792,6 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       client (or client_id or [list of client_id's])
       start_date - today if missing
       end_date - start + 14 days if missing
-      format 
-         'object' means return an object with one key for every date, and an "entries" value that is the return list below
-         'list' or 'array' or missing/null means return list list only
       filter {
          group: [...values] - only include entries that are valid for one of these groups
          person: person_id - only include entries where this person is a slot owner
@@ -1824,6 +1821,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   qQ.ExpressionAttributeValues[':s'] = makeDate(start_date, { noTime: true }).numeric$;
   qQ.ExpressionAttributeValues[':e'] = makeDate(end_date, { noTime: true }).numeric$;
 
+  let peopleInfo = {};
   let response = {};
   for (let date = start_date; date <= end_date; date = addDays(date, 1)) {
     let thisDate = makeDate(date);
@@ -1853,7 +1851,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     let occurrenceRec = calendarRecs.Items[c];
     if (occurrenceRec.occurrence_date !== screenDate) {  // send a message back... now processing date xxxx
       screenDate = occurrenceRec.occurrence_date;
-      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ((c / ccL) * 100), ((ccL / 40) + .75));
+      screenStatus(makeDate(occurrenceRec.occurrence_date).relative, ccL * 3, ((c / ccL) * 90));
     }
     if (!found_events.hasOwnProperty(occurrenceRec.event_id)) {
       // for each event we come across, gather event data (eventData) and create any missing occurrences in this date range (getOccurrenceList)
@@ -1903,10 +1901,20 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     }
     else if ((occurrenceRec.record_type === 'slot') && (occurrenceRec.slotData.status.current === 'selected')) {
       response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] = occurrenceRec.slotData.slot;
+      if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
+        peopleInfo[occurrenceRec.slotData.owner] = [];
+      }
+      peopleInfo[occurrenceRec.slotData.owner].push(Object.assign({},
+        {
+          occurrence_date: occurrenceRec.occurrence_date,
+          event_id: occurrenceRec.event_id
+        },
+        occurrenceRec.slotData)
+      )
     }
   };
 
-  screenStatus('Wrapping things up', 100, ((ccL / 40) + .85));
+  screenStatus('Wrapping things up', ccL * 3, 95);
   let greetings = await getCustomizations('greetings', this_client);
   let greetingsAll = await getCustomizations('greetings', '*all');
   let holidays = Object.assign({}, greetingsAll.customization_value, greetings.customization_value);
@@ -1948,12 +1956,12 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
           (!found_events[this_event].owner.includes(body.this_person))) {
           allowed_event = false;
         }
-        else if ((body.filter.group) && (found_events[this_event]?.eventData?.event_data?.groups)) {
+        else if ((body.filter.group) && (found_events[this_event]?.groups)) {
           // event must allow *all OR must allow a group that is in the filter.group list
-          if (found_events[this_event].eventData.event_data.groups.includes('*all')) { }
+          if (found_events[this_event].groups.includes('*all')) { }
           else {
-            allowed_event = found_events[this_event].eventData.event_data.groups.some(allowed_group => {
-              return body.filter.group.includes(allowed_group);
+            allowed_event = found_events[this_event].groups.some(allowed_group => {
+              return Object.keys(body.filter.group).includes(allowed_group);
             });
           }
         }
@@ -1967,6 +1975,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     }
   }
 
+  response.peopleInfo = peopleInfo;
   return response;
 
   function setDateRange(start_date, end_date) {

@@ -51,7 +51,7 @@ import { getServiceRequests } from '../../util/AVAServiceRequest';
 
 const useStyles = makeStyles(theme => ({
   page: {
-    minHeight: '950px',
+    // minHeight: '950px',
     width: '100%'
   },
   noDisplay: {
@@ -162,7 +162,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultValues, onReset, pMode }) => {
+export default ({ pEventCode, peopleList, pPatient, pSignUps, pClient, pOccData, defaultValues, onReset, pMode }) => {
 
   const { state } = useSession();
 
@@ -198,6 +198,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
     editIndex: false,
     popupMenuOpen: false,
     choiceList: [],
+    signUpObject: pSignUps,
     attachedSR: false,
     selectAssignTo: false,
     defaultValues: defaultValues || { "noDefaults": true },
@@ -231,10 +232,29 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
     setAnchorEl(event.currentTarget);
   };
 
-  const setChoices = async (inList) => {
+  const setChoices = async (pGroups) => {
     if (reactData.choiceList.length > 0) { return; }
     let response = [];
-    let memberInfo = await getMemberList(inList, pClient, { "sort": true, "exclude": false });
+    let gList = [];
+    if (Array.isArray(pGroups)) {
+      pGroups.forEach(grp => {
+        grp = grp.replace('~group:', '');
+        gList.push(...(grp.replace(/[[\]]/g, '').split(/,|~/g)));
+      });
+    }
+    else if (pGroups.includes('[')) {
+      pGroups = pGroups.replace('~group:', '');
+      gList = pGroups.replace(/[[\]]/g, '').split(/,|~/g);
+    }
+    else { gList = [pGroups]; }
+    if (pOccData.groups) {
+      pOccData.groups.forEach(g => {
+        if (!gList.includes(g)) {
+          gList.push(g);
+        }
+      });
+    }
+    let memberInfo = await getMemberList(gList, pClient, { "sort": true, "exclude": false });
     /* getMemberList returns
         {
           peopleList: [<People records of the members>],
@@ -246,10 +266,16 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
     for (let e = 0; e < pLL; e++) {
       let p = memberInfo.peopleList[e];
       let searchString = [...Object.values(p.name), p.search_data, p.location].join(' ');
-      if (p.messaging) { searchString += Object.values(p.messaging).join(' '); }
+      if (p.messaging) {
+        searchString += Object.values(p.messaging).join(' ');
+      }
       // list is of the form <name>:<id>:<search_string>
       try {
-        mInfo = `${p.name.last}, ${p.name.first}:${p.person_id}:${searchString}`;
+        mInfo = `${p.name.last}, ${p.name.first}`;
+        if (reactData.signUpObject && reactData.signUpObject.hasOwnProperty(p.person_id)) {
+          mInfo += ` (${reactData.signUpObject[p.person_id].length} scheduled)`;
+        }
+        mInfo += `:${p.person_id}:${searchString}`;
         response.push(mInfo);
       }
       catch (error) {
@@ -700,7 +726,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
               <Typography style={AVATextStyle({ size: 1.5, bold: true })} >{pOccData.description}</Typography>
               {pOccData.date &&
                 <Typography className={classes.standardIndent} style={AVATextStyle({ margin: { left: 1, right: 1 } })} >
-                  {`${makeDate(pOccData.date).relative}${(pOccData.time$ && (pOccData.time$.trim() !== ''))  ? ' - ' + pOccData.time$ : ''}`}
+                  {`${makeDate(pOccData.date).relative}${(pOccData.time$ && (pOccData.time$.trim() !== '')) ? ' - ' + pOccData.time$ : ''}`}
                 </Typography>
               }
               {pOccData.location &&
@@ -835,7 +861,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                             recipient: (filteredList.map(e => {
                               return `${e.slotData.display_name}:${e.slotData.id}`;
                             }))
-                          }, false);
+                          }, true);
                         }}
                       >
                         <Box
@@ -1015,13 +1041,13 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                                       autoComplete='off'
                                     />
                                     {((pOccData.notes_required && newNote) || !pOccData.notes_required) &&
-                                        <SaveIcon
-                                          aria-label="saveNote_icon"
-                                          onClick={() => {
-                                            handleChangeNotes(index, newNote);
-                                          }}
-                                          edge="end"
-                                        />
+                                      <SaveIcon
+                                        aria-label="saveNote_icon"
+                                        onClick={() => {
+                                          handleChangeNotes(index, newNote);
+                                        }}
+                                        edge="end"
+                                      />
                                     }
                                     {(!pOccData.notes_required || this_item.slotData.notes) &&
                                       <CloseIcon
@@ -1036,12 +1062,12 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                                     {this_item.slotData.notes}
                                   </Typography>
                                 )
-                                }
-                                {pOccData.notes_required && (pOccData.notes_required !== '') && (editNoteNumber === index) &&
-                                  <Typography style={AVATextStyle({ size: 0.8, margin: { right: 1 } })} >
-                                    {pOccData.notes_required}
-                                  </Typography>
-                                }
+                              }
+                              {pOccData.notes_required && (pOccData.notes_required !== '') && (editNoteNumber === index) &&
+                                <Typography style={AVATextStyle({ size: 0.8, margin: { right: 1 } })} >
+                                  {pOccData.notes_required}
+                                </Typography>
+                              }
                             </Box>
                           </Box>
                         }
@@ -1141,6 +1167,15 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
             }}
             onSelect={async (selectedPerson) => {
               setSelectNewSlotOwner(false);
+              let nArray = selectedPerson.split(':');
+              let pID = nArray[Math.min(1, nArray.length - 1)];
+              if (!reactData.signUpObject.hasOwnProperty(pID)) {
+                reactData.signUpObject[pID] = [];
+              }
+              reactData.signUpObject[pID].push(eventSlotList[reactData.editIndex]);
+              updateReactData({
+                signUpObject: reactData.signUpObject
+              }, false);
               let slotObj = { person: selectedPerson };
               if (editSlot) {
                 let listIndex = reactData.editIndex;
@@ -1395,7 +1430,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                       };
                       if (eventSlotList) {
                         eventSlotList.forEach(s => {
-                          if (s.slotData) {                           
+                          if (s.slotData) {
                             summaryInfo.totalSlots++;
                             if (s.slotData.owner) {
                               summaryInfo.ownedSlots++;
@@ -1417,7 +1452,7 @@ export default ({ pEventCode, peopleList, pPatient, pClient, pOccData, defaultVa
                   </Button>
                 </Tooltip>
                 {(!ownerOfSlots || isEventOwner) &&
-                  (!['time', 'seats', 'none'].includes(pOccData.signup_type)) &&
+                  (!['time', 'seats'].includes(pOccData.signup_type)) &&
                   <Tooltip title={'Add to the list'} placement='top'>
                     <Button
                       className={AVAClass.AVAButton}
