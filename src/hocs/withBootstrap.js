@@ -1347,7 +1347,7 @@ export default Component => props => {
     ).then(occList => {
       dispatch({ type: SET_CALENDAR, payload: occList });
       bootState.calendar = occList;
-      console.log(`done with loadSyncInfo Calendar. Loaded ${occList.length} ocurrence`);
+      console.log(`done with loadSyncInfo Calendar. Loaded ${Object.keys(occList).length - 1} dates`);
     })
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);

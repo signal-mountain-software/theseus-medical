@@ -545,9 +545,15 @@ export async function getMemberList(pGroups, pClient_id, options) {
   let defaultClient = pClient_id || session.client_id;
   let gList = [];
   if (Array.isArray(pGroups)) {
-    pGroups.forEach(grp => { gList.push(...(grp.replace(/[[\]]/g, '').split(/,|~/g))); });
+    pGroups.forEach(grp => {
+      grp = grp.replace('~group:', '');
+      gList.push(...(grp.replace(/[[\]]/g, '').split(/,|~/g)));
+    });
   }
-  else if (pGroups.includes('[')) { gList = pGroups.replace(/[[\]]/g, '').split(/,|~/g); }
+  else if (pGroups.includes('[')) {
+    pGroups = pGroups.replace('~group:', '');
+    gList = pGroups.replace(/[[\]]/g, '').split(/,|~/g);
+  }
   else { gList = [pGroups]; }
   if (gList.some(g => g.toLowerCase().includes('*all'))) { gList = ['*all']; }
   for (let g = 0; g < gList.length; g++) {
