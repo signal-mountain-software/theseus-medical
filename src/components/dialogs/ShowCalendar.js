@@ -155,6 +155,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     setStatusMessage(statusMessage);
     setProgress(progressPct);
     setPWidth(progressWidth);
+    console.log(statusMessage, progressWidth, progressPct);
     setForceRedisplay(!forceRedisplay);
   };
 

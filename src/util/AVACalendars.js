@@ -910,7 +910,7 @@ export async function putEventOccurrence(client, inEvent, inDate, occExists) {
       cl(`Error reading Calendar (occurrence) id ${error}`);
     });
   if (recordExists(ocRec)) {
-    cl(`${eventRec.eventData.event_data.description} (${eventRec.event_key}) - ${cDate.absolute} exists already`);
+    // cl(`${eventRec.eventData.event_data.description} (${eventRec.event_key}) - ${cDate.absolute} exists already`);
     return [eventRec, ocRec.Items[0]];
   }
   if (eventRec) {
@@ -1867,6 +1867,21 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         to_date: end_date
       });
       found_events[occurrenceRec.event_id] = newOcc.eventRec.eventData.event_data;
+      if ((newOcc.eventRec.eventData.event_data.type === 'seats')
+        && (newOcc.eventRec.eventData.slotPattern)
+        && (newOcc.eventRec.eventData.slot_object_list)) { 
+        found_events[occurrenceRec.event_id].slot_names = {};
+        let lastID = '';
+        newOcc.eventRec.eventData.slotPattern.forEach(sID => {
+          let foundIt = newOcc.eventRec.eventData.slot_object_list.find(sO => {
+            return (sO.key === sID);
+          })
+          if (foundIt && foundIt.value !== '') {
+            lastID = foundIt.value;
+          }
+          found_events[occurrenceRec.event_id].slot_names[sID] = lastID;
+        })
+      }
       if (!found_events[occurrenceRec.event_id].hasOwnProperty('time')
         || (isObject(found_events[occurrenceRec.event_id].time) && isEmpty(found_events[occurrenceRec.event_id].time.from))
         || (isEmpty(found_events[occurrenceRec.event_id].time))) {
@@ -1900,7 +1915,8 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       Object.assign(response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
     }
     else if ((occurrenceRec.record_type === 'slot') && (occurrenceRec.slotData.status.current === 'selected')) {
-      response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] = occurrenceRec.slotData.slot;
+      response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
+        found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
       if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
         peopleInfo[occurrenceRec.slotData.owner] = [];
       }
@@ -1951,7 +1967,10 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     for (let this_event in response[this_date].events) {
       let allowed_event = true;
       if (found_events[this_event]) {
-        if ((found_events[this_event].type === 'personal') &&
+        if (found_events[this_event].owner.includes(body.this_person)) {
+          allowed_event = true;
+        }
+        else if ((found_events[this_event].type === 'personal') &&
           body.this_person &&
           (!found_events[this_event].owner.includes(body.this_person))) {
           allowed_event = false;

@@ -528,25 +528,35 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                                     {(myCalendar[this_date].events[this_event].type === 'holiday') && <Flag />}
                                     {(myCalendar[this_date].events[this_event].slot_owners.hasOwnProperty(state.session.patient_id)) && <SignedUp />}
                                   </Box>
-                                  {myCalendar[this_date].events[this_event].slot_owners.hasOwnProperty(state.session.patient_id) &&
-                                    <Typography style={AVATextStyle({ size: 1, italic: true })}>
-                                      {`You're signed up!`}
-                                    </Typography>
-                                  }
-                                  {myCalendar[this_date].events[this_event].time
-                                    &&
-                                    (myCalendar[this_date].events[this_event].slot_owners.hasOwnProperty(state.session.patient_id) ?
-                                      <Typography style={AVATextStyle({})}>
-                                        {((myCalendar[this_date].events[this_event].type === 'time')
-                                          ? (makeTime(myCalendar[this_date].events[this_event].slot_owners[state.session.patient_id]).time)
-                                          : (makeCalendarTime(myCalendar[this_date].events[this_event].time)))
-                                        }
+                                  {myCalendar[this_date].events[this_event].slot_owners.hasOwnProperty(state.session.patient_id)
+                                    ?
+                                    <React.Fragment>
+                                      <Typography style={AVATextStyle({ size: 1, italic: true })}>
+                                        {`You're on the list!`}
                                       </Typography>
-                                      :
-                                      <Typography style={AVATextStyle({})}>
-                                        {makeCalendarTime(myCalendar[this_date].events[this_event].time)}
-                                      </Typography>
-                                    )
+                                      {(myCalendar[this_date].events[this_event].type === 'seats')
+                                        ?
+                                        <Typography style={AVATextStyle({})}>
+                                          {myCalendar[this_date].events[this_event].slot_owners[state.session.patient_id]}
+                                        </Typography>
+                                        :
+                                        <Typography style={AVATextStyle({})}>
+                                          {((myCalendar[this_date].events[this_event].type === 'time')
+                                            ? (makeTime(myCalendar[this_date].events[this_event].slot_owners[state.session.patient_id]).time)
+                                            : (makeCalendarTime(myCalendar[this_date].events[this_event].time)))
+                                          }
+                                        </Typography>
+                                      }
+                                    </React.Fragment>
+                                    :
+                                    <React.Fragment>
+                                      {myCalendar[this_date].events[this_event].time
+                                        &&
+                                        <Typography style={AVATextStyle({})}>
+                                          {makeCalendarTime(myCalendar[this_date].events[this_event].time)}
+                                        </Typography>
+                                      }
+                                    </React.Fragment>
                                   }
                                 </Box>
                               </Box>
@@ -566,6 +576,7 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
               peopleList={peopleList}
               pPatient={person_id}
               pClient={detailEdit.client}
+              pViewOnly={detailEdit.owner_only || false}
               pSignUps={myCalendar.peopleInfo}
               pOccData={detailEdit.occData}
               defaultValues={reactData.defaultValues}

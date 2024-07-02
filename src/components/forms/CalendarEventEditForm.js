@@ -162,7 +162,7 @@ const useStyles = makeStyles(theme => ({
   }
 }));
 
-export default ({ pEventCode, peopleList, pPatient, pSignUps, pClient, pOccData, defaultValues, onReset, pMode }) => {
+export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false, pClient, pOccData, defaultValues, onReset, pMode }) => {
 
   const { state } = useSession();
 
@@ -273,9 +273,15 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pClient, pOccData,
       try {
         mInfo = `${p.name.last}, ${p.name.first}`;
         if (reactData.signUpObject && reactData.signUpObject.hasOwnProperty(p.person_id)) {
-          mInfo += ` (${reactData.signUpObject[p.person_id].length} scheduled)`;
+          mInfo += ` (${reactData.signUpObject[p.person_id].length} scheduled)`;          
         }
         mInfo += `:${p.person_id}:${searchString}`;
+        if (reactData.signUpObject.hasOwnProperty(p.person_id) &&
+          reactData.signUpObject[p.person_id].some(o => {
+          return (o.occurrence_date === pOccData.date);
+        })) {
+          mInfo += '**CONFLICT**';
+        }
         response.push(mInfo);
       }
       catch (error) {
@@ -961,7 +967,11 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pClient, pOccData,
                         {/* Slot Name */}
                         {(this_item.slotData.id !== this_item.slotData.owner) &&
                           <Box display='flex' mr={1} ml={0} flexDirection='row' justifyContent='center' alignItems='center'>
-                            <Typography style={AVATextStyle({ size: 1, align: 'left' })} className={classes.standard} >
+                              <Typography style={AVATextStyle({
+                                size: 1,
+                                align: 'left',
+                                margin: { bottom: (this_item.slotData?.slot_description ? 1 : 0) }
+                              })} className={classes.standard} >
                               {this_item.slotData.hasOwnProperty('slot_description')
                                 ? this_item.slotData.slot_description
                                 : makeSlotName(this_item.slotData.id)
@@ -1031,7 +1041,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pClient, pOccData,
                                 (editNoteNumber === index ?
                                   <Box display='flex' flexDirection='row' alignItems='center' flexGrow={1}>
                                     <TextField
-                                      classes={{ root: classes.standard, input: classes.inputRule }}
+                                      classes={{ root: classes.standard }}
                                       id={`prompt-msg`}
                                       key={`prompt-msg`}
                                       multiline
@@ -1085,7 +1095,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pClient, pOccData,
                                       promptForMessage: true,
                                       messageType: '',
                                       recipient: (`${this_item.slotData.display_name}:` + this_item.slotData.owner)
-                                    }, false);
+                                    }, true);
                                   }}
                                 />
                               </Tooltip>
@@ -1099,22 +1109,24 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pClient, pOccData,
                                 }}
                               />
                             </Tooltip>
-                          </Box>
-                          <Tooltip title={`Remove ${isEventOwner ? this_item.slotData.display_name : 'me'}`}>
-                            <PersonAddDisabledIcon
-                              onClick={async () => {
-                                await handleAllocateSlot({
-                                  person: `${this_item.slotData.name}:${this_item.slotData.owner}`,
-                                  slot: this_item.slotData.id,
-                                  release: true,
-                                  index: (index || 0)
-                                });
-                              }}
-                            />
-                          </Tooltip>
+                            </Box>
+                            {(isEventOwner || !pViewOnly) &&
+                              <Tooltip title={`Remove ${isEventOwner ? this_item.slotData.display_name : 'me'}`}>
+                                <PersonAddDisabledIcon
+                                  onClick={async () => {
+                                    await handleAllocateSlot({
+                                      person: `${this_item.slotData.name}:${this_item.slotData.owner}`,
+                                      slot: this_item.slotData.id,
+                                      release: true,
+                                      index: (index || 0)
+                                    });
+                                  }}
+                                />
+                              </Tooltip>
+                            }
                         </Box>
                       }
-                      {!isOwned(this_item.slotData) &&
+                        {!isOwned(this_item.slotData) && (isEventOwner || !pViewOnly) &&
                         (editNoteNumber === -1) &&
                         <Box display='flex' mr={2} flexDirection='row' justifyContent='center' alignItems='center'>
                           <Tooltip title={isEventOwner ? `Select someone` : `Add myself`}>
@@ -1451,7 +1463,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pClient, pOccData,
                     {'Done'}
                   </Button>
                 </Tooltip>
-                {(!ownerOfSlots || isEventOwner) &&
+                {((!ownerOfSlots && !pViewOnly) || isEventOwner) &&
                   (!['time', 'seats'].includes(pOccData.signup_type)) &&
                   <Tooltip title={'Add to the list'} placement='top'>
                     <Button
