@@ -57,7 +57,14 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
   }
 
   let sectionCheck = {};
-  function alreadyInSection(pSec, pAct) {
+  function alreadyInSection(pSec, pActIn) {
+    let pAct;
+    if (typeof (pActIn) === 'string') {
+      pAct = pActIn;
+    }
+    else {
+      pAct = pActIn.title || pActIn.activity_code;
+    }
     if (sectionCheck[pSec]) {
       if (sectionCheck[pSec].includes(pAct)) { return true; }
       else { sectionCheck[pSec].push(pAct); }
