@@ -5,7 +5,7 @@ import { useSnackbar } from 'notistack';
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays } from '../../util/AVADateTime';
 import { isEmpty, isObject, deepCopy } from '../../util/AVAUtilities';
-import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 import { getGroupsBelongTo, getMemberList } from '../../util/AVAGroups';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
@@ -97,6 +97,9 @@ const useStyles = makeStyles(theme => ({
   listItemAVA: {
     fontSize: theme.typography.fontSize * 1.5,
   },
+  client_background: {
+    backgroundColor: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_background : null
+  },
   idText: {
     fontSize: theme.typography.fontSize * 0.8,
     marginTop: 10,
@@ -126,7 +129,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     defaultValues: defaultValues,
     selectedEvent: (currentEvent && !isObject(currentEvent[0]) ? currentEvent[0] : ''),
     myCalendar: ((isEmpty(currentEvent) || !eList) ? [] : eList.eventList),
-    loading: (eList.eventList.loadError || isEmpty(eList))
+    loading: ((currentEvent && !isObject(currentEvent[0])) || isEmpty(eList) || (eList && eList.eventList.loadError))
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -291,7 +294,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
         else {
           updateReactData({
             myCalendar: calendarEntry
-          }, false);
+          }, true);
         }
         return;
       }
@@ -359,11 +362,17 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           });
         }
       }
-      updateReactData({
+      let reactUpdObj = {
         myCalendar: oList,
         birthdayList: true,
         loading: false
-      }, true);
+      };
+      let client_style = AVADefaults({ client_style: 'get' });
+      if (isObject(client_style)) {
+        reactUpdObj.calendar_background = client_style.calendar_background;
+        reactUpdObj.calendar_day = client_style.calendar_day;
+      }
+      updateReactData(reactUpdObj, true);
     }
     initialize();
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -377,6 +386,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           open={!!calendarMode}
           onClose={handleAbort}
           TransitionComponent={Transition}
+          classes={{ paper: classes.client_background }}
           fullScreen
         >
           <Box
@@ -438,7 +448,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
             </DialogContent>
           }
           {!reactData.loading &&
-            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
               <CalendarForm
                 myCalendar={reactData.myCalendar}
                 person_id={patient.patient_id}
@@ -449,7 +458,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 }}
                 defaultValues={reactData.defaultValues}
               />
-            </DialogContent>
           }
           <DialogActions style={{ justifyContent: 'center' }}>
             {reactData.myCalendar && reactData.myCalendar.length > 0 &&

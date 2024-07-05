@@ -94,8 +94,12 @@ export const AVAclasses = makeStyles(theme => ({
 export const AVADefaults = (options = {}) => {
     let returnObj = {};
     for (let key in options) {
-        if (options[key] === 'get') { returnObj[key] = remembered[key]; }
-        else { remembered[key] = options[key]; }
+        if (options[key] === 'get') {
+            returnObj[key] = remembered[key];
+        }
+        else {
+            remembered[key] = options[key];
+        }
     }
     let oKey = Object.keys(returnObj);
     switch (oKey.length) {

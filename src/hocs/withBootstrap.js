@@ -1192,6 +1192,7 @@ export default Component => props => {
         if (recordExists(customizationsRec)) {
           for (let c = 0; c < customizationsRec.Items.length; c++) {
             let cRec = customizationsRec.Items[c];
+            AVADefaults({ [cRec.custom_key]: cRec.customization_value });
             switch (cRec.custom_key) {
               case 'logo': {
                 currentSession.client_logo = cRec.icon;

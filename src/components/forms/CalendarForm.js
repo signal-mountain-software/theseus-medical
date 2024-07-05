@@ -104,10 +104,9 @@ const useStyles = makeStyles(theme => ({
     size: 'small',
   },
   freeInput: {
-    marginTop: theme.spacing(1),
     marginLeft: theme.spacing(2),
     marginRight: theme.spacing(2),
-    marginBottom: theme.spacing(0.75),
+    marginBottom: theme.spacing(1.5),
     width: '90%'
   },
   subDescriptionText2: {
@@ -144,6 +143,18 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 10,
   },
+  client_background: {
+    backgroundColor: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_background : null
+  },
+  button_area: {
+    paddingBottom: 12,
+    paddingTop: 4,
+    backgroundColor: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_background : null
+  },
+  clientPopUp: {
+    borderRadius: '30px 30px 30px 30px',
+    backgroundColor: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_background : null
+  },
 }));
 
 export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {} }) => {
@@ -156,6 +167,8 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
   const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
 
   const selectedDate = React.useRef(null);
+
+  const calendar_fill = isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null;
 
   const [reactData, setReactData] = React.useState(
     {
@@ -225,12 +238,12 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
       if (vCheck.length === 0) {
         updateReactData({
           filterTextLower: ''
-        });
+        }, true);
       }
       else {
         updateReactData({
           filterTextLower: vCheck.toLowerCase()
-        });
+        }, true);
       }
     }, 500);
   };
@@ -266,7 +279,8 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
         <React.Fragment>
           <Box
             display='flex' flexDirection='row'
-            className={classes.messageArea}
+            className={classes.client_background}
+            alignItems={'center'}
             key={'topBox'}
           >
             <Box
@@ -290,7 +304,7 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
               >
                 {(Object.keys(myCalendar).length > 0) ?
                   <Typography
-                    className={classes.subDescriptionText2} style={AVATextStyle({ margin: { left: 2, right: 2, bottom: 2 } })}
+                    className={classes.subDescriptionText2} style={AVATextStyle({ margin: { left: 2, right: 2, bottom: 1 } })}
                   >
                     {reactData.selectDate ? reactData.selectDate.absolute_full :
                       `From ${makeDate(Object.keys(myCalendar)[0]).relative} through ${makeDate(Object.keys(myCalendar)[Object.keys(myCalendar).length - 2]).relative}`
@@ -305,29 +319,45 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                   </Typography>
                 }
               </Box>
+              <Box display='flex'
+                flexDirection='row'
+                minWidth={'60%'}
+                className={classes.client_background}
+                key={'filterRow'}
+              >
+                <TextField
+                  id='List Filter'
+                  onChange={event => (handleChangePersonFilter(event.target.value))}
+                  className={classes.freeInput}
+                  helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                  FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                  variant={'standard'}
+                  autoComplete='off'
+                />
+              </Box>
             </Box>
             <Box
               component="img"
-              ml={2}
-              mr={2}
-              mt={2}
+              m={2}
+              pr={3}
               aria-controls='hidden-menu'
               aria-haspopup='true'
               minWidth={50}
-              maxWidth={50}
               minHeight={50}
-              maxHeight={50}
+              maxHeight={100}
               onClick={(event) => {
                 handleClick(event);
                 setPopupMenuOpen(true);
               }}
               alt=''
-              src={process.env.REACT_APP_AVA_LOGO}
+              src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
             />
             <Menu
               id='hidden-menu'
               anchorEl={anchorEl}
               open={popupMenuOpen}
+              classes={{ paper: classes.clientPopUp }}
               onClose={() => { setPopupMenuOpen(false); }}
               keepMounted>
               <MenuList className={classes.popUpMenu}>
@@ -369,29 +399,9 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
               </MenuList>
             </Menu>
           </Box>
-          <Box display='flex'
-            flexDirection='row'
-            marginLeft={2}
-            marginRight={2}
-            marginBottom={0.5}
-            border={reactData.filterDisplay ? 1 : 0}
-            borderRadius={'16px'}
-            key={'filterRow'}
-          >
-            <TextField
-              id='List Filter'
-              onChange={event => (handleChangePersonFilter(event.target.value))}
-              className={classes.freeInput}
-              helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
-              inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-              FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-              variant={'standard'}
-              autoComplete='off'
-            />
-          </Box>
           {!reactData.loading &&
             <DialogContent
-              dividers={true} classes={{ dividers: classes.dialogBox }}
+              dividers={true} classes={{ dividers: classes.client_background }}
             //  onScroll={async (event) => (await handleScroll(event))}
             >
               <Box
@@ -414,7 +424,7 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                         style={{
                           minWidth: `${user_fontSize * 250}px`,
                           borderRadius: '30px 30px 30px 30px',
-                          backgroundColor: ((makeDate(this_date).weekday === 'weekend') ? (isDarkMode ? 'darkgoldenrod' : 'lightyellow') : null)
+                          backgroundColor: ((makeDate(this_date).weekday === 'weekend') ? (isDarkMode ? 'darkgoldenrod' : 'lightyellow') : calendar_fill)
                         }}
                         ml={2} mr={2}
                         minHeight={'280px'}
@@ -511,6 +521,10 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                               >
                                 <Box display='flex' flexDirection='column'
                                   justifyContent='flex-start' alignItems='center'
+                                  color={(myCalendar[this_date].events[this_event].slot_owners.hasOwnProperty(state.session.patient_id))
+                                    ? (isDarkMode ? '#BB86FC' : 'red')
+                                    : null
+                                  }
                                 >
                                   <Box display='flex' flexDirection='row'
                                     justifyContent='flex-start' alignItems='center'
@@ -621,9 +635,12 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
             />
           }
         </React.Fragment>
-      };
+      }
       <Box display='flex' flexDirection='row'
-        justifyContent='center' alignItems='center' style={{ marginTop: '1em' }}>
+        className={classes.button_area}
+        paddingBottom={'1.5'}
+        justifyContent='center' alignItems='center'
+      >
         <Button
           className={AVAClass.AVAButton}
           style={{ backgroundColor: 'red', color: 'white' }}
