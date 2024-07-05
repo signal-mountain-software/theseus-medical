@@ -43,6 +43,9 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(2),
     flexGrow: 1
   },
+  radius_rounded: {
+    borderRadius: '30px'
+  },
   formControlDays: {
     margin: 0,
     marginLeft: '-8px',
@@ -672,6 +675,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
       onClose={handleAbort}
       TransitionComponent={Transition}
       fullScreen={!personalEvent}
+      classes={{ paper: personalEvent ? classes.radius_rounded : null }}
     >
       {!personalEvent &&
         <React.Fragment>
@@ -691,17 +695,13 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
       {showNewEvent && !customizeButton &&
         <React.Fragment>
           <Box m={2}>
-            <Paper component={Box} variant={'outlined'}>
-              <Box mt={1} py={1} px={3} borderBottom={2}>
-                <Box flexGrow={1}>
-                  <Typography variant='h6'>Event Details</Typography>
-                </Box>
-              </Box>
-            </Paper>
+            <Box mt={1} py={1} px={3} borderBottom={2}>
+              <Typography variant='h6'>Event Details</Typography>
+            </Box>
             <Paper
               component={Box}
               p={3}
-              variant='outlined'
+              elevation={0}
               display='flex'
               flexDirection='row'
               justifyContent='center'
