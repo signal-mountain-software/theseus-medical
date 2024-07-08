@@ -10,7 +10,6 @@ import { putServiceRequest } from '../../util/AVAServiceRequest';
 import MakeMessage from './MakeMessage';
 
 import List from '@material-ui/core/List';
-import ListItem from '@material-ui/core/ListItem';
 import Button from '@material-ui/core/Button';
 import Tooltip from '@material-ui/core/Tooltip';
 

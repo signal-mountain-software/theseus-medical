@@ -168,7 +168,7 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
 
   const selectedDate = React.useRef(null);
 
-  const calendar_fill = isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null;
+  // const calendar_fill = isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null;
 
   const [reactData, setReactData] = React.useState(
     {
@@ -180,7 +180,9 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
       loading: false,
       progress: 0,
       pWidth: 60,
-      defaultValues: defaultValues
+      defaultValues: defaultValues,
+      calendar_fill: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null,
+      calendar_fill_text: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill_text : null
     }
   );
 
@@ -340,7 +342,6 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
             <Box
               component="img"
               m={2}
-              pr={3}
               aria-controls='hidden-menu'
               aria-haspopup='true'
               minWidth={50}
@@ -424,18 +425,18 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                         style={{
                           minWidth: `${user_fontSize * 250}px`,
                           borderRadius: '30px 30px 30px 30px',
-                          backgroundColor: ((makeDate(this_date).weekday === 'weekend') ? (isDarkMode ? 'darkgoldenrod' : 'lightyellow') : calendar_fill)
+                          borderColor: reactData.calendar_fill_text,
+                          backgroundColor: ((makeDate(this_date).weekday === 'weekend') ? (isDarkMode ? 'darkgoldenrod' : 'lightyellow') : reactData.calendar_fill)
                         }}
                         ml={2} mr={2}
                         minHeight={'280px'}
                         justifyContent='flex-start'
-
                         alignItems='center'
                         flexDirection='column'
                       >
                         {(makeDate(this_date).date.getDate() === 1) &&
                           <Typography
-                            style={AVATextStyle({ size: 1.5, margin: { top: 1, bottom: -1 } })}
+                            style={AVATextStyle({ size: 1.5, margin: { top: 1, bottom: -1 }, color: reactData.calendar_fill_text })}
                             key={this_date + 'head2' + index}
                           >
                             {makeDate(this_date).date.toLocaleString([], { month: 'long' })}
@@ -444,16 +445,21 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                         <Box
                           display='flex'
                           width='-webkit-fill-available'
-                          mb={0.5} mx={2} pt={1} px={2} borderBottom={2} mt={1}>
+                          mb={0.5} mx={2} pt={1} px={2} borderBottom={2} mt={1}
+                          style={{
+                            borderColor: reactData.calendar_fill_text,
+                            
+                          }}
+                        >
                           <Box display='flex' flexGrow={1} flexDirection='row' justifyContent={'center'}>
                             <Typography
-                              style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}
+                              style={AVATextStyle({ size: 1.5, margin: { right: 1 }, color: reactData.calendar_fill_text })}
                               key={this_date + 'head1' + index}
                             >
                               {['Today', 'Tomorrow'].includes(myCalendar[this_date].date_words) ? myCalendar[this_date].date_words : makeDate(this_date).dayOfWeek_word}
                             </Typography>
                             <Typography
-                              style={AVATextStyle({ size: 1.5 })}
+                              style={AVATextStyle({ size: 1.5, color: reactData.calendar_fill_text })}
                               key={this_date + 'head2' + index}
                             >
                               {ordinal(makeDate(this_date).date.getDate())}
@@ -523,7 +529,7 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                                   justifyContent='flex-start' alignItems='center'
                                   color={(myCalendar[this_date].events[this_event].slot_owners.hasOwnProperty(state.session.patient_id))
                                     ? (isDarkMode ? '#BB86FC' : 'red')
-                                    : null
+                                    : reactData.calendar_fill_text
                                   }
                                 >
                                   <Box display='flex' flexDirection='row'
