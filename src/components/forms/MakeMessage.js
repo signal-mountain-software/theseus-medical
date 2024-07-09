@@ -34,6 +34,9 @@ const useStyles = makeStyles(theme => ({
     minWidth: '100%',
     paddingLeft: theme.spacing(3),
   },
+  radius_rounded: {
+    borderRadius: '30px'
+  },
   dialogBox: {
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(1),
@@ -127,6 +130,7 @@ export default ({
     recipientID: pRecipientID,
     recipientName: pRecipientName,
     selectID: ((rList.length === 1) ? rList[0] : ''),
+    IDImage: ((rList.length === 1) ? getImage(rList[0]) : ''),
     newAccount: false,
     titleText: titleText,
     attachmentList: [],
@@ -367,6 +371,7 @@ export default ({
         let [last, first] = nArray[0].split(/,/);
         response += `to ${first ? (first + ' ') : ''}${last}`;
         reactData.selectID = rArray[0];
+        reactData.IDImage = getImage(rArray[0]);
       }
     }
     else {
@@ -388,73 +393,80 @@ export default ({
   // **************************
 
   return (
-    <Dialog fullWidth open={true}>
-    <Paper
-      open={reactData.forceRedisplay || true}
-      className={classes.containerBox}
-        style={{ minWidth: '90%' }}
-        elevation={0}
+    <Dialog fullWidth open={true}
+      classes={{ paper: classes.radius_rounded }}
     >
-      {(typeof reactData.recipientID === 'string') && (reactData.recipientID === '*select') &&
-        <SendMessageDialog
-          open={true}
-          onClose={() => {
-            onCancel();
-          }}
-          multiSelect={true}
-          pReturnValue={'object'}
-          onSelect={async (selectedPerson) => {
-            if (Object.keys(selectedPerson).length < 1) {
-              enqueueSnackbar(`Please select at least one name`, { variant: 'error' });
-            }
-            else {
-              reactData.imageURL = null;
-              reactData.newAccount = false;     // future enhancement
-              reactData.recipientID = Object.keys(selectedPerson);
-              reactData.recipientName = Object.values(selectedPerson);
-              makeTitle(reactData);
-              reactData.forceRedisplay = !reactData.forceRedisplay;
-              setReactData(reactData);
-            }
-            setForceRedisplay(forceRedisplay => !forceRedisplay);
-          }}
-        >
-        </SendMessageDialog>
-      }
-      {((typeof reactData.recipientID !== 'string') || (reactData.recipientID !== '*select')) &&
-        <React.Fragment>
-          <Box display='flex'
-            grow={1}
-            mb={0}
-            pb={2}
-            ml={2}
-            width={'95%'}
-            flexDirection='column'
-            justifyContent='center'
-            alignItems='flex-start'
-          >
-            <Typography style={AVATextStyle({
-              size: 1.3, bold: true, margin: {
-                top: 3,
-                right: 2,
+      <Paper
+        open={reactData.forceRedisplay || true}
+        className={classes.containerBox}
+        style={{ minWidth: '90%', }}
+        elevation={0}
+      >
+        {(typeof reactData.recipientID === 'string') && (reactData.recipientID === '*select') &&
+          <SendMessageDialog
+            open={true}
+            onClose={() => {
+              onCancel();
+            }}
+            multiSelect={true}
+            pReturnValue={'object'}
+            onSelect={async (selectedPerson) => {
+              if (Object.keys(selectedPerson).length < 1) {
+                enqueueSnackbar(`Please select at least one name`, { variant: 'error' });
               }
-            })} id='scroll-dialog-title'>
-              {reactData.titleText || makeTitle(reactData)}
-            </Typography>
-            {reactData.selectID &&
-              <Box
-                className={classes.imageArea}
-                component="img"
-                alt=''
-                src={getImage(reactData.selectID)}
-              />
-            }
+              else {
+                reactData.imageURL = null;
+                reactData.newAccount = false;     // future enhancement
+                reactData.recipientID = Object.keys(selectedPerson);
+                reactData.recipientName = Object.values(selectedPerson);
+                makeTitle(reactData);
+                reactData.forceRedisplay = !reactData.forceRedisplay;
+                setReactData(reactData);
+              }
+              setForceRedisplay(forceRedisplay => !forceRedisplay);
+            }}
+          >
+          </SendMessageDialog>
+        }
+        {((typeof reactData.recipientID !== 'string') || (reactData.recipientID !== '*select')) &&
+          <React.Fragment>
+            <Box display='flex'
+              grow={1}
+              mb={0}
+              pb={2}
+              ml={2}
+              width={'95%'}
+              flexDirection='column'
+              justifyContent='center'
+              alignItems='flex-start'
+            >
+              <Typography style={AVATextStyle({
+                size: 1.3, bold: true, margin: {
+                  top: 2,
+                  right: 2,
+                }
+              })} id='scroll-dialog-title'>
+                {reactData.titleText || makeTitle(reactData)}
+              </Typography>
+              {(reactData.IDImage)
+                ?
+                <Box
+                  className={classes.imageArea}
+                  component="img"
+                  alt=''
+                  src={reactData.IDImage}
+                />
+                :
+                <Box
+                  className={classes.imageArea}
+                />
+              }
               <Box
                 display='flex'
                 grow={1}
                 mb={0}
-              ml={0}
-              minWidth={'100%'}
+                ml={0}
+                minWidth={'100%'}
                 flexDirection='column'
                 justifyContent='center'
                 alignItems='flex-start'
@@ -556,7 +568,7 @@ export default ({
                       }}
                       checked={reactData.isUrgent}
                     />
-                    <Typography style={AVATextStyle({ size: 0.5, margin: {left: 0.5 } })}>Mark as Urgent</Typography>
+                    <Typography style={AVATextStyle({ size: 0.5, margin: { left: 0.5 } })}>Mark as Urgent</Typography>
                   </Box>
                 </Box>
                 {(reactData.attachmentList.length > 0) &&
@@ -584,33 +596,8 @@ export default ({
                   </Box>
                 }
               </Box>
-          </Box>
-          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-            <Box display='flex' flexDirection='row' justifyContent='flex-start'
-              alignItems='center' key={'qrOpt_attachmentbox'}
-            >
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'blue', color: 'white' }}
-                size='small'
-                startIcon={<CloudUploadIcon />}
-                onClick={handleFileUpload}
-              >
-                {'Attach'}
-              </Button>
-              <input
-                type="file"
-                style={{ display: 'none' }}
-                ref={hiddenFileInput}
-                onChange={async (target) => {
-                  await handleSaveFile(target.target.files[0]);
-                  reactData.forceRedisplay = !reactData.forceRedisplay;
-                  setReactData(reactData);
-                  setForceRedisplay(!forceRedisplay);
-                }}
-              />
             </Box>
-            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
+            <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center' >
               {allowCancel &&
                 <Button
                   className={AVAClass.AVAButton}
@@ -624,26 +611,47 @@ export default ({
                   {'Back'}
                 </Button>
               }
-            </Box>
-            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: (noInput() ? 'white' : 'green'), color: (noInput() ? 'green' : 'white') }}
-                size='small'
-                disabled={noInput()}
-                onClick={async () => {
-                  await handleSave();
-                  onCancel();
-                }}
-                startIcon={<SendIcon className={classes.tightRight} size="small" />}
+              <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                alignItems='center' key={'qrOpt_attachmentbox'}
               >
-                {buttonText}
-              </Button>
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'blue', color: 'white' }}
+                  size='small'
+                  startIcon={<CloudUploadIcon />}
+                  onClick={handleFileUpload}
+                >
+                  {'Attach'}
+                </Button>
+                <input
+                  type="file"
+                  style={{ display: 'none' }}
+                  ref={hiddenFileInput}
+                  onChange={async (target) => {
+                    await handleSaveFile(target.target.files[0]);
+                    reactData.forceRedisplay = !reactData.forceRedisplay;
+                    setReactData(reactData);
+                    setForceRedisplay(!forceRedisplay);
+                  }}
+                />
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: (noInput() ? 'white' : 'green'), color: (noInput() ? 'green' : 'white') }}
+                  size='small'
+                  disabled={noInput()}
+                  onClick={async () => {
+                    await handleSave();
+                    onCancel();
+                  }}
+                  startIcon={<SendIcon className={classes.tightRight} size="small" />}
+                >
+                  {buttonText}
+                </Button>
+              </Box>
             </Box>
-          </Box>
-        </React.Fragment >
-      }
-    </Paper >
+          </React.Fragment >
+        }
+      </Paper >
     </Dialog>
   );
 };

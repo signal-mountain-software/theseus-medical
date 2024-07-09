@@ -520,7 +520,7 @@ export function determineClass(gList, group_assignments) {
   return groupHierarchy[member_of];
 }
 
-export async function getMemberList(pGroups, pClient_id, options) {
+export async function getMemberList(pGroups, pClient_id, options = {}) {
   // returns an array of peopleRecs that are members of the group(s) in pGroups
   // if you happen to include a person_id in the pGroups list, getMemberList returns those too
   let returnArray = [];

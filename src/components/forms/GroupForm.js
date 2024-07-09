@@ -623,6 +623,29 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                           key={this_item.person_id + 'r' + index}
                           className={classes.listItem}
                         >
+                          {(pStyle !== 'short') &&
+                            <Box
+                              display='flex'
+                              flexDirection='row'
+                              justifyContent='space-between'
+                              alignItems='center'
+                            >
+                              <Box>
+                                <Box
+                                  component="img"
+                                  ml={isMobile ? 2 : 5}
+                                  mr={1}
+                                  border={1}
+                                  minHeight={isMobile ? 100 : 150}
+                                  maxHeight={isMobile ? 100 : 150}
+                                  minWidth={isMobile ? 100 : 150}
+                                  maxWidth={isMobile ? 100 : 150}
+                                  alt={''}
+                                  src={getImage(this_item.person_id)}
+                                />
+                              </Box>
+                            </Box>
+                          }
                           <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center' overflow={'hidden'}>
                             <Box
                               onClick={async () => {
@@ -690,29 +713,6 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                               </Box>
                             </Box>
                           </Box>
-                          {(pStyle !== 'short') &&
-                            <Box
-                              display='flex'
-                              flexDirection='row'
-                              justifyContent='space-between'
-                              alignItems='center'
-                            >
-                              <Box>
-                                <Box
-                                  component="img"
-                                  ml={isMobile ? 2 : 5}
-                                  mr={1}
-                                  border={1}
-                                  minHeight={100}
-                                  maxHeight={200}
-                                  minWidth={isMobile ? 100 : 150}
-                                  maxWidth={isMobile ? 100 : 150}
-                                  alt={''}
-                                  src={getImage(this_item.person_id)}
-                                />
-                              </Box>
-                            </Box>
-                          }
                         </Box>
                       </Box>
                     </Paper>

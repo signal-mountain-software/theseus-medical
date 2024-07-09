@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { dbClient, getMarqueeMessage } from '../../util/AVAUtilities';
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
 import { makeDate } from '../../util/AVADateTime';
 import { getGroup } from '../../util/AVAGroups';
 import AVAConfirm from '../forms/AVAConfirm';
@@ -20,11 +20,6 @@ import makeStyles from '@material-ui/core/styles/makeStyles';
 import useSession from '../../hooks/useSession';
 
 const useStyles = makeStyles(theme => ({
-  title: {
-    marginLeft: theme.spacing(2),
-    marginRight: theme.spacing(2),
-    flexGrow: 1
-  },
   formControlDays: {
     margin: 0,
     marginLeft: '-8px',
@@ -36,6 +31,9 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
     marginTop: '10px',
     marginBottom: '25px',
+  },
+  radius_rounded: {
+    borderRadius: '30px'
   },
   centerCenter: {
     alignItems: 'center',
@@ -239,7 +237,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       updateReactData({
         messageList: reactData.messageList,
         description: '',
-      }, true)
+      }, true);
     }
     else {
       enqueueSnackbar(`Sorry.  AVA could not save this message!`, { variant: 'error' });
@@ -296,19 +294,19 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
   function OK2Save() {
     return ((reactData.description.trim() !== '')
       && (reactData.StartAsADateObj && !reactData.StartAsADateObj.error)
-      && (reactData.EndAsADateObj && !reactData.EndAsADateObj.error))
+      && (reactData.EndAsADateObj && !reactData.EndAsADateObj.error));
   }
 
   const handleChangeDescription = vCheck => {
     updateReactData({
       description: vCheck
-    }, true)
+    }, true);
   };
 
   const handleChangeDateFrom = vCheck => {
     updateReactData({
       eventStartDisplayDate: (vCheck.length === 0 ? '' : vCheck)
-    }, true)
+    }, true);
   };
 
   const resolveFromDate = vCheck => {
@@ -317,14 +315,14 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       updateReactData({
         eventStartDisplayDate: goodDate.absolute,
         StartAsADateObj: goodDate
-      }, true)
+      }, true);
     }
   };
 
   const handleChangeDateTo = vCheck => {
     updateReactData({
       eventEndDisplayDate: (vCheck.length === 0 ? '' : vCheck)
-    }, true)
+    }, true);
   };
 
   const resolveToDate = vCheck => {
@@ -333,21 +331,21 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       updateReactData({
         eventEndDisplayDate: goodDate.absolute,
         EndAsADateObj: goodDate
-      }, true)
+      }, true);
     }
   };
 
   const handleChangePeopleToggle = event => {
     updateReactData({
       specificPeople: event.target.value
-    }, true)
+    }, true);
   };
 
   const handleChangeCriticalToggle = event => {
     updateReactData({
       criticalMessage: event.target.value
-    }, true)
-  }
+    }, true);
+  };
 
   // **************************
 
@@ -355,21 +353,19 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     <Dialog
       open={showNewEvent || forceRedisplay}
       onClose={handleAbort}
-      fullScreen
+      classes={{ paper: classes.radius_rounded }}
     >
-      <AppBar>
-        <Toolbar>
-          <IconButton color='inherit' edge='start' onClick={handleAbort}>
-            <CloseIcon />
-          </IconButton>
-          <Typography variant='h6' className={classes.title}>
-            {'Manage Marquee Messages'}
-          </Typography>
-        </Toolbar>
-      </AppBar>
-      <Toolbar />
       <React.Fragment>
         <Box m={2}>
+          <Typography style={AVATextStyle({
+            size: 1.3, bold: true, margin: {
+              bottom: 2,
+              top: 1,
+              right: 2,
+            }
+          })}>
+            {'Manage Marquee Messages'}
+          </Typography>
           <Paper component={Box} variant={'outlined'}>
             <Box mt={1} py={1} px={3} borderBottom={2}>
               <Box flexGrow={1}>
@@ -696,7 +692,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                     <Box display='flex'
                       flexDirection='column'
                     >
-                      {this_message.criticalMessage && 
+                      {this_message.criticalMessage &&
                         <Typography className={classes.radioText} style={{ marginBottom: '-10px', color: 'red', fontSize: '1rem', italics: true }} >
                           {`*** Critical Message - All others hidden ***`}
                         </Typography>

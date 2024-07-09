@@ -2421,20 +2421,20 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
 
       { /* Command Area */}
-      <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-        <Box display='flex' flexDirection='column'>
+      <Box display='flex' flexDirection='column'>
+        <Box mx={2} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='space-between' alignItems='center'>
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            onClick={() => {
+              ((factType === 'list') ? onClose() : setCancelPending(true));
+            }}
+            startIcon={<CloseIcon size="small" />}
+          >
+            {'Exit'}
+          </Button>
           <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'red', color: 'white' }}
-              size='small'
-              onClick={() => {
-                ((factType === 'list') ? onClose() : setCancelPending(true));
-              }}
-              startIcon={<CloseIcon size="small" />}
-            >
-              {'Exit'}
-            </Button>
             {reactData.allowAttachments &&
               <React.Fragment>
                 <Button
@@ -2477,38 +2477,38 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               </Button>
             }
           </Box>
-          {(allowAddPeople || (allowRemovePeople && (reactData.columnList.length > 1))) &&
-            <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-              {allowAddPeople &&
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'blue', color: 'white' }}
-                  size='small'
-                  onClick={() => {
-                    setMorePeople(true);
-                  }}
-                  startIcon={<GroupAddIcon size="small" />}
-                >
-                  {'Add People'}
-                </Button>
-              }
-              {allowRemovePeople && (reactData.columnList.length > 1) && !reactData.viewOnly &&
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'red', color: 'white' }}
-                  size='small'
-                  onClick={() => {
-                    setConfirmDelete(true);
-                  }}
-                  startIcon={<DeleteIcon size="small" />}
-                >
-                  {`Remove ${columnUniqueName(reactData.columnList[selectedColumn]).string}`}
-                </Button>
-              }
-            </Box>
-          }
         </Box>
-      </DialogActions>
+        {(allowAddPeople || (allowRemovePeople && (reactData.columnList.length > 1))) &&
+          <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+            {allowAddPeople &&
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'blue', color: 'white' }}
+                size='small'
+                onClick={() => {
+                  setMorePeople(true);
+                }}
+                startIcon={<GroupAddIcon size="small" />}
+              >
+                {'Add People'}
+              </Button>
+            }
+            {allowRemovePeople && (reactData.columnList.length > 1) && !reactData.viewOnly &&
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
+                size='small'
+                onClick={() => {
+                  setConfirmDelete(true);
+                }}
+                startIcon={<DeleteIcon size="small" />}
+              >
+                {`Remove ${columnUniqueName(reactData.columnList[selectedColumn]).string}`}
+              </Button>
+            }
+          </Box>
+        }
+      </Box>
     </Dialog >
   );
 
