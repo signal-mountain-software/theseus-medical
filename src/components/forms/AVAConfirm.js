@@ -1,7 +1,6 @@
 import React from 'react';
 
 import Dialog from '@material-ui/core/Dialog';
-import DialogActions from '@material-ui/core/DialogActions';
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 

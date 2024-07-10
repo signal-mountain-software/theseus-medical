@@ -448,7 +448,7 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                           mb={0.5} mx={2} pt={1} px={2} borderBottom={2} mt={1}
                           style={{
                             borderColor: reactData.calendar_fill_text,
-                            
+
                           }}
                         >
                           <Box display='flex' flexGrow={1} flexDirection='row' justifyContent={'center'}>
@@ -644,49 +644,55 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
       }
       <Box display='flex' flexDirection='row'
         className={classes.button_area}
-        paddingBottom={'1.5'}
-        justifyContent='center' alignItems='center'
+        paddingBottom={'1.5'} mx={2}
+        justifyContent='space-between' alignItems='center'
       >
-        <Button
-          className={AVAClass.AVAButton}
-          style={{ backgroundColor: 'red', color: 'white' }}
-          size='small'
-          startIcon={<CloseIcon fontSize="small" />}
-          onClick={onClose}>
-          {'Done'}
-        </Button>
-        <Button
-          className={AVAClass.AVAButton}
-          style={{ backgroundColor: 'green', color: 'white' }}
-          size='small'
-          startIcon={<AddEventIcon fontSize="small" />}
-          onClick={async () => {
-            updateReactData({
-              addPersonalEvent: true
-            }, true);
-          }}
-        >
-          {'Add a Personal Event'}
-        </Button>
-        <Button
-          className={AVAClass.AVAButton}
-          style={{ backgroundColor: 'blue', color: 'white' }}
-          size='small'
-          startIcon={<PrintIcon fontSize="small" />}
-          onClick={async () => {
-            await printCalendar(
-              {
-                client_id: state.session.client_id,
-                myCalendar,
-                requestor: state.session.user_id,
-                filterTextLower: reactData.filterTextLower,
-                groupFilter: state.groups.belongsTo
-              }
-            );
-          }}
-        >
-          {'Print'}
-        </Button>
+        <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center' />
+        <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            startIcon={<CloseIcon fontSize="small" />}
+            onClick={onClose}>
+            {'Done'}
+          </Button>
+        </Box>
+        <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
+            startIcon={<AddEventIcon fontSize="small" />}
+            onClick={async () => {
+              updateReactData({
+                addPersonalEvent: true
+              }, true);
+            }}
+          >
+            {'Add a Personal Event'}
+          </Button>
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'blue', color: 'white' }}
+            size='small'
+            startIcon={<PrintIcon fontSize="small" />}
+            onClick={async () => {
+              await printCalendar(
+                {
+                  client_id: state.session.client_id,
+                  myCalendar,
+                  requestor: state.session.user_id,
+                  filterTextLower: reactData.filterTextLower,
+                  groupFilter: state.groups.belongsTo
+                }
+              );
+            }}
+          >
+            {'Print'}
+          </Button>
+        </Box>
+        <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center' />
       </Box>
     </Dialog >
   );

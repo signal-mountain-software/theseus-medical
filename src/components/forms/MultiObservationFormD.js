@@ -20,7 +20,7 @@ import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
 
 import { Card, CardActions } from '@material-ui/core';
 import { Button, IconButton, TextField } from '@material-ui/core';
-import { Dialog, DialogActions } from '@material-ui/core';
+import { Dialog } from '@material-ui/core';
 import { Box, Paper, Typography, Checkbox, Radio, Avatar } from '@material-ui/core';
 import { Menu, MenuList, MenuItem } from '@material-ui/core';
 
@@ -2421,94 +2421,101 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
       }
 
       { /* Command Area */}
-      <Box display='flex' flexDirection='column'>
-        <Box mx={2} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='space-between' alignItems='center'>
-          <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'red', color: 'white' }}
-            size='small'
-            onClick={() => {
-              ((factType === 'list') ? onClose() : setCancelPending(true));
-            }}
-            startIcon={<CloseIcon size="small" />}
-          >
-            {'Exit'}
-          </Button>
-          <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-            {reactData.allowAttachments &&
-              <React.Fragment>
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'blue', color: 'white' }}
-                  startIcon={<CloudUploadIcon />}
-                  size='small'
-                  onClick={async () => {
-                    handleFileUpload();
-                    console.log('upload done');
-                  }}
-                >
-                  {'Attach'}
-                </Button>
-                <input
-                  type="file"
-                  style={{ display: 'none' }}
-                  ref={hiddenFileInput}
-                  onChange={async (target) => {
-                    await handleSaveFile(target.target.files[0]);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                />
-              </React.Fragment>
-            }
-            {(!factType || (factType !== 'list')) && !reactData.viewOnly &&
-              <Button
-                className={AVAClass.AVAButton}
-                style={reactData.errorOnScreen ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
-                size='small'
-                disabled={reactData.errorOnScreen}
-                onClick={() => {
-                  let [cStatus, response] = makeConfirm(reactData.columnList);
-                  setConfirmPrompt(response);
-                  setConfirmStatus(cStatus);
-                }}
-                startIcon={<CheckIcon size="small" />}
-              >
-                {'Confirm/Send'}
-              </Button>
-            }
-          </Box>
-        </Box>
-        {(allowAddPeople || (allowRemovePeople && (reactData.columnList.length > 1))) &&
-          <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-            {allowAddPeople &&
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'blue', color: 'white' }}
-                size='small'
-                onClick={() => {
-                  setMorePeople(true);
-                }}
-                startIcon={<GroupAddIcon size="small" />}
-              >
-                {'Add People'}
-              </Button>
-            }
-            {allowRemovePeople && (reactData.columnList.length > 1) && !reactData.viewOnly &&
+      {((reactData.columnList && (reactData.columnList.length > 0)) && !morePeople)
+        &&
+        <Box display='flex' flexDirection='column'>
+          <Box mx={2} display='flex' flexWrap='wrap' flexDirection='row' justifyContent='space-between' alignItems='center'>
+            <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center' />
+            <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
               <Button
                 className={AVAClass.AVAButton}
                 style={{ backgroundColor: 'red', color: 'white' }}
                 size='small'
                 onClick={() => {
-                  setConfirmDelete(true);
+                  ((factType === 'list') ? onClose() : setCancelPending(true));
                 }}
-                startIcon={<DeleteIcon size="small" />}
+                startIcon={<CloseIcon size="small" />}
               >
-                {`Remove ${columnUniqueName(reactData.columnList[selectedColumn]).string}`}
+                {'Exit'}
               </Button>
-            }
+            </Box>
+            <Box display='flex' flexWrap='wrap' flexGrow={2} flexDirection='row' justifyContent='center' alignItems='center'>
+              {reactData.allowAttachments &&
+                <React.Fragment>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white' }}
+                    startIcon={<CloudUploadIcon />}
+                    size='small'
+                    onClick={async () => {
+                      handleFileUpload();
+                      console.log('upload done');
+                    }}
+                  >
+                    {'Attach'}
+                  </Button>
+                  <input
+                    type="file"
+                    style={{ display: 'none' }}
+                    ref={hiddenFileInput}
+                    onChange={async (target) => {
+                      await handleSaveFile(target.target.files[0]);
+                      setForceRedisplay(!forceRedisplay);
+                    }}
+                  />
+                </React.Fragment>
+              }
+              {(allowAddPeople || (allowRemovePeople && (reactData.columnList.length > 1))) &&
+                <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+                  {allowAddPeople &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
+                      onClick={() => {
+                        setMorePeople(true);
+                      }}
+                      startIcon={<GroupAddIcon size="small" />}
+                    >
+                      {'Add People'}
+                    </Button>
+                  }
+                  {allowRemovePeople && (reactData.columnList.length > 1) && !reactData.viewOnly &&
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'red', color: 'white' }}
+                      size='small'
+                      onClick={() => {
+                        setConfirmDelete(true);
+                      }}
+                      startIcon={<DeleteIcon size="small" />}
+                    >
+                      {`Remove ${columnUniqueName(reactData.columnList[selectedColumn]).string}`}
+                    </Button>
+                  }
+                </Box>
+              }
+              {(!factType || (factType !== 'list')) && !reactData.viewOnly &&
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={reactData.errorOnScreen ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}
+                  size='small'
+                  disabled={reactData.errorOnScreen}
+                  onClick={() => {
+                    let [cStatus, response] = makeConfirm(reactData.columnList);
+                    setConfirmPrompt(response);
+                    setConfirmStatus(cStatus);
+                  }}
+                  startIcon={<CheckIcon size="small" />}
+                >
+                  {'Confirm/Send'}
+                </Button>
+              }
+            </Box>
+            <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center' />
           </Box>
-        }
-      </Box>
+        </Box>
+      }
     </Dialog >
   );
 

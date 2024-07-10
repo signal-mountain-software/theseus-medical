@@ -6,7 +6,7 @@ import { makeDate } from '../../util/AVADateTime';
 import { getGroup } from '../../util/AVAGroups';
 import AVAConfirm from '../forms/AVAConfirm';
 
-import { Checkbox, List, TextField, Button, IconButton, Typography, Paper, Toolbar, Box, AppBar } from '@material-ui/core';
+import { Checkbox, List, TextField, Button, Typography, Paper, Box } from '@material-ui/core';
 import { RadioGroup, Radio } from '@material-ui/core';
 import { FormControl, FormControlLabel } from '@material-ui/core';
 import { Dialog, DialogActions } from '@material-ui/core';
