@@ -200,7 +200,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
     editIndex: false,
     popupMenuOpen: false,
     choiceList: [],
-    signUpObject: pSignUps,
+    signUpObject: pSignUps || {},
     attachedSR: false,
     selectAssignTo: false,
     defaultValues: defaultValues || { "noDefaults": true },
@@ -249,7 +249,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
       gList = pGroups.replace(/[[\]]/g, '').split(/,|~/g);
     }
     else { gList = [pGroups]; }
-    if (pOccData.groups) {
+    if (pOccData.groups) {        // If this event is restricted to specific groups, only allow names from those groups
       pOccData.groups.forEach(g => {
         if (!gList.includes(g)) {
           gList.push(g);
