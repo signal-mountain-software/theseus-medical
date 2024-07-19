@@ -481,7 +481,15 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                           :
                           <React.Fragment>
                             {(Object.keys(myCalendar[this_date].events).sort((s1, s2) => {
-                              return (myCalendar[this_date].events[s1].sort24 > myCalendar[this_date].events[s2].sort24 ? 1 : -1);
+                              if (myCalendar[this_date].events[s1].sort24 > myCalendar[this_date].events[s2].sort24) {
+                                return 1;
+                              }
+                              else if (myCalendar[this_date].events[s1].sort24 < myCalendar[this_date].events[s2].sort24) {
+                                return -1;
+                              }
+                              else {
+                                return (myCalendar[this_date].events[s1].description > myCalendar[this_date].events[s2].description ? 1 : -1);
+                              }
                             })).map((this_event, eventIndex) => (        // an array of events on this date
                               okToShow(myCalendar[this_date].events[this_event]) &&
                               <Box
