@@ -139,6 +139,10 @@ const useStyles = makeStyles(theme => ({
   clientPopUp: {
     borderRadius: '30px 30px 30px 30px',
   },
+  clientPopUpWithPadding: {
+    borderRadius: '30px 30px 30px 30px',
+    padding: '10px'
+  },
   popUpMenuRow: {
     marginLeft: theme.spacing(1),
     fontSize: theme.typography.fontSize * 1.0,
@@ -711,6 +715,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
     <Dialog
       open={true || forceRedisplay}
       position={'relative'}
+      classes={{ paper: classes.clientPopUpWithPadding }}
       fullWidth
       p={2}
     >
@@ -947,7 +952,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
         }
         {/* Slots */}
         {eventSlotList && eventSlotList.length > 0 &&
-          <Paper component={Box} className={classes.page} variant='outlined' overflow='auto' square>
+          <Paper component={Box} className={classes.page} elevation={0} overflow='auto' square>
             <List  >
               {eventSlotList.map((this_item, index) => (
                 (!this_item.slotData.hasOwnProperty('show_this_slot') || this_item.slotData.show_this_slot) &&
@@ -1445,7 +1450,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                             summaryInfo.totalSlots++;
                             if (s.slotData.owner) {
                               summaryInfo.ownedSlots++;
-                              summaryInfo.slot_owners[s.slotData.owner] = s.slotData.id;
+                              summaryInfo.slot_owners[s.slotData.owner] = s.slotData.slot_description || s.slotData.id;
                             }
                             if (s.marked) {
                               summaryInfo.markedSlots++;
