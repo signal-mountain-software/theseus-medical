@@ -652,7 +652,7 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
       }
       <Box display='flex' flexDirection='row'
         className={classes.button_area}
-        paddingBottom={'1.5'} mx={2}
+        paddingBottom={'1.5'} px={isMobile ? 2 : 6}
         justifyContent='space-between' alignItems='center'
       >
         <Box display='flex' flexWrap='wrap' flexGrow={1} flexDirection='row' justifyContent='center' alignItems='center' />

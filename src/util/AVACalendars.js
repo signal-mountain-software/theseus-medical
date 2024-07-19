@@ -1914,7 +1914,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     if (occurrenceRec.record_type === 'occurrence') {
       Object.assign(response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
     }
-    else if ((occurrenceRec.record_type === 'slot') && (occurrenceRec.slotData.status.current === 'selected')) {
+    else if ((occurrenceRec.record_type === 'slot') && ((occurrenceRec.slotData.status.current === 'selected') || (occurrenceRec.slotData.status.current === 'notes'))) {
       response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
         found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
       if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
