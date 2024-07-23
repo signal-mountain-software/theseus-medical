@@ -207,7 +207,7 @@ export function AVATextStyle(options = {}) {
 export function AVATextVariableStyle(outText, options = {}) {
     let returnStyle = AVATextStyle(options);
     let user_fontSize = AVADefaults({ fontSize: 'get' }) * (options.size || 1);
-    returnStyle.fontSize = `${user_fontSize * (50 / Math.max(50, outText.length * user_fontSize * (600 / window.innerWidth)))}rem`;
+    returnStyle.fontSize = `${user_fontSize * (50 / Math.max(50, (outText ? outText.length : 1) * user_fontSize * (600 / window.innerWidth)))}rem`;
     return returnStyle;
 }
 
