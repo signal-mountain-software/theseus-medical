@@ -211,6 +211,155 @@ export async function addEvent(body) {
   }
 };
 
+export async function myAvailability(requestBody) {
+  // check_date, check_person_id, check_client
+  // get slots for the occurrence_date you're checking
+  let already_booked = [];   // {start_time24: hhmm, end_time24: hhmm, event: xxxx, event_description: yyyy}
+  let calRecs = await dbClient
+    .query({
+      KeyConditionExpression: 'client = :c and list_key = :d',
+      ExpressionAttributeValues: {
+        ':c': requestBody.client || requestBody.client_id || requestBody.check_client,
+        ':d': `${requestBody.check_person_id || requestBody.personID}#${makeDate(requestBody.date || requestBody.check_date).numeric$}`
+      },
+      TableName: "Calendar",
+      IndexName: 'list_key-index'
+    })
+    .promise()
+    .catch(error => {
+      cl({ 'Error reading Calendar': error });
+    });
+  if (!recordExists(calRecs)) { return already_booked; }
+  for (let ndx = 0; ndx < calRecs.Items.length; ndx++) {
+    let this_calRec = calRecs.Items[ndx];
+    if (this_calRec?.slotData?.status?.current !== 'released') {
+      let eventRec = {};
+      let occRec = {};
+      let cRecs = await getCalendarEntries({
+        client: requestBody.client || requestBody.client_id || requestBody.check_client,
+        event: `${this_calRec.event_id}#${this_calRec.occurrence_date}`,
+        type: ['event', 'occurrence']
+      });
+      if (cRecs[0].eventData || cRecs[0].calData) {
+        eventRec = cRecs[0];
+        if (cRecs[1]) { occRec = cRecs[1]; }
+      }
+      else {
+        occRec = cRecs[0];
+        if (cRecs[1]) { eventRec = cRecs[1]; }
+      }
+      let eventStart24 = eventRec.eventData?.event_data?.time?.from;
+      let event_start_time24 = eventStart24 ? makeTime(eventStart24.trim()).numeric24 : 0;
+      let eventEnd24 = eventRec.eventData?.event_data?.time?.to;
+      let event_end_time24 = eventEnd24 ? makeTime(eventEnd24.trim()).numeric24 : 2359;
+      if (eventRec && ('eventData' in eventRec) && (eventRec.eventData.slotPattern)) {
+        let slotArray = eventRec.eventData.slotPattern;
+        if (('occData' in occRec) && (occRec.occData.slotPattern)) { slotArray = occRec.occData.slotPattern; };
+        let foundNdx = slotArray.findIndex(slot => {
+          return (slot === this_calRec.slotData.slot);
+        });
+        let found_end_time24 = event_end_time24;
+        let found_start_time24 = event_start_time24;
+        let slot_description = slotArray[foundNdx] || '0';
+        if (eventRec.eventData.sign_up.type === 'time') {
+          found_start_time24 = Number(slot_description);
+          if (found_start_time24 < event_start_time24) {
+            found_start_time24 = event_start_time24;
+          }
+          found_end_time24 = slotArray[foundNdx + 1] || event_end_time24;
+          if (found_end_time24 > event_end_time24) {
+            found_end_time24 = event_end_time24;
+          }
+        }
+        if (eventRec.eventData.slot_object_list) {
+          let found = eventRec.eventData.slot_object_list.find(o => {
+            return (o.key === slot_description);
+          });
+          if (found) {
+            if (eventRec.eventData.sign_up.type !== 'time') {
+              let [found_start, found_end] = found.value.split("-");
+              found_start_time24 = found_start ? makeTime(found_start.trim()).numeric24 : event_start_time24;
+              if (found_start_time24 < event_start_time24) {
+                found_start_time24 = event_start_time24;
+              }
+              found_end_time24 = found_end ? makeTime(found_end.trim()).numeric24 : event_end_time24;
+              if (found_end_time24 > event_end_time24) {
+                found_end_time24 = event_end_time24;
+              }
+            }
+          }
+        }
+        console.log(found_start_time24, found_end_time24);
+        already_booked.push({
+          start_time24: found_start_time24,
+          end_time24: found_end_time24,
+          event: occRec.event_key,
+          event_description: eventRec.eventData.event_data.description
+        });
+      }
+    }
+  }
+  already_booked.sort((a, b) => {
+    return ((a.start_time24 < b.start_time24) ? 1 : -1);
+  });
+  return already_booked;
+}
+
+export function slotTimes(eventRec, occRec, slotRec) {
+  let eventStart24 = eventRec.time?.from;
+  let event_start_time24 = eventStart24 ? makeTime(eventStart24.trim()).numeric24 : 0;
+  let eventEnd24 = eventRec.time?.to;
+  let event_end_time24 = eventEnd24 ? makeTime(eventEnd24.trim()).numeric24 : 2359;
+  if (eventRec.slotPattern) {
+    let slotArray = eventRec.slotPattern;
+    if (('occData' in occRec) && (occRec.occData.slotPattern)) { slotArray = occRec.occData.slotPattern; };
+    let foundNdx = slotArray.findIndex(slot => {
+      return (slot === slotRec.slotData.slot);
+    });
+    let found_end_time24 = event_end_time24;
+    let found_start_time24 = event_start_time24;
+    let slot_description = slotArray[foundNdx] || '0';
+    if (eventRec.type === 'time') {
+      found_start_time24 = Number(slot_description);
+      if (found_start_time24 < event_start_time24) {
+        found_start_time24 = event_start_time24;
+      }
+      found_end_time24 = slotArray[foundNdx + 1] || event_end_time24;
+      if (found_end_time24 > event_end_time24) {
+        found_end_time24 = event_end_time24;
+      }
+    }
+    if (eventRec.slot_object_list) {
+      let found = eventRec.slot_object_list.find(o => {
+        return (o.key === slot_description);
+      });
+      if (found) {
+        if (eventRec.type !== 'time') {
+          let [found_start, found_end] = found.value.split("-");
+          found_start_time24 = found_start ? makeTime(found_start.trim()).numeric24 : event_start_time24;
+          if (found_start_time24 < event_start_time24) {
+            found_start_time24 = event_start_time24;
+          }
+          found_end_time24 = found_end ? makeTime(found_end.trim()).numeric24 : event_end_time24;
+          if (found_end_time24 > event_end_time24) {
+            found_end_time24 = event_end_time24;
+          }
+        }
+      }
+    }
+    return {
+      start24: found_start_time24,
+      end24: found_end_time24
+    };
+  }
+  else {
+    return {
+      start24: 0,
+      end24: 2359
+    };
+  }
+}
+
 export async function getCalendarEntries(body, statusUpdate) {
   /*  
   body: {
@@ -476,7 +625,13 @@ export async function getSlotList(request) {
   if (eventRec && ('eventData' in eventRec) && (eventRec.eventData.slotPattern)) {
     let slotArray = eventRec.eventData.slotPattern;
     if (('occData' in occRec) && (occRec.occData.slotPattern)) { slotArray = occRec.occData.slotPattern; };
-    slotArray.forEach(s => {
+    let eventStart24 = eventRec.eventData?.event_data?.time?.from;
+    let event_start_time24 = eventStart24 ? makeTime(eventStart24.trim()).numeric24 : 0;
+    let eventEnd24 = eventRec.eventData?.event_data?.time?.to;
+    let event_end_time24 = eventEnd24 ? makeTime(eventEnd24.trim()).numeric24 : 2359;
+    slotArray.forEach((s, ndx) => {
+      let found_end_time24 = event_end_time24;
+      let found_start_time24 = event_start_time24;
       let slot_description = s;
       if (eventRec.eventData.sign_up.type === 'time') {
         let hh = Number(s.slice(0, 2));
@@ -492,6 +647,14 @@ export async function getSlotList(request) {
           hh -= 12;
         }
         slot_description = `${hh}:${s.slice(2)} ${show_ampm}`.trim();
+        found_start_time24 = s;
+        if (found_start_time24 < event_start_time24) {
+          found_start_time24 = event_start_time24;
+        }
+        found_end_time24 = slotArray[ndx + 1] || event_end_time24;
+        if (found_end_time24 > event_end_time24) {
+          found_end_time24 = event_end_time24;
+        }
       }
       let slot_sort = s;
       if (eventRec.eventData.slot_object_list) {
@@ -501,12 +664,26 @@ export async function getSlotList(request) {
         if (found) {
           slot_description = found.value;
           slot_sort = found.sort;
+          if (eventRec.eventData.sign_up.type !== 'time') {
+            let [found_start, found_end] = found.value.split("-");
+            found_start_time24 = found_start ? makeTime(found_start.trim()).numeric24 : event_start_time24;
+            if (found_start_time24 < event_start_time24) {
+              found_start_time24 = event_start_time24;
+            }
+            found_end_time24 = found_end ? makeTime(found_end.trim()).numeric24 : event_end_time24;
+            if (found_end_time24 > event_end_time24) {
+              found_end_time24 = event_end_time24;
+            }
+          }
         }
       }
+      console.log(found_start_time24, found_end_time24);
       slotObj[s] = {
         status: "available",
         show_this_slot: true,
         slot_description,
+        slot_start_time24: found_start_time24,
+        slot_end_time24: found_end_time24,
         slot_sort
       };
     });
@@ -633,19 +810,21 @@ export async function copySlots(client_id, from_occ, to_occ) {
       else {
         readableName = (`${this_person.name.first || ''} ${this_person.name.last || ''}`).trim();
       }
-      let this_slotObj = from_event.eventData.slot_object_list.find(o => {
-        return (slotKey === o.key);
-      });
-      slotObj[slotKey] = Object.assign(newSlot, {
-        status: (newSlot.status ? newSlot.status.current : "undefined"),
-        show_this_slot: (newSlot.hasOwnProperty('show_this_slot') ? newSlot.show_this_slot : true),
-        owner: r.slotData.owner,
-        display_name: readableName,
-        owner_location: owner_location,
-        marked: false,
-        slot_description: this_slotObj.value,
-        slot_sort: this_slotObj.sort
-      });
+      if (Array.isArray(from_event.eventData.slot_object_list)) {
+        let this_slotObj = from_event.eventData.slot_object_list.find(o => {
+          return (slotKey === o.key);
+        });
+        slotObj[slotKey] = Object.assign(newSlot, {
+          status: (newSlot.status ? newSlot.status.current : "undefined"),
+          show_this_slot: (newSlot.hasOwnProperty('show_this_slot') ? newSlot.show_this_slot : true),
+          owner: r.slotData.owner,
+          display_name: readableName,
+          owner_location: owner_location,
+          marked: false,
+          slot_description: this_slotObj.value,
+          slot_sort: this_slotObj.sort
+        });
+      }
     }
   }
   return slotObj;
@@ -1867,20 +2046,26 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         to_date: end_date
       });
       found_events[occurrenceRec.event_id] = newOcc.eventRec.eventData.event_data;
+      if (newOcc.eventRec.eventData.slotPattern && (newOcc.eventRec.eventData.slotPattern.length > 0)) {
+        found_events[occurrenceRec.event_id].slotPattern = newOcc.eventRec.eventData.slotPattern;
+      }
+      if (newOcc.eventRec.eventData.slot_object_list && (newOcc.eventRec.eventData.slot_object_list.length > 0)) {
+        found_events[occurrenceRec.event_id].slot_object_list = newOcc.eventRec.eventData.slot_object_list;
+      }
       if ((newOcc.eventRec.eventData.event_data.type === 'seats')
         && (newOcc.eventRec.eventData.slotPattern)
-        && (newOcc.eventRec.eventData.slot_object_list)) { 
+        && (newOcc.eventRec.eventData.slot_object_list)) {
         found_events[occurrenceRec.event_id].slot_names = {};
         let lastID = '';
         newOcc.eventRec.eventData.slotPattern.forEach(sID => {
           let foundIt = newOcc.eventRec.eventData.slot_object_list.find(sO => {
             return (sO.key === sID);
-          })
+          });
           if (foundIt && foundIt.value !== '') {
             lastID = foundIt.value;
           }
           found_events[occurrenceRec.event_id].slot_names[sID] = lastID;
-        })
+        });
       }
       if (!found_events[occurrenceRec.event_id].hasOwnProperty('time')
         || (isObject(found_events[occurrenceRec.event_id].time) && isEmpty(found_events[occurrenceRec.event_id].time.from))
@@ -1920,13 +2105,17 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
         peopleInfo[occurrenceRec.slotData.owner] = [];
       }
+      let slotTimesResponse = slotTimes(found_events[occurrenceRec.event_id], response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
       peopleInfo[occurrenceRec.slotData.owner].push(Object.assign({},
         {
           occurrence_date: occurrenceRec.occurrence_date,
-          event_id: occurrenceRec.event_id
+          event_id: occurrenceRec.event_id,
+          event_description: found_events[occurrenceRec.event_id].description,
+          start_time24: slotTimesResponse.start24,
+          end_time24: slotTimesResponse.end24,
         },
         occurrenceRec.slotData)
-      )
+      );
     }
   };
 
@@ -1939,14 +2128,14 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     // Add Holidays from the Greetings or Holidays Customization
     let today = makeDate(this_date);
     let mmdd = today.obs.slice(5);
-    let yymmdd = `${today.obs.slice(2,4)}.${mmdd}`;
+    let yymmdd = `${today.obs.slice(2, 4)}.${mmdd}`;
     if (holidays.hasOwnProperty(today.obs)) {
       response[this_date].events[`#greeting_${yymmdd}#`] = {
         description: holidays[today.obs],
         sort24: `0000-${holidays[today.obs]}`,
         slot_owners: [],
         type: 'holiday'
-      }
+      };
     }
     else if (holidays.hasOwnProperty(yymmdd)) {
       response[this_date].events[`#greeting_${yymmdd}#`] = {

@@ -224,6 +224,10 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
 
   function okToShow(this_event) {
     if (this_event.date === '29991231') { return false; }   // event was soft-deleted
+    if (reactData.defaultValues.hasOwnProperty('onlyRegistered')
+      && (!this_event.slot_owners.hasOwnProperty(person_id))) {
+      return false;
+    }
     if (!reactData.filterTextLower) {
       return true;
     }
@@ -536,7 +540,7 @@ export default ({ myCalendar, person_id, peopleList, onClose, defaultValues = {}
                                 <Box display='flex' flexDirection='column'
                                   justifyContent='flex-start' alignItems='center'
                                   color={(myCalendar[this_date].events[this_event].slot_owners.hasOwnProperty(state.session.patient_id))
-                                    ? (isDarkMode ? '#BB86FC' : 'red')
+                                    ? (isDarkMode ? '#BB86FC' : '#38A028')
                                     : reactData.calendar_fill_text
                                   }
                                 >

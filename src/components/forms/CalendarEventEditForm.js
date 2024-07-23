@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 import { makeDate, makeTime } from '../../util/AVADateTime';
-import { getSlotList, writeSlot, makeSlotName, printOccurrenceSheet } from '../../util/AVACalendars';
+import { getSlotList, writeSlot, makeSlotName, myAvailability, printOccurrenceSheet } from '../../util/AVACalendars';
 import { getMemberList } from '../../util/AVAGroups';
 import { cl, makeArray, dbClient, isEmpty } from '../../util/AVAUtilities';
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
@@ -239,7 +239,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
   };
 
   const setChoices = async (pGroups) => {
-    if (reactData.choiceList.length > 0) { return; }
+    // if (reactData.choiceList.length > 0) { return; }
     let response = [];
     let gList = [];
     if (Array.isArray(pGroups)) {
@@ -275,19 +275,36 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
       if (p.messaging) {
         searchString += Object.values(p.messaging).join(' ');
       }
-      // list is of the form <name>:<id>:<search_string>
+      // list is of the form <name>%%<id>%%<search_string>
       try {
         mInfo = `${p.name.last}, ${p.name.first}`;
-        if (reactData.signUpObject && reactData.signUpObject.hasOwnProperty(p.person_id)) {
-          mInfo += ` (${reactData.signUpObject[p.person_id].length} scheduled)`;
+        let conflictInfo = '';
+        if (reactData.signUpObject.hasOwnProperty(p.person_id)) {
+          reactData.signUpObject[p.person_id].forEach(o => {
+            if (o.occurrence_date === pOccData.date) {
+              let timeText = '';
+              if ((o.start_time24 === 0) && (o.end_time24 === 2359)) {
+                timeText += 'All day';
+              }
+              else {
+                if (o.start_time24 === 0) {
+                  timeText += 'Until';
+                }
+                else {
+                  timeText += `${makeTime(o.start_time24).short}`;
+                }
+                if (o.end_time24 !== 2359) {
+                  timeText += `-${makeTime(o.end_time24).short}`;
+                }
+              }
+              conflictInfo += `${conflictInfo ? '; ' : ''}${timeText} ${o.event_description}`;
+            }
+          });
+          if (conflictInfo) {
+            mInfo += ` (${conflictInfo})`;
+          }
         }
-        mInfo += `:${p.person_id}:${searchString}`;
-        if (reactData.signUpObject.hasOwnProperty(p.person_id) &&
-          reactData.signUpObject[p.person_id].some(o => {
-            return (o.occurrence_date === pOccData.date);
-          })) {
-          mInfo += '**CONFLICT**';
-        }
+        mInfo += `%%${p.person_id}%%${searchString}${conflictInfo ? '**CONFLICT**' : ''}`;
         response.push(mInfo);
       }
       catch (error) {
@@ -371,7 +388,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
     let whereToGo = -1;
     pPerson = makeArray(body.person);
     for (let p = 0; p < pPerson.length; p++) {
-      let nArray = pPerson[p].split(':');
+      let nArray = pPerson[p].split('%%');
       if (body.slot) { pSlot = body.slot; }
       else { pSlot = nArray[Math.min(1, nArray.length - 1)]; }
       let newPersonName, newPersonID;
@@ -956,6 +973,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             {eventSlotList && eventSlotList.length > 0 && eventSlotList.map((this_item, index) => (
               (!this_item.slotData.hasOwnProperty('show_this_slot') || this_item.slotData.show_this_slot) &&
               <Box display='flex' flexDirection='row' alignItems='center'
+                key={`slotLine_${index}`}
                 minHeight={50}
                 justifyContent={'space-between'} my={1} pl={2}
               >
@@ -1175,7 +1193,8 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
         </Paper>
         {selectNewSlotOwner &&
           <PersonFilter
-            prompt={'Who are you adding?'}
+            prompt={`Who are you adding${eventSlotList[reactData.editIndex]?.slotData?.slot_description ? (' for ' + eventSlotList[reactData.editIndex].slotData.slot_description) : ''}?`}
+            splitter={'%%'}
             peopleList={reactData.choiceList}
             multiSelect={!editSlot}
             onCancel={() => {
@@ -1183,16 +1202,19 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             }}
             onSelect={async (selectedPerson) => {
               setSelectNewSlotOwner(false);
-              let nArray = selectedPerson.split(':');
+              let nArray = selectedPerson.split('%%');
               let pID = nArray[Math.min(1, nArray.length - 1)];
-              if (!reactData.signUpObject.hasOwnProperty(pID)) {
-                reactData.signUpObject[pID] = [];
-              }
-              reactData.signUpObject[pID].push(eventSlotList[reactData.editIndex]);
-              updateReactData({
-                signUpObject: reactData.signUpObject
-              }, false);
+              let availability_list = await (myAvailability(
+                {
+                  check_date: pOccData.date,
+                  check_person_id: pID,
+                  check_client: state.session.client_id
+                }
+              ));
+              console.log(availability_list);              
               let slotObj = { person: selectedPerson };
+              let newSlotStart24;
+              let newSlotEnd24;
               if (editSlot) {
                 let listIndex = reactData.editIndex;
                 if (!reactData.editIndex && (reactData.editIndex !== 0)) {
@@ -1203,11 +1225,30 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                 if ((listIndex < 0) || (!listIndex && (listIndex !== 0))) {   // no assigned slot
                   slotObj.slot = selectedPerson.person_id;
                   slotObj.index = eventSlotList.length;
+                  newSlotStart24 = 0;
+                  newSlotEnd24 = 2359;
                 }
                 else {
                   slotObj.slot = eventSlotList[listIndex].slotData.id;
                   slotObj.index = listIndex;
+                  newSlotStart24 = eventSlotList[listIndex].slotData.slot_start_time24;
+                  newSlotEnd24 = eventSlotList[listIndex].slotData.slot_end_time24;
                 }
+                if (!reactData.signUpObject.hasOwnProperty(pID)) {
+                  reactData.signUpObject[pID] = [];
+                }
+                reactData.signUpObject[pID].push(Object.assign({},
+                  {
+                    occurrence_date: pOccData.occurrence_date,
+                    event_id: pOccData.event_id,
+                    event_description: pOccData.description,
+                    start_time24: newSlotStart24,
+                    end_time24: newSlotEnd24
+                  },
+                ));
+                updateReactData({
+                  signUpObject: reactData.signUpObject
+                }, false);
               }
               await handleAllocateSlot(slotObj);
             }}
@@ -1217,7 +1258,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
         {reactData.promptForMessage &&
           (reactData.messageType !== 'group') &&
           <MakeMessage
-            titleText={`Message to ${reactData.recipient.split(':')[0]}`}
+            titleText={`Message to ${reactData.recipient.split('%%')[0]}`}
             promptText={['Subject', `What should your message say?`]}
             promptUse={['subject', 'message']}
             seedText={[
@@ -1230,8 +1271,8 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
               "patient_id": state.session.patient_id,
               "patient_display_name": state.session.patient_display_name
             }}
-            pRecipientID={reactData.recipient.split(':')[1]}
-            pRecipientName={reactData.recipient.split(':')[0]}
+            pRecipientID={reactData.recipient.split('%%')[1]}
+            pRecipientName={reactData.recipient.split('%%')[0]}
             onCancel={() => {
               updateReactData({
                 promptForMessage: false
@@ -1262,8 +1303,8 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
               "patient_id": state.session.patient_id,
               "patient_display_name": state.session.patient_display_name
             }}
-            pRecipientID={Array.isArray(reactData.recipient) ? reactData.recipient.map(r => { return r.split(':')[1]; }) : [reactData.recipient.split(':')[1]]}
-            pRecipientName={Array.isArray(reactData.recipient) ? reactData.recipient.map(r => { return r.split(':')[0]; }) : [reactData.recipient.split(':')[0]]}
+            pRecipientID={Array.isArray(reactData.recipient) ? reactData.recipient.map(r => { return r.split('%%')[1]; }) : [reactData.recipient.split('%%')[1]]}
+            pRecipientName={Array.isArray(reactData.recipient) ? reactData.recipient.map(r => { return r.split('%%')[0]; }) : [reactData.recipient.split('%%')[0]]}
             onCancel={() => {
               updateReactData({
                 promptForMessage: false
@@ -1381,7 +1422,8 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
           <PersonFilter
             prompt={'Assign to whom?'}
             peopleList={reactData.choiceList}
-            multiSelect={false}
+          multiSelect={false}
+          splitter={'%%'}
             onCancel={() => {
               updateReactData({
                 selectAssignTo: false,
@@ -1390,7 +1432,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
             }}
             onSelect={async (selectedPerson) => {
               let currentTime = makeDate(new Date());
-              let assigned_to = selectedPerson.split(':')[1];
+              let assigned_to = selectedPerson.split('%%')[1];
               let assigned_to_name = await makeName(assigned_to);
               let putSR = {
                 client: state.session.client_id,

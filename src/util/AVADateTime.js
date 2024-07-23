@@ -508,12 +508,21 @@ export function makeTime(pTime) {
     }
     else {
         if (typeof (pTime) === 'string') {
-            inTime = pTime;
-            if (inTime.includes('p')) { ampm = 'pm'; }
-            else if (inTime.includes('a')) { ampm = 'am'; };
-            [hh$, mm$] = inTime.split(':');
-            hh = Number(hh$.replace(/\D+/g, ''));
-            if ((ampm === 'pm') && (hh < 12)) { hh += 12; }
+            if (pTime.replace(/\D+/g, '') === '') {
+                ampm = 'am';
+                hh = 0;
+                mm$ = '00';
+                mm = 0;
+            }
+            else {
+                inTime = pTime.toLowerCase();
+                if (inTime.includes('pm')) { ampm = 'pm'; }
+                else if (inTime.includes('am')) { ampm = 'am'; };
+                [hh$, mm$] = inTime.split(':');
+                hh = Number(hh$.replace(/\D+/g, ''));
+                if ((ampm === 'am') && (hh === 12)) { hh = 0; }
+                else if ((ampm === 'pm') && (hh < 12)) { hh += 12; }
+            }
         }
         else { hh = pTime; }
         if (hh > 100) {
@@ -530,18 +539,22 @@ export function makeTime(pTime) {
         if (hh >= 23) {
             hh = hh % 24;
         }
-        if (hh >= 12) {
+        if (hh > 12) {
             hh -= 12;
             ampm = 'pm';
         }
-        if (hh === 0) {
-            hh = 12;
+        else if (hh === 12) {
             ampm = 'pm';
+        }
+        else if (hh === 0) {
+            hh = 12;
+            ampm = 'am';
         }
     }
     if (!ampm) { ampm = ((hh >= 0) && (hh < 12)) ? 'am' : 'pm'; }
     let numeric24;
     if ((ampm === 'pm') && (hh < 12)) { numeric24 = ((hh + 12) * 100) + mm; }
+    else if ((ampm === 'am') && (hh === 12)) { numeric24 = mm; }
     else { numeric24 = (hh * 100) + mm; }
     let dayPart;
     if (numeric24 < 1200) { dayPart = "morning"; }
