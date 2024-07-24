@@ -432,7 +432,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     reset();
   };
 
-  const { start, reset } = useIdleTimer({
+  const { start, reset, pause } = useIdleTimer({
     onIdle,
     onAction,
     timeout: msBeforeSleeping,
@@ -1296,6 +1296,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 <MenuItem onClick={async () => {
                   setGroupData(state.groups);
                   setPopupMenuOpen(false);
+                  pause()
                   setShowAddAccount(true);
                 }}>
                   <Box
@@ -1715,7 +1716,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }}
             groupData={groupData}
             open={true}
-            onClose={() => {
+          onClose={() => {
+              reset()
               setShowAddAccount(false);
             }}
           />
