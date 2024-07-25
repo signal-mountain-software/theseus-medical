@@ -308,10 +308,23 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
       return v;
     }
     let foundIt = selectionList[ndx].find(s => {
-      return (s.value.toLowerCase().trim() === v.toLowerCase().trim());
+      if (typeof (s) === 'string') {
+        return (s.toLowerCase().trim() === v.toLowerCase().trim());
+      }
+      else if (s.hasOwnProperty('value')) {
+        return (s.value.toLowerCase().trim() === v.toLowerCase().trim());
+      }
+      else {
+        return false;
+      }
     });
     if (foundIt) {
-      return (foundIt.key || foundIt.label || foundIt.display);
+      if (typeof (foundIt) === 'string') {
+        return foundIt;
+      }
+      else {
+        return (foundIt.key || foundIt.label || foundIt.display);
+      }
     }
     return '';
   });

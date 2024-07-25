@@ -2,10 +2,11 @@ import React from 'react';
 
 import { useSnackbar } from 'notistack';
 
-import { getCalendarEntries } from '../../util/AVACalendars';
-import { makeTime } from '../../util/AVADateTime';
-import { isEmpty, isObject } from '../../util/AVAUtilities';
-import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
+import { makeTime, addDays } from '../../util/AVADateTime';
+import { isEmpty, isObject, deepCopy } from '../../util/AVAUtilities';
+import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
+import { getGroupsBelongTo, getMemberList } from '../../util/AVAGroups';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -25,6 +26,8 @@ import CalendarEventEditForm from '../forms/CalendarEventEditForm';
 import Typography from '@material-ui/core/Typography';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import LinearProgress from '@material-ui/core/LinearProgress';
+
+import useSession from '../../hooks/useSession';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -94,6 +97,9 @@ const useStyles = makeStyles(theme => ({
   listItemAVA: {
     fontSize: theme.typography.fontSize * 1.5,
   },
+  client_background: {
+    backgroundColor: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_background : null
+  },
   idText: {
     fontSize: theme.typography.fontSize * 0.8,
     marginTop: 10,
@@ -110,25 +116,34 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const [showAll, setShowAll] = React.useState(true);
 
   const { enqueueSnackbar } = useSnackbar();
+  const { state } = useSession();
 
   let defaultValues = Object.assign({}, ...currentEvent);
   let eList = currentEvent.find(e => {
     return e.hasOwnProperty('eventList');
-  })
+  });
 
   const [reactData, setReactData] = React.useState({
     start_date: 0,
-    end_date: 'today',
+    end_date: 0,
     defaultValues: defaultValues,
     selectedEvent: (currentEvent && !isObject(currentEvent[0]) ? currentEvent[0] : ''),
     myCalendar: ((isEmpty(currentEvent) || !eList) ? [] : eList.eventList),
-    loading: false
+    loading: ((currentEvent && !isObject(currentEvent[0])) || isEmpty(eList) || (eList && eList.eventList.loadError))
   });
 
-  const [statusMessage, setStatusMessage] = React.useState('Initializing');
-  const [progress, setProgress] = React.useState(100);
-  const [pWidth, setPWidth] = React.useState(60);
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
+
+  const [statusMessage, setStatusMessage] = React.useState('Initializing');
+  const [progress, setProgress] = React.useState(1);
+  const [pWidth, setPWidth] = React.useState(60);
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -143,6 +158,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     setStatusMessage(statusMessage);
     setProgress(progressPct);
     setPWidth(progressWidth);
+    console.log(statusMessage, progressWidth, progressPct);
     setForceRedisplay(!forceRedisplay);
   };
 
@@ -276,11 +292,87 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           enqueueSnackbar(`AVA couldn't load that event`, { variant: 'error' });
         }
         else {
-          reactData.myCalendar = calendarEntry;
-          setReactData(reactData);
-          setForceRedisplay(forceRedisplay => !forceRedisplay);
+          updateReactData({
+            myCalendar: calendarEntry
+          }, true);
+        }
+        return;
+      }
+      if (reactData.myCalendar && !reactData.myCalendar.loadError && reactData.birthdayList) {
+        return;
+      }
+      let oList = {};
+      if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError) {
+        let rightNow = new Date();
+        let belongsTo = await getGroupsBelongTo(patient.client_id, patient.patient_id, { sort: true });
+        oList = await getAllOccurrences(
+          {
+            client_id: patient.client_id,
+            this_person: patient.patient_id,
+            start_date: rightNow,
+            end_date: addDays(rightNow, 35),
+            filter: { group: belongsTo }
+          }, onStatusUpdate
+        );
+      }
+      else {
+        oList = deepCopy(reactData.myCalendar);
+      }
+      if (!reactData.birthdayList) {
+        if (state.accessList && state.accessList.birthdayList) {
+          for (let keyDate in state.accessList.birthdayList) {
+            if (oList.hasOwnProperty(keyDate)) {
+              state.accessList.birthdayList[keyDate].forEach(p => {
+                oList[keyDate].events[`#birthday_${p.person_id}#`] = {
+                  description: `Happy Birthday ${p.display_name}`,
+                  sort24: `0000z-${p.display_name}`,
+                  slot_owners: [],
+                  type: 'birthday'
+                };
+              });
+            }
+          }
+        }
+        else {
+          let allPeople = await getMemberList('*all', patient.client_id, {});
+          let this_year = new Date().getFullYear();
+          let next_year = this_year + 1;
+          allPeople.peopleList.forEach(p => {
+            if (p.local_data?.['date of birth']) {
+              let keyDate;
+              let bDay = `${this_year}${p.local_data['date of birth'].slice(4)}`;
+              if (oList.hasOwnProperty(bDay)) {
+                keyDate = bDay;
+              }
+              else {
+                bDay = `${next_year}${p.local_data['date of birth'].slice(4)}`;
+                if (oList.hasOwnProperty(bDay)) {
+                  keyDate = bDay;
+                }
+              }
+              if (keyDate) {
+                oList[keyDate].events[`#birthday_${p.person_id}#`] = {
+                  description: `Happy Birthday ${p.name.first} ${p.name.last}`,
+                  sort24: `0000z-${p.name.first} ${p.name.last}`,
+                  slot_owners: [],
+                  type: 'birthday'
+                };
+              }
+            }
+          });
         }
       }
+      let reactUpdObj = {
+        myCalendar: oList,
+        birthdayList: true,
+        loading: false
+      };
+      let client_style = AVADefaults({ client_style: 'get' });
+      if (isObject(client_style)) {
+        reactUpdObj.calendar_background = client_style.calendar_background;
+        reactUpdObj.calendar_day = client_style.calendar_day;
+      }
+      updateReactData(reactUpdObj, true);
     }
     initialize();
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -294,6 +386,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           open={!!calendarMode}
           onClose={handleAbort}
           TransitionComponent={Transition}
+          classes={{ paper: classes.client_background }}
           fullScreen
         >
           <Box
@@ -355,7 +448,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
             </DialogContent>
           }
           {!reactData.loading &&
-            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
               <CalendarForm
                 myCalendar={reactData.myCalendar}
                 person_id={patient.patient_id}
@@ -366,7 +458,6 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 }}
                 defaultValues={reactData.defaultValues}
               />
-            </DialogContent>
           }
           <DialogActions style={{ justifyContent: 'center' }}>
             {reactData.myCalendar && reactData.myCalendar.length > 0 &&

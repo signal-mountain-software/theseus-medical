@@ -42,6 +42,7 @@ export function makeDate(pInput, options = {}) {
             'dayPart': 'day',   // afternoon
             'workingHours': 'day',   // day, night, weekend
             'dayOfWeek': 0,    // Sun = 0, Mon = 1, ... , Sat = 6
+            'dayOfWeek_word': 'Sunday',
             'weekday': '',   // 'weekend' or 'weekday' 
             'textOut': pInput
         };
@@ -49,6 +50,9 @@ export function makeDate(pInput, options = {}) {
     let originalInput = pInput;
     let targetDateStamp, targetDate;
     if (pInput instanceof Date) {
+        if (options.noTime) {
+            pInput.setHours(0, 0, 0, 0);
+        }
         targetDateStamp = pInput.getTime();
         targetDate = new Date(pInput);
     }
@@ -105,6 +109,7 @@ export function makeDate(pInput, options = {}) {
                 'dayPart': 'day',
                 'workingHours': `${pInput} is not a valid date`,
                 'dayOfWeek': 9,
+                'dayOfWeek_word': 'invalid',
                 'weekday': 'invalid', 
                 'textOut': pInput
             };
@@ -151,9 +156,17 @@ export function makeDate(pInput, options = {}) {
                 'dayPart': 'day',
                 'workingHours': foundError,
                 'dayOfWeek': 9,
+                'dayOfWeek_word': 'invalid',
                 'weekday': 'invalid',
                 'textOut': pInput
             };
+        }
+    }
+
+    // force this date to be in the future
+    if (options.forceForward) {
+        if (targetDate < currentDate) {
+            targetDate.setFullYear(currentDate.getFullYear() + 1)
         }
     }
    
@@ -275,6 +288,7 @@ export function makeDate(pInput, options = {}) {
         'dayPart': dayPart,
         'workingHours': workingHours,
         'dayOfWeek': targetDate.getDay(),
+        'dayOfWeek_word': `${targetDate.toLocaleString([], { weekday: 'long' })}`,
         'weekday': (((targetDate.getDay() % 6) === 0) ? 'weekend' : 'weekday'),
         'textOut': pInput
     };
@@ -494,12 +508,21 @@ export function makeTime(pTime) {
     }
     else {
         if (typeof (pTime) === 'string') {
-            inTime = pTime;
-            if (inTime.includes('p')) { ampm = 'pm'; }
-            else if (inTime.includes('a')) { ampm = 'am'; };
-            [hh$, mm$] = inTime.split(':');
-            hh = Number(hh$.replace(/\D+/g, ''));
-            if ((ampm === 'pm') && (hh < 12)) { hh += 12; }
+            if (pTime.replace(/\D+/g, '') === '') {
+                ampm = 'am';
+                hh = 0;
+                mm$ = '00';
+                mm = 0;
+            }
+            else {
+                inTime = pTime.toLowerCase();
+                if (inTime.includes('pm')) { ampm = 'pm'; }
+                else if (inTime.includes('am')) { ampm = 'am'; };
+                [hh$, mm$] = inTime.split(':');
+                hh = Number(hh$.replace(/\D+/g, ''));
+                if ((ampm === 'am') && (hh === 12)) { hh = 0; }
+                else if ((ampm === 'pm') && (hh < 12)) { hh += 12; }
+            }
         }
         else { hh = pTime; }
         if (hh > 100) {
@@ -516,18 +539,22 @@ export function makeTime(pTime) {
         if (hh >= 23) {
             hh = hh % 24;
         }
-        if (hh >= 12) {
+        if (hh > 12) {
             hh -= 12;
             ampm = 'pm';
         }
-        if (hh === 0) {
-            hh = 12;
+        else if (hh === 12) {
             ampm = 'pm';
+        }
+        else if (hh === 0) {
+            hh = 12;
+            ampm = 'am';
         }
     }
     if (!ampm) { ampm = ((hh >= 0) && (hh < 12)) ? 'am' : 'pm'; }
     let numeric24;
     if ((ampm === 'pm') && (hh < 12)) { numeric24 = ((hh + 12) * 100) + mm; }
+    else if ((ampm === 'am') && (hh === 12)) { numeric24 = mm; }
     else { numeric24 = (hh * 100) + mm; }
     let dayPart;
     if (numeric24 < 1200) { dayPart = "morning"; }
@@ -545,6 +572,7 @@ export function makeTime(pTime) {
         mm,
         ampm,
         numeric24,
+        string24: `0000${numeric24}`.slice(-4),
         dayPart
     };
 }

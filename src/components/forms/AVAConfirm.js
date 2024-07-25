@@ -1,7 +1,6 @@
 import React from 'react';
 
 import Dialog from '@material-ui/core/Dialog';
-import DialogActions from '@material-ui/core/DialogActions';
 import Box from '@material-ui/core/Box';
 import Paper from '@material-ui/core/Paper';
 
@@ -19,6 +18,9 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(2),
     fontSize: theme.typography.fontSize * 1.5,
     fontWeight: 'bold',
+  },
+  radius_rounded: {
+    borderRadius: '30px'
   },
   page: {
     paddingTop: theme.spacing(2),
@@ -91,6 +93,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       key={`confirm-dialog`}
       id={`confirm-dialog`}
       open={true}
+      classes={{ paper: classes.radius_rounded }}
       fullWidth
       p={2}
     >
@@ -101,7 +104,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       >
         <Typography
           style={AVATextStyle({
-            margin: { top: 3, right: 2 },
+            margin: { top: 2, right: 2 },
             size: 1.5,
             bold: true,
             color: (promptLines[0].includes('[color:') ? promptLines[0].split(/.*\[color:/)[1].split(']')[0] : null)
@@ -159,7 +162,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
             : null)
         ))}
       </Paper>
-      <DialogActions style={{ justifyContent: 'center' }}>
+      <Box display='flex' mx={2} flexDirection='row' justifyContent='space-between' alignItems='center' >
         {(cancelText !== '*none*') &&
           <Button
             className={AVAClass.AVAButton}
@@ -184,7 +187,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
             {confirmText}
           </Button>
         }
-      </DialogActions>
+      </Box>
     </Dialog>
   );
 };

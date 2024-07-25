@@ -94,8 +94,12 @@ export const AVAclasses = makeStyles(theme => ({
 export const AVADefaults = (options = {}) => {
     let returnObj = {};
     for (let key in options) {
-        if (options[key] === 'get') { returnObj[key] = remembered[key]; }
-        else { remembered[key] = options[key]; }
+        if (options[key] === 'get') {
+            returnObj[key] = remembered[key];
+        }
+        else {
+            remembered[key] = options[key];
+        }
     }
     let oKey = Object.keys(returnObj);
     switch (oKey.length) {
@@ -203,7 +207,7 @@ export function AVATextStyle(options = {}) {
 export function AVATextVariableStyle(outText, options = {}) {
     let returnStyle = AVATextStyle(options);
     let user_fontSize = AVADefaults({ fontSize: 'get' }) * (options.size || 1);
-    returnStyle.fontSize = `${user_fontSize * (50 / Math.max(50, outText.length * user_fontSize * (600 / window.innerWidth)))}rem`;
+    returnStyle.fontSize = `${user_fontSize * (50 / Math.max(50, (outText ? outText.length : 1) * user_fontSize * (600 / window.innerWidth)))}rem`;
     return returnStyle;
 }
 
@@ -220,7 +224,7 @@ export function hexToRgb(hex, opacity = 1) {
     throw new Error('Bad Hex');
 }
 
-export function isDark(hex) {
+export function isDark(hex) {    // report if this hex color is dark (to correct overlaid content when necessary)
     var h = hex.substring(1);      // strip #
     var rgb = parseInt(h, 16);   // convert rrggbb to decimal
     var r = (rgb >> 16) & 0xff;  // extract red

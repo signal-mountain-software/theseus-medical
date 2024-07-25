@@ -92,6 +92,7 @@ export default ({
   onSelect,
   allowRandom,
   multiSelect = false,
+  splitter = ':',
   alreadyChecked,
   returnValue = 'ID'        // returnValue = 'object' returns object with {id: name, id: name, ...}
 }) => {
@@ -122,7 +123,7 @@ export default ({
   };
 
   async function toggleCheck(pIn) {
-    let [pName, pKey] = pIn.split(':');
+    let [pName, pKey] = pIn.split(splitter);
     if (!pName) {
       pName = await makeName(pKey);
     }
@@ -191,8 +192,9 @@ export default ({
   }
 
   function makeFirstName(pString) {
-    let pName = pString.split(':')[0];
-    let ans = pName.split(/[:,]/g);
+    let pName = pString.split(splitter)[0];
+    const regex = new RegExp(`[${splitter},]`, 'g');
+    let ans = pName.split(regex);
     switch (ans.length) {
       case 3: { return ans[2].trim(); }
       case 2: {
@@ -209,8 +211,9 @@ export default ({
   }
 
   function makeLastName(pString) {
-    let pName = pString.split(':')[0];
-    let ans = pName.split(/[:,]/g);
+    let pName = pString.split(splitter)[0];
+    const regex = new RegExp(`[${splitter},]`, 'g');
+    let ans = pName.split(regex);
     switch (ans.length) {
       case 3: { return `${ans[0].trim()}, ${ans[1].trim()}`; }
       case 2: {
@@ -279,7 +282,7 @@ export default ({
                 key={'person-list_' + x}
                 onClick={async () => {
                   if (!multiSelect) {
-                    if (returnValue === 'id') { onSelect(listEntry.split(':')[1]); }
+                    if (returnValue === 'id') { onSelect(listEntry.split(splitter)[1]); }
                     else { onSelect(listEntry); }
                   }
                   else {
@@ -297,7 +300,7 @@ export default ({
                     <Checkbox
                       edge='start'
                       mr={1}
-                      checked={isChecked(listEntry.split(':')[1])}
+                      checked={isChecked(listEntry.split(splitter)[1])}
                       disableRipple
                       key={'checkbox' + x}
                       onClick={async () => {
@@ -315,21 +318,27 @@ export default ({
                     minHeight={50}
                     maxHeight={50}
                     alt=''
-                    src={getImage(listEntry.split(':')[1])}
+                    src={getImage(listEntry.split(splitter)[1])}
                   />
-                  {!listEntry.split(':')[1].startsWith('GRP//') ?
+                  {!listEntry.split(splitter)[1].startsWith('GRP//') ?
                     <Box display='flex' flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                      <Typography style={AVATextVariableStyle(makeLastName(listEntry), { bold: true })}>{`${makeLastName(listEntry)}`}</Typography>
-                      <Typography style={AVATextVariableStyle(makeFirstName(listEntry), { size: 0.8 })}>{makeFirstName(listEntry)}</Typography>
+                      <Typography style={AVATextVariableStyle(makeLastName(listEntry), { bold: true, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
+                        {`${makeLastName(listEntry)}`}
+                      </Typography>
+                      <Typography style={AVATextVariableStyle(makeFirstName(listEntry), { size: 0.8, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
+                        {makeFirstName(listEntry)}
+                      </Typography>
                       {(x > 0) && (x < (peopleList.length - 1)) &&
-                        ((peopleList[x - 1].split(':')[0] === listEntry.split(':')[0])
-                          || (peopleList[x + 1].split(':')[0] === listEntry.split(':')[0])) &&
-                        <Typography style={AVATextVariableStyle(listEntry.split(/[:]/)[1], { size: 0.8 })}>({listEntry.split(/[:]/)[1]})</Typography>
+                        ((peopleList[x - 1].split(splitter)[0] === listEntry.split(splitter)[0])
+                          || (peopleList[x + 1].split(splitter)[0] === listEntry.split(splitter)[0])) &&
+                        <Typography style={AVATextVariableStyle(listEntry.split(/[:]/)[1], { size: 0.8, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
+                          ({listEntry.split(/[:]/)[1]})
+                        </Typography>
                       }
                     </Box>
                     :
                     <Box display='flex' flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                      <Typography style={AVATextVariableStyle(listEntry.split(':')[0], { bold: true, color: 'red' })}>{listEntry.split(':')[0]}</Typography>
+                      <Typography style={AVATextVariableStyle(listEntry.split(splitter)[0], { bold: true, color: 'red' })}>{listEntry.split(splitter)[0]}</Typography>
                       <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>(GROUP)</Typography>
                     </Box>
                   }

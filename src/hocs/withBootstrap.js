@@ -1192,6 +1192,7 @@ export default Component => props => {
         if (recordExists(customizationsRec)) {
           for (let c = 0; c < customizationsRec.Items.length; c++) {
             let cRec = customizationsRec.Items[c];
+            AVADefaults({ [cRec.custom_key]: cRec.customization_value });
             switch (cRec.custom_key) {
               case 'logo': {
                 currentSession.client_logo = cRec.icon;
@@ -1261,6 +1262,7 @@ export default Component => props => {
     }
 
     belongsTo = await getGroupsBelongTo(currentSession.client_id, currentSession.patient_id, { sort: true });
+    dispatch({ type: SET_GROUPS, payload: Object.assign({}, { belongsTo }) });
 
     currentSession.adminAccount = false;
     if (currentProfile.account_class) {
@@ -1338,13 +1340,15 @@ export default Component => props => {
     let dPromise = getAllOccurrences(
       {
         client_id: pSession.client_id,
+        this_person: pSession.patient_id,
         start_date: rightNow,
-        end_date: addDays(rightNow, 90)
+        end_date: addDays(rightNow, 35),
+        filter: { group: belongsTo },
       },
     ).then(occList => {
       dispatch({ type: SET_CALENDAR, payload: occList });
       bootState.calendar = occList;
-      console.log(`done with loadSyncInfo Calendar. Loaded ${occList.length} ocurrence`);
+      console.log(`done with loadSyncInfo Calendar. Loaded ${Object.keys(occList).length - 1} dates`);
     })
       .catch(error => {
         console.log(`error in loadSyncInfo Calendar. Message is ${error.message}`);
