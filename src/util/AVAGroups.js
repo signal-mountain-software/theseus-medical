@@ -200,7 +200,9 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                   }
                 }
               }
-              if (myGroupAccessLevel[g] > myMaxAccessLevelToThisPerson) { myMaxAccessLevelToThisPerson = myGroupAccessLevel[g]; }
+              if (myGroupAccessLevel[g] > myMaxAccessLevelToThisPerson) {
+                myMaxAccessLevelToThisPerson = myGroupAccessLevel[g];
+              }
             }
           }
         }
