@@ -400,13 +400,13 @@ export default Component => props => {
               maxHeight={250}
               borderColor={'black'}
               border={2}
-              style={{ borderRadius: '120px 120px 120px 120px', backgroundColor: 'white', textDecoration: 'none' }}
+              style={{ borderRadius: '120px 120px 120px 120px', overflow: 'hidden', backgroundColor: 'white', textDecoration: 'none' }}
             >
               <Box
                 component="img"
                 mb={2}
-                minHeight={'35%'}
-                maxHeight={'35%'}
+                minHeight={'60%'}
+                maxHeight={'60%'}
                 alt=''
                 src={reactData.currentClientLogo}
               />

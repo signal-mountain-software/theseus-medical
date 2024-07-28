@@ -151,13 +151,16 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     let response = {};
     for (let x = 0; x < gList.length; x++) {
       let g = gList[x];
-      if ((g.level > 0) && (selectAll || pGroupList.includes(g.id))) {
+      if ((g.level > 0) && (selectAll || pGroupList.includes(g.id) || pGroupList.includes(g.belongs_to))) {
         response[g.id] = {
           group_name: g.name,
           group_id: g.id,
           role: await getRole(g.id, state.session.person_id),
           level: g.level
         };
+        if (!pGroupList.includes(g.id)) {
+          pGroupList.push(g.id);
+        }
       }
     }; 
     for (let gID in state.groups.publicGroups) {
