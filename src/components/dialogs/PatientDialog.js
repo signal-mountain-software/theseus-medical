@@ -179,7 +179,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   const [changes, setChanges] = React.useState(false);
   const [showQuestionMark, setShowQuestionMark] = React.useState(false);
   const [photoChanges, setPhotoChanges] = React.useState(false);
-  const [resettingPwd, setResettingPwd] = React.useState(false);
+  const [resettingPwd, setResettingPwd] = React.useState(0);
   const [pwdConfirmed, setPwdConfirmed] = React.useState(false);
   const [fontFactorChanged, setFontFactorChanged] = React.useState(false);
 
@@ -191,7 +191,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   const { state } = useSession();
 
   const [user_fontSize, setUserFontSize] = React.useState(1);
-  const [fontFactor, ] = React.useState(1);
+  const [fontFactor,] = React.useState(1);
 
   const AWS = require('aws-sdk');
   AWS.config.update({ region: 'us-east-1' });
@@ -275,7 +275,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
           location: (localPersonRec.location || ''),
           sessionClient: (targetSession.client_id || '#need'),
           sessionPatient: (targetSession.patient_id || '#need'),
-          inputPWD: (targetSession.last_login || 'password'),
+          inputPWD: (targetSession.last_login || 'password'),  // localData.storePassword ? localData.inputPWD : ''}
+          PWDDisplayed: (targetSession.last_login ? (targetSession.storePassword ? targetSession.last_login : '*****') : 'password'),
           priority_activities: localPersonRec.priority_activities,
           favorite_activities: localPersonRec.favorite_activities,
           favorite_blocked: localPersonRec.favorite_blocked,
@@ -450,7 +451,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   };
 
   const handleAbort = () => {
-    setResettingPwd(false);
+    setResettingPwd(0);
     setPwdConfirmed(false);
     localData.inputPWD = (patientSession ? (patientSession.last_login || 'password') : 'password');
     setChanges(false);
@@ -545,7 +546,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       account_class: localData.account_class || '',
       groups: patientGroups || ['inactive'],
       location: localData.location ? localData.location.replace(/,/g, '') : null,
-      pwdReset: resettingPwd,
+      pwdReset: !(resettingPwd === 0),
       newPassword: localData.inputPWD
     };
     let myClient = state.session.client_id;
@@ -586,7 +587,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       },
       groups: patientGroups || ['inactive'],
       location: localData.location ? localData.location.replace(/,/g, '') : null,
-      pwdReset: resettingPwd,
+      pwdReset: !(resettingPwd === 0),
       newPassword: localData.inputPWD
     };
     updatePerson.messaging = putPerson.messaging;
@@ -598,7 +599,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       })
       .promise()
       .catch(error => { cl(`caught error updating People; error is:`, error); });
-     
+
     let updateString = 'newData.' + JSON.stringify(updatePerson);
     cl(updatePerson);
     let newFactData = {
@@ -633,11 +634,11 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     else {
       sessionRec.patient_id = localData.patient_id;
     }
-    if (localData.last_login && !resettingPwd) {
-      sessionRec.last_login = (localData.storePassword ? localData.last_login : '<not retained>');
+    if (localData.last_login && (resettingPwd < 2)) {
+      sessionRec.last_login = localData.last_login;
     }
-    if (resettingPwd) {
-      sessionRec.last_login = (localData.storePassword ? localData.inputPWD : '<not retained>');
+    if (resettingPwd === 2) {
+      sessionRec.last_login = localData.inputPWD;
       sessionRec.password_change_date = new Date().toLocaleString();
     }
     sessionRec.requirePassword = localData.requirePassword;
@@ -665,113 +666,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
       })
       .promise()
       .catch(error => { cl(`caught error updating People; error is:`, error); });
+
     
-    /*
-    {
-    let attributeValues = {
-      ':s': JSON.stringify({
-        'version': `v${process.env.REACT_APP_AVA_VERSION}`,
-        'environment': window.location.href.split('//')[1].charAt(0).toUpperCase(),
-        'time': new Date().toString(),
-        'action': 'Updated Person record',
-        'source': 'patient_dialog'
-      })
-    };
-    let updateExpression = 'set #s = :s, ';
-    let attributeNames = { "#s": "status" };
-    if (responsibleArray) {
-      attributeValues[':r'] = responsibleArray;
-      updateExpression += 'responsible_for = :r, ';
-    }
-    if (proxy) {
-      attributeValues[':pid'] = proxy;
-      updateExpression += 'patient_id = :pid, ';
-    }
-    if (localData.last_login && !resettingPwd) {
-      attributeValues[':ll'] = (localData.storePassword ? localData.last_login : '<not retained>');
-      updateExpression += 'last_login = :ll, ';
-    }
-    if (resettingPwd) {
-      attributeValues[':ll'] = (localData.storePassword ? localData.inputPWD : '<not retained>');
-      attributeValues[':pcd'] = new Date().toLocaleString();
-      updateExpression += 'last_login = :ll, password_change_date = :pcd, ';
-    }
-    attributeValues[':rp'] = localData.requirePassword;
-    updateExpression += 'requirePassword = :rp, ';
-
-    attributeValues[':sp'] = localData.storePassword;
-    updateExpression += 'storePassword = :sp, ';
-
-    attributeValues[':ss'] = localData.subscription_status;
-    updateExpression += 'subscription_status = :ss, ';
-
-    if ((localData.sessionClient !== myClient) || (localData.sessionPatient !== patient.person_id)) {
-      attributeValues[':c'] = myClient;
-      updateExpression += 'client_id = :c, ';
-    }
-    if (localData.sessionPatient !== patient.person_id) {
-      attributeValues[':p'] = patient.person_id;
-      updateExpression += 'person_id = :p, user_id = :p, ';
-      if (!proxy) {
-        updateExpression += 'patient_id = :p, ';
-      }
-    }
-    if (fontFactorChanged) {
-      attributeValues[':f'] = fontFactor * user_fontSize;
-      attributeNames['#c'] = 'customizations';
-      attributeNames['#f'] = 'font_size';
-      updateExpression += '#c.#f = :f, ';
-    }
-    updateExpression = updateExpression.substring(0, updateExpression.length - 2);
-    
-    await dbClient
-      .update({
-        Key: { session_id: updatePerson.person_id },
-        UpdateExpression: updateExpression,
-        ExpressionAttributeValues: attributeValues,
-        ExpressionAttributeNames: attributeNames,
-        TableName: "SessionsV2",
-      })
-      .promise()
-      .catch(async (error) => {
-        let resolved = true;
-        if ((error.code === 'ValidationException') && fontFactorChanged) {
-          await dbClient
-            .update({
-              Key: { session_id: updatePerson.person_id },
-              UpdateExpression: 'set #c = :m',
-              ExpressionAttributeValues: { ':m': {} },
-              ExpressionAttributeNames: { '#c': 'customizations' },
-              TableName: "SessionsV2",
-            })
-            .promise()
-            .catch(error => {
-              resolved = false;
-              cl(`caught error updating SessionsV2; error is: `, error);
-            });
-          if (resolved) {
-            await dbClient
-              .update({
-                Key: { session_id: updatePerson.person_id },
-                UpdateExpression: updateExpression,
-                ExpressionAttributeValues: attributeValues,
-                ExpressionAttributeNames: attributeNames,
-                TableName: "SessionsV2",
-              })
-              .promise()
-              .catch(error => {
-                resolved = false;
-                cl(`caught error updating SessionsV2; error is: `, error);
-              });
-          }
-        }
-        else {
-          cl(`caught error updating SessionsV2; error is: `, error);
-        }
-      });
-    }
-    */
-
     // If we changed the person_id, make the original preon_id an inactive account
     if (putPerson.person_id !== patient.person_id) {
       let inactiveAssignment = state?.session?.group_assignments?.inactive;
@@ -819,7 +715,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
           enqueueSnackbar(`AVA couldn't save the photo.  The reason is ${err.message}`, { variant: 'error', persist: true });
         });
       cl(copy_response);
-      enqueueSnackbar(`ID changed to ${putPerson.person_id}.  Information updated!`, { variant: 'success', persist: false })
+      enqueueSnackbar(`ID changed to ${putPerson.person_id}.  Information updated!`, { variant: 'success', persist: false });
     }
     else {
       enqueueSnackbar(`Profile information updated!`, { variant: 'success', persist: false });
@@ -829,16 +725,16 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     patient.name.last = localData.lastName;
     setChanges(false);
     setPhotoChanges(false);
-    setResettingPwd(false);
+    setResettingPwd(0);
     setPwdConfirmed(false);
     onClose(updatePerson);
   };
 
-  const handleResetPassword1 = event => {
-    setResettingPwd(true);
+  const handleResetPassword1 = wipPassword => {
+    setResettingPwd(2);
     setPwdConfirmed(false);
     // setInputPWD('password');
-    localData.inputPWD = ((patientSession && patientSession.last_login) ? patientSession.last_login : 'password');
+    localData.inputPWD = wipPassword || ((patientSession && patientSession.last_login) ? patientSession.last_login : 'password');
   };
 
   const handleResetPassword2 = event => {
@@ -1033,6 +929,8 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
 
   const handleChangePassword = event => {
     localData.inputPWD = event.target.value;
+    localData.PWDDisplayed = event.target.value;
+    setResettingPwd((event.target.value.length > 0) ? 1 : 0);
     setRefreshTrigger(!refreshTrigger);
   };
 
@@ -1114,7 +1012,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             {(changes || pwdConfirmed || photoChanges) &&
               <Button
                 onClick={async () => {
-                    handleUpdate();
+                  handleUpdate();
                 }}
                 variant='contained'
                 className={classes.topButton}
@@ -1168,7 +1066,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                   onBlur={async (event) => { await handleBlurUser(event); }}
                   helperText='User ID'
                 />
-                {showQuestionMark && <HelpOutlineIcon sx={{alignSelf: 'start'}} />}
+                {showQuestionMark && <HelpOutlineIcon sx={{ alignSelf: 'start' }} />}
               </Box>
               <Box display='flex' alignItems='center'
                 justifyContent='flex-start' flexDirection='row'>
@@ -1609,19 +1507,63 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                   >
                     <Typography className={classes.lineTextWithTopMargin}>Require a password to log in?</Typography>
                     <Box flexGrow={2} display='flex' alignItems='center'
-                      justifyContent='flex-start' marginTop={-1} marginBottom={2} flexDirection='row'>
-                      <Typography className={localData.requirePassword ? classes.radioText : classes.radioTextBold}>Simplfied Log-in</Typography>
+                      justifyContent='flex-start' marginTop={-1} marginBottom={1} flexDirection='row'>
+                      <Typography className={localData.requirePassword ? classes.radioText : classes.radioTextBold}>Simplified Log-in</Typography>
                       <Switch
                         checked={!!localData.requirePassword}
-                        onChange={() => {
+                        onClick={() => {
                           localData.requirePassword = !localData.requirePassword;
                           setRefreshTrigger(!refreshTrigger);
                           setChanges(true);
-                        }} name="PWDrequired"
+                          setResettingPwd((localData.inputPWD.length > 0) ? 1 : 0);
+                        }}
+                        name="PWDrequired"
                         color="primary"
                       />
                       <Typography className={localData.requirePassword ? classes.radioTextBold : classes.radioText}>Password Required</Typography>
                     </Box>
+                    {localData.requirePassword &&
+                      <React.Fragment>
+                        <Box flexGrow={2} display='flex' alignItems='flex-start'
+                          justifyContent='flex-start' marginTop={1} marginBottom={2} flexDirection='column'>
+                            <TextField
+                              id='password'
+                            value={localData.PWDDisplayed}
+                              autoComplete='off'
+                              type='text'
+                              onChange={handleChangePassword}
+                              helperText={'New Password'}
+                            />
+                          {((resettingPwd === 1) || ((resettingPwd === 0) && localData.last_login)) &&
+                            (localData.PWDDisplayed !== '*****') &&
+                            (localData.PWDDisplayed.length > 4) &&
+                            <Button
+                              onClick={() => {
+                                handleResetPassword1(localData.inputPWD);
+                              }}
+                              variant='outlined'
+                              className={classes.infoButton}
+                            >
+                              {`Set New Password`}
+                            </Button>
+                          }
+                          {(resettingPwd === 2) &&
+                            <React.Fragment>
+                              <Button
+                                onClick={() => {
+                                  handleResetPassword2();
+                                }}
+                                disabled={pwdConfirmed}
+                                variant={pwdConfirmed ? 'contained' : 'outlined'}
+                                className={classes.resetButton}
+                              >
+                                {pwdConfirmed ? 'Confirmed!' : 'Confirm New Password'}
+                              </Button>                              
+                            </React.Fragment>
+                          }
+                        </Box>
+                      </React.Fragment>
+                    }
                     <Typography className={classes.lineTextWithTopMargin}>Allow my password to be stored</Typography>
                     <Box flexGrow={2} display='flex' alignItems='center'
                       justifyContent='flex-start' marginTop={-1} marginBottom={2} flexDirection='row'>
@@ -1638,47 +1580,12 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                       />
                       <Typography className={localData.storePassword ? classes.radioTextBold : classes.radioText}>Yes</Typography>
                     </Box>
-                    {localData.last_login && localData.storePassword &&
-                      <Typography className={classes.lineTextWithTopMargin}>{`Last known password: ${localData.last_login}`}</Typography>
-                    }
                     {patientPChange &&
                       <Typography className={classes.lineTextWithTopMargin}>{`Password changed: ${patientPChange.split('GMT')[0]} GMT`}</Typography>
                     }
                   </Box>
                 </div>
               </form>
-              <Box flexGrow={2} display='flex' alignItems='center'
-                justifyContent='flex-start' marginTop={2} marginBottom={2} flexDirection='row'>
-                <Button
-                  onClick={handleResetPassword1}
-                  disabled={resettingPwd && !pwdConfirmed}
-                  variant='outlined'
-                  className={classes.infoButton}
-                >
-                  Reset?
-                </Button>
-                {resettingPwd &&
-                  <React.Fragment>
-                    <Button
-                      onClick={handleResetPassword2}
-                      disabled={!resettingPwd || pwdConfirmed}
-                      hidden={!resettingPwd}
-                      variant={pwdConfirmed ? 'contained' : 'outlined'}
-                      className={classes.resetButton}
-                    >
-                      {pwdConfirmed ? 'Confirmed!' : 'Confirm?'}
-                    </Button>
-                    <TextField
-                      id='password'
-                      value={localData.inputPWD}
-                      autoComplete='off'
-                      type='text'
-                      onChange={handleChangePassword}
-                      helperText={'password'}
-                    />
-                  </React.Fragment>
-                }
-              </Box>
             </Box>
           </Paper>
         </Box>

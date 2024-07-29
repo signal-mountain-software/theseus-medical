@@ -504,7 +504,9 @@ export default Component => props => {
                 let [thatWorked, ,] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
                 if (thatWorked) {
                   let userFrom = '';
-                  if (AVAFollowUpData.possibleUserRecs.length > 1) { userFrom = `- user ID is #${p + 1} of ${AVAFollowUpData.possibleUserRecs.length} possible matches`; }
+                  if (AVAFollowUpData.possibleUserRecs.length > 1) {
+                    userFrom = `- user ID is #${p + 1} of ${AVAFollowUpData.possibleUserRecs.length} possible matches`;
+                  }
                   await logAccessAttempt(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass, true, `Successful Log-in using entered password ${userFrom}`);
                   launchAVA(AVAFollowUpData.possibleUserRecs[p].person_id);
                   return;
@@ -514,7 +516,17 @@ export default Component => props => {
               enqueueSnackbar(`Still looking...`, { variant: 'info' });
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let possibility = AVAFollowUpData.possibleUserRecs[p];
-                if (enteredPass && possibility.location && possibility.location.toLowerCase().includes(enteredPass.toLowerCase())) {
+                if (AVAFollowUpData.possibleUserRecs[p].sessionRec.last_login.toLowerCase() === enteredPass.toLowerCase()) {
+                  let result = await tryUser(possibility.person_id, possibility.client_id, 'stored password match');
+                  if (result === 'good') {
+                    let eMessage = `Successful Login for ${possibility.person_id}`;
+                    enqueueSnackbar(eMessage, { variant: 'info', persist: false });
+                    await logAccessAttempt(possibility.person_id, '', true, eMessage);
+                    launchAVA(possibility.person_id);
+                    return;
+                  }
+                }
+                else if (enteredPass && possibility.location && possibility.location.toLowerCase().includes(enteredPass.toLowerCase())) {
                   if (possibility.sessionRec.requirePassword) {
                     let eMessage = `Using the information provided, AVA located account "${possibility.person_id}", but that account requires a password.  ("${enteredPass}" is not the right password.)`;
                     await logAccessAttempt(possibility.person_id, '', false, eMessage);
@@ -531,14 +543,14 @@ export default Component => props => {
                   }
                   else {
                     let eMessage = `Successful Login for ${possibility.person_id} using entered location list of ${AVAFollowUpData.possibleUserRecs.length} possible matches`;
-                    enqueueSnackbar(eMessage, { variant: 'info', persist: true });
+                    enqueueSnackbar(eMessage, { variant: 'info', persist: false });
                     await logAccessAttempt(possibility.person_id, '', true, eMessage);
                     launchAVA(possibility.person_id);
                     return;
                   }
                 }
               }
-              let eMessage = `None of the accounts we found have "${enteredPass}" as a password or location`;
+              let eMessage = `AVA could not log you in with "${enteredPass}"`;
               await logAccessAttempt('Text - not a UserID', '', false, eMessage);
               enqueueSnackbar(`${eMessage} Please try again.`, { variant: 'error', persist: true });
               setDoneTrying(true);
