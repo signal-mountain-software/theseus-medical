@@ -222,7 +222,10 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
           }
           groupData.selectedID = inactiveGroup;
           // make sure this new person is not automatically put in any public or private groups
-          groupData.privateGroups = {};
+          // groupData.privateGroups = {};
+          for (let groupID in groupData.privateGroups) {
+            groupData.privateGroups[groupID].role = "non-member";
+          }
           for (let groupID in groupData.publicGroups) {
             groupData.publicGroups[groupID].role = "non-member";
           }
