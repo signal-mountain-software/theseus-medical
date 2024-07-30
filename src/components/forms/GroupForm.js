@@ -805,9 +805,9 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       {'Close'}
                     </Button>
                   </Box>
-                  {adminAccount &&
+                  {adminAccount && (pStyle === 'select') &&
                     <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                      {!multiGroups &&
+                      {!multiGroups && (pGroupRec.group_type === 'admin') &&
                         <Button
                           className={AVAClass.AVAButton}
                           style={{ backgroundColor: 'green', color: 'white' }}

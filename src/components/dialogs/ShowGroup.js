@@ -117,7 +117,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       enqueueSnackbar(`AVA couldn't find any members in that Group.`, { variant: 'error' });
       reactData.showGroupSelect = true;
       setReactData(reactData);
-      onAbort();
+      // onAbort();
       return [];
     }
     reactData.groupMemberList = memberInfo.peopleList;
@@ -235,8 +235,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
             return;
           }
           else {
-            await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
-            reactData.showGroupSelect = false;
+            let mbrList = await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
+            reactData.showGroupSelect = (mbrList.length === 0);
           }
         }
       }
@@ -349,7 +349,11 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
               reactData.groupID = reactData.groupsManagedObject[selectedGroup].group_id;
               reactData.groupRole = reactData.groupsManagedObject[selectedGroup].role;
               setReactData(reactData);
-              await getGroupMemberList([reactData.groupsManagedObject[selectedGroup].group_id]);
+              let mbrList = await getGroupMemberList([reactData.groupsManagedObject[selectedGroup].group_id]);
+              if (mbrList.length === 0) {
+                reactData.showGroupSelect = true;
+                setReactData(reactData);
+              }
               setForceRedisplay(!forceRedisplay);
             }}
             onRefresh={async () => {
