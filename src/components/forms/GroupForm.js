@@ -841,7 +841,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     </Box>
                   }
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                    {(overrideRole === 'member' || (!overrideRole && (pRole === 'member'))) &&
+                    {(pGroupRec && (['open', 'public'].includes(pGroupRec.group_type))) &&
+                      (overrideRole === 'member' || (!overrideRole && (pRole === 'member'))) &&
                       <Button
                         onClick={() => {
                           setConfirmMessage(`Confirm removing ${pPatientName} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
@@ -858,7 +859,8 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         Remove me
                       </Button>
                     }
-                    {(overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
+                    {(pGroupRec && (['open', 'public'].includes(pGroupRec.group_type))) &&
+                      (overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
                       <React.Fragment>
                         {!multiGroups &&
                           <Button
