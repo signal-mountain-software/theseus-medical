@@ -123,16 +123,6 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
     }
   };
 
-  /*
-  if (keyDate !== reactData.parm_keyDate) {
-    getMenuDetails(makeDate(keyDate).obs);
-    updateReactData({
-      parm_keyDate: keyDate,
-      dateKey: makeDate(keyDate),
-    }, true);
-  }
-  */
-
   async function loadOIValues(OIKey) {
     let OIObj = await getObservationItems(OIKey);
     if (Object.keys(OIObj).length === 0) {

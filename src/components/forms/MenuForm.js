@@ -287,7 +287,13 @@ export default ({ observationList, pClient, keyDate, filter, onReset, handleAbor
     if (original_data.observation_code !== update_data[0]) {
       newData.observation_code = update_data[0];
     }
-    let oldRightSide = original_data.rightSide || original_data.composite_key.match(/_(?:.(?!_))+$/gm);
+    let oldRightSide = "";
+    if (original_data.rightSide) {
+      oldRightSide = original_data.rightSide;
+    }
+    else if (original_data.composite_key) {
+      oldRightSide = original_data.composite_key.match(/_(?:.(?!_))+$/gm);
+    }
     let newCompositeKey = `${original_data.client_id}~${update_data[1]}${oldRightSide}`;
     if (original_data.composite_key !== newCompositeKey) {
       newData.composite_key = newCompositeKey;

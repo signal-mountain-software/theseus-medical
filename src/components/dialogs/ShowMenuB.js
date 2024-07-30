@@ -93,6 +93,7 @@ export default ({ pClient, showMenu, onClose }) => {
   const [alwaysList, setAlwaysList] = React.useState();
   const [recipeList, setRecipeList] = React.useState();
   const [selectedDate, setSelectedDate] = React.useState(new Date().toDateString());
+  const [displayedDate, setDisplayedDate] = React.useState(new Date().toDateString());
   const [loadMode, setLoadMode] = React.useState(false);
   const [copyMode, setCopyMode] = React.useState(false);
 
@@ -224,64 +225,22 @@ export default ({ pClient, showMenu, onClose }) => {
       setObservationList([]);
       return;
     }
-    setSelectedDate(goodDate.absolute);
+    setSelectedDate(goodDate.numeric$);
     buildObservationList(goodDate.date);
   };
-
-
-  /*
-  const handleDateExit = dateValue => {
- //   if (event.key === 'Enter' || event.type === 'blur') {
-      let goodDate = new Date(dateValue);
-      if (isNaN(goodDate)) {
-        let tNext = dateValue.trim().toLowerCase().startsWith('next');
-        if (tNext) {
-          let dayWord = dateValue.split(' ')[1].trim();
-          dateValue = dayWord;
-        }
-        let tDate = dateValue.substr(0, 3).toLowerCase();
-        let dOfw = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(tDate);
-        goodDate = new Date(Date.now());
-        if (dOfw > -1) {
-          if ((goodDate.getDay() > dOfw) && tNext) {
-            tNext = false;
-          }
-          goodDate.setDate(goodDate.getDate() + ((7 - (goodDate.getDay() - dOfw)) % 7) + (tNext ? 7 : 0));
-        }
-        else if (tDate === 'tom') {
-          goodDate.setDate(goodDate.getDate() + 1);
-        }
-        else if (tDate !== 'tod') {
-          goodDate = new Date(dateValue);
-        }
-      }
-      let current = new Date(Date.now());
-      current.setHours(0, 0, 0, 0);
-      if (goodDate < current) {
-        let yyyy = current.getFullYear();
-        goodDate.setFullYear(yyyy);
-        if (goodDate < current) { goodDate.setFullYear(yyyy + 1); }
-      };
-      setSelectedDate(goodDate.toDateString());
-      buildObservationList(goodDate);
-  //  }
-  };
-  */
-
-  // const handleChangeDate = event => {
-  //  setSelectedDate(event.target.value);
-  // };
 
   let filterTimeOut;
   const handleChangeDate = vCheck => {
     clearTimeout(filterTimeOut);
     filterTimeOut = setTimeout(() => {
       if (vCheck.length === 0) {
-        setSelectedDate('');
+        setDisplayedDate('');
       }
-      else {
-        setSelectedDate(vCheck);
-        handleDateExit(vCheck);
+      else if (vCheck.length >= 3) {
+        let goodDate = makeDate(vCheck, { validation: 'noPast' });
+        if (!goodDate.error) {
+          handleDateExit(vCheck);
+        }
       }
     }, 500);
   };
@@ -345,7 +304,7 @@ export default ({ pClient, showMenu, onClose }) => {
               variant={'standard'}
               fullWidth
               autoComplete='off'
-              defaultValue={selectedDate}
+              defaultValue={displayedDate}
               onChange={event => (handleChangeDate(event.target.value))}
             />
           </Box>

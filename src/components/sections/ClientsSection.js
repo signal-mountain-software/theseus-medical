@@ -1,5 +1,5 @@
 import React from 'react';
-import { titleCase, sentenceCase } from '../../util/AVAUtilities';
+import { sentenceCase } from '../../util/AVAUtilities';
 import { determineClass } from '../../util/AVAGroups';
 import Box from '@material-ui/core/Box';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -95,7 +95,7 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
       }
     }
     for (let gID in reactData.privateGroups) {
-      if (!reactData.privateGroups[gID].role.startsWith('non')
+      if (!reactData.privateGroups[gID].role.startsWith('non') 
         && !memberOf.includes(gID)) {
         memberOf.push(gID);
       }
@@ -202,12 +202,10 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
                       handleUpdate();
                     }
                   }}
+                  disabled={reactData.publicGroups[gID].role.startsWith('resp')}
                   checked={((!multiple && (!reactData.publicGroups[gID].role.startsWith('non-'))) || (multiple && (selectedGroups.hasOwnProperty(gID))))}
                 />
-                <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{reactData.publicGroups[gID].group_name}</Typography>
-                {!reactData.publicGroups[gID].role.startsWith('non-') && reactData.publicGroups[gID].role !== 'member' &&
-                  <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>({titleCase(reactData.publicGroups[gID].role)})</Typography>
-                }
+                <Typography className={classes.radioText} style={{ fontWeight: (reactData.publicGroups[gID].role.startsWith('resp') ? 'bold' : '') }}>{reactData.publicGroups[gID].group_name}</Typography>
               </Box>
             </Box>
           ))}
@@ -215,7 +213,7 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
       </Box>
       <Typography className={classes.HeadTextWIthTopSpacing}>{`Private Groups`}</Typography>
       {Object.keys(reactData.privateGroups).length > 0
-        ? <Typography className={classes.InstructionText}>{`You have been added to these Groups by an Administrator`}</Typography>
+        ? <Typography className={classes.InstructionText}>{`Only Administrators can update this information`}</Typography>
         : <Typography className={classes.InstructionText}>{`You are not a member of any Private Groups`}</Typography>
       }
       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
@@ -231,10 +229,35 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
               <Box display='flex' flexDirection='row' justifyContent='flex-start'
                 alignItems='center' flexWrap='wrap' key={`pubopt-${ndx}`}
               >
-                <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{reactData.privateGroups[gID].group_name || gID}</Typography>
-                {reactData.privateGroups[gID].role !== 'member' &&
-                  <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>({titleCase(reactData.privateGroups[gID].role)})</Typography>
+                {(!reactData.privateGroups[gID].role.startsWith('non-') || (['master', 'support'].includes(state.user.account_class))) &&   
+                  <Checkbox
+                    className={classes.radioButton}
+                    size="small"
+                    onClick={() => {
+                      if (multiple) {
+                        if (selectedGroups.hasOwnProperty(gID)) {
+                          delete selectedGroups[gID];
+                        }
+                        else {
+                          selectedGroups[gID] = true;
+                        }
+                        setSelectedGroups(selectedGroups);
+                        updateGroups(Object.keys(selectedGroups));
+                      }
+                      else {
+                        if (reactData.privateGroups[gID].role.startsWith('non-')) {
+                          reactData.privateGroups[gID].role = reactData.privateGroups[gID].role.slice(4);
+                        }
+                        else { reactData.privateGroups[gID].role = `non-${reactData.privateGroups[gID].role}`; }
+                        setReactData(reactData);
+                        handleUpdate();
+                      }
+                  }}
+                  disabled={reactData.privateGroups[gID].role.startsWith('resp')}
+                    checked={((!multiple && (!reactData.privateGroups[gID].role.startsWith('non-'))) || (multiple && (selectedGroups.hasOwnProperty(gID))))}
+                  />
                 }
+                <Typography className={classes.radioText} style={{ fontWeight: (reactData.privateGroups[gID].role.startsWith('resp') ? 'bold' : '') }}>{reactData.privateGroups[gID].group_name || gID}</Typography>
               </Box>
             </Box>
           ))}
