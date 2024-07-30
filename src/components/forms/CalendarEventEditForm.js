@@ -1134,7 +1134,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                               <PersonAddDisabledIcon
                                 onClick={async () => {
                                   await handleAllocateSlot({
-                                    person: `${this_item.slotData.name}:${this_item.slotData.owner}`,
+                                    person: `${this_item.slotData.name}%%${this_item.slotData.owner}`,
                                     slot: this_item.slotData.id,
                                     release: true,
                                     index: (index || 0)
