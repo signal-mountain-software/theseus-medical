@@ -2496,6 +2496,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                 </Box>
               }
               {(!factType || (factType !== 'list')) && !reactData.viewOnly &&
+                !((reactData.columnList && (reactData.columnList.length < 1)) || (morePeople)) &&
                 <Button
                   className={AVAClass.AVAButton}
                   style={reactData.errorOnScreen ? { backgroundColor: 'white', color: 'green' } : { backgroundColor: 'green', color: 'white' }}

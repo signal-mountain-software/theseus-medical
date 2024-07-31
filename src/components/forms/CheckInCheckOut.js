@@ -12,7 +12,7 @@ import { makeDate } from '../../util/AVADateTime';
 import { determineClass } from '../../util/AVAGroups';
 import { getServiceRequests, putServiceRequest, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getPerson, getImage, getPersonByWords, addGuest, addVendor, makeName } from '../../util/AVAPeople';
-import { AVAclasses, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
+import { AVAclasses, AVADefaults, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
 
 import { useSnackbar } from 'notistack';
 
@@ -310,11 +310,22 @@ export default ({ onSave, onClose }) => {
   }
 
   return (
-    <Dialog
+    <Box
       open={(!!reactData.initialized) && (true || forceRedisplay)}
+      display='flex' flexDirection='row' justifyContent='center' alignItems='center'
       p={2}
-      fullScreen
+      fullWidth
     >
+      <Box
+        component="img"
+        display='flex' flexDirection='row' justifyContent='center' alignItems='center'
+        minWidth={200}
+        minHeight={200}
+        maxHeight={200}
+        m={2}
+        alt=''
+        src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
+      />
       {/* *** CHECK-IN/OUT VIEW *** */
         !reactData.adminView &&
         <React.Fragment>
@@ -323,86 +334,95 @@ export default ({ onSave, onClose }) => {
                ********************************** */
             !reactData.validated_user && !reactData.add_guest_mode &&
             (!reactData.select_user ?
-              <Dialog open={forceRedisplay || true} fullWidth >
-                <AVATextInput
-                  titleText={[(`Welcome to ${state.session.client_name}`)]}
-                  promptText={["Name or AVA ID"]}
-                  valueText={[
-                    (!reactData.kiosk_mode ? reactData.residentName : '')
-                  ]}
-                  buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (state.session.adminAccount ? 'Admin' : null)]}
-                  onCancel={() => {
+              <AVATextInput
+                titleText={[(`Welcome to ${state.session.client_name}`)]}
+                promptText={["Name or AVA ID"]}
+                valueText={[
+                  (!reactData.kiosk_mode ? reactData.residentName : '')
+                ]}
+                buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (state.session.adminAccount ? 'Admin' : null)]}
+                onCancel={() => {
+                  onClose();
+                }}
+                errorText={reactData.errorText}
+                onSave={async ([enteredID], buttonPressed) => {
+                  if (buttonPressed === 2) {
+                    let [outList, guestList, vendorList] = await getCheckedOut();
+                    reactData.outList = outList;
+                    reactData.guestList = guestList;
+                    reactData.vendorList = vendorList;
+                    reactData.adminView = true;
+                    setReactData(reactData);
+                    setForceRedisplay(!forceRedisplay);
+                  }
+                  if (enteredID && (enteredID === 'exit')) {
                     onClose();
-                  }}
-                  errorText={reactData.errorText}
-                  onSave={async ([enteredID], buttonPressed) => {
-                    if (buttonPressed === 2) {
-                      let [outList, guestList, vendorList] = await getCheckedOut();
-                      reactData.outList = outList;
-                      reactData.guestList = guestList;
-                      reactData.vendorList = vendorList;
-                      reactData.adminView = true;
-                      setReactData(reactData);
-                      setForceRedisplay(!forceRedisplay);
-                    }
-                    if (enteredID && (enteredID === 'exit')) {
-                      onClose();
+                  }
+                  else {
+                    if (!enteredID) {
+                      reactData.errorText[0] = `Please enter your name or AVA ID so we can properly identify you!`;
                     }
                     else {
-                      if (!enteredID) {
-                        reactData.errorText[0] = `Please enter your name or AVA ID so we can properly identify you!`;
+                      let validation = {};
+                      if (enteredID === reactData.residentName) {
+                        validation = {
+                          result: 'match',
+                          person_id: reactData.personRec.person_id,
+                          personRec: reactData.personRec,
+                        };
+                        validation.personRec.account_class = determineClass(reactData.personRec.groups, state.session.group_assignments);
                       }
                       else {
-                        let validation = {};
-                        if (enteredID === reactData.residentName) {
-                          validation = {
-                            result: 'match',
-                            person_id: reactData.personRec.person_id,
-                            personRec: reactData.personRec,
-                          };
-                          validation.personRec.account_class = determineClass(reactData.personRec.groups, state.session.group_assignments);
-                        }
-                        else {
-                          validation = await validateUser(enteredID.toLowerCase(), state.session.client_id);
-                        }
-                        reactData.errorText = [];
-                        reactData.enteredID = enteredID;
-                        if ((validation.result === 'match') && (validation.personRec.person_id === state.patient.person_id)) {  // Found myself
-                          reactData.validated_user = true;
-                          reactData.personRec = validation.personRec;
-                          let mode = determineMode(validation.personRec);
-                          reactData.currentStatus = await getCurrentStatus(state.session.client_id, validation.personRec.person_id, mode);
-                          reactData.select_user = false;
-                        }
-                        else if ((validation.result === 'match') || (validation.result === 'ambiguous')) {
-                          reactData.select_user = true;
-                          reactData.candidates = validation.candidates || [validation.personRec];
-                        }
-                        else {
-                          // put AVA in "add a new guest" mode
-                          reactData.select_user = false;
-                          reactData.add_guest_mode = true;
-                          reactData.add_try_number = 1;
-                        }
+                        validation = await validateUser(enteredID.toLowerCase(), state.session.client_id);
                       }
-                      setReactData(reactData);
-                      setForceRedisplay(!forceRedisplay);
+                      reactData.errorText = [];
+                      reactData.enteredID = enteredID;
+                      if ((validation.result === 'match') && (validation.personRec.person_id === state.patient.person_id)) {  // Found myself
+                        reactData.validated_user = true;
+                        reactData.personRec = validation.personRec;
+                        let mode = determineMode(validation.personRec);
+                        reactData.currentStatus = await getCurrentStatus(state.session.client_id, validation.personRec.person_id, mode);
+                        reactData.select_user = false;
+                      }
+                      else if ((validation.result === 'match') || (validation.result === 'ambiguous')) {
+                        reactData.select_user = true;
+                        reactData.candidates = validation.candidates || [validation.personRec];
+                      }
+                      else {
+                        // put AVA in "add a new guest" mode
+                        reactData.select_user = false;
+                        reactData.add_guest_mode = true;
+                        reactData.add_try_number = 1;
+                      }
                     }
-                  }}
-                  allowCancel={!reactData.kiosk_mode}
-                  options={{ save_on_enter: true }}
-                />
-              </Dialog>
+                    setReactData(reactData);
+                    setForceRedisplay(!forceRedisplay);
+                  }
+                }}
+                allowCancel={!reactData.kiosk_mode}
+                options={{ save_on_enter: true }}
+              />
               :
-              <Dialog open={forceRedisplay || true} fullWidth >
+              <Dialog
+                open={forceRedisplay || true} fullWidth
+                classes={{ paper: AVAClass.AVAPromptBackground }}
+              >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                   <Typography style={AVATextStyle({ size: 1.3, bold: true })} id='dialog-title'>{makeGreeting()}</Typography>
                   <Typography style={AVATextStyle({ size: 0.8 })} id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
                 </Box>
-                <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
+                  <Paper
+                    component={Box}
+                    style={{
+                      paddingTop: '16px',
+                      backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null,
+                    }}
+                    overflow='auto'
+                    square
+                  >
                   {reactData.candidates.map((candidate, cIndex) => (
                     <Box display='flex'
-                      style={{ marginBottom: '2em', marginLeft: '1em', }}
+                      style={{ marginBottom: '2em', marginLeft: '1em', backgroundColor: 'white' }}
                       flexDirection='row' key={`ambiguous-${cIndex}`} justifyContent='flex-start' alignItems='center'
                       paddingX={2}
                       flexGrow={1}
@@ -1089,6 +1109,6 @@ export default ({ onSave, onClose }) => {
           }
         </React.Fragment>
       }
-    </Dialog>
+    </Box>
   );
 };
