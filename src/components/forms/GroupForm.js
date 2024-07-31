@@ -432,7 +432,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     let response = [];
     if (state.accessList) {
       state.accessList[state.session.client_id].list.forEach((a, x) => {
-        if ((a.access === 'proxy') || (a.access === 'full')) {
+        if (['proxy', 'full', 'view'].includes(a.access)) {
           // list is of the form <name>:<id>:<search_string>
           response.push(`${a.name.last}${a.name.first ? ', ' + a.name.first : ''}:${a.id}:${a.display_name}_${a.location}`);
         }
