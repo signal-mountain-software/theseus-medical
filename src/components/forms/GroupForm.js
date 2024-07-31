@@ -585,354 +585,352 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         p={2}
         fullScreen
       >
-        {workingMemberList && workingMemberList.length > 0 &&
-          <React.Fragment>
-            {!showSuperSize &&
-              <Box>
-                <Typography
-                  className={classes.title} style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
-                >
-                  {multiGroups ? 'Directory Listing' : `Members of the ${pGroupName} Group`}
-                </Typography>
-                <TextField
-                  id='List Filter'
-                  onChange={event => (handleChangePersonFilter(event.target.value))}
-                  className={classes.freeInput}
-                  helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
-                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                  FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                  variant={'standard'}
-                  autoComplete='off'
-                />
-              </Box>
-            }
-            <Paper component={Box} variant='outlined' overflow='auto' square>
-              <List>
-                <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                  {rowsWritten = 0}
-                </Typography>
-                {workingMemberList.map((this_item, index) => (
-                  ((rowsWritten <= rowLimit) && (okToShow(this_item)) &&
-                    <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
-                      <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
-                        {rowsWritten++}
-                      </Typography>
-                      <Box display='flex' flexDirection='column' >
-                        <Box
-                          display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
-                          key={this_item.person_id + 'r' + index}
-                          className={classes.listItem}
-                        >
-                          {(pStyle !== 'short') &&
+        <React.Fragment>
+          {!showSuperSize &&
+            <Box>
+              <Typography
+                className={classes.title} style={AVATextStyle({ size: 1.3, bold: true, margin: { top: 1.5, left: 1, right: 1 } })}
+              >
+                {multiGroups ? 'Directory Listing' : `Members of the ${pGroupName} Group`}
+              </Typography>
+              <TextField
+                id='List Filter'
+                onChange={event => (handleChangePersonFilter(event.target.value))}
+                className={classes.freeInput}
+                helperText={isMobile ? 'Filter' : 'Type a few letters to filter the list'}
+                inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                variant={'standard'}
+                autoComplete='off'
+              />
+            </Box>
+          }
+          <Paper component={Box} variant='outlined' overflow='auto' square>
+            <List>
+              <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                {rowsWritten = 0}
+              </Typography>
+              {workingMemberList.map((this_item, index) => (
+                ((rowsWritten <= rowLimit) && (okToShow(this_item)) &&
+                  <Paper component={Box} variant='outlined' key={this_item.person_id + 'frag' + index} >
+                    <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
+                      {rowsWritten++}
+                    </Typography>
+                    <Box display='flex' flexDirection='column' >
+                      <Box
+                        display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+                        key={this_item.person_id + 'r' + index}
+                        className={classes.listItem}
+                      >
+                        {(pStyle !== 'short') &&
+                          <Box
+                            display='flex'
+                            flexDirection='row'
+                            justifyContent='space-between'
+                            alignItems='center'
+                          >
+                            <Box>
+                              <Box
+                                component="img"
+                                ml={isMobile ? 2 : 5}
+                                mr={1}
+                                border={1}
+                                minHeight={isMobile ? 100 : 150}
+                                maxHeight={isMobile ? 100 : 150}
+                                minWidth={isMobile ? 100 : 150}
+                                maxWidth={isMobile ? 100 : 150}
+                                alt={''}
+                                src={getImage(this_item.person_id)}
+                              />
+                            </Box>
+                          </Box>
+                        }
+                        <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center' overflow={'hidden'}>
+                          <Box
+                            onClick={async () => {
+                              this_item.role = await getRole(pGroup, this_item.person_id);
+                              this_item.public_groups = await getPublicGroupList(state.session.client_id, this_item.person_id);
+                              this_item.private_groups = await getPrivateGroupList(state.session.client_id, this_item.person_id);
+                              if (!this_item.account_class) {
+                                this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
+                              }
+                              setSuperSizeData(this_item);
+                              setshowSuperSize(true);
+                            }}
+                            display='flex' flexDirection='column'>
+                            {(pStyle !== 'short')
+                              ?
+                              <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                                <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
+                                <Typography style={AVATextStyle({ size: 1.5 })}>{this_item.name.first}</Typography>
+                              </Box>
+                              :
+                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                                <Typography style={AVATextStyle({ size: 1.5 })} >{this_item.name.first}</Typography>
+                                <Typography style={AVATextStyle({ size: 1.5, bold: true, margin: { left: 0.5 } })}>{this_item.name.last || this_item.display_name}</Typography>
+                              </Box>
+                            }
+                            {adminAccount && ((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for)) &&
+                              <Box display='flex' flexDirection='column'>
+                                <Typography id={`resp_line`} key={`resp_line`}
+                                  style={AVATextStyle({ margin: { top: 0, bottom: (pStyle !== 'short' ? 1.5 : 0.5) } })}>
+                                  {makeResponsibleLines((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for))}
+                                </Typography>
+                              </Box>
+                            }
+                            {(pStyle !== 'short') && multiGroups && this_item.hasOwnProperty('member_of') &&
+                              <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 0.5, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
+                            }
+                            {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
+                              <Typography key={`locationLine-${index}.${locIndex}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{locLine.trim()}</Typography>
+                            ))}
+                            {(this_item.directory_option === 'exclude') &&
+                              <Typography key={`excluded-${index}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{'** Excluded from Directory **'}</Typography>
+                            }
                             <Box
                               display='flex'
                               flexDirection='row'
-                              justifyContent='space-between'
+                              justifyContent='flex-start'
                               alignItems='center'
+                              key={`contactRows.${index}`}
                             >
-                              <Box>
-                                <Box
-                                  component="img"
-                                  ml={isMobile ? 2 : 5}
-                                  mr={1}
-                                  border={1}
-                                  minHeight={isMobile ? 100 : 150}
-                                  maxHeight={isMobile ? 100 : 150}
-                                  minWidth={isMobile ? 100 : 150}
-                                  maxWidth={isMobile ? 100 : 150}
-                                  alt={''}
-                                  src={getImage(this_item.person_id)}
-                                />
-                              </Box>
-                            </Box>
-                          }
-                          <Box display='flex' flexGrow={1} flexDirection='row' justifyContent='space-between' alignItems='center' overflow={'hidden'}>
-                            <Box
-                              onClick={async () => {
-                                this_item.role = await getRole(pGroup, this_item.person_id);
-                                this_item.public_groups = await getPublicGroupList(state.session.client_id, this_item.person_id);
-                                this_item.private_groups = await getPrivateGroupList(state.session.client_id, this_item.person_id);
-                                if (!this_item.account_class) {
-                                  this_item.account_class = determineClass(this_item.groups, state.session.group_assignments);
-                                }
-                                setSuperSizeData(this_item);
-                                setshowSuperSize(true);
-                              }}
-                              display='flex' flexDirection='column'>
-                              {(pStyle !== 'short')
-                                ?
-                                <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                                  <Typography style={AVATextVariableStyle((this_item.name.last || this_item.display_name), { size: 1.5, bold: true, margin: { top: 1, right: 1 } })} >{this_item.name.last || this_item.display_name}</Typography>
-                                  <Typography style={AVATextStyle({ size: 1.5 })}>{this_item.name.first}</Typography>
-                                </Box>
-                                :
-                                <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                                  <Typography style={AVATextStyle({ size: 1.5 })} >{this_item.name.first}</Typography>
-                                  <Typography style={AVATextStyle({ size: 1.5, bold: true, margin: { left: 0.5 } })}>{this_item.name.last || this_item.display_name}</Typography>
-                                </Box>
-                              }
-                              {adminAccount && ((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for)) &&
-                                <Box display='flex' flexDirection='column'>
-                                  <Typography id={`resp_line`} key={`resp_line`}
-                                    style={AVATextStyle({ margin: { top: 0, bottom: (pStyle !== 'short' ? 1.5 : 0.5) } })}>
-                                    {makeResponsibleLines((this_item.session && this_item.session.responsible_for) || (this_item.responsible_for))}
-                                  </Typography>
-                                </Box>
-                              }
-                              {(pStyle !== 'short') && multiGroups && this_item.hasOwnProperty('member_of') &&
-                                <Typography key={`member_of-${index}`} style={AVATextStyle({ bold: true, margin: { top: 0.5, bottom: 1 } })}>{sentenceCase(this_item.member_of)}</Typography>
-                              }
-                              {this_item.location && this_item.location.split('~').map((locLine, locIndex) => (
-                                <Typography key={`locationLine-${index}.${locIndex}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{locLine.trim()}</Typography>
-                              ))}
-                              {(this_item.directory_option === 'exclude') &&
-                                <Typography key={`excluded-${index}`} style={AVATextStyle({ margin: { bottom: 0.5 } })}>{'** Excluded from Directory **'}</Typography>
-                              }
-                              <Box
-                                display='flex'
-                                flexDirection='row'
-                                justifyContent='flex-start'
-                                alignItems='center'
-                                key={`contactRows.${index}`}
-                              >
-                                <Box display='flex' flexDirection='column'>
-                                  {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
-                                    .map((prefLine, prefIndex) => (
-                                      <a href={prefLine.action[0]}
-                                        key={`prefLink-${index}.${prefIndex}`}
-                                        style={{ color: 'inherit', textDecoration: 'none' }}>
-                                        <Typography
-                                          key={`prefLine-${index}.${prefIndex}`}
-                                          style={AVATextVariableStyle(prefLineText(prefLine), { margin: { bottom: 0.5 } })}
-                                        >
-                                          {prefLineText(prefLine)}
-                                        </Typography>
-                                      </a>
-                                    )))}
-                                </Box>
+                              <Box display='flex' flexDirection='column'>
+                                {(makeContactLines(this_item.messaging, this_item.preferred_method, this_item)
+                                  .map((prefLine, prefIndex) => (
+                                    <a href={prefLine.action[0]}
+                                      key={`prefLink-${index}.${prefIndex}`}
+                                      style={{ color: 'inherit', textDecoration: 'none' }}>
+                                      <Typography
+                                        key={`prefLine-${index}.${prefIndex}`}
+                                        style={AVATextVariableStyle(prefLineText(prefLine), { margin: { bottom: 0.5 } })}
+                                      >
+                                        {prefLineText(prefLine)}
+                                      </Typography>
+                                    </a>
+                                  )))}
                               </Box>
                             </Box>
                           </Box>
                         </Box>
                       </Box>
-                    </Paper>
-                  )
-                ))}
-                {(rowsWritten === 0) &&
-                  <Box display='flex' marginLeft={3} flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                    <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{'No Directory entries match your search!'}</Typography>
+                    </Box>
+                  </Paper>
+                )
+              ))}
+              {(rowsWritten === 0) &&
+                <Box display='flex' marginLeft={3} flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                  <Typography style={AVATextStyle({ size: 1.5, margin: { bottom: 1 } })}>{'No Directory entries match your search!'}</Typography>
+                </Box>
+              }
+            </List>
+          </Paper>
+          {showAddPrompt &&
+            <PersonFilter
+              prompt={'Tap the name of the person you wish to add'}
+              peopleList={choiceList}
+              onCancel={() => {
+                setShowAddPrompt(false);
+              }}
+              onSelect={async (selectedPerson) => {
+                await handleAddPersonToGroup(selectedPerson, pGroup);
+                setShowAddPrompt(false);
+              }}
+              multiSelect={true}
+            >
+            </PersonFilter>
+          }
+          {showEditPerson && editPersonRec &&
+            <PatientDialog
+              patient={editPersonRec}
+              groupData={groupData}
+              open={true}
+              onClose={(updatedPerson) => {
+                if (updatedPerson) {
+                  updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
+                  setSuperSizeData(Object.assign(superSizeData, updatedPerson));
+                }
+                setEditPersonRec(null);
+                setShowEditPerson(null);
+              }}
+            />
+          }
+          {promptForMessage &&
+            <MakeMessage
+              titleText={(messageType.includes('URGENT')) ? 'AVA will attempt to voice call all phones' : null}
+              promptText={['Subject', `What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`, `(Optional) Alternate message if leaving Voice Mail`]}
+              promptUse={['subject', 'message', 'voicemail']}
+              buttonText={'Send'}
+              sender={{
+                "client_id": pClient,
+                "patient_id": pPatient,
+                "patient_display_name": pPatientName
+              }}
+              pRecipientID={recipient.split(':')[1]}
+              pRecipientName={recipient.split(':')[0]}
+              onCancel={() => { setPromptForMessage(false); }}
+              onComplete={() => { setPromptForMessage(false); }}
+              setMethod={(messageType === 'AVA') ? 'AVA' : (messageType.includes('URGENT') ? 'voice' : null)}
+              allowCancel={true}
+            />
+          }
+          {deletePending &&
+            <AVAConfirm
+              promptText={confirmMessage}
+              onCancel={() => {
+                setDeletePending(false);
+              }}
+              onConfirm={() => {
+                handleRemoveGroupMember(confirmPerson, confirmIndex);
+                if (confirmPerson === pPatient) { setOverrideRole('non-member'); }
+                setDeletePending(false);
+              }}
+            >
+            </AVAConfirm>
+          }
+          {!showSuperSize &&    // Command Area
+            <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
+              <Box display='flex' flexDirection='column'>
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'red', color: 'white' }}
+                    size='small'
+                    startIcon={<CloseIcon size="small" />}
+                    onClick={() => {
+                      setOverrideRole(null);
+                      onReset();
+                    }}
+                  >
+                    {'Close'}
+                  </Button>
+                </Box>
+                {adminAccount && (pStyle === 'select') &&
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                    {!multiGroups && (['open', 'public', 'private', 'closed'].includes(pGroupRec.group_type)) &&
+                      <Button
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'green', color: 'white' }}
+                        size='small'
+                        onClick={async () => {
+                          await setChoices(peopleList);
+                        }}
+                        startIcon={<GroupAddIcon size="small" />}
+                      >
+                        {(isMobile ? 'Add' : 'Add Members')}
+                      </Button>
+                    }
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
+                      onClick={() => { handlePrintDirectory(pGroup); }}
+                      startIcon={<PrintIcon size='small' />}
+                    >
+                      {'Directory'}
+                    </Button>
+                    <Button
+                      onClick={() => { handlePrintRoster(pGroup); }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'gray', color: 'white' }}
+                      size='small'
+                      startIcon={<StorageOutlined size='small' />}
+                    >
+                      {'Roster'}
+                    </Button>
                   </Box>
                 }
-              </List>
-            </Paper>
-            {showAddPrompt &&
-              <PersonFilter
-                prompt={'Tap the name of the person you wish to add'}
-                peopleList={choiceList}
-                onCancel={() => {
-                  setShowAddPrompt(false);
-                }}
-                onSelect={async (selectedPerson) => {
-                  await handleAddPersonToGroup(selectedPerson, pGroup);
-                  setShowAddPrompt(false);
-                }}
-                multiSelect={true}
-              >
-              </PersonFilter>
-            }
-            {showEditPerson && editPersonRec &&
-              <PatientDialog
-                patient={editPersonRec}
-                groupData={groupData}
-                open={true}
-                onClose={(updatedPerson) => {
-                  if (updatedPerson) {
-                    updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
-                    setSuperSizeData(Object.assign(superSizeData, updatedPerson));
-                  }
-                  setEditPersonRec(null);
-                  setShowEditPerson(null);
-                }}
-              />
-            }
-            {promptForMessage &&
-              <MakeMessage
-                titleText={(messageType.includes('URGENT')) ? 'AVA will attempt to voice call all phones' : null}
-                promptText={['Subject', `What should your ${messageType.includes('Group') ? 'group ' : ''}message to ${recipient.split(':')[0]} say?`, `(Optional) Alternate message if leaving Voice Mail`]}
-                promptUse={['subject', 'message', 'voicemail']}
-                buttonText={'Send'}
-                sender={{
-                  "client_id": pClient,
-                  "patient_id": pPatient,
-                  "patient_display_name": pPatientName
-                }}
-                pRecipientID={recipient.split(':')[1]}
-                pRecipientName={recipient.split(':')[0]}
-                onCancel={() => { setPromptForMessage(false); }}
-                onComplete={() => { setPromptForMessage(false); }}
-                setMethod={(messageType === 'AVA') ? 'AVA' : (messageType.includes('URGENT') ? 'voice' : null)}
-                allowCancel={true}
-              />
-            }
-            {deletePending &&
-              <AVAConfirm
-                promptText={confirmMessage}
-                onCancel={() => {
-                  setDeletePending(false);
-                }}
-                onConfirm={() => {
-                  handleRemoveGroupMember(confirmPerson, confirmIndex);
-                  if (confirmPerson === pPatient) { setOverrideRole('non-member'); }
-                  setDeletePending(false);
-                }}
-              >
-              </AVAConfirm>
-            }
-            {!showSuperSize &&    // Command Area
-              <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
-                <Box display='flex' flexDirection='column'>
-                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                  {(pGroupRec && (['open', 'public'].includes(pGroupRec.group_type))) &&
+                    (overrideRole === 'member' || (!overrideRole && (pRole === 'member'))) &&
                     <Button
+                      onClick={() => {
+                        setConfirmMessage(`Confirm removing ${pPatientName} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                        setConfirmPerson(pPatient);
+                        setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === pPatient; }));
+                        setDeletePending(true);
+                        setForceRedisplay(false);
+                      }}
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'red', color: 'white' }}
                       size='small'
-                      startIcon={<CloseIcon size="small" />}
-                      onClick={() => {
-                        setOverrideRole(null);
-                        onReset();
-                      }}
+                      startIcon={<DeleteIcon fontSize="small" />}
                     >
-                      {'Close'}
+                      Remove me
                     </Button>
-                  </Box>
-                  {adminAccount && (pStyle === 'select') &&
-                    <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                      {!multiGroups && (pGroupRec.group_type === 'admin') &&
+                  }
+                  {(pGroupRec && (['open', 'public'].includes(pGroupRec.group_type))) &&
+                    (overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
+                    <React.Fragment>
+                      {!multiGroups &&
                         <Button
                           className={AVAClass.AVAButton}
                           style={{ backgroundColor: 'green', color: 'white' }}
                           size='small'
                           onClick={async () => {
-                            await setChoices(peopleList);
+                            await handleAddPersonToGroup([pPatient], pGroup);
+                            setOverrideRole('member');
                           }}
                           startIcon={<GroupAddIcon size="small" />}
                         >
-                          {(isMobile ? 'Add' : 'Add Members')}
+                          {'Add Myself'}
                         </Button>
                       }
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'blue', color: 'white' }}
-                        size='small'
-                        onClick={() => { handlePrintDirectory(pGroup); }}
-                        startIcon={<PrintIcon size='small' />}
-                      >
-                        {'Directory'}
-                      </Button>
-                      <Button
-                        onClick={() => { handlePrintRoster(pGroup); }}
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'gray', color: 'white' }}
-                        size='small'
-                        startIcon={<StorageOutlined size='small' />}
-                      >
-                        {'Roster'}
-                      </Button>
-                    </Box>
+                    </React.Fragment>
                   }
-                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                    {(pGroupRec && (['open', 'public'].includes(pGroupRec.group_type))) &&
-                      (overrideRole === 'member' || (!overrideRole && (pRole === 'member'))) &&
-                      <Button
-                        onClick={() => {
-                          setConfirmMessage(`Confirm removing ${pPatientName} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                          setConfirmPerson(pPatient);
-                          setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === pPatient; }));
-                          setDeletePending(true);
-                          setForceRedisplay(false);
-                        }}
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'red', color: 'white' }}
-                        size='small'
-                        startIcon={<DeleteIcon fontSize="small" />}
-                      >
-                        Remove me
-                      </Button>
-                    }
-                    {(pGroupRec && (['open', 'public'].includes(pGroupRec.group_type))) &&
-                      (overrideRole === 'non-member' || (!overrideRole && (pRole === 'non-member'))) &&
-                      <React.Fragment>
-                        {!multiGroups &&
-                          <Button
-                            className={AVAClass.AVAButton}
-                            style={{ backgroundColor: 'green', color: 'white' }}
-                            size='small'
-                            onClick={async () => {
-                              await handleAddPersonToGroup([pPatient], pGroup);
-                              setOverrideRole('member');
-                            }}
-                            startIcon={<GroupAddIcon size="small" />}
-                          >
-                            {'Add Myself'}
-                          </Button>
-                        }
-                      </React.Fragment>
-                    }
-                    {!adminAccount &&
-                      <Button
-                        onClick={() => {
-                          setPromptForMessage(true);
-                          setMessageType('');
-                          let rKey = '';
-                          pGroupRec.admin_list.forEach((g, i) => {
-                            rKey += ((i > 0) ? ' ~ ' : '') + `${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'} Administrator:${g}`;
-                          });
-                          setRecipient(rKey);
-                        }}
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'brown', color: 'white' }}
-                        size='small'
-                        startIcon={<SendIcon size='small' />}
-                      >
-                        {`Msg Admin`}
-                      </Button>
-                    }
-                  </Box>
-                  {adminAccount &&
-                    <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                      <Button
-                        onClick={() => {
-                          setPromptForMessage(true);
-                          setMessageType('Group');
-                          setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
-                        }}
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'brown', color: 'white' }}
-                        size='small'
-                        startIcon={<SendIcon size='small' />}
-                      >
-                        {`Group Msg`}
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          setPromptForMessage(true);
-                          setMessageType('URGENT Group');
-                          setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
-                        }}
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'red', color: 'white' }}
-                        size='small'
-                        startIcon={<PhoneInTalkIcon size='small' />}
-                      >
-                        {`Call All`}
-                      </Button>
-                    </Box>
+                  {!adminAccount &&
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('');
+                        let rKey = '';
+                        pGroupRec.admin_list.forEach((g, i) => {
+                          rKey += ((i > 0) ? ' ~ ' : '') + `${pGroupName}${pGroupName.includes('roup') ? '' : ' Group'} Administrator:${g}`;
+                        });
+                        setRecipient(rKey);
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'brown', color: 'white' }}
+                      size='small'
+                      startIcon={<SendIcon size='small' />}
+                    >
+                      {`Msg Admin`}
+                    </Button>
                   }
                 </Box>
-              </DialogActions>
-            }
-          </React.Fragment>
-        }
+                {adminAccount &&
+                  <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('Group');
+                        setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'brown', color: 'white' }}
+                      size='small'
+                      startIcon={<SendIcon size='small' />}
+                    >
+                      {`Group Msg`}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setPromptForMessage(true);
+                        setMessageType('URGENT Group');
+                        setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
+                      }}
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'red', color: 'white' }}
+                      size='small'
+                      startIcon={<PhoneInTalkIcon size='small' />}
+                    >
+                      {`Call All`}
+                    </Button>
+                  </Box>
+                }
+              </Box>
+            </DialogActions>
+          }
+        </React.Fragment>
         {showSuperSize &&
           <List classes={{ root: classes.superSizeArea }}   >
             <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
@@ -1216,7 +1214,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
         {showAccountHistory &&
           <RequestDashboard
             session={state.session}
-          title={superSizeData.display_name}
+            title={superSizeData.display_name}
             filter={{
               person_id: superSizeData.person_id,
               sort: 'desc'
@@ -1227,10 +1225,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
               textForm: false,
               updateMode: false,
               noSelect: true
-          }}
-          onClose={() => {
-            setShowAccountHistory(false);
-          }}
+            }}
+            onClose={() => {
+              setShowAccountHistory(false);
+            }}
           />
         }
       </Dialog >

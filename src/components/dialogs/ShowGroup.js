@@ -115,8 +115,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     }
     if (memberInfo.peopleList.length === 0) {
       enqueueSnackbar(`AVA couldn't find any members in that Group.`, { variant: 'error' });
-      reactData.showGroupSelect = true;
-      setReactData(reactData);
+      // reactData.showGroupSelect = true;
+      // setReactData(reactData);
       // onAbort();
       return [];
     }
@@ -147,6 +147,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
 
   const prepareGroupObject = async (pGroupList) => {
     let selectAll = pGroupList.includes('*all');
+    let selectOpen = pGroupList.includes('*all_open') || pGroupList.includes('*all_public');
+    let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
     let gList = state.groups.adminHierarchy;
     let response = {};
     for (let x = 0; x < gList.length; x++) {
@@ -164,7 +166,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       }
     }; 
     for (let gID in state.groups.publicGroups) {
-      if (selectAll || pGroupList.includes(gID)) {
+      if (selectAll || pGroupList.includes(gID) || selectOpen) {
         response[gID] = {
           group_name: state.groups.publicGroups[gID].group_name,
           group_id: gID,
@@ -174,7 +176,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       }
     }; 
     for (let gID in state.groups.privateGroups) {
-      if (selectAll || pGroupList.includes(gID)) {
+      if (selectAll || pGroupList.includes(gID) || selectPrivate) {
         response[gID] = {
           group_name: state.groups.privateGroups[gID].group_name,
           group_id: gID,
@@ -274,7 +276,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
           </Typography>
         </Box>
         <DialogContent dividers={true} className={classes.dialogBox}>
-          {reactData.groupMemberList.length === 0 && !reactData.showGroupSelect &&
+          {!reactData.showGroupSelect &&
+            <React.Fragment>
             <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
               <Box
                 display='flex' flexDirection='column' justifyContent='center' alignItems='center'
@@ -305,8 +308,6 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
                 </React.Fragment>
               </Box>
             </DialogContent>
-          }
-          {reactData.groupMemberList.length > 0 &&
             <GroupForm
               groupMemberList={reactData.groupMemberList}
               peopleList={peopleList}
@@ -329,7 +330,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
                   setForceRedisplay(!forceRedisplay);
                 }
               }}
-            />
+              />
+            </React.Fragment>
           }
         </DialogContent>
         {reactData.showGroupSelect &&
@@ -349,11 +351,11 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
               reactData.groupID = reactData.groupsManagedObject[selectedGroup].group_id;
               reactData.groupRole = reactData.groupsManagedObject[selectedGroup].role;
               setReactData(reactData);
-              let mbrList = await getGroupMemberList([reactData.groupsManagedObject[selectedGroup].group_id]);
-              if (mbrList.length === 0) {
-                reactData.showGroupSelect = true;
-                setReactData(reactData);
-              }
+              await getGroupMemberList([reactData.groupsManagedObject[selectedGroup].group_id]);
+              // if (mbrList.length === 0) {
+              //   reactData.showGroupSelect = true;
+              //   setReactData(reactData);
+              // }
               setForceRedisplay(!forceRedisplay);
             }}
             onRefresh={async () => {
