@@ -19,8 +19,24 @@ import { useSnackbar } from 'notistack';
 import useSession from '../../hooks/useSession';
 import AVAConfirm from './AVAConfirm';
 
+import makeStyles from '@material-ui/core/styles/makeStyles';
+
+const useStyles = makeStyles(theme => ({
+  AVAClientBackground: {
+    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).backgroundColor : null,
+    borderRadius: '30px',
+    padding: 5
+  },
+  AVAPromptBackground: {
+    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null,
+    borderRadius: '30px',
+    padding: 5
+  }
+}));
+
 export default ({ onSave, onClose }) => {
 
+  const classes = useStyles();
   const AVAClass = AVAclasses();
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
@@ -413,7 +429,7 @@ export default ({ onSave, onClose }) => {
               :
               <Dialog
                 open={forceRedisplay || true} fullWidth
-                classes={{ paper: AVAClass.AVAPromptBackground }}
+                classes={{ paper: classes.AVAPromptBackground }}
               >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                   <Typography style={AVATextStyle({ size: 1.3, bold: true })} id='dialog-title'>{makeGreeting()}</Typography>
