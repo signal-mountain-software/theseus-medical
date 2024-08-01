@@ -51,6 +51,7 @@ export default ({ onSave, onClose }) => {
   React.useEffect(() => {
     async function initialize() {
       reactData.initialized = true;
+      reactData.marquee_message = JSON.parse(sessionStorage.getItem('marquee_message'));
       setReactData(reactData);
       setForceRedisplay(!forceRedisplay);
     }
@@ -248,6 +249,7 @@ export default ({ onSave, onClose }) => {
   }
 
   function reset() {
+    let marquee_message = JSON.parse(sessionStorage.getItem('marquee_message'));
     setReactData({
       kiosk_mode: (state.session.hasOwnProperty('kiosk_mode') ? state.session.kiosk_mode : false),
       validated_user: false,
@@ -263,7 +265,8 @@ export default ({ onSave, onClose }) => {
       adminIndex: -1,
       outList: [],
       adminView: false,
-      initialized: true
+      initialized: true,
+      marquee_message
     });
     setForceRedisplay(!forceRedisplay);
   }
@@ -310,22 +313,27 @@ export default ({ onSave, onClose }) => {
   }
 
   return (
-    <Box
-      open={(!!reactData.initialized) && (true || forceRedisplay)}
-      display='flex' flexDirection='row' justifyContent='center' alignItems='center'
+    <Dialog
+      open={(true || forceRedisplay)}
       p={2}
-      fullWidth
+      fullScreen
     >
       <Box
-        component="img"
         display='flex' flexDirection='row' justifyContent='center' alignItems='center'
-        minWidth={200}
-        minHeight={200}
-        maxHeight={200}
-        m={2}
-        alt=''
-        src={state.session?.client_logo || process.env.REACT_APP_AVA_LOGO}
-      />
+        width={'100%'}
+        maxHeight={'100%'}
+        minHeight={'100%'}
+        overflow={'hidden'}
+      >
+        <Box
+          component="img"
+          m={2}
+          alt=''
+          src={AVADefaults({ client_style: 'get' })
+            ? AVADefaults({ client_style: 'get' }).checkin_image
+            : (state.session?.client_logo || process.env.REACT_APP_AVA_LOGO)}
+        />
+      </Box>
       {/* *** CHECK-IN/OUT VIEW *** */
         !reactData.adminView &&
         <React.Fragment>
@@ -411,15 +419,15 @@ export default ({ onSave, onClose }) => {
                   <Typography style={AVATextStyle({ size: 1.3, bold: true })} id='dialog-title'>{makeGreeting()}</Typography>
                   <Typography style={AVATextStyle({ size: 0.8 })} id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
                 </Box>
-                  <Paper
-                    component={Box}
-                    style={{
-                      paddingTop: '16px',
-                      backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null,
-                    }}
-                    overflow='auto'
-                    square
-                  >
+                <Paper
+                  component={Box}
+                  style={{
+                    paddingTop: '16px',
+                    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null,
+                  }}
+                  overflow='auto'
+                  square
+                >
                   {reactData.candidates.map((candidate, cIndex) => (
                     <Box display='flex'
                       style={{ marginBottom: '2em', marginLeft: '1em', backgroundColor: 'white' }}
@@ -1109,6 +1117,6 @@ export default ({ onSave, onClose }) => {
           }
         </React.Fragment>
       }
-    </Box>
+    </Dialog>
   );
 };
