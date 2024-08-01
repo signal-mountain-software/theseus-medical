@@ -8,7 +8,6 @@ import DialogContent from '@material-ui/core/DialogContent';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
 
 import GroupForm from '../forms/GroupForm';
@@ -16,8 +15,6 @@ import GroupFilter from '../forms/GroupFilter';
 import { makeArray, deepCopy } from '../../util/AVAUtilities';
 
 import useSession from '../../hooks/useSession';
-
-import { AVATextStyle } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
