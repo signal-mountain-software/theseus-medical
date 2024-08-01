@@ -102,12 +102,14 @@ export default Component => props => {
       async () => {
         let activeUser;
         let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
+        sessionStorage.removeItem('cognito_expires');
         let localCognitoSession = await Auth
           .currentSession()
           .catch(e => {
             console.log(e);
           });
         if (localCognitoSession) {
+          sessionStorage.setItem('cognito_expires', JSON.stringify(localCognitoSession.accessToken?.payload?.exp))
           await refreshSession(localCognitoSession.getRefreshToken());
           if (sessionObject) {          // There is a good sessionObject.  This contains actual info about user
             activeUser = sessionObject.currentProfile.person_id;

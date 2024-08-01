@@ -1045,8 +1045,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   }
 
   function makeExpiration() {
-    let sessionObject = JSON.parse(sessionStorage.getItem('AVASessionData'));
-    let sTime = new Date((sessionObject?.cognitoSession?.accessToken?.payload?.exp * 1000) || (nowTime + oneHour));
+    let cognito_expires = JSON.parse(sessionStorage.getItem('cognito_expires'));
+    let sTime = new Date(cognito_expires ? (cognito_expires * 1000) : (nowTime + oneHour));
     return `Sess exp ${sTime.toLocaleDateString('en-US', {
       month: 'numeric',
       day: 'numeric',
