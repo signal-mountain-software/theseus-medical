@@ -337,9 +337,9 @@ export default ({
                       }
                     </Box>
                     :
-                    <Box display='flex' flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                    <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='flex-start'>
                       <Typography style={AVATextVariableStyle(listEntry.split(splitter)[0], { bold: true, color: 'red' })}>{listEntry.split(splitter)[0]}</Typography>
-                      <Typography style={AVATextStyle({ size: 0.8, margin: { top: 0.5, left: 1 } })}>(GROUP)</Typography>
+                      <Typography style={AVATextStyle({ margin: { left: 0.8 } })}>(group)</Typography>
                     </Box>
                   }
                 </Box>
@@ -397,7 +397,7 @@ export default ({
           }}
           startIcon={<CloseIcon fontSize="small" />}
         >
-          {'Close/Exit'}
+          {'Exit'}
         </Button>
         {multiSelect && (rowsWritten > 0) &&
           <Button
@@ -410,7 +410,7 @@ export default ({
             }}
             startIcon={<CheckIcon fontSize="small" />}
           >
-            {'Save/Confirm'}
+            {'Continue'}
           </Button>
         }
       </DialogActions>

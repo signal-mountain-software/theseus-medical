@@ -195,7 +195,10 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                   else {
                     myGroupAccessLevel[g] = accessLevelTable.indexOf('none');
                   }
-                  if ((myRole === 'member') && (['local', 'resident', 'staff', 'admin'].includes(myClass))) {
+                  if ((myRole === 'member')
+                    && (['local', 'resident', 'staff', 'admin'].includes(myClass))
+               //     && (this_group.group_type === 'admin')
+                  ) {
                     myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
                   }
                 }

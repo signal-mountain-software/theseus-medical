@@ -308,6 +308,37 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
     Payload: ''
   };
 
+  function messageAll() {
+    if (state.accessList[state.session.client_id]?.groups?.[pGroup] < 2) {
+      return false;         // this specific group is excluded
+    }
+    else {
+      // if this in the hierarchy...
+      let found = false;
+      let found_level = 99;
+      for (let x = 0; x < state.groups.adminHierarchy.length; x++) { 
+        let this_group = state.groups.adminHierarchy[x];
+        if (!found) {
+          if (pGroup === this_group.id) {
+            found = true;
+            found_level = this_group.level;
+          }
+          else {
+            continue;
+          }
+        }
+        else {
+          if (this_group.level <= found_level) {
+            return true;   // got to another group at or higher without failing, you are authorized
+          }
+          else if (state.accessList[state.session.client_id]?.groups?.[this_group.id] < 2) {
+            return false;   // this group is a child of your group and not authorized; so you are not authorized
+          }
+        }
+      }
+    }
+  }
+
   function formatLocalData(ldKey, inData) {
     switch (state.session.local_data[ldKey]) {
       case 'phone': {
@@ -749,7 +780,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 if (updatedPerson) {
                   updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
                   setSuperSizeData(Object.assign(superSizeData, updatedPerson));
-                  setUpdatesMade(true)
+                  setUpdatesMade(true);
                 }
                 setEditPersonRec(null);
                 setShowEditPerson(null);
@@ -879,7 +910,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                       }
                     </React.Fragment>
                   }
-                  {!adminAccount &&
+                  {!adminAccount && false &&
                     <Button
                       onClick={() => {
                         setPromptForMessage(true);
@@ -899,34 +930,38 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     </Button>
                   }
                 </Box>
-                {adminAccount &&
+                {(adminAccount || (state.accessList[state.session.client_id]?.groups?.[pGroup] > 1)) &&
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                    <Button
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('Group');
-                        setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
-                      }}
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'brown', color: 'white' }}
-                      size='small'
-                      startIcon={<SendIcon size='small' />}
-                    >
-                      {`Group Msg`}
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setPromptForMessage(true);
-                        setMessageType('URGENT Group');
-                        setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
-                      }}
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'red', color: 'white' }}
-                      size='small'
-                      startIcon={<PhoneInTalkIcon size='small' />}
-                    >
-                      {`Call All`}
-                    </Button>
+                    {messageAll() && 
+                      <Button
+                        onClick={() => {
+                          setPromptForMessage(true);
+                          setMessageType('Group');
+                          setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
+                        }}
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'brown', color: 'white' }}
+                        size='small'
+                        startIcon={<SendIcon size='small' />}
+                      >
+                        {`Group Msg`}
+                      </Button>
+                    }
+                    {adminAccount &&
+                      <Button
+                        onClick={() => {
+                          setPromptForMessage(true);
+                          setMessageType('URGENT Group');
+                          setRecipient(pGroupName + ':GRP//' + pClient + '/' + pGroup);
+                        }}
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'red', color: 'white' }}
+                        size='small'
+                        startIcon={<PhoneInTalkIcon size='small' />}
+                      >
+                        {`Call All`}
+                      </Button>
+                    }
                   </Box>
                 }
               </Box>
