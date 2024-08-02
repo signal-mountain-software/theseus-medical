@@ -44,18 +44,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(2),
     marginBottom: 0,
   },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
-  },
   buttonArea: {
     justifyContent: 'center',
     marginTop: theme.spacing(1),
@@ -74,14 +62,12 @@ const useStyles = makeStyles(theme => ({
     paddingRight: 0,
   },
   clientBackground: {
-    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null,
     borderRadius: '30px',
-    padding: 5
   },
   promptBackground: {
     borderRadius: '15px',
     marginTop: 4,
-    marginBottom:4,
+    marginBottom: 4,
     paddingLeft: 16,
     paddingRight: 16,
     backgroundColor: 'white',
@@ -92,6 +78,20 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
+
+  const AVAButton = {
+    margin: '8px',
+    paddingLeft: '16px',
+    paddingRight: '16px',
+    borderRadius: '16px',
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  };
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -114,7 +114,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     saving: false,
     focusOn: 0,
     loadProgress: [],
-    attachmentList: (options.allowAttach && options.attachmentList ? options.attachmentList : [])
+    attachmentList: (options.allowAttach && options.attachmentList ? options.attachmentList : []),
+    bgColor_option: options.bgColor || null
   });
 
   const updateReactData = (newData, force = false) => {
@@ -360,10 +361,12 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     >
       <Box display='flex'
         grow={1}
-        mb={3}
-        ml={2}
-        mr={2}
-        mt={3}
+        sx={{
+          px: 3,
+          py: 2,
+          borderRadius: '30px 30px 0 0',
+          bgcolor: reactData.bgColor_option,
+        }}
         flexDirection='column'
         justifyContent='center'
         alignItems='flex-start'
@@ -387,13 +390,14 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
           dividers={true}
           style={{
             minWidth: '100%',
+            backgroundColor: reactData.bgColor_option,
             dividers: {
               paddingTop: 8,
               paddingBottom: 8,
               minWidth: '100%',
             },
             minHeight: `${minHeight}px`,
-            marginBottom: '1em'
+            paddingBottom: '1em'
           }}
           id='dialog-content'
         >
@@ -546,8 +550,14 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
         </DialogContent>
       }
       {(options.allowAttach && reactData.attachmentList && reactData.attachmentList.length > 0) &&
-        <Box display='flex' flexDirection='column' pl={1.5} mt={1} justifyContent='flex-start'
+        <Box display='flex' flexDirection='column' justifyContent='flex-start'
           alignItems='flex-start' key={'qrOpt_attachmentlist'}
+          sx={{
+            pl: 1.5,
+            mt: 1,
+            bgcolor: reactData.bgColor_option,
+          }}
+
         >
           <Typography className={classes.radioHead}>
             {(typeof (options.allowAttach) === 'string') ? options.allowAttach : 'Attachments'}:
@@ -600,78 +610,104 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
           ))}
         </Box>
       }
-        <Box display='flex' mx={2} mb={2} flexDirection='row' justifyContent='space-between' alignItems='center' >
-          {allowCancel &&
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'red', color: 'white' }}
-              size='small'
-              onClick={() => {
-                onCancel();
-              }}
-              startIcon={<CloseIcon size="small" />}
-            >
-              {buttonArray[1]}
-            </Button>
-          }
-          <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
-              size='small'
-              onClick={() => {
-                keyPressed = 0;
-                handleSave();
-              }}
-              startIcon={<LoadIcon size="small" />}
-            >
-              {buttonArray[0]}
-            </Button>
-            {(buttonArray.length > 2) &&
-              buttonArray.map((b, i) => (
-                (i > 1) &&
-                b &&
-                <Button
-                  className={AVAClass.AVAButton}
-                  key={`extra-button_${i}`}
-                  style={{ backgroundColor: 'blue', color: 'white' }}
-                  size='small'
-                  onClick={() => {
-                    keyPressed = i;
-                    handleSave();
-                  }}
-                >
-                  {b}
-                </Button>
-              ))
+      <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+        sx={{
+          px: 2,
+          pb: 2,
+          borderRadius: '0 0 30px 30px',
+          bgcolor: reactData.bgColor_option,
+        }}
+      >
+        {allowCancel &&
+          <Button
+            style={
+              Object.assign(
+                {},
+                AVAButton, 
+                { backgroundColor: 'red', color: 'white' }
+              )
             }
-            {options.allowAttach &&
-              <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                alignItems='center' key={'qrOpt_attachmentbox'}
+            size='small'
+            onClick={() => {
+              onCancel();
+            }}
+            startIcon={<CloseIcon size="small" />}
+          >
+            {buttonArray[1]}
+          </Button>
+        }
+        <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+          <Button
+            style={
+              Object.assign(
+                {},
+                AVAButton,
+                { backgroundColor: 'green', color: 'white' }
+              )
+            }
+            size='small'
+            onClick={() => {
+              keyPressed = 0;
+              handleSave();
+            }}
+            startIcon={<LoadIcon size="small" />}
+          >
+            {buttonArray[0]}
+          </Button>
+          {(buttonArray.length > 2) &&
+            buttonArray.map((b, i) => (
+              (i > 1) &&
+              b &&
+              <Button
+                  style={
+                    Object.assign(
+                      {},
+                      AVAButton,
+                      { backgroundColor: 'blue', color: 'white' }                    )
+                  }
+                key={`extra-button_${i}`}               
+                size='small'
+                onClick={() => {
+                  keyPressed = i;
+                  handleSave();
+                }}
               >
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'blue', color: 'white' }}
-                  size='small'
-                  startIcon={<CloudUploadIcon />}
-                  onClick={handleFileUpload}
-                >
-                  Add {(typeof (options.allowAttach) === 'string') ? options.allowAttach : 'Attachment'}
-                </Button>
-                <input
-                  type="file"
-                  style={{ display: 'none' }}
-                  ref={hiddenFileInput}
-                  onChange={async (target) => {
-                    let s3Data = await handleSaveFile(target.target.files[0]);
-                    textInput.push(s3Data.Location);
-                    setTextInput(textInput);
-                  }}
-                />
-              </Box>
-            }
-          </Box>
+                {b}
+              </Button>
+            ))
+          }
+          {options.allowAttach &&
+            <Box display='flex' flexDirection='row' justifyContent='flex-start'
+              alignItems='center' key={'qrOpt_attachmentbox'}
+            >
+              <Button
+                style={
+                  Object.assign(
+                    {},
+                    AVAButton,
+                    { backgroundColor: 'blue', color: 'white' }
+                  )
+                }
+                size='small'
+                startIcon={<CloudUploadIcon />}
+                onClick={handleFileUpload}
+              >
+                Add {(typeof (options.allowAttach) === 'string') ? options.allowAttach : 'Attachment'}
+              </Button>
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                ref={hiddenFileInput}
+                onChange={async (target) => {
+                  let s3Data = await handleSaveFile(target.target.files[0]);
+                  textInput.push(s3Data.Location);
+                  setTextInput(textInput);
+                }}
+              />
+            </Box>
+          }
         </Box>
+      </Box>
     </Dialog>
   );
 };

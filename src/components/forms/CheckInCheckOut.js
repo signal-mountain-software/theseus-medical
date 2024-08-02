@@ -424,7 +424,10 @@ export default ({ onSave, onClose }) => {
                   }
                 }}
                 allowCancel={!reactData.kiosk_mode}
-                options={{ save_on_enter: true }}
+                options={{
+                  save_on_enter: true,
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
               />
               :
               <Dialog
@@ -553,18 +556,25 @@ export default ({ onSave, onClose }) => {
                   else { reset(); }
                 }}
                 allowCancel={true}
-                options={{ save_on_enter: (state.session.resident_checkout_prompts && (state.session.resident_checkout_prompts.length === 1)) }}
+                options={{
+                  save_on_enter: (state.session.resident_checkout_prompts && (state.session.resident_checkout_prompts.length === 1)),
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
 
               />
               :
               <AVAConfirm
                 promptText={[
                   `Welcome home, ${reactData.personRec.name.first}!`,
-                  `[italic]You've been checked out since ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`,
+                  `[italic]You've been checked out since ${makeDate,
+                  (reactData.currentStatus.reqRec.last_update).relative}`,
                   `Tap below to check in`
                 ]}
                 cancelText={`Cancel`}
                 confirmText={`Check-in`}
+                options={{
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 onCancel={() => {
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else {
@@ -604,6 +614,9 @@ export default ({ onSave, onClose }) => {
                   setReactData(reactData);
                   setForceRedisplay(!forceRedisplay);
                 }}
+                options={{
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 onConfirm={async () => {
                   let now = makeDate(new Date());
                   reactData.currentStatus.reqRec.last_status = 'out';
@@ -622,6 +635,9 @@ export default ({ onSave, onClose }) => {
                 promptText={[`Welcome back, ${reactData.personRec.name.first}!`]}
                 cancelText={`Cancel`}
                 confirmText={`Check-in`}
+                options={{
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 onCancel={() => {
                   reactData.errorText = [];
                   reactData.validated_user = false;
@@ -654,6 +670,9 @@ export default ({ onSave, onClose }) => {
                 promptText={[`Thanks for visiting ${state.session.client_name}, ${reactData.personRec.name.first}!`, `[italic]${reactData.currentStatus.reqRec.history[0]}`]}
                 cancelText={`Cancel`}
                 confirmText={`Check-out`}
+                options={{
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 onCancel={() => {
                   reactData.validated_user = false;
                   setReactData(reactData);
@@ -731,7 +750,10 @@ export default ({ onSave, onClose }) => {
                     setForceRedisplay(!forceRedisplay);
                   }
                 }}
-                options={{ save_on_enter: true }}
+                options={{
+                  save_on_enter: true,
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 allowCancel={true}
               />
             )
@@ -745,6 +767,9 @@ export default ({ onSave, onClose }) => {
             <AVAConfirm
               promptText={[`Thanks for visiting ${state.session.client_name}`, `[italic]Please check with the Reception Desk to continue`]}
               confirmText={`Exit`}
+              options={{
+                bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+              }}
               onCancel={async () => {
                 reactData.validated_user = false;
                 setReactData(reactData);
@@ -889,6 +914,9 @@ export default ({ onSave, onClose }) => {
                 setForceRedisplay(!forceRedisplay);
               }} /* end of onSave */
               allowCancel={true}
+              options={{
+                bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+              }}
             />
           }
         </React.Fragment>
@@ -900,7 +928,10 @@ export default ({ onSave, onClose }) => {
                Reporting all data
                ********************************** */
             (!reactData.adminOverride ?
-              <Dialog open={forceRedisplay || true} fullWidth >
+              <Dialog open={forceRedisplay || true}
+                classes={{ paper: classes.AVAPromptBackground }}
+                fullWidth
+              >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                   <Typography variant='h5' key={`title1`} style={{ fontWeight: 'bold' }}>
                     {`Check-in/out status`}
@@ -909,7 +940,13 @@ export default ({ onSave, onClose }) => {
                     {`as of ${makeDate(new Date()).absolute}`}
                   </Typography>
                 </Box>
-                <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
+                <Paper component={Box}
+                  style={{
+                    paddingTop: '16px',
+                    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                    }}
+                    elevation={0}
+                  overflow='auto' square>
                   <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                     <Typography variant='h6' id='dialog-title'>{'Residents currently checked-out'}</Typography>
                     {(reactData.outList.length === 0) &&
@@ -1042,6 +1079,9 @@ export default ({ onSave, onClose }) => {
                     promptText={`Confirm override check-in for ${reactData.outList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
                     confirmText={`Check-in`}
+                    options={{
+                      bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                    }}
                     onCancel={() => {
                       reactData.adminOverride = false;
                       reactData.resident_mode = false;
@@ -1072,6 +1112,9 @@ export default ({ onSave, onClose }) => {
                     promptText={`Confirm override check-out for ${reactData.vendorList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
                     confirmText={`Check-out`}
+                    options={{
+                      bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                    }}
                     onCancel={() => {
                       reactData.adminOverride = false;
                       reactData.vendor_mode = false;
@@ -1102,6 +1145,9 @@ export default ({ onSave, onClose }) => {
                     promptText={`Confirm override check-out for ${reactData.guestList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
                     confirmText={`Check-out`}
+                    options={{
+                      bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                    }}
                     onCancel={() => {
                       reactData.adminOverride = false;
                       reactData.guest_mode = false;
