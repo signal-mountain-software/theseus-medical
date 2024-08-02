@@ -74,7 +74,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     groupRole: '',
     groupRec: {},
     progressMessage: 'Building Group List',
-    building: 'not started'
+    building: 'not started',
+    updatesMade: false
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -220,8 +221,8 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     return gManagedObj;
   };
 
-  const handleAbort = async () => {
-    onClose();
+  const handleAbort = async (updatesMade) => {
+    onClose(updatesMade);
   };
 
   // **************************
@@ -269,7 +270,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     (showList && (forceRedisplay || true) &&
       <Dialog
         open={forceRedisplay || true}
-        onClose={handleAbort}
+        onClose={() => {
+          handleAbort(reactData.updatesMade);
+        }}
         TransitionComponent={Transition}
         className={classes.pageHead}
         fullScreen
@@ -300,15 +303,19 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
               pGroupName={reactData.groupName}
               pRole={reactData.groupRole}
               pStyle={showList}
-              onReset={() => {
+              onReset={(updatesMade) => {
                 if (pGroup_id && (showList !== 'select')) {
-                  handleAbort();
+                  handleAbort(updatesMade);
                 }
                 else {
-                  updateReactData({
+                  let reactUpdater = {
                     showGroupSelect: true,
-                    groupMemberList: []
-                  }, true);
+                    groupMemberList: [],
+                  }
+                  if (updatesMade) {
+                    reactUpdater.updatesMade = true;
+                  }
+                  updateReactData(reactUpdater, true);
                 }
               }}
             />
@@ -323,7 +330,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
               updateReactData({
                 showGroupSelect: false
               }, true);
-              onClose();
+              onClose(reactData.updatesMade);
             }}
             onSelect={async (selectedGroup, selectedIndex) => {
               updateReactData({

@@ -1689,7 +1689,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             open={true}
             onClose={(updatedPerson) => {
               setShowProfileEdit(false);
-              if (updatedPerson && updatedPerson.person_id) {
+              if (updatedPerson) {
                 sessionStorage.removeItem('AVASessionData');
                 window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
               }
@@ -1716,9 +1716,11 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             }}
             groupData={groupData}
             open={true}
-          onClose={() => {
+            onClose={() => {
               reset()
               setShowAddAccount(false);
+              sessionStorage.removeItem('AVASessionData');
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
             }}
           />
         }

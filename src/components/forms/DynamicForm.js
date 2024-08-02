@@ -532,7 +532,14 @@ export default ({
           pGroup_name={message}
           peopleList={values}
           showList={defaultObject?.mode || 'full'}
-          onClose={onSave}
+          onClose={(updatesMade) => {
+            if (updatesMade) {
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+            }
+            else {
+              onSave();
+            }
+          }}
           onAbort={onClose}
         />
       );
@@ -554,7 +561,14 @@ export default ({
           pPatient={session.patient_id}
           pPatientName={session.patient_display_name}
           pClient={session.client_id}
-          onReset={onSave}
+          onReset={(updatesMade) => {
+            if (updatesMade) {
+              window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+            }
+            else {
+              onSave();
+            }
+          }}
         />
       );
     default:

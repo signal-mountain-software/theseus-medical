@@ -220,6 +220,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   const [showSuperSize, setshowSuperSize] = React.useState(false);
   const [showAccountHistory, setShowAccountHistory] = React.useState(false);
   const [superSizeData, setSuperSizeData] = React.useState(false);
+  const [updatesMade, setUpdatesMade] = React.useState(false);
   const [singlePersonMode, setsinglePersonMode] = React.useState(false);
   const [recipient, setRecipient] = React.useState();
   const [messageType, setMessageType] = React.useState();
@@ -748,6 +749,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 if (updatedPerson) {
                   updatedPerson.account_class = determineClass(updatedPerson.groups, state.session.group_assignments);
                   setSuperSizeData(Object.assign(superSizeData, updatedPerson));
+                  setUpdatesMade(true)
                 }
                 setEditPersonRec(null);
                 setShowEditPerson(null);
@@ -798,7 +800,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                     startIcon={<CloseIcon size="small" />}
                     onClick={() => {
                       setOverrideRole(null);
-                      onReset();
+                      onReset(updatesMade);
                     }}
                   >
                     {'Close'}
@@ -1050,7 +1052,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                   startIcon={<CloseIcon size="small" />}
                   onClick={() => {
                     if (singlePersonMode) {
-                      onReset();
+                      onReset(false);
                     }
                     else {
                       setshowSuperSize(false);
