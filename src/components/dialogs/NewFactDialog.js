@@ -12,7 +12,7 @@ import DialogContentText from '@material-ui/core/DialogContentText';
 
 import DynamicForm from '../forms/DynamicForm';
 
-import { AVAclasses } from '../../util/AVAStyles';
+import { AVAclasses, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   appBar: {
@@ -35,6 +35,7 @@ const useStyles = makeStyles(theme => ({
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(1),
     minWidth: '100%',
+    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).backgroundColor : null,
   },
   formControl: {
     marginLeft: theme.spacing(3),
@@ -464,7 +465,8 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
       {statusMessage &&
         <DialogContentText className={classes.subDescriptionText}>{statusMessage}</DialogContentText>
       }
-      <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+      <DialogContent dividers={true}
+        classes={{ dividers: classes.dialogBox }}>
         {fact ? (
           <DynamicForm
             open={open}
@@ -488,16 +490,18 @@ export default ({ fact, session, open, fromHome, onClose, onSave, onNext, onSele
         ) : null}
       </DialogContent>
       <DialogActions style={{ justifyContent: 'center' }}>
-        <Button
-          className={AVAClass.AVAButton}
-          style={{ backgroundColor: 'red', color: 'white' }}
-          size='small'
-          onClick={(response) => {
-            handleClose(response);
-          }}
-        >
-          {!factIOClass ? 'Done' : 'Cancel'}
-        </Button>
+        {!fact &&
+          <Button
+            className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            onClick={(response) => {
+              handleClose(response);
+            }}
+          >
+            {!factIOClass ? 'Done' : 'Cancel'}
+          </Button>
+        }
         {factIOClass
           ? (<Button
             className={AVAClass.AVAButton}

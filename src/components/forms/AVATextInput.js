@@ -4,7 +4,7 @@ import { titleCase, makeArray, s3 } from '../../util/AVAUtilities';
 
 import { useSnackbar } from 'notistack';
 
-import { Dialog, DialogActions, DialogContent, TextField, Box, Button, Typography, Checkbox } from '@material-ui/core';
+import { Dialog, DialogContent, TextField, Box, Button, Typography, Checkbox } from '@material-ui/core';
 
 import LoadIcon from '@material-ui/icons/GetApp';
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -44,18 +44,6 @@ const useStyles = makeStyles(theme => ({
     marginRight: theme.spacing(2),
     marginBottom: 0,
   },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
-  },
   buttonArea: {
     justifyContent: 'center',
     marginTop: theme.spacing(1),
@@ -73,12 +61,37 @@ const useStyles = makeStyles(theme => ({
     paddingLeft: 0,
     paddingRight: 0,
   },
+  clientBackground: {
+    borderRadius: '30px',
+  },
+  promptBackground: {
+    borderRadius: '15px',
+    marginTop: 4,
+    marginBottom: 4,
+    paddingLeft: 16,
+    paddingRight: 16,
+    backgroundColor: 'white',
+  }
 }));
 
 export default ({ titleText, promptText, valueText, selectionList, errorText, buttonText, onCancel, onSave, allowCancel = true, options = {} }) => {
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
+
+  const AVAButton = {
+    margin: '8px',
+    paddingLeft: '16px',
+    paddingRight: '16px',
+    borderRadius: '16px',
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  };
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -101,7 +114,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
     saving: false,
     focusOn: 0,
     loadProgress: [],
-    attachmentList: (options.allowAttach && options.attachmentList ? options.attachmentList : [])
+    attachmentList: (options.allowAttach && options.attachmentList ? options.attachmentList : []),
+    bgColor_option: options.bgColor || null
   });
 
   const updateReactData = (newData, force = false) => {
@@ -340,14 +354,19 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
   // **************************
 
   return (
-    <Dialog open={forceRedisplay || true} fullWidth>
-
+    <Dialog
+      open={forceRedisplay || true}
+      fullWidth
+      classes={{ paper: classes.clientBackground }}
+    >
       <Box display='flex'
         grow={1}
-        mb={3}
-        ml={2}
-        mr={2}
-        mt={3}
+        sx={{
+          px: 3,
+          py: 2,
+          borderRadius: '30px 30px 0 0',
+          bgcolor: reactData.bgColor_option,
+        }}
         flexDirection='column'
         justifyContent='center'
         alignItems='flex-start'
@@ -371,13 +390,14 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
           dividers={true}
           style={{
             minWidth: '100%',
+            backgroundColor: reactData.bgColor_option,
             dividers: {
               paddingTop: 8,
               paddingBottom: 8,
               minWidth: '100%',
             },
             minHeight: `${minHeight}px`,
-            marginBottom: '1em'
+            paddingBottom: '1em'
           }}
           id='dialog-content'
         >
@@ -398,6 +418,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                   <React.Fragment>
                     <Box display='flex'
                       flexDirection='row'
+                      className={classes.promptBackground}
                       mt={0.5}
                       mb={0.5}
                       paddingLeft={2}
@@ -428,7 +449,6 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                       {prompt.toLowerCase().startsWith('[select') &&
                         <React.Fragment>
                           <Box
-                            //            paddingTop={prompt.toLowerCase().startsWith('[select') ? 1 : 0}
                             key={`selectBox_${ndx}`}
                             display='flex' flexGrow={1} flexDirection='column'
                           >
@@ -489,6 +509,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                   :
                   <Box display='flex'
                     flexDirection='column'
+                    className={classes.promptBackground}
                     mt={0.5}
                     mb={0.5}
                     paddingLeft={2}
@@ -529,8 +550,14 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
         </DialogContent>
       }
       {(options.allowAttach && reactData.attachmentList && reactData.attachmentList.length > 0) &&
-        <Box display='flex' flexDirection='column' pl={1.5} mt={1} justifyContent='flex-start'
+        <Box display='flex' flexDirection='column' justifyContent='flex-start'
           alignItems='flex-start' key={'qrOpt_attachmentlist'}
+          sx={{
+            pl: 1.5,
+            mt: 1,
+            bgcolor: reactData.bgColor_option,
+          }}
+
         >
           <Typography className={classes.radioHead}>
             {(typeof (options.allowAttach) === 'string') ? options.allowAttach : 'Attachments'}:
@@ -583,24 +610,41 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
           ))}
         </Box>
       }
-      <DialogActions style={{ justifyContent: 'center' }}>
-        <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-          {allowCancel &&
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'red', color: 'white' }}
-              size='small'
-              onClick={() => {
-                onCancel();
-              }}
-              startIcon={<CloseIcon size="small" />}
-            >
-              {buttonArray[1]}
-            </Button>
-          }
+      <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'
+        sx={{
+          px: 2,
+          pb: 2,
+          borderRadius: '0 0 30px 30px',
+          bgcolor: reactData.bgColor_option,
+        }}
+      >
+        {allowCancel &&
           <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
+            style={
+              Object.assign(
+                {},
+                AVAButton, 
+                { backgroundColor: 'red', color: 'white' }
+              )
+            }
+            size='small'
+            onClick={() => {
+              onCancel();
+            }}
+            startIcon={<CloseIcon size="small" />}
+          >
+            {buttonArray[1]}
+          </Button>
+        }
+        <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
+          <Button
+            style={
+              Object.assign(
+                {},
+                AVAButton,
+                { backgroundColor: 'green', color: 'white' }
+              )
+            }
             size='small'
             onClick={() => {
               keyPressed = 0;
@@ -615,9 +659,13 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
               (i > 1) &&
               b &&
               <Button
-                className={AVAClass.AVAButton}
-                key={`extra-button_${i}`}
-                style={{ backgroundColor: 'blue', color: 'white' }}
+                  style={
+                    Object.assign(
+                      {},
+                      AVAButton,
+                      { backgroundColor: 'blue', color: 'white' }                    )
+                  }
+                key={`extra-button_${i}`}               
                 size='small'
                 onClick={() => {
                   keyPressed = i;
@@ -633,8 +681,13 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
               alignItems='center' key={'qrOpt_attachmentbox'}
             >
               <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'blue', color: 'white' }}
+                style={
+                  Object.assign(
+                    {},
+                    AVAButton,
+                    { backgroundColor: 'blue', color: 'white' }
+                  )
+                }
                 size='small'
                 startIcon={<CloudUploadIcon />}
                 onClick={handleFileUpload}
@@ -654,7 +707,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
             </Box>
           }
         </Box>
-      </DialogActions>
+      </Box>
     </Dialog>
   );
 };

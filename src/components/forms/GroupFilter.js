@@ -380,7 +380,7 @@ export default ({ pSession, groupsManagedObject, focusAt, onCancel, onSelect, on
         >
           {'Done'}
         </Button>
-        {Object.keys(groupsManagedObject).length > 0 &&
+        {pSession?.adminAccount &&
           <Button
             onClick={() => {
               setPromptForName(true);

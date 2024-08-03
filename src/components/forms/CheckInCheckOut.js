@@ -12,15 +12,31 @@ import { makeDate } from '../../util/AVADateTime';
 import { determineClass } from '../../util/AVAGroups';
 import { getServiceRequests, putServiceRequest, updateServiceRequest } from '../../util/AVAServiceRequest';
 import { getPerson, getImage, getPersonByWords, addGuest, addVendor, makeName } from '../../util/AVAPeople';
-import { AVAclasses, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
+import { AVAclasses, AVADefaults, AVATextStyle, AVATextVariableStyle } from '../../util/AVAStyles';
 
 import { useSnackbar } from 'notistack';
 
 import useSession from '../../hooks/useSession';
 import AVAConfirm from './AVAConfirm';
 
+import makeStyles from '@material-ui/core/styles/makeStyles';
+
+const useStyles = makeStyles(theme => ({
+  AVAClientBackground: {
+    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).backgroundColor : null,
+    borderRadius: '30px',
+    padding: 5
+  },
+  AVAPromptBackground: {
+    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null,
+    borderRadius: '30px',
+    padding: 5
+  }
+}));
+
 export default ({ onSave, onClose }) => {
 
+  const classes = useStyles();
   const AVAClass = AVAclasses();
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
@@ -51,6 +67,7 @@ export default ({ onSave, onClose }) => {
   React.useEffect(() => {
     async function initialize() {
       reactData.initialized = true;
+      reactData.marquee_message = JSON.parse(sessionStorage.getItem('marquee_message'));
       setReactData(reactData);
       setForceRedisplay(!forceRedisplay);
     }
@@ -248,6 +265,7 @@ export default ({ onSave, onClose }) => {
   }
 
   function reset() {
+    let marquee_message = JSON.parse(sessionStorage.getItem('marquee_message'));
     setReactData({
       kiosk_mode: (state.session.hasOwnProperty('kiosk_mode') ? state.session.kiosk_mode : false),
       validated_user: false,
@@ -263,7 +281,8 @@ export default ({ onSave, onClose }) => {
       adminIndex: -1,
       outList: [],
       adminView: false,
-      initialized: true
+      initialized: true,
+      marquee_message
     });
     setForceRedisplay(!forceRedisplay);
   }
@@ -311,10 +330,26 @@ export default ({ onSave, onClose }) => {
 
   return (
     <Dialog
-      open={(!!reactData.initialized) && (true || forceRedisplay)}
+      open={(true || forceRedisplay)}
       p={2}
       fullScreen
     >
+      <Box
+        display='flex' flexDirection='row' justifyContent='center' alignItems='center'
+        width={'100%'}
+        maxHeight={'100%'}
+        minHeight={'100%'}
+        overflow={'hidden'}
+      >
+        <Box
+          component="img"
+          m={2}
+          alt=''
+          src={AVADefaults({ client_style: 'get' })
+            ? AVADefaults({ client_style: 'get' }).checkin_image
+            : (state.session?.client_logo || process.env.REACT_APP_AVA_LOGO)}
+        />
+      </Box>
       {/* *** CHECK-IN/OUT VIEW *** */
         !reactData.adminView &&
         <React.Fragment>
@@ -323,86 +358,98 @@ export default ({ onSave, onClose }) => {
                ********************************** */
             !reactData.validated_user && !reactData.add_guest_mode &&
             (!reactData.select_user ?
-              <Dialog open={forceRedisplay || true} fullWidth >
-                <AVATextInput
-                  titleText={[(`Welcome to ${state.session.client_name}`)]}
-                  promptText={["Name or AVA ID"]}
-                  valueText={[
-                    (!reactData.kiosk_mode ? reactData.residentName : '')
-                  ]}
-                  buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (state.session.adminAccount ? 'Admin' : null)]}
-                  onCancel={() => {
+              <AVATextInput
+                titleText={[(`Welcome to ${state.session.client_name}`)]}
+                promptText={["Name or AVA ID"]}
+                valueText={[
+                  (!reactData.kiosk_mode ? reactData.residentName : '')
+                ]}
+                buttonText={[(!reactData.kiosk_mode ? 'Confirm' : 'Lookup'), 'Cancel', (state.session.adminAccount ? 'Admin' : null)]}
+                onCancel={() => {
+                  onClose();
+                }}
+                errorText={reactData.errorText}
+                onSave={async ([enteredID], buttonPressed) => {
+                  if (buttonPressed === 2) {
+                    let [outList, guestList, vendorList] = await getCheckedOut();
+                    reactData.outList = outList;
+                    reactData.guestList = guestList;
+                    reactData.vendorList = vendorList;
+                    reactData.adminView = true;
+                    setReactData(reactData);
+                    setForceRedisplay(!forceRedisplay);
+                  }
+                  if (enteredID && (enteredID === 'exit')) {
                     onClose();
-                  }}
-                  errorText={reactData.errorText}
-                  onSave={async ([enteredID], buttonPressed) => {
-                    if (buttonPressed === 2) {
-                      let [outList, guestList, vendorList] = await getCheckedOut();
-                      reactData.outList = outList;
-                      reactData.guestList = guestList;
-                      reactData.vendorList = vendorList;
-                      reactData.adminView = true;
-                      setReactData(reactData);
-                      setForceRedisplay(!forceRedisplay);
-                    }
-                    if (enteredID && (enteredID === 'exit')) {
-                      onClose();
+                  }
+                  else {
+                    if (!enteredID) {
+                      reactData.errorText[0] = `Please enter your name or AVA ID so we can properly identify you!`;
                     }
                     else {
-                      if (!enteredID) {
-                        reactData.errorText[0] = `Please enter your name or AVA ID so we can properly identify you!`;
+                      let validation = {};
+                      if (enteredID === reactData.residentName) {
+                        validation = {
+                          result: 'match',
+                          person_id: reactData.personRec.person_id,
+                          personRec: reactData.personRec,
+                        };
+                        validation.personRec.account_class = determineClass(reactData.personRec.groups, state.session.group_assignments);
                       }
                       else {
-                        let validation = {};
-                        if (enteredID === reactData.residentName) {
-                          validation = {
-                            result: 'match',
-                            person_id: reactData.personRec.person_id,
-                            personRec: reactData.personRec,
-                          };
-                          validation.personRec.account_class = determineClass(reactData.personRec.groups, state.session.group_assignments);
-                        }
-                        else {
-                          validation = await validateUser(enteredID.toLowerCase(), state.session.client_id);
-                        }
-                        reactData.errorText = [];
-                        reactData.enteredID = enteredID;
-                        if ((validation.result === 'match') && (validation.personRec.person_id === state.patient.person_id)) {  // Found myself
-                          reactData.validated_user = true;
-                          reactData.personRec = validation.personRec;
-                          let mode = determineMode(validation.personRec);
-                          reactData.currentStatus = await getCurrentStatus(state.session.client_id, validation.personRec.person_id, mode);
-                          reactData.select_user = false;
-                        }
-                        else if ((validation.result === 'match') || (validation.result === 'ambiguous')) {
-                          reactData.select_user = true;
-                          reactData.candidates = validation.candidates || [validation.personRec];
-                        }
-                        else {
-                          // put AVA in "add a new guest" mode
-                          reactData.select_user = false;
-                          reactData.add_guest_mode = true;
-                          reactData.add_try_number = 1;
-                        }
+                        validation = await validateUser(enteredID.toLowerCase(), state.session.client_id);
                       }
-                      setReactData(reactData);
-                      setForceRedisplay(!forceRedisplay);
+                      reactData.errorText = [];
+                      reactData.enteredID = enteredID;
+                      if ((validation.result === 'match') && (validation.personRec.person_id === state.patient.person_id)) {  // Found myself
+                        reactData.validated_user = true;
+                        reactData.personRec = validation.personRec;
+                        let mode = determineMode(validation.personRec);
+                        reactData.currentStatus = await getCurrentStatus(state.session.client_id, validation.personRec.person_id, mode);
+                        reactData.select_user = false;
+                      }
+                      else if ((validation.result === 'match') || (validation.result === 'ambiguous')) {
+                        reactData.select_user = true;
+                        reactData.candidates = validation.candidates || [validation.personRec];
+                      }
+                      else {
+                        // put AVA in "add a new guest" mode
+                        reactData.select_user = false;
+                        reactData.add_guest_mode = true;
+                        reactData.add_try_number = 1;
+                      }
                     }
-                  }}
-                  allowCancel={!reactData.kiosk_mode}
-                  options={{ save_on_enter: true }}
-                />
-              </Dialog>
+                    setReactData(reactData);
+                    setForceRedisplay(!forceRedisplay);
+                  }
+                }}
+                allowCancel={!reactData.kiosk_mode}
+                options={{
+                  save_on_enter: true,
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
+              />
               :
-              <Dialog open={forceRedisplay || true} fullWidth >
+              <Dialog
+                open={forceRedisplay || true} fullWidth
+                classes={{ paper: classes.AVAPromptBackground }}
+              >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                   <Typography style={AVATextStyle({ size: 1.3, bold: true })} id='dialog-title'>{makeGreeting()}</Typography>
                   <Typography style={AVATextStyle({ size: 0.8 })} id='dialog-title'>{`Please select from this list or tap "None of these"`}</Typography>
                 </Box>
-                <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
+                <Paper
+                  component={Box}
+                  style={{
+                    paddingTop: '16px',
+                    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null,
+                  }}
+                  overflow='auto'
+                  square
+                >
                   {reactData.candidates.map((candidate, cIndex) => (
                     <Box display='flex'
-                      style={{ marginBottom: '2em', marginLeft: '1em', }}
+                      style={{ marginBottom: '2em', marginLeft: '1em', backgroundColor: 'white' }}
                       flexDirection='row' key={`ambiguous-${cIndex}`} justifyContent='flex-start' alignItems='center'
                       paddingX={2}
                       flexGrow={1}
@@ -509,18 +556,25 @@ export default ({ onSave, onClose }) => {
                   else { reset(); }
                 }}
                 allowCancel={true}
-                options={{ save_on_enter: (state.session.resident_checkout_prompts && (state.session.resident_checkout_prompts.length === 1)) }}
+                options={{
+                  save_on_enter: (state.session.resident_checkout_prompts && (state.session.resident_checkout_prompts.length === 1)),
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
 
               />
               :
               <AVAConfirm
                 promptText={[
                   `Welcome home, ${reactData.personRec.name.first}!`,
-                  `[italic]You've been checked out since ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`,
+                  `[italic]You've been checked out since ${makeDate,
+                  (reactData.currentStatus.reqRec.last_update).relative}`,
                   `Tap below to check in`
                 ]}
                 cancelText={`Cancel`}
                 confirmText={`Check-in`}
+                options={{
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 onCancel={() => {
                   if (!reactData.kiosk_mode && !state.session.adminAccount) { onClose(); }
                   else {
@@ -560,6 +614,9 @@ export default ({ onSave, onClose }) => {
                   setReactData(reactData);
                   setForceRedisplay(!forceRedisplay);
                 }}
+                options={{
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 onConfirm={async () => {
                   let now = makeDate(new Date());
                   reactData.currentStatus.reqRec.last_status = 'out';
@@ -578,6 +635,9 @@ export default ({ onSave, onClose }) => {
                 promptText={[`Welcome back, ${reactData.personRec.name.first}!`]}
                 cancelText={`Cancel`}
                 confirmText={`Check-in`}
+                options={{
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 onCancel={() => {
                   reactData.errorText = [];
                   reactData.validated_user = false;
@@ -610,6 +670,9 @@ export default ({ onSave, onClose }) => {
                 promptText={[`Thanks for visiting ${state.session.client_name}, ${reactData.personRec.name.first}!`, `[italic]${reactData.currentStatus.reqRec.history[0]}`]}
                 cancelText={`Cancel`}
                 confirmText={`Check-out`}
+                options={{
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 onCancel={() => {
                   reactData.validated_user = false;
                   setReactData(reactData);
@@ -687,7 +750,10 @@ export default ({ onSave, onClose }) => {
                     setForceRedisplay(!forceRedisplay);
                   }
                 }}
-                options={{ save_on_enter: true }}
+                options={{
+                  save_on_enter: true,
+                  bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                }}
                 allowCancel={true}
               />
             )
@@ -701,6 +767,9 @@ export default ({ onSave, onClose }) => {
             <AVAConfirm
               promptText={[`Thanks for visiting ${state.session.client_name}`, `[italic]Please check with the Reception Desk to continue`]}
               confirmText={`Exit`}
+              options={{
+                bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+              }}
               onCancel={async () => {
                 reactData.validated_user = false;
                 setReactData(reactData);
@@ -845,6 +914,9 @@ export default ({ onSave, onClose }) => {
                 setForceRedisplay(!forceRedisplay);
               }} /* end of onSave */
               allowCancel={true}
+              options={{
+                bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+              }}
             />
           }
         </React.Fragment>
@@ -856,7 +928,10 @@ export default ({ onSave, onClose }) => {
                Reporting all data
                ********************************** */
             (!reactData.adminOverride ?
-              <Dialog open={forceRedisplay || true} fullWidth >
+              <Dialog open={forceRedisplay || true}
+                classes={{ paper: classes.AVAPromptBackground }}
+                fullWidth
+              >
                 <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                   <Typography variant='h5' key={`title1`} style={{ fontWeight: 'bold' }}>
                     {`Check-in/out status`}
@@ -865,7 +940,13 @@ export default ({ onSave, onClose }) => {
                     {`as of ${makeDate(new Date()).absolute}`}
                   </Typography>
                 </Box>
-                <Paper component={Box} style={{ paddingTop: '16px' }} overflow='auto' square>
+                <Paper component={Box}
+                  style={{
+                    paddingTop: '16px',
+                    backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                    }}
+                    elevation={0}
+                  overflow='auto' square>
                   <Box style={{ margin: '16px' }} display='flex' flexDirection='column' justifyContent='flex-start' alignItems='flex-start'>
                     <Typography variant='h6' id='dialog-title'>{'Residents currently checked-out'}</Typography>
                     {(reactData.outList.length === 0) &&
@@ -998,6 +1079,9 @@ export default ({ onSave, onClose }) => {
                     promptText={`Confirm override check-in for ${reactData.outList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
                     confirmText={`Check-in`}
+                    options={{
+                      bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                    }}
                     onCancel={() => {
                       reactData.adminOverride = false;
                       reactData.resident_mode = false;
@@ -1028,6 +1112,9 @@ export default ({ onSave, onClose }) => {
                     promptText={`Confirm override check-out for ${reactData.vendorList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
                     confirmText={`Check-out`}
+                    options={{
+                      bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                    }}
                     onCancel={() => {
                       reactData.adminOverride = false;
                       reactData.vendor_mode = false;
@@ -1058,6 +1145,9 @@ export default ({ onSave, onClose }) => {
                     promptText={`Confirm override check-out for ${reactData.guestList[reactData.adminIndex].name}`}
                     cancelText={`Cancel`}
                     confirmText={`Check-out`}
+                    options={{
+                      bgColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null
+                    }}
                     onCancel={() => {
                       reactData.adminOverride = false;
                       reactData.guest_mode = false;

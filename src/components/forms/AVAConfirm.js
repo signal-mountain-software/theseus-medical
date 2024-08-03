@@ -20,7 +20,7 @@ const useStyles = makeStyles(theme => ({
     fontWeight: 'bold',
   },
   radius_rounded: {
-    borderRadius: '30px'
+    borderRadius: '30px',
   },
   page: {
     paddingTop: theme.spacing(2),
@@ -29,12 +29,15 @@ const useStyles = makeStyles(theme => ({
   notTitle: {
     marginRight: theme.spacing(2),
   },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    paddingRight: '16px',
+}));
+
+export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', onCancel, onConfirm, options = {} }) => {
+
+  const AVAButton = {
+    margin: '8px',
     paddingLeft: '16px',
+    paddingRight: '16px',
+    borderRadius: '16px',
     variant: 'outlined',
     border: '0.75px solid gray',
     textTransform: 'none',
@@ -42,10 +45,7 @@ const useStyles = makeStyles(theme => ({
     textWrap: 'nowrap',
     fontWeight: 'bold',
     size: 'small',
-  }
-}));
-
-export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', onCancel, onConfirm }) => {
+  };
 
   function makeLine(str) {
     let work = str.match(/[<[].*?[>\]]/g);
@@ -100,7 +100,11 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
       <Box
         key={`box-line`}
         id={`box-line`}
-        marginLeft={3 + (3 * Number(makeIndent(promptLines[0])))}
+        sx={{
+          pl: (3 + (3 * Number(makeIndent(promptLines[0])))),
+          borderRadius: '30px 30px 0 0',
+          bgcolor: options.bgColor,
+        }}
       >
         <Typography
           style={AVATextStyle({
@@ -118,7 +122,14 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
           }
         </Typography>
       </Box>
-      <Paper component={Box} className={classes.page} overflow='auto' square>
+      <Box component={Box}
+        sx={{
+          pt: '16px',
+          pb: '32px',
+          bgcolor: options.bgColor,
+        }}
+        overflow='auto' square
+      >
         {promptLines.map((pLine, index) => (
           (index > 0 ?
             (blankLine(pLine)
@@ -126,13 +137,19 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
               <Box
                 key={`blank-line${index}`}
                 id={`blank-line${index}`}
-                marginTop={'25px'}
+                sx={{
+                  bgcolor: options.bgColor,
+                  paddingTop: '25px',
+                }}
               />
               :
               <Box
                 key={`box-line${index}`}
                 id={`box-line${index}`}
-                marginLeft={3 + (3 * Number(makeIndent(pLine)))}
+                sx={{
+                  bgcolor: options.bgColor,
+                  pl: `${(3 + (3 * Number(makeIndent(pLine)))) * 8}px`,
+                }}
               >
                 <Typography
                   style={index === 0 ?
@@ -161,13 +178,24 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
             )
             : null)
         ))}
-      </Paper>
-      <Box display='flex' mx={2} flexDirection='row' justifyContent='space-between' alignItems='center' >
+      </Box>
+      <Box display='flex'
+        sx={{
+          p: '16px',
+          borderRadius: '0 0 30px 30px',
+          bgcolor: options.bgColor,
+        }}
+        flexDirection='row' justifyContent='space-between' alignItems='center' >
         {(cancelText !== '*none*') &&
           <Button
-            className={AVAClass.AVAButton}
+            style={
+              Object.assign(
+                {},
+                AVAButton,
+                { backgroundColor: 'red', color: 'white' }
+              )
+            }
             startIcon={<GoBackIcon />}
-            style={{ backgroundColor: 'red', color: 'white' }}
             size='small'
             onClick={() => {
               onCancel();
@@ -177,8 +205,13 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
         }
         {(confirmText !== '*none*') &&
           <Button
-            className={AVAClass.AVAButton}
-            style={{ backgroundColor: 'green', color: 'white' }}
+            style={
+              Object.assign(
+                {},
+                AVAButton,
+                { backgroundColor: 'green', color: 'white' }
+              )
+            }
             startIcon={<CheckIcon />}
             size='small'
             onClick={() => {

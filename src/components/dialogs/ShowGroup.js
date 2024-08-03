@@ -8,16 +8,13 @@ import DialogContent from '@material-ui/core/DialogContent';
 import Slide from '@material-ui/core/Slide';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import CircularProgress from '@material-ui/core/CircularProgress';
 import Typography from '@material-ui/core/Typography';
 
 import GroupForm from '../forms/GroupForm';
 import GroupFilter from '../forms/GroupFilter';
-import { makeArray } from '../../util/AVAUtilities';
+import { makeArray, deepCopy } from '../../util/AVAUtilities';
 
 import useSession from '../../hooks/useSession';
-
-import { AVATextStyle } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   formControl: {
@@ -77,8 +74,18 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     groupRole: '',
     groupRec: {},
     progressMessage: 'Building Group List',
+    building: 'not started',
+    updatesMade: false
   });
+
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
 
   const { state } = useSession();
   const classes = useStyles();
@@ -89,7 +96,10 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
   const { enqueueSnackbar } = useSnackbar();
 
   async function getGroupMemberList(pGroupArray) {
-    reactData.progressMessage = 'Getting accounts';
+    updateReactData({
+      progressMessage: 'Getting accounts',
+      building: 'in process'
+    }, true);
     let memberInfo;
     if ((state.hasOwnProperty('accessList') && state.accessList[state.session.client_id])) {
       if (pGroupArray.includes('*all')) {
@@ -113,40 +123,44 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       onAbort();
       return [];
     }
+    let reactUpdater = {};
     if (memberInfo.peopleList.length === 0) {
       enqueueSnackbar(`AVA couldn't find any members in that Group.`, { variant: 'error' });
-      reactData.showGroupSelect = true;
-      setReactData(reactData);
-      onAbort();
-      return [];
     }
-    reactData.groupMemberList = memberInfo.peopleList;
+    reactUpdater.groupMemberList = deepCopy(memberInfo.peopleList);
     if (pGroupArray.length === 1) {
       if (pGroupArray[0] === '*all') {
-        reactData.groupID = '*all';
-        reactData.groupRole = 'responsible';
+        reactUpdater.groupID = '*all';
+        reactUpdater.groupRole = 'responsible';
       }
       else {
-        reactData.groupRec = await getGroup(pGroupArray[0], pSession.client_id);
-        reactData.groupID = reactData.groupRec.group_id;
+        reactUpdater.groupRec = await getGroup(pGroupArray[0], pSession.client_id);
+        reactUpdater.groupID = reactUpdater.groupRec.group_id;
         if (reactData.groupsManagedObject[reactData.groupRec.name]) {
-          reactData.groupRole = reactData.groupsManagedObject[reactData.groupRec.name].role;
+          reactUpdater.groupRole = reactData.groupsManagedObject[reactData.groupRec.name].role;
         }
-        else { reactData.groupRole = await getRole(reactData.groupRec.group_id, pSession.patient_id); }
+        else {
+          let resp = await getRole(reactUpdater.groupRec.group_id, pSession.patient_id);
+          reactUpdater.groupRole = resp;
+        }
       }
     }
     else {
-      reactData.groupRec = {};
-      reactData.groupID = [...pGroupArray];
-      reactData.groupRole = '';
+      reactUpdater.groupRec = {};
+      reactUpdater.groupID = [...pGroupArray];
+      reactUpdater.groupRole = '';
     }
-    setReactData(reactData);
+    reactUpdater.progressMessage = 'Complete!';
+    reactUpdater.building = 'done';
+    updateReactData(reactUpdater, true);
     return memberInfo.peopleList;
   };
 
 
   const prepareGroupObject = async (pGroupList) => {
     let selectAll = pGroupList.includes('*all');
+    let selectOpen = pGroupList.includes('*all_open') || pGroupList.includes('*all_public');
+    let selectPrivate = pGroupList.includes('*all_closed') || pGroupList.includes('*all_private');
     let gList = state.groups.adminHierarchy;
     let response = {};
     for (let x = 0; x < gList.length; x++) {
@@ -162,9 +176,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
           pGroupList.push(g.id);
         }
       }
-    }; 
+    };
     for (let gID in state.groups.publicGroups) {
-      if (selectAll || pGroupList.includes(gID)) {
+      if (selectAll || pGroupList.includes(gID) || selectOpen) {
         response[gID] = {
           group_name: state.groups.publicGroups[gID].group_name,
           group_id: gID,
@@ -172,9 +186,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
           level: 0
         };
       }
-    }; 
+    };
     for (let gID in state.groups.privateGroups) {
-      if (selectAll || pGroupList.includes(gID)) {
+      if (selectAll || pGroupList.includes(gID) || selectPrivate) {
         response[gID] = {
           group_name: state.groups.privateGroups[gID].group_name,
           group_id: gID,
@@ -182,7 +196,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
           level: 0
         };
       }
-    }; 
+    };
     return response;
   };
 
@@ -201,22 +215,24 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
       let gData = gList[gObj[g]];
       gManagedObj[gObj[g]] = gData;
     });
-    reactData.groupsManagedObject = gManagedObj;
-    setReactData(reactData);
+    updateReactData({
+      groupsManagedObject: gManagedObj
+    }, true);
     return gManagedObj;
   };
 
-  const handleAbort = async () => {
-    onClose();
+  const handleAbort = async (updatesMade) => {
+    onClose(updatesMade);
   };
 
   // **************************
 
   React.useEffect(() => {
     async function prepare() {
+      let reactUpdater = {};
       let groupList = makeArray(pGroup_id, /[~,;]/);
       if (groupList && groupList.length > 0) {
-        reactData.groupList = groupList;
+        reactUpdater.groupList = groupList;
         if (showList === 'select') {
           if (!state.groups || !state.groups.adminHierarchy) {
             enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
@@ -224,28 +240,27 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
             return;
           }
           else {
-            reactData.groupsManagedObject = await prepareGroupObject(groupList);
-            reactData.showGroupSelect = true;
+            reactUpdater.groupsManagedObject = await prepareGroupObject(groupList);
+            reactUpdater.showGroupSelect = true;
           }
         }
         else {
-          if (!state.accessList || !state.accessList.hasOwnProperty(state.session.client_id)) { 
+          if (!state.accessList || !state.accessList.hasOwnProperty(state.session.client_id)) {
             enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
             onAbort();
             return;
           }
           else {
-            await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
-            reactData.showGroupSelect = false;
+            let mbrList = await getGroupMemberList(makeArray(pGroup_id, /[~,;]/));
+            reactUpdater.showGroupSelect = (mbrList.length === 0);
           }
         }
       }
       else {
-        reactData.groupsManagedObject = state.groups.belongsTo;
-        reactData.showGroupSelect = true;
+        reactUpdater.groupsManagedObject = state.groups.belongsTo;
+        reactUpdater.showGroupSelect = true;
       }
-      setReactData(reactData);
-      setForceRedisplay(!forceRedisplay);
+      updateReactData(reactUpdater, true);
     }
     prepare();
   }, [pSession]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -255,7 +270,9 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     (showList && (forceRedisplay || true) &&
       <Dialog
         open={forceRedisplay || true}
-        onClose={handleAbort}
+        onClose={() => {
+          handleAbort(reactData.updatesMade);
+        }}
         TransitionComponent={Transition}
         className={classes.pageHead}
         fullScreen
@@ -274,39 +291,7 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
           </Typography>
         </Box>
         <DialogContent dividers={true} className={classes.dialogBox}>
-          {reactData.groupMemberList.length === 0 && !reactData.showGroupSelect &&
-            <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-              <Box
-                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                key={'loadingBox'}
-                ml={2} mr={2} mb={2} mt={8}
-              >
-                <Box
-                  component="img"
-                  mb={2}
-                  minWidth={150}
-                  maxWidth={150}
-                  alt=''
-                  src={pSession.client_logo || process.env.REACT_APP_AVA_LOGO}
-                />
-                <React.Fragment>
-                  <Box
-                    display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                    flexWrap='wrap' textOverflow='ellipsis' width='100%'
-                    key={'loadingBox'}
-                    mb={2}
-                  >
-                    <Typography style={AVATextStyle({ size: 1.5, align: 'center' })} className={classes.lastName} >
-                      {reactData.progressMessage}
-                    </Typography>
-                    <Typography style={AVATextStyle({ size: 0.8, align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                  </Box>
-                  <CircularProgress />
-                </React.Fragment>
-              </Box>
-            </DialogContent>
-          }
-          {reactData.groupMemberList.length > 0 &&
+          {!reactData.showGroupSelect && (reactData.building === 'done') &&
             <GroupForm
               groupMemberList={reactData.groupMemberList}
               peopleList={peopleList}
@@ -318,15 +303,19 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
               pGroupName={reactData.groupName}
               pRole={reactData.groupRole}
               pStyle={showList}
-              onReset={() => {
+              onReset={(updatesMade) => {
                 if (pGroup_id && (showList !== 'select')) {
-                  handleAbort();
+                  handleAbort(updatesMade);
                 }
                 else {
-                  reactData.showGroupSelect = true;
-                  reactData.groupMemberList = [];
-                  setReactData(reactData);
-                  setForceRedisplay(!forceRedisplay);
+                  let reactUpdater = {
+                    showGroupSelect: true,
+                    groupMemberList: [],
+                  }
+                  if (updatesMade) {
+                    reactUpdater.updatesMade = true;
+                  }
+                  updateReactData(reactUpdater, true);
                 }
               }}
             />
@@ -338,22 +327,30 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
             groupsManagedObject={reactData.groupsManagedObject}
             focusAt={reactData.selectedIndex || 0}
             onCancel={() => {
-              reactData.showGroupSelect = false;
-              setReactData(reactData);
-              onClose();
+              updateReactData({
+                showGroupSelect: false
+              }, true);
+              onClose(reactData.updatesMade);
             }}
             onSelect={async (selectedGroup, selectedIndex) => {
-              reactData.selectedIndex = selectedIndex;
-              reactData.showGroupSelect = false;
-              reactData.groupName = reactData.groupsManagedObject[selectedGroup].group_name;
-              reactData.groupID = reactData.groupsManagedObject[selectedGroup].group_id;
-              reactData.groupRole = reactData.groupsManagedObject[selectedGroup].role;
-              setReactData(reactData);
+              updateReactData({
+                selectedIndex: selectedIndex,
+                showGroupSelect: false,
+                groupName: reactData.groupsManagedObject[selectedGroup].group_name,
+                groupID: reactData.groupsManagedObject[selectedGroup].group_id,
+                groupRole: reactData.groupsManagedObject[selectedGroup].role
+              }, false);
               await getGroupMemberList([reactData.groupsManagedObject[selectedGroup].group_id]);
+              // if (mbrList.length === 0) {
+              //   reactData.showGroupSelect = true;
+              //   setReactData(reactData);
+              // }
               setForceRedisplay(!forceRedisplay);
             }}
             onRefresh={async () => {
-              reactData.showGroupSelect = true;
+              updateReactData({
+                showGroupSelect: false
+              }, true);
               await getGroupsManagedObject(pSession.client_id, pSession.patient_id, reactData.groupList);
               setForceRedisplay(!forceRedisplay);
             }}

@@ -89,6 +89,16 @@ export const AVAclasses = makeStyles(theme => ({
         transition: 'none',
         height: '5px'
     },
+    AVAClientBackground: {
+        backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).backgroundColor : null,
+        borderRadius: '30px',
+        padding: 5
+    },
+    AVAPromptBackground: {
+        backgroundColor: AVADefaults({ client_style: 'get' }) ? AVADefaults({ client_style: 'get' }).promptBackgroundColor : null,
+        borderRadius: '30px',
+        padding: 5
+    }
 }));
 
 export const AVADefaults = (options = {}) => {
@@ -96,6 +106,9 @@ export const AVADefaults = (options = {}) => {
     for (let key in options) {
         if (options[key] === 'get') {
             returnObj[key] = remembered[key];
+        }
+        else if (options[key] === 'getURL') {
+            returnObj[key] = new URL(remembered[key]);
         }
         else {
             remembered[key] = options[key];

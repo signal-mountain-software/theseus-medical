@@ -96,6 +96,7 @@ export async function getLocalWeather(client_weather = {
 
 export async function getMarqueeMessage(client_id, options = {}) {
   let response = [];
+  let urgentMessage;
   if (options.client_weather) {
     let weather = await getLocalWeather(options.client_weather);
     if (weather) {
@@ -144,7 +145,16 @@ export async function getMarqueeMessage(client_id, options = {}) {
         message: sRec.message,
         criticalMessage: sRec.criticalMessage
       });
+      if (sRec.criticalMessage) {
+        urgentMessage = sRec.message;
+      }
     });
+  }
+  if (urgentMessage) {
+    sessionStorage.setItem('marquee_message', JSON.stringify([urgentMessage]));
+  }
+  else {
+    sessionStorage.setItem('marquee_message', JSON.stringify(response));
   }
   return response;
 }

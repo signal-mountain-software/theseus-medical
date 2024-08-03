@@ -77,7 +77,10 @@ const useStyles = makeStyles(theme => ({
     textTransform: 'none',
     size: 'small',
     alignSelf: 'center',
-    verticalAlign: 'middle'
+    verticalAlign: 'middle',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
   },
   defaultButton: {
     alignSelf: 'end',
@@ -89,15 +92,35 @@ const useStyles = makeStyles(theme => ({
     variant: 'outlined',
     backgroundColor: theme.palette.confirm[theme.palette.type],
   },
+  pConfirmedButton: {
+    color: 'green',
+    verticalAlign: 'middle',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    textTransform: 'none',
+    fontWeight: 'bold',
+  },
   resetButton: {
-    // backgroundColor: theme.palette.confirm[theme.palette.type],
+    backgroundColor: 'orange',
     marginRight: 10,
+    paddingRight: 10,
+    paddingLeft: 10,
+    verticalAlign: 'middle',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    textTransform: 'none',
   },
   infoButton: {
     variant: 'outlined',
-    // backgroundColor: theme.palette.info[theme.palette.type],
+    backgroundColor: 'red',
+    color: 'white',
     marginRight: 10,
     paddingRight: 10,
+    paddingLeft: 10,
+    verticalAlign: 'middle',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    textTransform: 'none'
   },
   radioText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -934,6 +957,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
     localData.inputPWD = event.target.value;
     localData.PWDDisplayed = event.target.value;
     setResettingPwd((event.target.value.length > 0) ? 1 : 0);
+    setPwdConfirmed(false);
     setRefreshTrigger(!refreshTrigger);
   };
 
@@ -1012,7 +1036,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {(changes || pwdConfirmed || photoChanges) &&
+            {(changes || pwdConfirmed || photoChanges) && ((resettingPwd === 0) || ((resettingPwd === 2) && pwdConfirmed)) &&
               <Button
                 onClick={async () => {
                   handleUpdate();
@@ -1515,10 +1539,15 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                       <Switch
                         checked={!!localData.requirePassword}
                         onClick={() => {
+                          if (localData.requirePassword) {  // you are turning password OFF?  If turning ON, SAVE button only after confirmed
+                            setChanges(true);
+                            setResettingPwd(0)
+                          }
+                          else {
+                            setResettingPwd((localData.inputPWD.length > 4) ? 1 : -1);
+                          }
                           localData.requirePassword = !localData.requirePassword;
                           setRefreshTrigger(!refreshTrigger);
-                          setChanges(true);
-                          setResettingPwd((localData.inputPWD.length > 0) ? 1 : 0);
                         }}
                         name="PWDrequired"
                         color="primary"
@@ -1528,16 +1557,24 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                     {localData.requirePassword &&
                       <React.Fragment>
                         <Box flexGrow={2} display='flex' alignItems='flex-start'
-                          justifyContent='flex-start' marginTop={1} marginBottom={2} flexDirection='column'>
+                          justifyContent='flex-start'
+                          marginTop={1} marginBottom={2}
+                          flexDirection='column'
+                          padding={2}
+                          width={'fit-content'}
+                          borderRadius={'16px'}
+                          border={(resettingPwd > 0) ? 4 : 0}
+                          borderColor={(resettingPwd === 1) ? 'red' : (pwdConfirmed ? 'green' : 'orange')}
+                        >
                             <TextField
                               id='password'
-                            value={localData.PWDDisplayed}
+                              value={localData.PWDDisplayed}
                               autoComplete='off'
                               type='text'
                               onChange={handleChangePassword}
-                              helperText={'New Password'}
+                              helperText={((resettingPwd === 0) && localData.last_login) ? 'Current password' : ((localData.PWDDisplayed.length > 4) ? 'New Password' : 'Enter a password - min 5 characters')}
                             />
-                          {((resettingPwd === 1) || ((resettingPwd === 0) && localData.last_login)) &&
+                          {(resettingPwd === 1) &&
                             (localData.PWDDisplayed !== '*****') &&
                             (localData.PWDDisplayed.length > 4) &&
                             <Button
@@ -1547,22 +1584,24 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
                               variant='outlined'
                               className={classes.infoButton}
                             >
-                              {`Set New Password`}
+                              {`Tap here to set your password to "${localData.inputPWD}"`}
                             </Button>
                           }
-                          {(resettingPwd === 2) &&
-                            <React.Fragment>
+                          {(resettingPwd === 2) && !pwdConfirmed &&
                               <Button
                                 onClick={() => {
                                   handleResetPassword2();
                                 }}
-                                disabled={pwdConfirmed}
-                                variant={pwdConfirmed ? 'contained' : 'outlined'}
+                                variant={'outlined'}
                                 className={classes.resetButton}
                               >
-                                {pwdConfirmed ? 'Confirmed!' : 'Confirm New Password'}
+                                {`Tap here to confirm "${localData.inputPWD}" as your password`}
                               </Button>                              
-                            </React.Fragment>
+                          }
+                          {pwdConfirmed &&
+                             <Typography className={classes.pConfirmedButton}>
+                              {`"${localData.inputPWD}" will be your new password after you tap SAVE above`}
+                             </Typography>
                           }
                         </Box>
                       </React.Fragment>
@@ -1603,7 +1642,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             <Typography variant='h6' className={classes.title}>
               {patient?.name?.first} {patient?.name?.last}
             </Typography>
-            {(changes || pwdConfirmed || photoChanges) && !editPhoto &&
+            {(changes || pwdConfirmed || photoChanges) && !editPhoto && ((resettingPwd === 0) || ((resettingPwd === 2) && pwdConfirmed)) &&
               <Button
                 onClick={handleUpdate}
                 disabled={!changes && !pwdConfirmed}
