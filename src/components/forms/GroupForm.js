@@ -932,7 +932,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 </Box>
                 {(adminAccount || (state.accessList[state.session.client_id]?.groups?.[pGroup] > 1)) &&
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                    {messageAll() && 
+                    {(adminAccount || messageAll()) && 
                       <Button
                         onClick={() => {
                           setPromptForMessage(true);
