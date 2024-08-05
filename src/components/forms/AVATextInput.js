@@ -15,7 +15,7 @@ import Select from "react-dropdown-select";
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
-import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
+import { AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   contentBox: {
@@ -77,7 +77,6 @@ const useStyles = makeStyles(theme => ({
 export default ({ titleText, promptText, valueText, selectionList, errorText, buttonText, onCancel, onSave, allowCancel = true, options = {} }) => {
 
   const classes = useStyles();
-  const AVAClass = AVAclasses();
 
   const AVAButton = {
     margin: '8px',
@@ -440,7 +439,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                             checked={(textInput[ndx] === 'checked')}
                           />
                           <Typography style={AVATextStyle({
-                            size: 1
+                            size: 1,
+                            color: 'black'
                           })}>
                             {prompt.split(']').pop()}
                           </Typography>
@@ -495,7 +495,8 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                               <Typography
                                 style={AVATextStyle({
                                   size: 0.8,
-                                  margin: { left: 0, top: 0, bottom: 0.5 }
+                                  margin: { left: 0, top: 0, bottom: 0.5 },
+                                  color: 'black'
                                 })}
                               >
                                 {prompt.split(']').pop()}
@@ -529,7 +530,7 @@ export default ({ titleText, promptText, valueText, selectionList, errorText, bu
                       key={`prompt-${ndx}`}
                       multiline
                       autoFocus={(ndx === reactData.focusOn) ? true : null}
-                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                      inputProps={{ style: { color: 'black', fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
                       FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
                       error={!!(errorText && errorText[ndx])}
                       value={textInput[ndx] || ''}

@@ -566,8 +566,7 @@ export default ({ onSave, onClose }) => {
               <AVAConfirm
                 promptText={[
                   `Welcome home, ${reactData.personRec.name.first}!`,
-                  `[italic]You've been checked out since ${makeDate,
-                  (reactData.currentStatus.reqRec.last_update).relative}`,
+                  `[italic]You've been checked out since ${makeDate(reactData.currentStatus.reqRec.last_update).relative}`,
                   `Tap below to check in`
                 ]}
                 cancelText={`Cancel`}

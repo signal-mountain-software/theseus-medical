@@ -54,7 +54,7 @@ export async function getObservationKeys(request) {
     pObsQkey.KeyConditionExpression = 'characteristic = :c';
     pObsQkey.ExpressionAttributeValues = {
       ':c': request.characteristic
-    }
+    };
   }
   else if (request.hasOwnProperty('observation_key')) {
     pObsQkey.KeyConditionExpression = 'observation_key = :c';
@@ -67,7 +67,7 @@ export async function getObservationKeys(request) {
     .promise()
     .catch(error => { cl('ERROR reading Observation_Items.  Caught error is:', error); });
   if (recordExists(obsItemRec)) {
-    return obsItemRec.Items
+    return obsItemRec.Items;
   };
 }
 
@@ -164,7 +164,7 @@ export async function getObservations(pClient, pKey, options = {}) {
   return [valueList, returnQual];
 };
 
-export async function makeObservationList(pObs, pSession, variables = {}, options = {clean: true}) {
+export async function makeObservationList(pObs, pSession, variables = {}, options = { clean: true }) {
   let returnList = [];
   let returnQObj = {};
   let activityRec;
@@ -319,3 +319,91 @@ export async function getActivity(pClient, pCode) {
   }
   return {};
 };
+
+export async function getBulletinBoard(pClient, pCode) {
+  let response = {
+    //  group_id : {
+    //    groupRec,
+    //    section_name: {
+    //       section_sort,
+    //       generic_activities_list: [{
+    //         group_list_index,   
+    //         link_address,
+    //         link_title
+    //        }, {}, ...]
+    //    }
+    //  }
+  };
+  let qQ = {
+    Key: { client_id: pClient },
+    TableName: "Groups"
+  };
+  let groupRecs = await dbClient
+    .query(qQ)
+    .promise()
+    .catch(error => {
+      cl(`***ERR reading Activity*** caught error is: ${error}`, qQ);
+    });
+  if (!recordExists(groupRecs)) {
+    return {};
+  }
+  groupRecs.Items.forEach(groupRec => {
+    if (groupRec.common_activities) {
+      let section_name = 'None';
+      let section_sort = '';
+      groupRec.common_activities.forEach((activity_line, aList_index) => {
+        if (activity_line.startsWith('~~')) {
+          let sectionKeys = activity_line.slice(2).split('~~');
+          if (sectionKeys[1]) {
+            section_name = sectionKeys[1];
+            section_sort = sectionKeys[0];
+          }
+          else {
+            section_name = sectionKeys[0];
+            section_sort = '';
+          }
+        }
+        else {
+          let [activity_name, ...parsed] = activity_line.split('~');
+          if (activity_name === 'render.generic') {
+            parsed.forEach(spec => {
+              let link_address, link_title;
+              let [split_type, split_spec] = spec.split('=');
+              if (split_type.includes('default')) {
+                link_address = split_spec.trim().replace(']', '');
+              }
+              else if (split_type.includes('title')) {
+                link_title = split_spec.trim().replace(']', '');
+              }
+              let aObj = {
+                group_list_index: aList_index,
+                link_address,
+                link_title
+              };
+              if (!response.hasOwnProperty(groupRec.group_id)) {
+                response[groupRec.group_id] = {
+                  groupRec,
+                  [section_name]: {
+                    section_sort,
+                    generic_activities_list: [aObj]
+                  }
+                };
+              }
+              else if (!response[groupRec.group_id].hasOwnProperty(section_name)) {
+                response[groupRec.group_id][section_name] = {
+                  section_sort,
+                  generic_activities_list: [aObj]
+                };
+              }
+              else {
+                response[groupRec.group_id][section_name].generic_activities_list.push(aObj);
+              }
+            });
+          }
+        }
+      });
+    }
+  });
+  return response;
+};
+

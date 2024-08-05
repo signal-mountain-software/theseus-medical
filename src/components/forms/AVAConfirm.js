@@ -2,7 +2,6 @@ import React from 'react';
 
 import Dialog from '@material-ui/core/Dialog';
 import Box from '@material-ui/core/Box';
-import Paper from '@material-ui/core/Paper';
 
 import Button from '@material-ui/core/Button';
 import GoBackIcon from '@material-ui/icons/SettingsBackupRestore';
@@ -10,7 +9,7 @@ import CheckIcon from '@material-ui/icons/DoneSharp';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import { Typography } from '@material-ui/core';
 
-import { AVAclasses, AVATextStyle } from '../../util/AVAStyles';
+import { AVATextStyle } from '../../util/AVAStyles';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -84,7 +83,6 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
   else { promptLines = [promptText]; }
 
   const classes = useStyles();
-  const AVAClass = AVAclasses();
 
   // **************************
 
