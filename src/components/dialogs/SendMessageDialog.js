@@ -141,6 +141,7 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
   if (loading) {
     let response = [];
     if (state.hasOwnProperty('accessList') && state.accessList.hasOwnProperty(state.session.client_id)) {
+      let gResponse = [];
       state.groups.adminHierarchy.forEach(gObj => {
         if (gObj.selectable) {
           if (
@@ -151,15 +152,16 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
               (state.accessList[state.session.client_id].groups[gObj.id] > 1)            
             )
           ) {
-            response.push(`${gObj.name}:GRP//${gObj.id}`);
+            gResponse.push(`${gObj.name}:GRP//${gObj.id}`);
           }
         }
       });
-      response.sort();
+      gResponse.sort();
       state.accessList[state.session.client_id].list.forEach(a => {
         // list is of the form <name>:<id>:<search_string>
         response.push(`${a.last}, ${a.first}:${a.id}:${a.display_name}_${a.location}`);
       });
+      response = response.concat(gResponse);
     }
     setMessageTargets(response);
     setLoading(false);
