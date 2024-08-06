@@ -320,6 +320,7 @@ export default ({
           pRecipientID={defaultValueObj.recipientID || '*select'}
           pRecipientName={defaultValueObj.recipientName || `user ${defaultValueObj.recipientID}`}
           peopleList={defaultValueObj.peopleList || []}
+          options={defaultValueObj.options}
           onCancel={onClose}
           onComplete={onClose}
           allowCancel={true}
