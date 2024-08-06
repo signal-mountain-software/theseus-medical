@@ -339,7 +339,6 @@ export default ({
                     :
                     <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='flex-start'>
                       <Typography style={AVATextVariableStyle(listEntry.split(splitter)[0], { bold: true, color: 'red' })}>{listEntry.split(splitter)[0]}</Typography>
-                      <Typography style={AVATextStyle({ margin: { left: 0.8 } })}>(group)</Typography>
                     </Box>
                   }
                 </Box>

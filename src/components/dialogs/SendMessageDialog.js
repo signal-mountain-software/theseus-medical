@@ -128,7 +128,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = 'ID' }) => {
+export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = 'ID', options = {} }) => {
   // returnValue = 'object' returns object with {id: name, id: name, ...}
 
   const { state } = useSession();
@@ -161,7 +161,14 @@ export default ({ open, multiSelect = false, onClose, onSelect, pReturnValue = '
         // list is of the form <name>:<id>:<search_string>
         response.push(`${a.last}, ${a.first}:${a.id}:${a.display_name}_${a.location}`);
       });
-      response = response.concat(gResponse);
+      if (options) {
+        if (options === 'groupOnly') {
+          response = gResponse;
+        }
+        else if (options === 'includeGroups') {
+          response = response.concat(gResponse);
+        }
+      }
     }
     setMessageTargets(response);
     setLoading(false);

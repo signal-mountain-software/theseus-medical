@@ -111,6 +111,7 @@ export default ({
   setMethod,
   allowCancel = true,
   thread_id,
+  options = {},
   seedText
 }) => {
 
@@ -410,6 +411,7 @@ export default ({
             }}
             multiSelect={true}
             pReturnValue={'object'}
+            options={options}
             onSelect={async (selectedPerson) => {
               if (Object.keys(selectedPerson).length < 1) {
                 enqueueSnackbar(`Please select at least one name`, { variant: 'error' });
