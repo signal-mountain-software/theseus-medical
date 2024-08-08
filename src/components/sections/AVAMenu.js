@@ -317,7 +317,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     else {
       return {
         width: `${(50 * user_fontSize)}px`,
-        height: `${(50 * user_fontSize)}px`,        
+        height: `${(50 * user_fontSize)}px`,
         padding: '10px',
         borderRadius: '30px',
         backgroundColor: `${background_color}b2`
@@ -1296,7 +1296,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 <MenuItem onClick={async () => {
                   setGroupData(state.groups);
                   setPopupMenuOpen(false);
-                  pause()
+                  pause();
                   setShowAddAccount(true);
                 }}>
                   <Box
@@ -1458,12 +1458,12 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               key={this_row.activity_code + 'r' + index}
                               className={classes.sectionHeader}
                             >
-                              <Box 
+                              <Box
                                 borderRadius={'30px'} justifyContent='flex-start' alignItems='center'
                               >
                                 <Avatar
                                   src={this_row.section_icon}
-                                  style={avatarStyle(this_row.section_color)}                                 
+                                  style={avatarStyle(this_row.section_color)}
                                   alt=""
                                   variant="square"
                                 />
@@ -1545,6 +1545,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                                           enqueueSnackbar(`AVA is still loading.  Wait just a moment and try again, please.`, { variant: 'warning' });
                                         }
                                         else {
+                                          pause();
                                           setShowNewFactDialog(index);
                                         }
                                       }
@@ -1717,7 +1718,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             groupData={groupData}
             open={true}
             onClose={() => {
-              reset()
+              reset();
               setShowAddAccount(false);
               sessionStorage.removeItem('AVASessionData');
               window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
@@ -1763,16 +1764,21 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 setSelected(gad_response.activityRec);
               }
               else {
+                reset();
                 setShowNewFactDialog(-1);
               }
             }}
             onSave={
               async (pResult) => {
+                reset();
                 if ('client_id' in selected) { pResult.client_id = selected.client_id; }
                 await onSaveFact(pResult, selected.name, showNewFactDialog);
               }
             }
-            onNext={onNextFact}
+            onNext={() => {
+              reset();
+              onNextFact();
+            }}
             onSelected={() => { }}
           />
         }
