@@ -296,9 +296,17 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   function prefLineText(prefLine) {
-    if (prefLine.private) { return `${prefLine.type} un-published`; }
-    else if (prefLine.type === 'e-Mail') { return prefLine.display.join('@'); }
-    else { return `${prefLine.type} ${prefLine.display[0]}`; }
+    let rValue;
+    if (prefLine.private) {
+      rValue = `${prefLine.type} unpublished`;
+    }
+    else if (prefLine.type === 'e-Mail') {
+      rValue = prefLine.display.join('@');
+    }
+    else {
+      rValue = `${prefLine.type} ${prefLine.display[0]}`;
+    }
+    return rValue;
   };
 
   let params = {
@@ -316,7 +324,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
       // if this in the hierarchy...
       let found = false;
       let found_level = 99;
-      for (let x = 0; x < state.groups.adminHierarchy.length; x++) { 
+      for (let x = 0; x < state.groups.adminHierarchy.length; x++) {
         let this_group = state.groups.adminHierarchy[x];
         if (!found) {
           if (pGroup === this_group.id) {
@@ -932,7 +940,7 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 </Box>
                 {(adminAccount || (state.accessList[state.session.client_id]?.groups?.[pGroup] > 1)) &&
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                    {(adminAccount || messageAll()) && 
+                    {(adminAccount || messageAll()) &&
                       <Button
                         onClick={() => {
                           setPromptForMessage(true);
@@ -1002,10 +1010,10 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                         {sentenceCase(prefLine.type)}
                       </Typography>
                       <Typography key={`prefLine-superSize.${prefIndex}b`} className={classes.superSizePreferenceLine2}>
-                        {prefLine.display[0]}
+                        {(!adminAccount && prefLine.private) ? 'unpublished' : prefLine.display[0]}
                       </Typography>
                     </Box>
-                    {(prefLine.display.length > 1) &&
+                    {(prefLine.display.length > 1) && (adminAccount || !prefLine.private) &&
                       <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center' >
                         <Typography key={`prefLine-superSize.${prefIndex}c`} className={classes.superSizePreferenceLine2}>
                           @{prefLine.display[1]}
@@ -1196,21 +1204,23 @@ export default ({ groupMemberList, peopleList, pPatient, pPatientName, pClient, 
                 &&
                 <React.Fragment>
                   <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >
-                    <Button
-                      onClick={() => {
-                        setConfirmMessage(`Confirm removing ${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
-                        setConfirmPerson(superSizeData.person_id);
-                        setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === superSizeData.person_id; }));
-                        setDeletePending(true);
-                        setForceRedisplay(false);
-                      }}
-                      startIcon={<DeleteIcon size='small' />}
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'red', color: 'white' }}
-                      size='small'
-                    >
-                      {`Remove ${superSizeData.name.first || superSizeData.display_name} from the group`}
-                    </Button>
+                    {((pGroupRec.group_type !== 'parent') && (pGroupRec.group_type !== 'admin')) &&
+                      <Button
+                        onClick={() => {
+                          setConfirmMessage(`Confirm removing ${superSizeData.name.first} ${superSizeData.name.last || superSizeData.display_name} from the ${pGroupName} ${pGroupName.includes('roup') ? '' : ' Group'}`);
+                          setConfirmPerson(superSizeData.person_id);
+                          setConfirmIndex(workingMemberList.findIndex(m => { return m.person_id === superSizeData.person_id; }));
+                          setDeletePending(true);
+                          setForceRedisplay(false);
+                        }}
+                        startIcon={<DeleteIcon size='small' />}
+                        className={AVAClass.AVAButton}
+                        style={{ backgroundColor: 'red', color: 'white' }}
+                        size='small'
+                      >
+                        {`Remove ${superSizeData.name.first || superSizeData.display_name} from the group`}
+                      </Button>
+                    }
                   </Box>
                   {(superSizeData.role === 'member') ?
                     <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center' >

@@ -133,6 +133,10 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
         reactUpdater.groupID = '*all';
         reactUpdater.groupRole = 'responsible';
       }
+      else if (pGroupArray[0] === '*viewAll') {
+        reactUpdater.groupID = '*all';
+        reactUpdater.groupRole = 'member';
+      } 
       else {
         reactUpdater.groupRec = await getGroup(pGroupArray[0], pSession.client_id);
         reactUpdater.groupID = reactUpdater.groupRec.group_id;
