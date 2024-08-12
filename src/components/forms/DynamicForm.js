@@ -39,6 +39,7 @@ import ReactPlayer from 'react-player';
 import DynamicSignup from './DynamicSignup';
 import AVAInHome from '../sections/AVAInHome';
 import ShowMenuB from '../dialogs/ShowMenuB';
+import BulletinBoard from '../dialogs/BulletinBoard';
 
 export default ({
   open,
@@ -324,6 +325,14 @@ export default ({
           onCancel={onClose}
           onComplete={onClose}
           allowCancel={true}
+        />
+      );
+    case 'bulletin_board':
+      return (
+        <BulletinBoard
+          pClient={session.client_id}
+          pGroup={defaultValue}
+          onClose={onClose}
         />
       );
     case 'upload_file':

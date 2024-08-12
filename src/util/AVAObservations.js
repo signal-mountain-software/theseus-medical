@@ -1,6 +1,6 @@
 import { isMemberOf } from './AVAGroups';
 import { makeDate } from './AVADateTime';
-import { cl, recordExists, resolveVariables, lambda, dbClient } from './AVAUtilities';
+import { cl, isObject, recordExists, resolveVariables, lambda, dbClient } from './AVAUtilities';
 
 // Functions
 
@@ -320,7 +320,7 @@ export async function getActivity(pClient, pCode) {
   return {};
 };
 
-export async function getBulletinBoard(pClient, pCode) {
+export async function getBulletinBoard(pClient, pGroup_id) {
   let response = {
     //  group_id : {
     //    groupRec,
@@ -335,39 +335,53 @@ export async function getBulletinBoard(pClient, pCode) {
     //  }
   };
   let qQ = {
-    Key: { client_id: pClient },
+    KeyConditionExpression: 'client_id = :c',
+    ExpressionAttributeValues: { ':c': pClient },
     TableName: "Groups"
   };
+  if (pGroup_id) {
+    qQ.KeyConditionExpression += ' and group_id = :g';
+    qQ.ExpressionAttributeValues[':g'] = pGroup_id;
+  }
   let groupRecs = await dbClient
     .query(qQ)
     .promise()
     .catch(error => {
-      cl(`***ERR reading Activity*** caught error is: ${error}`, qQ);
+      cl(`***ERR reading Groups*** caught error is: ${error}`, qQ);
     });
   if (!recordExists(groupRecs)) {
     return {};
   }
   groupRecs.Items.forEach(groupRec => {
-    if (groupRec.common_activities) {
+    if (groupRec.common_activities && (groupRec.common_activities.length > 0)) {
       let section_name = 'None';
       let section_sort = '';
+      response[groupRec.group_id] = {
+        groupRec
+      };
       groupRec.common_activities.forEach((activity_line, aList_index) => {
-        if (activity_line.startsWith('~~')) {
+        if ((typeof (activity_line) === 'string') && (activity_line.startsWith('~~'))) {
           let sectionKeys = activity_line.slice(2).split('~~');
           if (sectionKeys[1]) {
-            section_name = sectionKeys[1];
+            section_name = sectionKeys[1].split('~')[0];
             section_sort = sectionKeys[0];
           }
           else {
-            section_name = sectionKeys[0];
+            section_name = sectionKeys[0].split('~')[0];
             section_sort = '';
           }
         }
         else {
-          let [activity_name, ...parsed] = activity_line.split('~');
-          if (activity_name === 'render.generic') {
+          let activity_name, link_address, link_title;
+          if (isObject(activity_line)) {
+            activity_name = activity_line.activity_code;
+            link_address = activity_line.default.link_address;
+            link_title = activity_line.title;
+          }
+          else {
+            let parsed;
+            [activity_name, ...parsed] = activity_line.split('~');
             parsed.forEach(spec => {
-              let link_address, link_title;
               let [split_type, split_spec] = spec.split('=');
               if (split_type.includes('default')) {
                 link_address = split_spec.trim().replace(']', '');
@@ -375,31 +389,33 @@ export async function getBulletinBoard(pClient, pCode) {
               else if (split_type.includes('title')) {
                 link_title = split_spec.trim().replace(']', '');
               }
-              let aObj = {
-                group_list_index: aList_index,
-                link_address,
-                link_title
-              };
-              if (!response.hasOwnProperty(groupRec.group_id)) {
-                response[groupRec.group_id] = {
-                  groupRec,
-                  [section_name]: {
-                    section_sort,
-                    generic_activities_list: [aObj]
-                  }
-                };
-              }
-              else if (!response[groupRec.group_id].hasOwnProperty(section_name)) {
-                response[groupRec.group_id][section_name] = {
-                  section_sort,
-                  generic_activities_list: [aObj]
-                };
-              }
-              else {
-                response[groupRec.group_id][section_name].generic_activities_list.push(aObj);
-              }
             });
           }
+          if (activity_name === 'render.generic') {
+            let aObj = {
+              group_list_index: aList_index,
+              link_address,
+              link_title
+            };
+            if (!response.hasOwnProperty(groupRec.group_id)) {
+              response[groupRec.group_id] = {
+                groupRec,
+                [section_name]: {
+                  section_sort,
+                  generic_activities_list: [aObj]
+                }
+              };
+            }
+            else if (!response[groupRec.group_id].hasOwnProperty(section_name)) {
+              response[groupRec.group_id][section_name] = {
+                section_sort,
+                generic_activities_list: [aObj]
+              };
+            }
+            else {
+              response[groupRec.group_id][section_name].generic_activities_list.push(aObj);
+            }
+          };
         }
       });
     }

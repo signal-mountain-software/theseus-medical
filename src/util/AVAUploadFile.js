@@ -163,7 +163,12 @@ export default ({ onCancel, onLoad, options = {} }) => {
                       else { reactData.buttonText = options.buttonText[1]; }
                     }
                     setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
+                    if (options.oneOnly) {
+                      handleSave();
+                    }
+                    else {
+                      setForceRedisplay(!forceRedisplay);
+                    }
                   }}
                 />
                 <Button
