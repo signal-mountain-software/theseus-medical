@@ -16,11 +16,21 @@ import Paper from '@material-ui/core/Paper';
 import Button from '@material-ui/core/Button';
 import Box from '@material-ui/core/Box';
 
+import makeStyles from '@material-ui/core/styles/makeStyles';
 import { AVAclasses, AVATextStyle, AVADefaults } from '../util/AVAStyles';
+
+const useStyles = makeStyles(theme => ({
+  radius_rounded: {
+    borderRadius: '30px',
+    marginX: 2,
+    marginTop: 3
+  },
+}));
 
 export default ({ onCancel, onLoad, options = {} }) => {
 
   const AVAClass = AVAclasses();
+  const classes = useStyles();
   let user_fontSize = AVADefaults({ fontSize: 'get' });
 
   // if options.buttonText, use buttontext as follows:
@@ -53,7 +63,8 @@ export default ({ onCancel, onLoad, options = {} }) => {
 
   return (
     <Dialog open={forceRedisplay || true} fullWidth
-      style={{ marginX: 2, marginTop: 3 }} >
+      classes={{ paper: classes.radius_rounded }}
+    >
       <Typography
         style={AVATextStyle({
           size: 1.3,
@@ -118,69 +129,59 @@ export default ({ onCancel, onLoad, options = {} }) => {
               ))}
             </Paper>
           }
-          </Box>
-          <DialogActions className={AVAClass.AVABox} style={{ justifyContent: 'center' }}>
-            <Box display='flex' flexDirection='column'>
-              <Box display='flex' flexDirection='row' marginTop={2} paddingBottom={1} justifyContent='center' alignItems='center'>
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'blue', color: 'white' }}
-                  size='small'
-                  startIcon={<CloudUploadIcon />}
-                  onClick={handleFileUpload}
-                >
-                  {`Choose ${(reactData.uploadList.length === 0) ? 'a file' : 'more'}`}
-                </Button>
-                <input
-                  type="file"
-                  style={{ display: 'none' }}
-                  ref={hiddenFileInput}
-                  onChange={async (target) => {
-                    let fObj = target.target.files[0];
-                    let fParts = fObj.name.split('.');
-                    let extension = fParts.pop();
-                    let keyName = fParts.join('.');
-                    const pFile = {
-                      Bucket: 'theseus-medical-storage',
-                      Key: `public_uploads/${keyName}.${extension}`,
-                      Body: fObj,
-                      ACL: 'public-read-write',
-                      ContentType: fObj.ContentType
-                    };
-                    enqueueSnackbar(`Uploading ${keyName}`, { variant: 'success', persist: true });
-                    let s3Resp = await s3
-                      .upload(pFile)
-                      .promise()
-                      .catch(err => {
-                        enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
-                      });
-                    closeSnackbar();
-                    reactData.uploadList.push({ fName: keyName, fType: extension, fLoc: s3Resp.Location });
-                    if (options.buttonText && Array.isArray(options.buttonText)) {
-                      if (options.buttonText[2] && reactData.uploadList.length > 1) {
-                        reactData.buttonText = options.buttonText[2];
-                      }
-                      else { reactData.buttonText = options.buttonText[1]; }
-                    }
-                    setReactData(reactData);
-                    if (options.oneOnly) {
-                      handleSave();
-                    }
-                    else {
-                      setForceRedisplay(!forceRedisplay);
-                    }
-                  }}
-                />
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'red', color: 'white' }}
-                  size='small'
-                  variant='outlined'
-                  onClick={() => onCancel()}
-                  startIcon={<CloseIcon size="small" />}
-                >
-                  Exit
-                </Button>
+        </Box>
+        <DialogActions className={AVAClass.AVABox} style={{ justifyContent: 'center' }}>
+          <Box display='flex' flexDirection='column' minWidth='100%'>
+            <Box display='flex' flexDirection='row' marginTop={2} paddingBottom={1} justifyContent='space-between' alignItems='center'>
+              <Box display='flex' flexDirection='row'>
+                {(!options.oneOnly || (reactData.uploadList.length === 0)) &&
+                  <React.Fragment>
+                    <Button
+                      className={AVAClass.AVAButton}
+                      style={{ backgroundColor: 'blue', color: 'white' }}
+                      size='small'
+                      startIcon={<CloudUploadIcon />}
+                      onClick={handleFileUpload}
+                    >
+                      {`Choose ${(reactData.uploadList.length === 0) ? 'a file' : 'more'}`}
+                    </Button>
+                    <input
+                      type="file"
+                      style={{ display: 'none' }}
+                      ref={hiddenFileInput}
+                      onChange={async (target) => {
+                        let fObj = target.target.files[0];
+                        let fParts = fObj.name.split('.');
+                        let extension = fParts.pop();
+                        let keyName = fParts.join('.');
+                        const pFile = {
+                          Bucket: 'theseus-medical-storage',
+                          Key: `public_uploads/${keyName}.${extension}`,
+                          Body: fObj,
+                          ACL: 'public-read-write',
+                          ContentType: fObj.ContentType
+                        };
+                        enqueueSnackbar(`Uploading ${keyName}`, { variant: 'success', persist: true });
+                        let s3Resp = await s3
+                          .upload(pFile)
+                          .promise()
+                          .catch(err => {
+                            enqueueSnackbar(`Uh oh!  AVA couldn't save your file.  The reason is ${err.message}`, { variant: 'error', persist: true });
+                          });
+                        closeSnackbar();
+                        reactData.uploadList.push({ fName: keyName, fType: extension, fLoc: s3Resp.Location });
+                        if (options.buttonText && Array.isArray(options.buttonText)) {
+                          if (options.buttonText[2] && reactData.uploadList.length > 1) {
+                            reactData.buttonText = options.buttonText[2];
+                          }
+                          else { reactData.buttonText = options.buttonText[1]; }
+                        }
+                        setReactData(reactData);
+                        setForceRedisplay(!forceRedisplay);
+                      }}
+                    />
+                  </React.Fragment>
+                }
                 {(reactData.uploadList.length > 0) &&
                   <Button
                     className={AVAClass.AVAButton}
@@ -196,8 +197,19 @@ export default ({ onCancel, onLoad, options = {} }) => {
                   </Button>
                 }
               </Box>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
+                size='small'
+                variant='outlined'
+                onClick={() => onCancel()}
+                startIcon={<CloseIcon size="small" />}
+              >
+                Exit
+              </Button>
             </Box>
-          </DialogActions>
+          </Box>
+        </DialogActions>
       </Paper >
     </Dialog >
   );

@@ -176,24 +176,27 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
     }
   }
 
-
+  async function setBBoard() {
+    let response = await getBulletinBoard(pClient, reactData.group_id);
+    if (Object.keys(response[reactData.group_id]).length === 1) {
+      response[reactData.group_id]['Community Information'] = {
+        section_sort: '',
+        generic_activities_list: [{
+          group_list_index: 0,
+          link_address: 'https://www.avaseniorconnect.com',
+          link_title: 'AVA Senior Connect Web Site'
+        }]
+      };
+    }
+    return response;
+  }
 
 
   // **************************
 
   React.useEffect(() => {
     async function initialize() {
-      let response = await getBulletinBoard(pClient, reactData.group_id);
-      if (Object.keys(response[reactData.group_id]).length === 1) {
-        response[reactData.group_id]['Community Information'] = {
-          section_sort: '',
-          generic_activities_list: [{
-            group_list_index: 0,
-            link_address: 'https://www.avaseniorconnect.com',
-            link_title: 'AVA Senior Connect Web Site'
-          }]
-        };
-      }
+      let response = await setBBoard();
       updateReactData({
         bBoardList: response,
         initialized: true
@@ -203,7 +206,7 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
       initialize();
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-  
+
 
   return (
     (reactData.initialized &&
@@ -478,7 +481,7 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
             {reactData.addAttachment &&
               <AVAUploadFile
                 options={{
-                  buttonText: ['Choose', 'Use'],
+                  buttonText: ['Choose', 'Save & Continue'],
                   title: 'Link this menu option to what file?',
                   oneOnly: true
                 }}
@@ -511,7 +514,11 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                     .catch(error => {
                       cl(`caught error updating Group; error is: `, error);
                     });
+                  let bbResponse = await setBBoard();
+                  reactData.textInput[reactData.selectedSection]['new'] = '';
                   updateReactData({
+                    bBoardList: bbResponse,
+                    textInput: reactData.textInput,
                     addAttachment: false
                   }, true);
                 }}
@@ -521,10 +528,10 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
               <AVATextInput
                 titleText={'Link this menu option to what web address?'}
                 promptText={['Web address']}
-                buttonText='Link'
+                buttonText={'Add Link & Save'}
                 onCancel={() => {
                   updateReactData({
-                    addAttachment: false
+                    addLink: false
                   }, true);
                 }}
                 onSave={async (response) => {
@@ -554,7 +561,11 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                     .catch(error => {
                       cl(`caught error updating Group; error is: `, error);
                     });
+                  let bbResponse = await setBBoard();
+                  reactData.textInput[reactData.selectedSection]['new'] = '';
                   updateReactData({
+                    bBoardList: bbResponse,
+                    textInput: reactData.textInput,
                     addLink: false
                   }, true);
                 }}
