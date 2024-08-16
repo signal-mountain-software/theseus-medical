@@ -9,7 +9,7 @@ import AVAConfirm from '../forms/AVAConfirm';
 import { Checkbox, List, TextField, Button, Typography, Paper, Box } from '@material-ui/core';
 import { RadioGroup, Radio } from '@material-ui/core';
 import { FormControl, FormControlLabel } from '@material-ui/core';
-import { Dialog, DialogActions } from '@material-ui/core';
+import { Dialog, DialogActions, DialogContent } from '@material-ui/core';
 
 import { useSnackbar } from 'notistack';
 
@@ -33,7 +33,6 @@ const useStyles = makeStyles(theme => ({
     marginBottom: '25px',
   },
   radius_rounded: {
-    borderRadius: '30px'
   },
   centerCenter: {
     alignItems: 'center',
@@ -142,6 +141,13 @@ const useStyles = makeStyles(theme => ({
     paddingBottom: 0,
     paddingLeft: 0,
     paddingRight: 10,
+  },
+  dialogBox: {
+    paddingTop: 0,
+    paddingLeft: 0,
+    paddingBottom: theme.spacing(1),
+    minWidth: '100%',
+    overflowX: 'hidden',
   },
   idText: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -354,370 +360,402 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       open={showNewEvent || forceRedisplay}
       onClose={handleAbort}
       classes={{ paper: classes.radius_rounded }}
+      fullScreen
     >
       <React.Fragment>
         <Box m={2}>
           <Typography style={AVATextStyle({
             size: 1.3, bold: true, margin: {
-              bottom: 2,
+              bottom: 1,
               top: 1,
-              right: 2,
             }
           })}>
             {'Manage Marquee Messages'}
           </Typography>
-          <Paper component={Box} variant={'outlined'}>
-            <Box mt={1} py={1} px={3} borderBottom={2}>
-              <Box flexGrow={1}>
-                <Typography variant='h6'>Create a New Message</Typography>
-              </Box>
-            </Box>
-          </Paper>
-          <Paper
-            component={Box}
-            p={3}
-            variant='outlined'
-            display='flex'
-            flexDirection='column'
-            justifyContent='flex-start'
-            alignItems='flex-start'
-          >
-            <Box flexGrow={2} width={'100%'} display='flex' flexDirection='column'>
-              <form className={classes.root} noValidate autoComplete='off'>
-                <div>
-                  <TextField
-                    key={`description`}
-                    helperText={'Your Message'}
-                    multiline
-                    inputProps={{ style: { color: 'black', fontSize: `1.5rem`, lineHeight: `1.7rem` } }}
-                    FormHelperTextProps={{ style: { color: 'black', fontSize: `1remrem`, lineHeight: `0.9rem` } }}
-                    className={classes.freeInput}
-                    variant={'standard'}
-                    autoComplete='off'
-                    id='description'
-                    value={reactData.description}
-                    fullWidth
-                    onChange={event => (handleChangeDescription(event.target.value))}
-                  />
-                </div>
-                <div>
-                  <TextField
-                    key={`input_fromDate`}
-                    helperText={'Start Date (and optional time)'}
-                    multiline
-                    inputProps={{ style: { color: 'black', fontSize: `1.5rem`, lineHeight: `1.7rem` } }}
-                    FormHelperTextProps={{ style: { color: 'black', fontSize: `1remrem`, lineHeight: `0.9rem` } }}
-                    className={classes.freeInput}
-                    id={'date-selection'}
-                    variant={'standard'}
-                    value={reactData.eventStartDisplayDate}
-                    autoComplete='off'
-                    onBlur={(event) => {
-                      resolveFromDate(event.target.value);
-                    }}
-                    onChange={(event) => {
-                      handleChangeDateFrom(event.target.value);
-                    }}
-                  />
-                </div>
-                <div>
-                  <TextField
-                    key={`input_toDate`}
-                    className={classes.freeInput}
-                    id={'date-selection'}
-                    helperText={'End Date (and optional time)'}
-                    multiline
-                    inputProps={{ style: { color: 'black', fontSize: `1.5rem`, lineHeight: `1.7rem` } }}
-                    FormHelperTextProps={{ style: { color: 'black', fontSize: `1remrem`, lineHeight: `0.9rem` } }}
-                    variant={'standard'}
-                    value={reactData.eventEndDisplayDate}
-                    autoComplete='off'
-                    onBlur={(event) => {
-                      resolveToDate(event.target.value);
-                    }}
-                    onChange={(event) => {
-                      handleChangeDateTo(event.target.value);
-                    }}
-                  />
-                </div>
-                <Box
-                  display="flex"
-                  pt={2}
-                  pb={1}
-                  pl={1}
-                  mt={3.5}
-                  flexDirection='column'
-                  justifyContent="center"
-                >
-                  <Typography className={classes.radioText}>
-                    {`Critical message?  This will display in red, and be the only message on the screen.`}
-                  </Typography>
-                  <FormControl className={classes.formControl} component="fieldset">
-                    <RadioGroup
-                      row
-                      defaultValue={'no'}
-                      aria-label="critical"
-                      name="critical"
-                      value={reactData.criticalMessage}
-                      onChange={handleChangeCriticalToggle}
-                    >
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="no"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            No
-                          </Typography>}
-                      />
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="yes"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            Yes
-                          </Typography>}
-                      />
-                    </RadioGroup>
-                  </FormControl>
-                </Box>
-                <Box
-                  display="flex"
-                  pt={2}
-                  pb={1}
-                  pl={1}
-                  mt={3.5}
-                  flexDirection='column'
-                  justifyContent="center"
-                >
-                  <Typography className={classes.radioText}>Do you wish to restrict this event to specific groups only?</Typography>
-                  <FormControl className={classes.formControl} component="fieldset">
-                    <RadioGroup
-                      row
-                      defaultValue={'no'}
-                      aria-label="restrictions"
-                      name="restrictions"
-                      value={reactData.specificPeople}
-                      onChange={handleChangePeopleToggle}
-                    >
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="no"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            No
-                          </Typography>}
-                      />
-                      <FormControlLabel
-                        className={classes.formControlLbl}
-                        value="yes"
-                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                        label={
-                          <Typography className={classes.radioText}>
-                            Yes
-                          </Typography>}
-                      />
-                    </RadioGroup>
-                  </FormControl>
-                </Box>
-              </form>
-            </Box>
-            {(reactData.specificPeople === 'yes') &&
-              <React.Fragment>
-                <Box marginTop={2} marginLeft={4} display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                  <Typography className={classes.HeadText}>{`Administrative Groups`}</Typography>
-                  <List className={classes.root}>
-                    {state.groups.adminHierarchy.map((gObj, ndx) => (
-                      <Box display='flex' style={{ height: 40, marginLeft: gObj.level * 20 }} flexDirection='row' justifyContent='flex-start'
-                        alignItems='center' flexWrap='wrap' key={`admin-${ndx}`}
-                        onContextMenu={async (e) => {
-                          e.preventDefault();
-                          enqueueSnackbar(`Group ID=${gObj.id}`, { variant: 'info', persist: true });
-                        }}
-                      >
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                          alignItems='center' flexWrap='nowrap' key={`qropt-${ndx}`}
-                        >
-                          <Checkbox
-                            className={classes.radioButton}
-                            size="small"
-                            onClick={() => {
-                              if (reactData.selectedGroups.hasOwnProperty(gObj.id)) {
-                                delete reactData.selectedGroups[gObj.id];
-                              }
-                              else {
-                                reactData.selectedGroups[gObj.id] = true;
-                              }
-                              updateReactData({
-                                selectedGroups: reactData.selectedGroups
-                              }, true);
-                            }}
-                            checked={reactData.selectedGroups.hasOwnProperty(gObj.id)}
-                          />
-                          <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{gObj.name}</Typography>
-                        </Box>
-                      </Box>
-                    ))}
-                  </List>
-                </Box>
-                <Typography className={classes.HeadTextWIthTopSpacing}>{`Public (optional) Groups`}</Typography>
-                <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                  <List className={classes.root}>
-                    {Object.keys(state.groups.publicGroups).map((gID, ndx) => (
-                      <Box display='flex' style={{ height: 40, marginLeft: 20 }} flexDirection='row' justifyContent='flex-start'
-                        alignItems='center' flexWrap='wrap' key={`public-${ndx}`}
-                        onContextMenu={async (e) => {
-                          e.preventDefault();
-                          enqueueSnackbar(`Group ID=${gID}`, { variant: 'info', persist: true });
-                        }}
-                      >
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                          alignItems='center' flexWrap='wrap' key={`pubopt-${ndx}`}
-                        >
-                          <Checkbox
-                            className={classes.radioButton}
-                            size="small"
-                            onClick={() => {
-                              if (reactData.selectedGroups.hasOwnProperty(gID)) {
-                                delete reactData.selectedGroups[gID];
-                              }
-                              else {
-                                reactData.selectedGroups[gID] = true;
-                              }
-                              updateReactData({
-                                selectedGroups: reactData.selectedGroups
-                              }, true);
-                            }
-                            }
-                            checked={reactData.selectedGroups.hasOwnProperty(gID)}
-                          />
-                          <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{state.groups.publicGroups[gID].group_name}</Typography>
-                        </Box>
-                      </Box>
-                    ))}
-                  </List>
-                </Box>
-                <Typography className={classes.HeadTextWIthTopSpacing}>{`Private Groups`}</Typography>
-                <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                  <List className={classes.root}>
-                    {Object.keys(state.groups.privateGroups).map((gID, ndx) => (
-                      <Box display='flex' style={{ height: 40, marginLeft: 20 }} flexDirection='row' justifyContent='flex-start'
-                        alignItems='center' flexWrap='wrap' key={`private-${ndx}`}
-                        onContextMenu={async (e) => {
-                          e.preventDefault();
-                          enqueueSnackbar(`Group ID=${gID}`, { variant: 'info', persist: true });
-                        }}
-                      >
-                        <Box display='flex' flexDirection='row' justifyContent='flex-start'
-                          alignItems='center' flexWrap='wrap' key={`pubopt-${ndx}`}
-                        >
-                          <Checkbox
-                            className={classes.radioButton}
-                            size="small"
-                            onClick={() => {
-                              if (reactData.selectedGroups.hasOwnProperty(gID)) {
-                                delete reactData.selectedGroups[gID];
-                              }
-                              else {
-                                reactData.selectedGroups[gID] = true;
-                              }
-                              updateReactData({
-                                selectedGroups: reactData.selectedGroups
-                              }, true);
-                            }
-                            }
-                            checked={reactData.selectedGroups.hasOwnProperty(gID)}
-                          />
-                          <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{state.groups.privateGroups[gID].group_name || gID}</Typography>
-                        </Box>
-                      </Box>
-                    ))}
-                  </List>
-                </Box>
-              </React.Fragment>
-            }
-          </Paper>
         </Box>
-      </React.Fragment>
-      <React.Fragment>
-        <Box m={2}>
-          <Paper component={Box} variant={'outlined'}>
-            <Box mt={1} py={1} px={3} borderBottom={2}>
-              <Box flexGrow={1}>
-                <Typography variant='h6'>Current and Upcoming Messages</Typography>
+        <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+          <Box m={2} minWidth={'100%'}>
+            <Paper component={Box} mr={2} variant={'outlined'}>
+              <Box mt={1} py={1} px={3} borderBottom={2}>
+                <Box flexGrow={1}>
+                  <Typography variant='h6'>Create a New Message</Typography>
+                </Box>
               </Box>
-            </Box>
-          </Paper>
-          <Paper
-            component={Box}
-            p={3}
-            variant='outlined'
-            elevation={0}
-            marginBottom={1}
-            display='flex'
-            flexDirection='column'
-            justifyContent='flex-start'
-            alignItems='flex-start'
-          >
-            <Box flexGrow={2} display='flex' flexDirection='column'>
-              {reactData.messageList.map((this_message, index) => (
-                <Paper
-                  component={Box}
-                  marginTop={1}
-                  elevation={0}
-                  marginBottom={1}
-                  key={`paper_row_${index}`}
-                >
-
-                  <Box display='flex'
-                    flexDirection='row'
+            </Paper>
+            <Paper
+              component={Box}
+              mr={2}
+              p={3}
+              variant='outlined'
+              display='flex'
+              flexDirection='column'
+              justifyContent='flex-start'
+              alignItems='flex-start'
+            >
+              <Box flexGrow={2} width={'100%'} display='flex' flexDirection='column'>
+                <form className={classes.root} noValidate autoComplete='off'>
+                  <div>
+                    <TextField
+                      key={`description`}
+                      helperText={'Your Message'}
+                      multiline
+                      inputProps={{ style: { color: 'black', fontSize: `1.5rem`, lineHeight: `1.7rem` } }}
+                      FormHelperTextProps={{ style: { color: 'black', fontSize: `1remrem`, lineHeight: `0.9rem` } }}
+                      className={classes.freeInput}
+                      variant={'standard'}
+                      autoComplete='off'
+                      id='description'
+                      value={reactData.description}
+                      fullWidth
+                      onChange={event => (handleChangeDescription(event.target.value))}
+                    />
+                  </div>
+                  <div>
+                    <TextField
+                      key={`input_fromDate`}
+                      helperText={'Start Date (and optional time)'}
+                      multiline
+                      inputProps={{ style: { color: 'black', fontSize: `1.5rem`, lineHeight: `1.7rem` } }}
+                      FormHelperTextProps={{ style: { color: 'black', fontSize: `1remrem`, lineHeight: `0.9rem` } }}
+                      className={classes.freeInput}
+                      id={'date-selection'}
+                      variant={'standard'}
+                      value={reactData.eventStartDisplayDate}
+                      autoComplete='off'
+                      onBlur={(event) => {
+                        resolveFromDate(event.target.value);
+                      }}
+                      onChange={(event) => {
+                        handleChangeDateFrom(event.target.value);
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <TextField
+                      key={`input_toDate`}
+                      className={classes.freeInput}
+                      id={'date-selection'}
+                      helperText={'End Date (and optional time)'}
+                      multiline
+                      inputProps={{ style: { color: 'black', fontSize: `1.5rem`, lineHeight: `1.7rem` } }}
+                      FormHelperTextProps={{ style: { color: 'black', fontSize: `1remrem`, lineHeight: `0.9rem` } }}
+                      variant={'standard'}
+                      value={reactData.eventEndDisplayDate}
+                      autoComplete='off'
+                      onBlur={(event) => {
+                        resolveToDate(event.target.value);
+                      }}
+                      onChange={(event) => {
+                        handleChangeDateTo(event.target.value);
+                      }}
+                    />
+                  </div>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    pb={1}
+                    pl={1}
+                    mt={3.5}
+                    flexDirection='column'
+                    justifyContent="center"
                   >
-                    <Box display='flex'
-                      flexDirection='column'
-                      alignItems={'center'}
-                      justifyContent={'center'}
-                      marginRight={2}
-                    >
-                      <DeleteIcon
-                        onClick={() => {
-                          updateReactData({
-                            deleteKeyPending: this_message.message_key,
-                            deleteTextPending: this_message.message
-                          }, true);
-                        }}
-                      />
-                    </Box>
-                    <Box display='flex'
-                      flexDirection='column'
-                    >
-                      {this_message.criticalMessage &&
-                        <Typography className={classes.radioText} style={{ marginBottom: '-10px', color: 'red', fontSize: '1rem', italics: true }} >
-                          {`*** Critical Message - All others hidden ***`}
-                        </Typography>
-                      }
-                      <Typography className={classes.radioText} style={{ color: (this_message.criticalMessage ? 'red' : 'black'), fontSize: '1.5rem', fontWeight: 'bold' }}>
-                        {this_message.message}
-                      </Typography>
-                      <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
-                        {`Start: ${makeDate(this_message.start_time).absolute}`}
-                      </Typography>
-                      <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
-                        {`End: ${makeDate(this_message.end_time).absolute}`}
-                      </Typography>
-                      {this_message.groups && (this_message.groups.length > 0) &&
-                        <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
-                          {`Restricted to: ${this_message.groupNames.sort().join(', ')}`}
-                        </Typography>
-                      }
-                    </Box>
+                    <Typography className={classes.radioText}>
+                      {`Critical message?  This will display in red, and be the only message on the screen.`}
+                    </Typography>
+                    <FormControl className={classes.formControl} component="fieldset">
+                      <RadioGroup
+                        row
+                        defaultValue={'no'}
+                        aria-label="critical"
+                        name="critical"
+                        value={reactData.criticalMessage}
+                        onChange={handleChangeCriticalToggle}
+                      >
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value="no"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              No
+                            </Typography>}
+                        />
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value="yes"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              Yes
+                            </Typography>}
+                        />
+                      </RadioGroup>
+                    </FormControl>
                   </Box>
-                </Paper>
-              ))}
-            </Box>
-          </Paper>
+                  <Box
+                    display="flex"
+                    pt={2}
+                    pb={1}
+                    pl={1}
+                    mt={3.5}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
+                    <Typography className={classes.radioText}>Do you wish to restrict this event to specific groups only?</Typography>
+                    <FormControl className={classes.formControl} component="fieldset">
+                      <RadioGroup
+                        row
+                        defaultValue={'no'}
+                        aria-label="restrictions"
+                        name="restrictions"
+                        value={reactData.specificPeople}
+                        onChange={handleChangePeopleToggle}
+                      >
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value="no"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              No
+                            </Typography>}
+                        />
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value="yes"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              Yes
+                            </Typography>}
+                        />
+                      </RadioGroup>
+                    </FormControl>
+                  </Box>
+                </form>
+              </Box>
+              {(reactData.specificPeople === 'yes') &&
+                <React.Fragment>
+                  <Box marginTop={2} marginLeft={4} display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                    <Typography className={classes.HeadText}>{`Administrative Groups`}</Typography>
+                    <List className={classes.root}>
+                      {state.groups.adminHierarchy.map((gObj, ndx) => (
+                        <Box display='flex' style={{ height: 40, marginLeft: gObj.level * 20 }} flexDirection='row' justifyContent='flex-start'
+                          alignItems='center' flexWrap='wrap' key={`admin-${ndx}`}
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            enqueueSnackbar(`Group ID=${gObj.id}`, { variant: 'info', persist: true });
+                          }}
+                        >
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                            alignItems='center' flexWrap='nowrap' key={`qropt-${ndx}`}
+                          >
+                            <Checkbox
+                              className={classes.radioButton}
+                              size="small"
+                              onClick={() => {
+                                if (reactData.selectedGroups.hasOwnProperty(gObj.id)) {
+                                  delete reactData.selectedGroups[gObj.id];
+                                }
+                                else {
+                                  reactData.selectedGroups[gObj.id] = true;
+                                }
+                                updateReactData({
+                                  selectedGroups: reactData.selectedGroups
+                                }, true);
+                              }}
+                              checked={reactData.selectedGroups.hasOwnProperty(gObj.id)}
+                            />
+                            <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{gObj.name}</Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </List>
+                  </Box>
+                  <Typography className={classes.HeadTextWIthTopSpacing}>{`Public (optional) Groups`}</Typography>
+                  <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                    <List className={classes.root}>
+                      {Object.keys(state.groups.publicGroups).map((gID, ndx) => (
+                        <Box display='flex' style={{ height: 40, marginLeft: 20 }} flexDirection='row' justifyContent='flex-start'
+                          alignItems='center' flexWrap='wrap' key={`public-${ndx}`}
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            enqueueSnackbar(`Group ID=${gID}`, { variant: 'info', persist: true });
+                          }}
+                        >
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                            alignItems='center' flexWrap='wrap' key={`pubopt-${ndx}`}
+                          >
+                            <Checkbox
+                              className={classes.radioButton}
+                              size="small"
+                              onClick={() => {
+                                if (reactData.selectedGroups.hasOwnProperty(gID)) {
+                                  delete reactData.selectedGroups[gID];
+                                }
+                                else {
+                                  reactData.selectedGroups[gID] = true;
+                                }
+                                updateReactData({
+                                  selectedGroups: reactData.selectedGroups
+                                }, true);
+                              }
+                              }
+                              checked={reactData.selectedGroups.hasOwnProperty(gID)}
+                            />
+                            <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{state.groups.publicGroups[gID].group_name}</Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </List>
+                  </Box>
+                  <Typography className={classes.HeadTextWIthTopSpacing}>{`Private Groups`}</Typography>
+                  <Box display='flex' flexDirection='column' justifyContent='center' alignItems='flex-start'>
+                    <List className={classes.root}>
+                      {Object.keys(state.groups.privateGroups).map((gID, ndx) => (
+                        <Box display='flex' style={{ height: 40, marginLeft: 20 }} flexDirection='row' justifyContent='flex-start'
+                          alignItems='center' flexWrap='wrap' key={`private-${ndx}`}
+                          onContextMenu={async (e) => {
+                            e.preventDefault();
+                            enqueueSnackbar(`Group ID=${gID}`, { variant: 'info', persist: true });
+                          }}
+                        >
+                          <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                            alignItems='center' flexWrap='wrap' key={`pubopt-${ndx}`}
+                          >
+                            <Checkbox
+                              className={classes.radioButton}
+                              size="small"
+                              onClick={() => {
+                                if (reactData.selectedGroups.hasOwnProperty(gID)) {
+                                  delete reactData.selectedGroups[gID];
+                                }
+                                else {
+                                  reactData.selectedGroups[gID] = true;
+                                }
+                                updateReactData({
+                                  selectedGroups: reactData.selectedGroups
+                                }, true);
+                              }
+                              }
+                              checked={reactData.selectedGroups.hasOwnProperty(gID)}
+                            />
+                            <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{state.groups.privateGroups[gID].group_name || gID}</Typography>
+                          </Box>
+                        </Box>
+                      ))}
+                    </List>
+                  </Box>
+                </React.Fragment>
+              }
+            </Paper>
+          </Box>
+          <Box m={2} minWidth={'100%'}>
+            <Paper component={Box} mr={2} variant={'outlined'}>
+              <Box mt={1} py={1} px={3} borderBottom={2}>
+                <Box flexGrow={1}>
+                  <Typography variant='h6'>Current and Upcoming Messages</Typography>
+                </Box>
+              </Box>
+            </Paper>
+            <Paper
+              component={Box}
+              mr={2}
+              p={3}
+              variant='outlined'
+              elevation={0}
+              marginBottom={1}
+              display='flex'
+              flexDirection='column'
+              justifyContent='flex-start'
+              alignItems='flex-start'
+            >
+              <Box flexGrow={2} display='flex' flexDirection='column'>
+                {reactData.messageList.map((this_message, index) => (
+                  <Paper
+                    component={Box}
+                    marginTop={1}
+                    elevation={0}
+                    marginBottom={1}
+                    key={`paper_row_${index}`}
+                  >
+
+                    <Box display='flex'
+                      flexDirection='row'
+                    >
+                      <Box display='flex'
+                        flexDirection='column'
+                        alignItems={'center'}
+                        justifyContent={'center'}
+                        marginRight={2}
+                      >
+                        <DeleteIcon
+                          onClick={() => {
+                            updateReactData({
+                              deleteKeyPending: this_message.message_key,
+                              deleteTextPending: this_message.message
+                            }, true);
+                          }}
+                        />
+                      </Box>
+                      <Box display='flex'
+                        flexDirection='column'
+                      >
+                        {this_message.criticalMessage &&
+                          <Typography className={classes.radioText} style={{ marginBottom: '-10px', color: 'red', fontSize: '1rem', italics: true }} >
+                            {`*** Critical Message - All others hidden ***`}
+                          </Typography>
+                        }
+                        <Typography className={classes.radioText} style={{ color: (this_message.criticalMessage ? 'red' : 'black'), fontSize: '1.5rem', fontWeight: 'bold' }}>
+                          {this_message.message}
+                        </Typography>
+                        <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
+                          {`Start: ${makeDate(this_message.start_time).absolute}`}
+                        </Typography>
+                        <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
+                          {`End: ${makeDate(this_message.end_time).absolute}`}
+                        </Typography>
+                        {this_message.groups && (this_message.groups.length > 0) &&
+                          <Typography className={classes.radioText} style={{ fontSize: '1rem', marginLeft: '16px' }} >
+                            {`Restricted to: ${this_message.groupNames.sort().join(', ')}`}
+                          </Typography>
+                        }
+                      </Box>
+                    </Box>
+                  </Paper>
+                ))}
+              </Box>
+            </Paper>
+          </Box>
+        </DialogContent>
+        <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+            <DialogActions className={classes.buttonArea} >
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
+                size='small'
+                onClick={() => { onClose(); }}
+                startIcon={<CloseIcon fontSize="small" />}
+              >
+                {'Exit'}
+              </Button>
+              {OK2Save() &&
+                <Button
+                  onClick={async () => {
+                    await handleUpdate();
+                  }}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'green', color: 'white' }}
+                  size='small'
+                >
+                  {'Save'}
+                </Button>
+              }
+            </DialogActions>
+          </Box>
         </Box>
+
       </React.Fragment>
       {reactData.deleteKeyPending &&
         <AVAConfirm
@@ -745,33 +783,6 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
         >
         </AVAConfirm>
       }
-      <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
-        <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-          <DialogActions className={classes.buttonArea} >
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'red', color: 'white' }}
-              size='small'
-              onClick={() => { onClose(); }}
-              startIcon={<CloseIcon fontSize="small" />}
-            >
-              {'Exit'}
-            </Button>
-            {OK2Save() &&
-              <Button
-                onClick={async () => {
-                  await handleUpdate();
-                }}
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'green', color: 'white' }}
-                size='small'
-              >
-                {'Save'}
-              </Button>
-            }
-          </DialogActions>
-        </Box>
-      </Box>
     </Dialog>
   );
 };
