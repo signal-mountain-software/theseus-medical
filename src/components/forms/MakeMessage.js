@@ -28,14 +28,14 @@ import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 const useStyles = makeStyles(theme => ({
   containerBox: {
     margin: theme.spacing(2),
-    minWidth: '90%'
   },
   contentBox: {
     minWidth: '100%',
     paddingLeft: theme.spacing(3),
   },
   radius_rounded: {
-    borderRadius: '30px'
+    borderRadius: '30px',
+    overflowX: 'hidden'
   },
   dialogBox: {
     paddingTop: theme.spacing(1),
@@ -52,9 +52,7 @@ const useStyles = makeStyles(theme => ({
   imageArea: {
     minWidth: '100px',
     maxWidth: '100px',
-    marginTop: theme.spacing(3),
     marginLeft: theme.spacing(2),
-    marginBottom: theme.spacing(2),
   },
   buttonArea: {
     justifyContent: 'center',
@@ -151,7 +149,12 @@ export default ({
   }, []);
 
   const handleChangeTextInput = (event, x) => {
-    reactData.textInput[x] = event.target.value;
+    if (event.target.value && (event.target.value.length === 1)) {
+      reactData.textInput[x] = event.target.value.toUpperCase();
+    }
+    else {
+      reactData.textInput[x] = event.target.value;
+    }
     setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
   };
@@ -400,7 +403,6 @@ export default ({
       <Paper
         open={reactData.forceRedisplay || true}
         className={classes.containerBox}
-        style={{ minWidth: '90%', }}
         elevation={0}
       >
         {(typeof reactData.recipientID === 'string') && (reactData.recipientID === '*select') &&
@@ -433,39 +435,35 @@ export default ({
         {((typeof reactData.recipientID !== 'string') || (reactData.recipientID !== '*select')) &&
           <React.Fragment>
             <Box display='flex'
-              grow={1}
+              flexGrow={1}
               mb={0}
+              mt={1}
               pb={2}
-              ml={2}
-              width={'95%'}
+              mx={1}
               flexDirection='column'
               justifyContent='center'
               alignItems='flex-start'
             >
-              <Typography style={AVATextStyle({
-                size: 1.3, bold: true, margin: {
-                  top: 2,
-                  right: 2,
+              <Box display='flex' flexDirection={'row'} justifyContent={'space-between'} alignItems={'flex-start'} mb={1}>
+                <Typography style={AVATextStyle({
+                  size: 1.3, bold: true, margin: {
+                    top: 0.2,
+                    right: 2,
+                  }
+                })} id='scroll-dialog-title'>
+                  {reactData.titleText || makeTitle(reactData)}
+                </Typography>
+                {(reactData.IDImage) && (!reactData.multipleRecipients) &&
+                  <img
+                    className={classes.imageArea}
+                    alt=''
+                    src={reactData.IDImage}
+                  />
                 }
-              })} id='scroll-dialog-title'>
-                {reactData.titleText || makeTitle(reactData)}
-              </Typography>
-              {(reactData.IDImage)
-                ?
-                <Box
-                  className={classes.imageArea}
-                  component="img"
-                  alt=''
-                  src={reactData.IDImage}
-                />
-                :
-                <Box
-                  className={classes.imageArea}
-                />
-              }
+              </Box>
               <Box
                 display='flex'
-                grow={1}
+                flexGrow={1}
                 mb={0}
                 ml={0}
                 minWidth={'100%'}
@@ -502,7 +500,8 @@ export default ({
                     minWidth={'100%'}
                     mt={0.5}
                     mb={0.5}
-                    border={reactData.textInput[x] ? 1 : 0}
+                    border={reactData.textInput[x] ? 4 : 2}
+                    borderColor={reactData.textInput[x] ? 'green' : 'red'}
                     borderRadius={'16px'}
                     key={'fullRow' + x}
                   >
@@ -528,6 +527,8 @@ export default ({
                   <Box
                     key={'qMulti'}
                     display="flex"
+                    marginLeft={'12px'}
+                    marginBottom={'-8px'}
                     className={classes.qualOption}
                     flexDirection='column'
                     justifyContent="center"
@@ -545,14 +546,14 @@ export default ({
                         }}
                         checked={reactData.allowReplyAll}
                       />
-                      <Typography style={AVATextStyle({ size: 0.5, margin: { left: 0.5 } })}>Allow Reply all</Typography>
+                      <Typography style={AVATextStyle({ size: 0.5, margin: { left: 0.2 } })}>Allow Reply all</Typography>
                     </Box>
                   </Box>
                 }
                 <Box
                   key={'qRow'}
                   display={"flex"}
-                  marginTop={'16px'}
+                  marginLeft={'12px'}
                   className={classes.qualOption}
                   flexDirection='column'
                   justifyContent="center"
@@ -570,7 +571,7 @@ export default ({
                       }}
                       checked={reactData.isUrgent}
                     />
-                    <Typography style={AVATextStyle({ size: 0.5, margin: { left: 0.5 } })}>Mark as Urgent</Typography>
+                    <Typography style={AVATextStyle({ size: 0.5, margin: { left: 0.2 } })}>Mark as Urgent</Typography>
                   </Box>
                 </Box>
                 {(reactData.attachmentList.length > 0) &&
@@ -613,7 +614,7 @@ export default ({
                   {'Back'}
                 </Button>
               }
-              <Box display='flex' flexDirection='row' justifyContent='flex-start'
+              <Box display='flex' flexDirection='row' justifyContent='flex-end' flexWrap='wrap'
                 alignItems='center' key={'qrOpt_attachmentbox'}
               >
                 <Button
@@ -654,6 +655,6 @@ export default ({
           </React.Fragment >
         }
       </Paper >
-    </Dialog>
+    </Dialog >
   );
 };
