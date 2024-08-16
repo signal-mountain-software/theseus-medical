@@ -1,5 +1,5 @@
 import React from 'react';
-import { titleCase, dbClient, cl } from '../../util/AVAUtilities';
+import { titleCase, sentenceCase, dbClient, cl } from '../../util/AVAUtilities';
 import { getBulletinBoard } from '../../util/AVAObservations';
 import AVATextInput from '../forms/AVATextInput';
 
@@ -12,10 +12,11 @@ import DialogContent from '@material-ui/core/DialogContent';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContentText from '@material-ui/core/DialogContentText';
 import Button from '@material-ui/core/Button';
-import IconButton from '@material-ui/core/IconButton';
 import EditIcon from '@material-ui/icons/Edit';
 import CloudUploadIcon from '@material-ui/icons/CloudUpload';
 import LinkIcon from '@material-ui/icons/Link';
+import SaveIcon from '@material-ui/icons/Save';
+import CancelIcon from '@material-ui/icons/Cancel';
 
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import DeleteIcon from '@material-ui/icons/Delete';
@@ -52,7 +53,7 @@ const useStyles = makeStyles(theme => ({
     fontSize: '0.8rem',
   },
   freeInput: {
-    width: '80%',
+    width: '100%',
     marginLeft: 0,
     marginBottom: '10px',
     marginRight: '32px',
@@ -61,6 +62,31 @@ const useStyles = makeStyles(theme => ({
     verticalAlign: 'middle',
     minHeight: theme.typography.fontSize * 2.8,
   },
+  editInput: {
+    width: '100%',
+    color: 'black',
+    marginLeft: 0,
+    marginRight: '8px',
+    paddingLeft: 0,
+    paddingRight: 0,
+    minHeight: theme.typography.fontSize * 2.8,
+  },
+  rowButton: {
+    marginRight: theme.spacing(1),
+    fontSize: '1rem',
+    marginBottom: theme.spacing(1),
+  },
+  rowButtonGreen: {
+    marginRight: theme.spacing(1),
+    fontSize: '1rem',
+    marginBottom: theme.spacing(1),
+    color: 'green'
+  },
+  inputDisplay: {
+    '&.Mui-disabled': {
+      color: 'black'
+    },
+  },
   rowButtonRed: {
     marginLeft: theme.spacing(1),
     marginRight: theme.spacing(1),
@@ -68,14 +94,6 @@ const useStyles = makeStyles(theme => ({
     textTransform: 'none',
     size: 'small',
     // color: theme.palette.reject[theme.palette.type],
-  },
-  rowButtonGreen: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    variant: 'outlined',
-    textTransform: 'none',
-    size: 'small',
-    // color: theme.palette.confirm[theme.palette.type],
   },
   dialogBox: {
     paddingTop: 0,
@@ -100,7 +118,7 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
   var rowsWritten;
 
   const [reactData, setReactData] = React.useState({
-    group_id: (Array.isArray(inGroup) ? ((inGroup.length > 0) ? inGroup[0] : 'ALL') : 'ALL'),
+    group_id: (Array.isArray(inGroup) ? ((inGroup.length > 0) ? inGroup[0] : 'ALL') : inGroup),
     initialized: false,
     bBoardList: {},
     deletePending: false,
@@ -109,7 +127,9 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
     textInput: {},
     editMode: {},
     addAttachment: false,
-    addLink: false
+    addLink: false,
+    needsHeader: false,
+    changesMade: false
   });
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -137,6 +157,9 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
     if (!reactData.textInput.hasOwnProperty(section_name)) {
       reactData.textInput[section_name] = [];
     }
+    if (inputValue.length === 1) {
+      inputValue = inputValue.toUpperCase();
+    }
     reactData.textInput[section_name][ndx] = inputValue;
     updateReactData({
       textInput: reactData.textInput
@@ -147,7 +170,7 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
     if (ndx !== 'new') {
       let rowObj = reactData.bBoardList[reactData.group_id][section_name].generic_activities_list[ndx];
       reactData.bBoardList[reactData.group_id][section_name].generic_activities_list[ndx].link_title = reactData.textInput[section_name][ndx];
-      let updatedLine = `render.generic~[default=${rowObj.link_address}]~[title=${reactData.textInput[section_name][ndx]}]`;
+      let updatedLine = `render.generic~[default=${rowObj.link_address}]~[title=${sentenceCase(reactData.textInput[section_name][ndx])}]`;
       reactData.bBoardList[reactData.group_id].groupRec.common_activities[rowObj.group_list_index] = updatedLine;
       await dbClient
         .update({
@@ -171,20 +194,38 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
       reactData.editMode[section_name][ndx] = false;
       updateReactData({
         bBoardList: reactData.bBoardList,
-        editMode: reactData.editMode
+        editMode: reactData.editMode,
+        changesMade: true
       }, true);
     }
   }
 
   async function setBBoard() {
     let response = await getBulletinBoard(pClient, reactData.group_id);
+    if (!response || (!response.hasOwnProperty(reactData.group_id))) {
+      response[reactData.group_id] = {
+        groupRec: {
+          group_id: reactData.group_id,
+          common_activities: []
+        }
+      };
+    }
     if (Object.keys(response[reactData.group_id]).length === 1) {
+      if (!response[reactData.group_id].groupRec.hasOwnProperty('common_activities')) {
+        reactData.needsHeader = true;
+        response[reactData.group_id].groupRec.common_activities = [];
+      }
+      if (!response[reactData.group_id].groupRec.common_activities.some(l => {
+        return (l.startsWith('~~Community Information'));
+      })) {
+        reactData.needsHeader = true;
+      }
       response[reactData.group_id]['Community Information'] = {
         section_sort: '',
         generic_activities_list: [{
           group_list_index: 0,
           link_address: 'https://www.avaseniorconnect.com',
-          link_title: 'AVA Senior Connect Web Site'
+          link_title: 'Sample - AVA Senior Connect Web Site'
         }]
       };
     }
@@ -212,7 +253,15 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
     (reactData.initialized &&
       <Dialog
         open={true || forceRedisplay}
-        onClose={onClose}
+        onClose={() => {
+          if (reactData.changesMade) {
+            sessionStorage.removeItem('AVASessionData');
+            window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+          }
+          else {
+            onClose();
+          }
+        }}
         className={classes.pageHead}
         fullScreen
       >
@@ -325,9 +374,11 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                           &&
                           <Box
                             key={`selectBox_${section_name}`}
-                            display='flex' mb={2} flexGrow={1} flexDirection='row'
+                            display='flex' mb={4} flexGrow={1} alignSelf='center' flexDirection='row'
                           >
-                            <IconButton
+                            <CloudUploadIcon
+                              classes={{ root: classes.rowButton }}
+                              size='small'
                               aria-label="attach_icon"
                               onClick={() => {
                                 updateReactData({
@@ -336,10 +387,10 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                                 }, true);
                               }}
                               edge="start"
-                            >
-                              {<CloudUploadIcon />}
-                            </IconButton>
-                            <IconButton
+                            />
+                            <LinkIcon
+                              classes={{ root: classes.rowButton }}
+                              size='small'
                               aria-label="attach_icon"
                               onClick={() => {
                                 updateReactData({
@@ -348,9 +399,7 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                                 }, true);
                               }}
                               edge="start"
-                            >
-                              {<LinkIcon />}
-                            </IconButton>
+                            />
                           </Box>
                         }
                       </Box>
@@ -359,77 +408,108 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                         <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
                           key={`row_box_grandparent-${aNdx}`}
                         >
-                          <Box display='flex' flexDirection='column' width='95%' textOverflow='ellipsis'
+                          <Box display='flex' flexDirection='column' mb={'8px'} width='100%' textOverflow='ellipsis'
                             key={`row_box_parent-${aNdx}`}
                           >
-                            <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
-                              key={`row_box-${aNdx}`}
-                            >
-                              <IconButton
-                                aria-label="pencil_icon"
-                                onClick={() => {
-                                  if (!reactData.editMode.hasOwnProperty(section_name)) {
-                                    reactData.editMode[section_name] = [];
-                                    reactData.textInput[section_name] = [];
-                                  }
-                                  reactData.editMode[section_name][aNdx] = true;
-                                  reactData.textInput[section_name][aNdx] = aData.link_title;
-                                  updateReactData({
-                                    editMode: reactData.editMode
-                                  }, true);
-                                }}
-                                edge="start"
-                              >
-                                {<EditIcon />}
-                              </IconButton>
-                              <IconButton
-                                aria-label="trash_icon"
-                                onClick={() => {
-                                  updateReactData({
-                                    confirmMessage: `Are you sure you want to remove ${aData.link_title}?`,
-                                    selectedObservation: aNdx,
-                                    selectedSection: section_name,
-                                    deletePending: true,
-                                    spliceAt: aData.group_list_index
-                                  }, true);
-                                }}
-                                edge="start"
-                              >
-                                <DeleteIcon />
-                              </IconButton>
+
+                            {(reactData.editMode.hasOwnProperty(section_name) && reactData.editMode[section_name][aNdx])
+                              ?
                               <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                                key={`row_box-${aNdx}`}
                               >
-                                {(reactData.editMode.hasOwnProperty(section_name) && reactData.editMode[section_name][aNdx])
-                                  ?
-                                  <TextField
-                                    className={classes.idText}
-                                    id={`prompt-${section_name}_${aNdx}`}
-                                    key={`prompt-${section_name}_${aNdx}`}
-                                    multiline
-                                    value={reactData.textInput[section_name][aNdx] || ''}
-                                    onChange={(event) => {
-                                      handleChangeTextInput(event.target.value, section_name, aNdx);
-                                    }}
-                                    onKeyPress={async (event) => {
-                                      await onCheckEnter(event, section_name, aNdx);
-                                    }}
-                                    autoComplete='off'
-                                  />
-                                  :
-                                  <Typography style={AVATextStyle({
-                                    margin: { top: 0, right: 2 },
-                                  })}>
-                                    {aData.link_title}
-                                  </Typography>
-                                }
-                                <ExpandMoreIcon
+                                <CancelIcon
+                                  classes={{ root: classes.rowButton }}
+                                  size='small'
+                                  aria-label="cancel_icon"
+                                  color='error'
                                   onClick={() => {
-                                    let nowJ = new Date().getTime();
-                                    window.open(`${aData.link_address}?qt=${nowJ.toString()}`, aData.link_title);  // intentionally fall through to the message case
+                                    reactData.editMode[section_name][aNdx] = false;
+                                    updateReactData({
+                                      editMode: reactData.editMode
+                                    }, true);
                                   }}
+                                  edge="start"
+                                />
+                                <SaveIcon
+                                  classes={{ root: classes.rowButtonGreen }}
+                                  size='small'
+                                  aria-label="save_icon"
+                                  onClick={async () => {
+                                    await saveNewTitle(section_name, aNdx);
+                                  }}
+                                  edge="start"
+                                />
+                                <TextField
+                                  className={classes.editInput}
+                                  id={`prompt-${section_name}_${aNdx}`}
+                                  key={`prompt-${section_name}_${aNdx}`}
+                                  value={reactData.textInput[section_name][aNdx] || ''}
+                                  onChange={(event) => {
+                                    handleChangeTextInput(event.target.value, section_name, aNdx);
+                                  }}
+                                  onKeyPress={async (event) => {
+                                    await onCheckEnter(event, section_name, aNdx);
+                                  }}
+                                  autoComplete='off'
                                 />
                               </Box>
-                            </Box>
+                              :
+                              <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                                key={`row_box-${aNdx}`}
+                              >
+                                <EditIcon
+                                  classes={{ root: classes.rowButton }}
+                                  size='small'
+                                  aria-label="pencil_icon"
+                                  onClick={() => {
+                                    if (!reactData.editMode.hasOwnProperty(section_name)) {
+                                      reactData.editMode[section_name] = [];
+                                      reactData.textInput[section_name] = [];
+                                    }
+                                    reactData.editMode[section_name][aNdx] = true;
+                                    reactData.textInput[section_name][aNdx] = aData.link_title;
+                                    updateReactData({
+                                      editMode: reactData.editMode
+                                    }, true);
+                                  }}
+                                  edge="start"
+                                />
+                                <DeleteIcon
+                                  classes={{ root: classes.rowButton }}
+                                  size='small'
+                                  aria-label="trash_icon"
+                                  onClick={() => {
+                                    updateReactData({
+                                      confirmMessage: `Are you sure you want to remove ${aData.link_title}?`,
+                                      selectedObservation: aNdx,
+                                      selectedSection: section_name,
+                                      deletePending: true,
+                                      spliceAt: aData.group_list_index
+                                    }, true);
+                                  }}
+                                  edge="start"
+                                />
+                                <Box display='flex' flexDirection='row' flexGrow={1} justifyContent='flex-start' alignItems='center'
+                                >
+                                  <TextField
+                                    className={classes.editInput}
+                                    disabled
+                                    InputProps={{ disableUnderline: true, className: classes.inputDisplay }}
+                                    variant={'standard'}
+                                    id={`prompt-${section_name}_${aNdx}`}
+                                    key={`prompt-${section_name}_${aNdx}`}
+                                    value={aData.link_title}
+                                  />
+                                  <ExpandMoreIcon
+                                    classes={{ root: classes.rowButton }}
+                                    onClick={() => {
+                                      let nowJ = new Date().getTime();
+                                      window.open(`${aData.link_address}?qt=${nowJ.toString()}`, aData.link_title);  // intentionally fall through to the message case
+                                    }}
+                                  />
+                                </Box>
+                              </Box>
+                            }
                           </Box>
                         </Box>
                       ))
@@ -469,9 +549,11 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                     .catch(error => {
                       cl(`caught error updating Group; error is: `, error);
                     });
+                  let bbResponse = await setBBoard();
                   updateReactData({
-                    bBoardList: reactData.bBoardList,
+                    bBoardList: bbResponse,
                     deletePending: false,
+                    changesMade: true,
                     spliceAt: -1
                   }, true);
                 }}
@@ -493,8 +575,11 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                 onLoad={async (response) => {
                   // where is the first entry on this section?
                   let first_entry = reactData.bBoardList[reactData.group_id][reactData.selectedSection].generic_activities_list[0].group_list_index;
-                  let updatedLine = `render.generic~[default=${response[0].fLoc}]~[title=${reactData.textInput[reactData.selectedSection]['new']}]`;
-                  reactData.bBoardList[reactData.group_id].groupRec.common_activities.splice(first_entry, 0, updatedLine);
+                  let updatedLine = [`render.generic~[default=${response[0].fLoc}]~[title=${reactData.textInput[reactData.selectedSection]['new']}]`];
+                  if (reactData.needsHeader) {
+                    updatedLine.unshift(`~~${reactData.selectedSection}`);
+                  }
+                  reactData.bBoardList[reactData.group_id].groupRec.common_activities.splice(first_entry, 0, ...updatedLine);
                   await dbClient
                     .update({
                       Key: {
@@ -519,7 +604,9 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                   updateReactData({
                     bBoardList: bbResponse,
                     textInput: reactData.textInput,
-                    addAttachment: false
+                    addAttachment: false,
+                    needsHeader: false,
+                    changesMade: true
                   }, true);
                 }}
               />
@@ -540,8 +627,11 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                     response[0] = `https://${response[0]}`;
                   }
                   let first_entry = reactData.bBoardList[reactData.group_id][reactData.selectedSection].generic_activities_list[0].group_list_index;
-                  let updatedLine = `render.generic~[default=${response[0]}]~[title=${reactData.textInput[reactData.selectedSection]['new']}]`;
-                  reactData.bBoardList[reactData.group_id].groupRec.common_activities.splice(first_entry, 0, updatedLine);
+                  let updatedLine = [`render.generic~[default=${response[0]}]~[title=${reactData.textInput[reactData.selectedSection]['new']}]`];
+                  if (reactData.needsHeader) {
+                    updatedLine.unshift(`~~${reactData.selectedSection}`);
+                  }
+                  reactData.bBoardList[reactData.group_id].groupRec.common_activities.splice(first_entry, 0, ...updatedLine);
                   await dbClient
                     .update({
                       Key: {
@@ -566,7 +656,9 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
                   updateReactData({
                     bBoardList: bbResponse,
                     textInput: reactData.textInput,
-                    addLink: false
+                    addLink: false,
+                    needsHeader: false,
+                    changesMade: true
                   }, true);
                 }}
               />
@@ -579,7 +671,15 @@ export default ({ pClient, inGroup = 'ALL', onClose }) => {
             className={AVAClass.AVAButton}
             style={{ backgroundColor: 'green', color: 'white' }}
             size='small'
-            onClick={onClose}
+            onClick={() => {
+              if (reactData.changesMade) {
+                sessionStorage.removeItem('AVASessionData');
+                window.location.replace(`${window.location.href.split('?')[0]}?rel=${new Date().getTime()}`);
+              }
+              else {
+                onClose();
+              }
+            }}
             startIcon={<PlaylistAddCheckIcon size="small" />}
           >
             {'Done'}

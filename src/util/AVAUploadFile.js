@@ -159,7 +159,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
                           Key: `public_uploads/${keyName}.${extension}`,
                           Body: fObj,
                           ACL: 'public-read-write',
-                          ContentType: fObj.ContentType
+                          ContentType: fObj.type || fObj.ContentType
                         };
                         enqueueSnackbar(`Uploading ${keyName}`, { variant: 'success', persist: true });
                         let s3Resp = await s3
