@@ -729,7 +729,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
           </Box>
         </DialogContent>
         <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
-          <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+          <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center'>
             <DialogActions className={classes.buttonArea} >
               <Button
                 className={AVAClass.AVAButton}
