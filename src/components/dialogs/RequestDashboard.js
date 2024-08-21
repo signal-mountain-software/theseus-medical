@@ -730,10 +730,10 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
 
       let user_display_name = await makeName(state.session.user_id);
 
-      let TELS_facility = session.service_request_types[this_request.request_type].TELSfacilityID || 138266;  // 138266 is TELS global test facility
+      let TELS_facility = 138266;   // 138266 is TELS global test facility
       let this_env = window.location.href.split('//')[1].charAt(0).toUpperCase();
-      if (this_env !== 'D') {
-        TELS_facility = 138266
+      if ((this_env === 'D') && (this_row.workData.TELSfacilityID)) {
+        TELS_facility = this_row.workData.TELSfacilityID;  
       }
 
       let newTELSworkorder = {
@@ -1510,6 +1510,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
       this_request.workData.formatted_type = session.service_request_types[this_request.request_type].description || `${titleCase(this_request.request_type)}`;
       this_request.workData.flavor = session.service_request_types[this_request.request_type].flavor || '';
       this_request.workData.allowTELS = session.service_request_types[this_request.request_type].allowTELS || false;
+      this_request.workData.TELSfacilityID = session.service_request_types[this_request.request_type].TELSfacilityID || false;
     }
     else {
       cl(`request type "${this_request.request_type}" not in session.service_request_types`);
