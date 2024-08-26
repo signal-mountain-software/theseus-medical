@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { makeName, getImage, getPerson } from '../../util/AVAPeople';
-import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject } from '../../util/AVAUtilities';
+import { deepCopy, titleCase, sentenceCase, makeArray, s3, isObject, isEmpty } from '../../util/AVAUtilities';
 import { getActivity } from '../../util/AVAObservations';
 import { makeDate } from '../../util/AVADateTime';
 import { buildDisplayRows, buildQualifiers } from '../../util/AVAActivityLoader';
@@ -571,7 +571,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     else {
       reactData.columnList[columnNumber].rowDetails[rowNumber].error = '';
-      reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute;
+      reactData.columnList[columnNumber].rowDetails[rowNumber].textValue = AVAdate.absolute_full;
     }
     // reactData.errorOnScreen = (AVAdate.error && !!AVAdate.absolute);
     updateReactData({ columnList: reactData.columnList }, true);
@@ -1029,7 +1029,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
           foreign_key: myDefaultColumns[c].foreign_key || myDefaultColumns[c].foreignKey,
           request_type: defaultValue.importTypes || myDefaultColumns[c].request_type || myDefaultColumns[c].requestType,
           requestor: this_id,
-          requestor_name: `${this_person.name.first} ${this_person.name.last}`
+          requestor_name: `${this_person.name.first} ${this_person.name.last}`,
+          defaultValue
         });
         if (existingRequest.status === 'use existing') {
           await applyExistingRequest(existingRequest, myDefaultColumns[c], c);
@@ -1128,6 +1129,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
 
   async function applyExistingRequest(existingRequest, this_column, this_column_index) {
     this_column.request_to_update = existingRequest.requestToUse;
+    this_column.columnActivated = true;
     if (!existingRequest.requestToUse.hasOwnProperty('current_request')) {
       existingRequest.requestToUse.current_request = deepCopy(existingRequest.requestToUse.original_request);
     }
@@ -1234,29 +1236,36 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
     }
     let existingRequest = await getServiceRequests(request_key);
     if (existingRequest.length > 0) {
-      let requestAction = await orderWarning(request_key);
-      let rTime = makeDate(new Date().getTime());
-      switch (requestAction) {
-        case 'use': {
-          let lastRec = records2Update.push(existingRequest[0]) - 1;
-          records2Update[lastRec].history.unshift(`Imported by ${state.session.user_id} on ${rTime.oaDate}`);
-          records2Update[lastRec].last_update = rTime.timestamp;
-          setRecords2Update(records2Update);
-          return {
-            'status': 'use existing',
-            'requestToUse': existingRequest[0]
-          };
-        }
-        case 'delete': {
-          let lastRec = records2Update.push(existingRequest[0]) - 1;
-          records2Update[lastRec].history.unshift(`Replaced on ${rTime.oaDate}`);
-          records2Update[lastRec].last_update = rTime.timestamp;
-          setRecords2Update(records2Update);
-          break;
-        }
-        default: { }
+      if (request_key.defaultValue.useExisting) {
+        return {
+          'status': 'use existing',
+          'requestToUse': existingRequest[0]
+        };
       }
-
+      else {
+        let requestAction = await orderWarning(request_key);
+        let rTime = makeDate(new Date().getTime());
+        switch (requestAction) {
+          case 'use': {
+            let lastRec = records2Update.push(existingRequest[0]) - 1;
+            records2Update[lastRec].history.unshift(`Imported by ${state.session.user_id} on ${rTime.oaDate}`);
+            records2Update[lastRec].last_update = rTime.timestamp;
+            setRecords2Update(records2Update);
+            return {
+              'status': 'use existing',
+              'requestToUse': existingRequest[0]
+            };
+          }
+          case 'delete': {
+            let lastRec = records2Update.push(existingRequest[0]) - 1;
+            records2Update[lastRec].history.unshift(`Replaced on ${rTime.oaDate}`);
+            records2Update[lastRec].last_update = rTime.timestamp;
+            setRecords2Update(records2Update);
+            break;
+          }
+          default: { }
+        }
+      }
     }
     return {
       'status': 'make new'
@@ -1608,7 +1617,12 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
             else {
               // reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.toDataURL('image/png');
               reactData.columnList[column_number].rowDetails[row_number].image = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
-              this_row.textValue = 'Signature captured';
+              if (this_row.textValue !== 'Signature on File') {
+                this_row.textValue = 'Signature captured';
+              }
+              updateReactData({
+                columnList: reactData.columnList
+              }, false);
             }
           }
           reactData.columnList[column_number].rowDetails[row_number].error = false;
@@ -1640,7 +1654,8 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
               columnList: reactData.columnList
             }, false);
           }
-          else if (this_row.required && !this_row.textValue && !this_row.isChecked) {
+          else if ((this_row.required && !this_row.textValue && !this_row.isChecked)
+            || ((this_row.input === 'signature') && (signatureRef.current.isEmpty() && this_row.required))) {
             confirmStatus = 'error';
             let warningMessage;
             if (pData.length > 1) {
@@ -2145,6 +2160,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                         let b64 = 'data:image/png;base64,' + data.Body.toString("base64");
                                         signatureRef.current.fromDataURL(b64);
                                       }
+                                      handleChangeTextField('Signature on File', selectedColumn, this_index);
                                       setForceRedisplay(!forceRedisplay);
                                     }}
                                   >
@@ -2165,7 +2181,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                           </Typography>
                         }
                         {this_item.isChecked
-                          && this_item.moreInfo &&
+                          && !isEmpty(this_item.moreInfo) &&
                           <Box
                             key={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.isChecked}`}
                             id={`qualboxwrap_${selectedColumn}.${this_index}.moreInfo-${this_item.isChecked}`}
@@ -2238,7 +2254,7 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                           </Box>
                         }
                         {this_item.isChecked
-                          && this_item.qualData
+                          && (!isEmpty(this_item.qualData))
                           && makeArray(this_item.qualData).map((qR, qRndx) => (
                             <Box
                               key={`qualboxwrap_${selectedColumn}.${this_index}.${qRndx}-${this_item.isChecked}`}
@@ -2287,7 +2303,6 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                             onClick={() => {
                                               optSelected(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display);
                                               if (reactData.columnList[selectedColumn].rowDetails[this_index].obo_line) {
-                                                console.log('There I am Gary!');
                                                 // which qualSelection is true?
                                                 let allPossibilitiesObj = Object.values(reactData.columnList[selectedColumn].rowDetails[this_index].qualSelections)[0];
                                                 let selectedOBOkey = Object.keys(allPossibilitiesObj).find((k) => {
@@ -2323,15 +2338,17 @@ export default ({ fact, factName, defaultValue, prompt, pClient, qualifiers, lis
                                           </Typography>
                                         </React.Fragment>
                                       }
-                                      {opt.type === 'prompt' &&
+                                      {(opt.type === 'prompt' || opt.type === 'promptOnly') &&
                                         <React.Fragment>
-                                          <Checkbox
-                                            className={classes.radioButton}
-                                            key={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
-                                            size="small"
-                                            checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
-                                          />
+                                          {(opt.type === 'prompt') &&
+                                            <Checkbox
+                                              className={classes.radioButton}
+                                              key={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                                              id={`optionpromptcheck_${selectedColumn}.${this_index}.${qRndx}.${oX}-${this_item.isChecked}`}
+                                              size="small"
+                                              checked={isQualChecked(reactData.columnList[selectedColumn].rowDetails[this_index], qR.title, opt.display)}
+                                            />
+                                          }
                                           <Typography style={AVATextStyle({ size: 0.75, margin: { top: 0.5, bottom: 0.5, left: 0.3, right: 0.1 } })}>
                                             {opt.display}:
                                           </Typography>
