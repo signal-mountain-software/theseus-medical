@@ -346,11 +346,11 @@ export async function buildDisplayRows(listValues, defaults, qualifiers) {
           rObj.qualSelections = deepCopy(qualResponse.selections);
           rObj.qualData = deepCopy(qualResponse.data);
           rObj.moreInfo = deepCopy(qualResponse.moreInfo);
+          rObj.isChecked = true;
           if (qualResponse.docLines) {
             docRows = deepCopy(qualResponse.docLines)
           }
           else {
-            rObj.isChecked = true;
             if ((defaults.hasOwnProperty(instruction[0]) && (defaults[instruction[0]] === 'always')) // this item is checked off by default
               || (observationDefaultValue === 'always')) { 
               rObj.noUpdate = true;
