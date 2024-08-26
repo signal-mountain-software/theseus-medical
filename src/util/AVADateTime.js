@@ -10,10 +10,22 @@ export function addDays(pDate, pDays) {
         copy.setDate(copy.getDate() + pDays);
     }
     catch {
-        console.log(`tried ${pDate} and failed`)
+        console.log(`tried ${pDate} and failed`);
     }
     return copy;
 }
+
+export function addMonths(pDate, pMonths) {
+    let copy;
+    copy = makeDate(pDate);
+    if (copy.error) {
+        return copy;
+    }
+    let cDate = copy.date;
+    cDate.setMonth(cDate.getMonth() + pMonths);
+    return makeDate(cDate);
+}
+
 
 export function daysDiff(d1, d2) {
     let oneMinute = 1000 * 60;
@@ -23,7 +35,7 @@ export function daysDiff(d1, d2) {
     return Math.abs(Math.floor((d2.getTime() - d1.getTime() - ((d2DST - d1DST) * oneMinute)) / one_day));
 }
 
-export function makeDate(pInput, options = {}) {
+export function makeDate(pInput, optionIn = {}) {
     if (!pInput) {
         return {
             'error': true,
@@ -46,6 +58,13 @@ export function makeDate(pInput, options = {}) {
             'weekday': '',   // 'weekend' or 'weekday' 
             'textOut': pInput
         };
+    }
+    let options = {};
+    if (typeof (optionIn) === 'string') {
+        options[optionIn] = true;
+    }
+    else {
+        options = Object.assign({}, optionIn);
     }
     let originalInput = pInput;
     let targetDateStamp, targetDate;
@@ -110,7 +129,7 @@ export function makeDate(pInput, options = {}) {
                 'workingHours': `${pInput} is not a valid date`,
                 'dayOfWeek': 9,
                 'dayOfWeek_word': 'invalid',
-                'weekday': 'invalid', 
+                'weekday': 'invalid',
                 'textOut': pInput
             };
         }
@@ -118,6 +137,10 @@ export function makeDate(pInput, options = {}) {
 
     let currentDate = new Date();
     let beginningOfCurrentDay = currentDate.setHours(0, 0, 0, 0);
+
+    if (options.noTime) {
+        targetDate.setHours(0, 0, 0, 0);
+    }
 
     // validation
     if (options.validation) {
@@ -166,10 +189,10 @@ export function makeDate(pInput, options = {}) {
     // force this date to be in the future
     if (options.forceForward) {
         if (targetDate < currentDate) {
-            targetDate.setFullYear(currentDate.getFullYear() + 1)
+            targetDate.setFullYear(currentDate.getFullYear() + 1);
         }
     }
-   
+
     // Make relative date
     let relDate, absDate, oaDate, dateOnly, absFull;
     let hours = 60 * 60 * 1000;
@@ -233,7 +256,7 @@ export function makeDate(pInput, options = {}) {
         else if ((options.working_hours.hasOwnProperty('weekend')) && (options.working_hours.weekend) && ((targetDate.getDay() % 6) === 0)) {
             workingHours = "weekend";
         }
-        else { 
+        else {
             let startTime = 800;
             if (options.working_hours.hasOwnProperty('start')) {
                 let try_start = Number(options.working_hours.start);
@@ -330,11 +353,17 @@ export function makeDate(pInput, options = {}) {
             }
             let pStringPieces = pString.split(/[./-]/gm);
             if (pStringPieces.length > 1) {        // two or three strings separated by "." or "-" or "/"
-                let yearAt = pStringPieces.findIndex(p => { return (p > 2000); });
+                let yearAt = pStringPieces.findIndex(p => { return (p > 1900); });
                 let yearPiece, monthPiece, dayPiece;
                 if (yearAt < 0) {
                     if (pStringPieces.length > 2) {
-                        yearPiece = parseInt(pStringPieces[2], 10) + 2000;
+                        let twoDigYr = parseInt(pStringPieces[2], 10);
+                        if (twoDigYr < 30) {
+                            yearPiece = twoDigYr + 2000    
+                        }
+                        else {
+                            yearPiece = twoDigYr + 1900    
+                        }
                     }
                     else {
                         yearPiece = new Date().getFullYear();
@@ -400,7 +429,7 @@ export function makeDate(pInput, options = {}) {
             let today = new Date();
             let thisYear = today.getFullYear();
             let resolvedYear = goodDate.getFullYear();
-            if (Math.abs(resolvedYear - thisYear) < 5) {
+            if ((Math.abs(resolvedYear - thisYear) < 5) || (options.noYearCorrection)) {
                 return {
                     date: goodDate,
                     leftOver_text: null
@@ -563,15 +592,17 @@ export function makeTime(pTime) {
     if (mm === 0) { mm$ = '00'; }
     else if (mm < 10) { mm$ = mm.toString().padStart(2, '0'); }
     else { mm$ = mm.toString(); }
+    let hh24 = Math.floor(numeric24 / 100);
     return {
         'time': `${hh}:${mm$} ${ampm}`,
         'short': `${hh}:${mm$}`,
         'hhmm': `${hh}${mm$}`,
         hh,
-        hh24: Math.floor(numeric24 / 100),
+        hh24,
         mm,
         ampm,
         numeric24,
+        minutesSinceMidnight: ((hh24 * 60) + mm),
         string24: `0000${numeric24}`.slice(-4),
         dayPart
     };
