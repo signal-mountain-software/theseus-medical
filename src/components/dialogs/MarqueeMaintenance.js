@@ -219,7 +219,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       "message": reactData.description,
       "style": (reactData.criticalMessage ? { color: 'red' } : ""),
       "author": state.session.user_id,
-      "criticalMessage": reactData.criticalMessage
+      "criticalMessage": (reactData.criticalMessage === 'yes')
     };
     let goodPut = true;
     await dbClient
