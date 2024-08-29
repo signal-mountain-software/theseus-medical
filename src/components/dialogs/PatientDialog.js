@@ -353,11 +353,11 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             break;
           }
           case 'date': {
-            returnObj[ldKey] = makeDate(localObj[ldKey]).dateOnly;
+            returnObj[ldKey] = makeDate(localObj[ldKey], { noTime: true, noYearCorrection: true }).dateOnly;
             break;
           }
           case 'fulldate': {
-            returnObj[ldKey] = makeDate(localObj[ldKey]).absolute;
+            returnObj[ldKey] = makeDate(localObj[ldKey], { noTime: true, noYearCorrection: true }).absolute;
             break;
           }
           default: { }
