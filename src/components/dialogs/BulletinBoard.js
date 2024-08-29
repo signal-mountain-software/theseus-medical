@@ -113,12 +113,12 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ pClient, inGroup = 'ALL', onClose }) => {
+export default ({ pClient, pGroup = 'ALL', onClose }) => {
 
   var rowsWritten;
 
   const [reactData, setReactData] = React.useState({
-    group_id: (Array.isArray(inGroup) ? ((inGroup.length > 0) ? inGroup[0] : 'ALL') : inGroup),
+    group_id: (Array.isArray(pGroup) ? ((pGroup.length > 0) ? pGroup[0] : 'ALL') : pGroup),
     initialized: false,
     bBoardList: {},
     deletePending: false,
