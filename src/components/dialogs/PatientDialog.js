@@ -774,16 +774,17 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   };
 
   const handleChangeUser = async event => {
-    localData.patient_id = event.target.value;
+    localData.patient_id = event.target.value.toLowerCase();
     setRefreshTrigger(!refreshTrigger);
     setShowQuestionMark(true);
     setChanges(false);
   };
 
   const handleBlurUser = async event => {
-    if (event.target.value !== patient.person_id) {
+    let proposedID = event.target.value.toLowerCase();
+    if (proposedID !== patient.person_id) {
       localData.patient_id = await newUserID({
-        proposedID: event.target.value
+        proposedID
       });
       setRefreshTrigger(!refreshTrigger);
       setShowQuestionMark(false);
