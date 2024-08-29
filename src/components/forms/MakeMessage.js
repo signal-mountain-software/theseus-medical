@@ -2,8 +2,7 @@ import React from 'react';
 import { sendMessages } from '../../util/AVAMessages';
 import { makeName, getImage } from '../../util/AVAPeople';
 import { makeArray, s3, dbClient } from '../../util/AVAUtilities';
-import Paper from '@material-ui/core/Paper';
-import Dialog from '@material-ui/core/Dialog';
+import { Dialog, DialogContent, DialogActions } from '@material-ui/core';
 
 import { useSnackbar } from 'notistack';
 import CloseIcon from '@material-ui/icons/HighlightOff';
@@ -38,9 +37,11 @@ const useStyles = makeStyles(theme => ({
     overflowX: 'hidden'
   },
   dialogBox: {
-    paddingTop: theme.spacing(1),
+    paddingTop: 0,
+    paddingLeft: 0,
     paddingBottom: theme.spacing(1),
     minWidth: '100%',
+    overflowX: 'hidden',
   },
   title: {
     marginTop: 0,
@@ -55,9 +56,11 @@ const useStyles = makeStyles(theme => ({
     marginLeft: theme.spacing(2),
   },
   buttonArea: {
-    justifyContent: 'center',
-    marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(1)
+    justifyContent: 'space-around',
+    minWidth: '100%',
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center'
   },
   tightRight: {
     marginRight: 0
@@ -134,6 +137,9 @@ export default ({
     titleText: titleText,
     attachmentList: [],
     textInput: makeArray(seedText) || [],
+    promptUsage: checkPrompts(promptText, promptUse),
+    HTMLMessage: false,
+    viewAsHTML: false,
     multipleRecipients: false,
     nameInput: '',
     isUrgent: setUrgent,
@@ -141,6 +147,21 @@ export default ({
     forceMethod: setMethod,
     imageURL: ''
   });
+
+  function checkPrompts(promptText, promptUse) {
+    let prompts = makeArray(promptText);
+    if (prompts.length > 1) {
+      if (!promptUse) {
+        return ['subject', 'message', 'voicemail'];
+      }
+      else {
+        return makeArray(promptUse);
+      }
+    }
+    else {
+      return ['message']
+    }
+  }
 
   React.useEffect(() => {
     if (setFocus && setFocus.current) {
@@ -154,6 +175,9 @@ export default ({
     }
     else {
       reactData.textInput[x] = event.target.value;
+    }
+    if (reactData.promptUsage[x] === 'message') {
+      reactData.HTMLMessage = ((reactData.textInput[x].includes('<')) && (reactData.textInput[x].includes('>')));
     }
     setReactData(reactData);
     setForceRedisplay(!forceRedisplay);
@@ -400,40 +424,54 @@ export default ({
     <Dialog fullWidth open={true}
       classes={{ paper: classes.radius_rounded }}
     >
-      <Paper
-        open={reactData.forceRedisplay || true}
-        className={classes.containerBox}
-        elevation={0}
-      >
-        {(typeof reactData.recipientID === 'string') && (reactData.recipientID === '*select') &&
-          <SendMessageDialog
-            open={true}
-            onClose={() => {
-              onCancel();
-            }}
-            multiSelect={true}
-            pReturnValue={'object'}
-            options={options}
-            onSelect={async (selectedPerson) => {
-              if (Object.keys(selectedPerson).length < 1) {
-                enqueueSnackbar(`Please select at least one name`, { variant: 'error' });
+      {(typeof reactData.recipientID === 'string') && (reactData.recipientID === '*select') &&
+        <SendMessageDialog
+          open={true}
+          onClose={() => {
+            onCancel();
+          }}
+          multiSelect={true}
+          pReturnValue={'object'}
+          options={options}
+          onSelect={async (selectedPerson) => {
+            if (Object.keys(selectedPerson).length < 1) {
+              enqueueSnackbar(`Please select at least one name`, { variant: 'error' });
+            }
+            else {
+              reactData.imageURL = null;
+              reactData.newAccount = false;     // future enhancement
+              reactData.recipientID = Object.keys(selectedPerson);
+              reactData.recipientName = Object.values(selectedPerson);
+              makeTitle(reactData);
+              reactData.forceRedisplay = !reactData.forceRedisplay;
+              setReactData(reactData);
+            }
+            setForceRedisplay(forceRedisplay => !forceRedisplay);
+          }}
+        >
+        </SendMessageDialog>
+      }
+      {((typeof reactData.recipientID !== 'string') || (reactData.recipientID !== '*select')) &&
+        <React.Fragment>
+          <Box display='flex' flexDirection={'row'} justifyContent={'space-between'} width={'100%'} alignItems={'flex-start'} mb={1}>
+            <Typography style={AVATextStyle({
+              size: 1.3, bold: true, margin: {
+                top: 2,
+                left: 1,
+                right: 2,
               }
-              else {
-                reactData.imageURL = null;
-                reactData.newAccount = false;     // future enhancement
-                reactData.recipientID = Object.keys(selectedPerson);
-                reactData.recipientName = Object.values(selectedPerson);
-                makeTitle(reactData);
-                reactData.forceRedisplay = !reactData.forceRedisplay;
-                setReactData(reactData);
-              }
-              setForceRedisplay(forceRedisplay => !forceRedisplay);
-            }}
-          >
-          </SendMessageDialog>
-        }
-        {((typeof reactData.recipientID !== 'string') || (reactData.recipientID !== '*select')) &&
-          <React.Fragment>
+            })} id='scroll-dialog-title'>
+              {reactData.titleText || makeTitle(reactData)}
+            </Typography>
+            {(reactData.IDImage) && (!reactData.multipleRecipients) &&
+              <img
+                className={classes.imageArea}
+                alt=''
+                src={reactData.IDImage}
+              />
+            }
+          </Box>
+          <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
             <Box display='flex'
               flexGrow={1}
               mb={0}
@@ -444,28 +482,12 @@ export default ({
               justifyContent='center'
               alignItems='flex-start'
             >
-              <Box display='flex' flexDirection={'row'} justifyContent={'space-between'} alignItems={'flex-start'} mb={1}>
-                <Typography style={AVATextStyle({
-                  size: 1.3, bold: true, margin: {
-                    top: 0.2,
-                    right: 2,
-                  }
-                })} id='scroll-dialog-title'>
-                  {reactData.titleText || makeTitle(reactData)}
-                </Typography>
-                {(reactData.IDImage) && (!reactData.multipleRecipients) &&
-                  <img
-                    className={classes.imageArea}
-                    alt=''
-                    src={reactData.IDImage}
-                  />
-                }
-              </Box>
+
               <Box
                 display='flex'
                 flexGrow={1}
                 mb={0}
-                ml={0}
+                ml={1}
                 minWidth={'100%'}
                 flexDirection='column'
                 justifyContent='center'
@@ -505,22 +527,28 @@ export default ({
                     borderRadius={'16px'}
                     key={'fullRow' + x}
                   >
-                    <TextField
-                      classes={{ root: classes.idText }}
-                      id={`prompt-msg`}
-                      key={`prompt-msg_${x}`}
-                      fullWidth
-                      multiline
-                      inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                      FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
-                      ref={(x === (makeArray(promptText).length - 1)) ? setFocus : null}
-                      helperText={p}
-                      value={reactData.textInput[x] || ''}
-                      onChange={(event) => {
-                        handleChangeTextInput(event, x);
-                      }}
-                      autoComplete='off'
-                    />
+                    {((reactData.promptUsage[x] === 'message') && reactData.viewAsHTML) ?
+                      <div
+                        dangerouslySetInnerHTML={{ '__html': reactData.textInput[x] }}
+                      />
+                      :
+                      <TextField
+                        classes={{ root: classes.idText }}
+                        id={`prompt-msg`}
+                        key={`prompt-msg_${x}`}
+                        fullWidth
+                        multiline
+                        inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                        FormHelperTextProps={{ style: { fontSize: `${user_fontSize * 0.75}rem`, lineHeight: `${user_fontSize * 0.9}rem` } }}
+                        ref={(x === (makeArray(promptText).length - 1)) ? setFocus : null}
+                        helperText={p}
+                        value={reactData.textInput[x] || ''}
+                        onChange={(event) => {
+                          handleChangeTextInput(event, x);
+                        }}
+                        autoComplete='off'
+                      />
+                    }
                   </Box>
                 )}
                 {reactData.multipleRecipients &&
@@ -573,6 +601,23 @@ export default ({
                     />
                     <Typography style={AVATextStyle({ size: 0.5, margin: { left: 0.2 } })}>Mark as Urgent</Typography>
                   </Box>
+                  {reactData.HTMLMessage &&
+                    <Box display='flex' flexDirection='row' justifyContent='flex-start'
+                      alignItems='center' key={'qrOpt_urgentbox'}
+                    >
+                      <Checkbox
+                        className={classes.radioButton}
+                        size="small"
+                        onClick={() => {
+                          reactData.viewAsHTML = !reactData.viewAsHTML;
+                          setReactData(reactData);
+                          setForceRedisplay(!forceRedisplay);
+                        }}
+                        checked={reactData.viewAsHTML}
+                      />
+                      <Typography style={AVATextStyle({ size: 0.5, margin: { left: 0.2 } })}>View as HTML</Typography>
+                    </Box>
+                  }
                 </Box>
                 {(reactData.attachmentList.length > 0) &&
                   <Box display='flex' flexDirection='column' justifyContent='flex-start'
@@ -600,61 +645,61 @@ export default ({
                 }
               </Box>
             </Box>
-            <Box display='flex' flexDirection='row' justifyContent='space-between' alignItems='center' >
-              {allowCancel &&
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'red', color: 'white' }}
-                  size='small'
-                  onClick={() => {
-                    onCancel();
-                  }}
-                  startIcon={<CloseIcon size="small" />}
-                >
-                  {'Back'}
-                </Button>
-              }
-              <Box display='flex' flexDirection='row' justifyContent='flex-end' flexWrap='wrap'
-                alignItems='center' key={'qrOpt_attachmentbox'}
+          </DialogContent>
+          <DialogActions className={classes.buttonArea} >
+            {allowCancel &&
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
+                size='small'
+                onClick={() => {
+                  onCancel();
+                }}
+                startIcon={<CloseIcon size="small" />}
               >
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: 'blue', color: 'white' }}
-                  size='small'
-                  startIcon={<CloudUploadIcon />}
-                  onClick={handleFileUpload}
-                >
-                  {'Attach'}
-                </Button>
-                <input
-                  type="file"
-                  style={{ display: 'none' }}
-                  ref={hiddenFileInput}
-                  onChange={async (target) => {
-                    await handleSaveFile(target.target.files[0]);
-                    reactData.forceRedisplay = !reactData.forceRedisplay;
-                    setReactData(reactData);
-                    setForceRedisplay(!forceRedisplay);
-                  }}
-                />
-                <Button
-                  className={AVAClass.AVAButton}
-                  style={{ backgroundColor: (noInput() ? 'white' : 'green'), color: (noInput() ? 'green' : 'white') }}
-                  size='small'
-                  disabled={noInput()}
-                  onClick={async () => {
-                    await handleSave();
-                    onCancel();
-                  }}
-                  startIcon={<SendIcon className={classes.tightRight} size="small" />}
-                >
-                  {buttonText}
-                </Button>
-              </Box>
+                {'Back'}
+              </Button>
+            }
+            <Box display='flex' flexDirection='row' justifyContent='flex-end' flexWrap='wrap'
+              alignItems='center' key={'qrOpt_attachmentbox'}
+            >
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'blue', color: 'white' }}
+                size='small'
+                startIcon={<CloudUploadIcon />}
+                onClick={handleFileUpload}
+              >
+                {'Attach'}
+              </Button>
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                ref={hiddenFileInput}
+                onChange={async (target) => {
+                  await handleSaveFile(target.target.files[0]);
+                  reactData.forceRedisplay = !reactData.forceRedisplay;
+                  setReactData(reactData);
+                  setForceRedisplay(!forceRedisplay);
+                }}
+              />
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: (noInput() ? 'white' : 'green'), color: (noInput() ? 'green' : 'white') }}
+                size='small'
+                disabled={noInput()}
+                onClick={async () => {
+                  await handleSave();
+                  onCancel();
+                }}
+                startIcon={<SendIcon className={classes.tightRight} size="small" />}
+              >
+                {buttonText}
+              </Button>
             </Box>
-          </React.Fragment >
-        }
-      </Paper >
+          </DialogActions>
+        </React.Fragment >
+      }
     </Dialog >
   );
 };
