@@ -9,6 +9,7 @@ import MessageForm from '../forms/MessageForm';
 import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 
+import FormFill from './FormFill';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
 import MultiObservationFormD from '../forms/MultiObservationFormD';
@@ -36,7 +37,6 @@ import Box from '@material-ui/core/Box';
 
 import VideoRecorder from 'react-video-recorder';
 import ReactPlayer from 'react-player';
-import DynamicSignup from './DynamicSignup';
 import AVAInHome from '../sections/AVAInHome';
 import ShowMenuB from '../dialogs/ShowMenuB';
 import BulletinBoard from '../dialogs/BulletinBoard';
@@ -91,11 +91,13 @@ export default ({
     setNewFact(newFact);
   };
 
+  /*  Candidate for removal
   const onChangeMessage = event => {
     setValue(event.target.value);
     newFact.value = observationKey + '.' + event.target.value;
     setNewFact(newFact);
   };
+  */
 
   const onChangeNums = index => event => {
     const newNums = [...nums];
@@ -264,20 +266,25 @@ export default ({
           onError={onError}
         />
       );
+    /*  Candidate for retirement
     case 'document':
       let nowJ = new Date().getTime();
       window.open(`${defaultValue}?qt=${nowJ.toString()}`, message);  // intentionally fall through to the message case
+      return;
+    */
+    /*  Candidate for retirement
     case 'message':
-      return (
-        <FreeTextForm
-          open={open}
-          label='Message'
-          value={(OGvalue !== value && type === 'document') ? OGvalue : value}
-          message={mOut}
-          onChange={onChangeMessage}
-          onError={onError}
-        />
-      );
+     return (
+       <FreeTextForm
+         open={open}
+         label='Message'
+         value={(OGvalue !== value && type === 'document') ? OGvalue : value}
+         message={mOut}
+         onChange={onChangeMessage}
+         onError={onError}
+       />
+     );
+    */
     case 'message_list':
       return (
         <MessageForm
@@ -427,7 +434,7 @@ export default ({
           filter={Object.assign(filter, defaultObject, { options: null })}
           options={defaultObject.options}
           onClose={(response) => {
-              onClose(response);
+            onClose(response);
           }}
         />
       );
@@ -447,7 +454,7 @@ export default ({
     }
     case 'new_event':
       return (
-        <NewCalendarEvent
+        <NewCalendarEventB
           patient={session}
           peopleList={values}
           picture={null}
@@ -458,16 +465,6 @@ export default ({
     case 'edit_marquee':
       return (
         <MarqueeMaintenance
-          patient={session}
-          peopleList={values}
-          picture={null}
-          showNewEvent={true}
-          onClose={onSave}
-        />
-      );
-    case 'new_appointment':
-      return (
-        <DynamicSignup
           patient={session}
           peopleList={values}
           picture={null}
@@ -511,6 +508,13 @@ export default ({
       return (
         <LoadNamesFromFile
           options={defaultValue}
+          onClose={onSave}
+        />
+      );
+    case 'form_fill':
+      return (
+        <FormFill
+          request={defaultValue}
           onClose={onSave}
         />
       );
