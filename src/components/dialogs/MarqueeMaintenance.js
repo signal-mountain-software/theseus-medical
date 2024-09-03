@@ -185,7 +185,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
     StartAsADateObj: {},
     EndAsADateObj: {},
     specificPeople: '',
-    criticalMessage: ''
+    criticalMessage: false
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -219,7 +219,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
       "message": reactData.description,
       "style": (reactData.criticalMessage ? { color: 'red' } : ""),
       "author": state.session.user_id,
-      "criticalMessage": (reactData.criticalMessage === 'yes')
+      "criticalMessage": reactData.criticalMessage
     };
     let goodPut = true;
     await dbClient
@@ -473,7 +473,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                       >
                         <FormControlLabel
                           className={classes.formControlLbl}
-                          value="no"
+                          value={!true}
                           control={<Radio disableRipple className={classes.radioButton} size='small' />}
                           label={
                             <Typography className={classes.radioText}>
@@ -482,7 +482,7 @@ export default ({ patient, peopleList, picture, showNewEvent, onClose }) => {
                         />
                         <FormControlLabel
                           className={classes.formControlLbl}
-                          value="yes"
+                          value={true}
                           control={<Radio disableRipple className={classes.radioButton} size='small' />}
                           label={
                             <Typography className={classes.radioText}>
