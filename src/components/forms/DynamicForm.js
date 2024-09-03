@@ -454,7 +454,7 @@ export default ({
     }
     case 'new_event':
       return (
-        <NewCalendarEventB
+        <NewCalendarEvent
           patient={session}
           peopleList={values}
           picture={null}
