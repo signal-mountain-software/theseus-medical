@@ -163,10 +163,10 @@ export function AVATextStyle(options = {}) {
                     if (options[3]) { returnStyle.marginBottom = (options[3] * 16) - (2 * user_fontSize * (options.size || 1)); }
                 }
                 else {
-                    if (options.margin.right) { returnStyle.marginRight = options.margin.right * 16; }
-                    if (options.margin.left) { returnStyle.marginLeft = options.margin.left * 16; }
-                    if (options.margin.top) { returnStyle.marginTop = options.margin.top * 16; }
-                    if (options.margin.bottom) { returnStyle.marginBottom = (options.margin.bottom * 16) - (2 * user_fontSize * (options.size || 1)); }
+                    if (options.margin.hasOwnProperty('right')) { returnStyle.marginRight = options.margin.right * 16; }
+                    if (options.margin.hasOwnProperty('left')) { returnStyle.marginLeft = options.margin.left * 16; }
+                    if (options.margin.hasOwnProperty('top')) { returnStyle.marginTop = options.margin.top * 16; }
+                    if (options.margin.hasOwnProperty('bottom')) { returnStyle.marginBottom = (options.margin.bottom * 16) - (2 * user_fontSize * (options.size || 1)); }
                 }
                 break;
             }
@@ -198,10 +198,10 @@ export function AVATextStyle(options = {}) {
                     if (options[3]) { returnStyle.paddingBottom = (options[3] * 16); }
                 }
                 else {
-                    if (options.padding.right) { returnStyle.paddingRight = options.padding.right * 16; }
-                    if (options.padding.left) { returnStyle.paddingLeft = options.padding.left * 16; }
-                    if (options.padding.top) { returnStyle.paddingTop = options.padding.top * 16; }
-                    if (options.padding.bottom) { returnStyle.paddingBottom = (options.padding.bottom * 16); }
+                    if (options.padding.hasOwnProperty('right')) { returnStyle.paddingRight = options.padding.right * 16; }
+                    if (options.padding.hasOwnProperty('left')) { returnStyle.paddingLeft = options.padding.left * 16; }
+                    if (options.padding.hasOwnProperty('top')) { returnStyle.paddingTop = options.padding.top * 16; }
+                    if (options.padding.hasOwnProperty('bottom')) { returnStyle.paddingBottom = `${(options.padding.bottom * 16)}px`; }
                 }
                 break;
             }
