@@ -353,12 +353,12 @@ export async function getBulletinBoard(pClient, pGroup_id) {
     return {};
   }
   groupRecs.Items.forEach(groupRec => {
+    let section_name = 'None';
+    let section_sort = '';
+    response[groupRec.group_id] = {
+      groupRec
+    };
     if (groupRec.common_activities && (groupRec.common_activities.length > 0)) {
-      let section_name = 'None';
-      let section_sort = '';
-      response[groupRec.group_id] = {
-        groupRec
-      };
       groupRec.common_activities.forEach((activity_line, aList_index) => {
         if ((typeof (activity_line) === 'string') && (activity_line.startsWith('~~'))) {
           let sectionKeys = activity_line.slice(2).split('~~');

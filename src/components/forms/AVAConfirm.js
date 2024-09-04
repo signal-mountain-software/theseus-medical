@@ -126,7 +126,7 @@ export default ({ promptText, cancelText = 'Cancel', confirmText = 'Confirm', on
           pb: '32px',
           bgcolor: options.bgColor,
         }}
-        overflow='auto' square
+        overflow='auto'
       >
         {promptLines.map((pLine, index) => (
           (index > 0 ?

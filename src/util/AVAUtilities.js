@@ -535,7 +535,17 @@ export function getObject(pObjIn, pTyp) {
     }
     case 'image': {
       imageBucket = 'theseus-medical-storage';
-      imageURI = `public/patients/${pObj}.${fExt || 'jpg'}`;
+      if (fExt) {
+        if (['png', 'jpg'].includes(fExt.toLowerCase())) {
+          imageURI = `public/patients/${pObj}.${fExt}`;
+        }
+        else {
+          imageURI = `public/patients/${pObj}.${fExt}.jpg`;
+        }
+      }
+      else {
+        imageURI = `public/patients/${pObj}.jpg`;
+      }
       break;
     }
     default: {
