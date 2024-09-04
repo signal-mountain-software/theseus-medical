@@ -1077,7 +1077,11 @@ export default ({ request = {}, onClose }) => {
                             className={AVAClass.AVAButton}
                             style={{ backgroundColor: 'red', color: 'white' }}
                             size='small'
-                            onClick={() => { onClose(); }}
+                            onClick={() => {
+                                updateReactData({
+                                    stage: 'exit'
+                                }, true);
+                            }}
                             startIcon={<CloseIcon fontSize="small" />}
                         >
                             {'Exit'}
@@ -1123,6 +1127,23 @@ export default ({ request = {}, onClose }) => {
                             onClose();
                         }
                     }}
+                />
+            }
+            {(reactData.stage === 'exit') &&
+                <AVAConfirm
+                    promptText={[`Are you sure you want to exit?`]}
+                    cancelText={`No, keep going`}
+                    confirmText={`Yes, exit`}
+                    onCancel={() => {
+                        updateReactData({
+                            stage: 'fill'
+                        }, true);
+                    }
+                    }
+                    onConfirm={async () => {
+                        onClose();
+                    }}
+                    allowCancel={true}
                 />
             }
             {(reactData.stage === 'error') &&
