@@ -388,7 +388,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
     let whereToGo = -1;
     pPerson = makeArray(body.person);
     for (let p = 0; p < pPerson.length; p++) {
-      let nArray = pPerson[p].split('%%');
+      let nArray = pPerson[p].split(/:|%%/);
       if (body.slot) { pSlot = body.slot; }
       else { pSlot = nArray[Math.min(1, nArray.length - 1)]; }
       let newPersonName, newPersonID;
