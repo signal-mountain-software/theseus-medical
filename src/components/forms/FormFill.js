@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { dbClient, cl, recordExists, deepCopy, makeArray, s3, isEmpty } from '../../util/AVAUtilities';
+import { dbClient, cl, recordExists, deepCopy, makeArray, s3, isEmpty, isObject } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import { formatPhone, makeName } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
@@ -120,8 +120,13 @@ export default ({ request = {}, onClose }) => {
   let options = {};
   if (Array.isArray(request)) {
     request.forEach((req) => {
-      let [key, value] = req.split('=');
-      options[key] = value;
+      if (typeof (req) === 'string') {
+        let [key, value] = req.split('=');
+        options[key] = value;
+      }
+      else {
+        Object.assign(options, req);
+      }
     });
   }
   else if (typeof (request) === 'string') {
@@ -130,6 +135,25 @@ export default ({ request = {}, onClose }) => {
   else {
     options = Object.assign({}, request);
   }
+  if (!options.form_id && options.document_id) {
+    let docParts = options.document_id.split('%%');
+    options.form_id = docParts[1];
+  }
+
+  /* 
+    if options.changeMode, then
+      - expect options.document_id
+      - the form_id comes from the document_id (person %% form_id %% version)
+      - all defaults in form_id are ignored; values from incoming document_id are used as defaults
+      - if saved, add replaced_by = <new document_id> to the incoming document_id and update that document
+
+    if options.viewMode, then
+      - expect options.document_id
+      - the form_id comes from the document_id (person %% form_id %% version)
+      - all fields rendered in view mode, including signature
+      - do not show "save" button
+
+  */
 
   const [reactData, setReactData] = React.useState({
     form_id: options.form_id,
@@ -157,16 +181,12 @@ export default ({ request = {}, onClose }) => {
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const updateReactData = (newData, force = false) => {
-    cl({ 'reactData before': JSON.stringify(reactData).length });
     setReactData((prevValues) => (Object.assign(
       prevValues,
       newData
     )));
-    cl({ 'reactData after': JSON.stringify(reactData).length });
     if (force) {
-      cl({ 'forceRedisplay before': forceRedisplay });
       setForceRedisplay(!forceRedisplay);
-      cl({ 'forceRedisplay after': forceRedisplay });
     }
   };
 
@@ -210,18 +230,24 @@ export default ({ request = {}, onClose }) => {
       return `at ${formatDegrees(latitude, false)}, ${formatDegrees(longitude, true)}`;
     }
     else {
-      let textResponse = 'at';
-      let netAccuracy = response.Results[0].Distance + accuracy;
+      let selectedResponse = response.Results.find(result => {
+        return (result.Place.AddressNumber);
+      });
+      if (!selectedResponse) {
+        selectedResponse = response.Results[0];
+      }
+      let textResponse = 'At';
+      let netAccuracy = selectedResponse.Distance + accuracy;
       if (netAccuracy > 10) {
         let calcAccuracyFeet = netAccuracy * 3.28;
         if (calcAccuracyFeet > 1000) {
-          textResponse = `within ${Math.round((calcAccuracyFeet / 5280) * 10) / 10} miles of`;
+          textResponse = `Within ${Math.round((calcAccuracyFeet / 5280) * 10) / 10} miles of`;
         }
         else {
-          textResponse = `within ${Math.round(calcAccuracyFeet)} feet of`;
+          textResponse = `Within ${Math.round(calcAccuracyFeet)} feet of`;
         }
       }
-      textResponse += ` ${response.Results[0].Place.Label}`;
+      textResponse += ` ${selectedResponse.Place.Label} ${makeDate(new Date()).oaDate}`;
       return textResponse;
     }
   };
@@ -234,6 +260,9 @@ export default ({ request = {}, onClose }) => {
       return '';
     }
     let default_peopleList;
+    let defaultText = '';
+    let defaultValue;
+    let default_source, default_ref;
     if (reactData.formRec.fields[this_field].choose) {
       if (!reactData.peopleList.hasOwnProperty(reactData.formRec.fields[this_field].choose.ref)) {
         default_peopleList = await getGroupMembers({
@@ -252,126 +281,166 @@ export default ({ request = {}, onClose }) => {
         }, false);
       }
       else {
-        default_peopleList = reactData.peopleList[reactData.formRec.fields[this_field].default.ref];
+        default_peopleList = reactData.peopleList[reactData.formRec.fields[this_field].choose.ref];
       }
     }
-    if (!reactData.formRec.fields[this_field].default) {
-      return '';
+    if (!reactData.formRec.fields[this_field].default && !options.changeMode && !options.viewMode && !options.incompleteMode) {
+      return '';   // there is no default specified for this field (in change mode, ignore this - use value instead)
     }
-    let defaultText = '';
-    let defaultValue;
-    let default_source = reactData.formRec.fields[this_field].default.source;
+    if (options.changeMode || options.viewMode || options.incompleteMode) {
+      default_source = 'form';
+      default_ref = reactData.form_id;
+    }
+    else {
+      default_source = reactData.formRec.fields[this_field].default.source;
+      if (reactData.formRec.fields[this_field].default.ref === 'recent') {
+        default_ref = reactData.form_id;
+      }
+      else {
+        default_ref = reactData.formRec.fields[this_field].default.ref;
+      }
+    }
     if (!default_source) {
-      defaultText = (reactData.formRec.fields[this_field].default.ref || '');
+      defaultText = (default_ref || '');
     }
     else {
       switch (default_source) {
         case 'form': {
-          if (!reactData?.document.hasOwnProperty(reactData.formRec.fields[this_field].default.ref)) {
+          if (!reactData?.document.hasOwnProperty(default_ref)) {
             let documentsObj = await loadDocument({
-              form_id: reactData.formRec.fields[this_field].default.ref,
+              form_id: default_ref,
               recent: true
             });
             updateReactData({
               document: documentsObj
             }, true);
           }
-          if ((!reactData.document[reactData.formRec.fields[this_field].default.ref])
-            || (!reactData.document[reactData.formRec.fields[this_field].default.ref][this_field])) {
-            // no op - no default specified for this field, or no default value available from the form
+          if ((!reactData.document[default_ref])
+            || (!reactData.document[default_ref][this_field])) {
+            // no op - the refererenced form doesn't exist, or this field has no value on that form
           }
           else {
-            defaultText = reactData.document[reactData.formRec.fields[this_field].default.ref][this_field];
-            if (Array.isArray(defaultText)) {   // special handling here for checkbox selections
-              if (reactData.formRec.fields[this_field].value.type.includes('view')) {
-                defaultValue = defaultText;
-                defaultText = defaultText.join('; ');
-              }
-              else {
-                if (reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')) {
-                  reactData.formRec.fields[this_field].prompt.ref =
-                    reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText.join('; '));
+            if (isObject(reactData.document[default_ref][this_field])) {
+              defaultText = reactData.document[default_ref][this_field].textDescription;
+            }
+            else {
+              defaultText = reactData.document[default_ref][this_field];
+            }
+            let defaultType = reactData.formRec.fields[this_field]?.default?.type;
+            if (!defaultType) {
+              defaultType = reactData.formRec.fields[this_field]?.value?.type;
+            }
+            if (Array.isArray(defaultText)) {
+              defaultType = 'selection';
+            }
+            switch (defaultType) {
+              case 'selection': {   // special handling here for checkbox selections
+                if (reactData.formRec.fields[this_field].value.type.includes('view')) {
+                  defaultValue = defaultText;
+                  defaultText = defaultText.join('; ');
                 }
-                if (reactData.formRec.fields[this_field].prompt.ignore_if) {
-                  let ignoreList = makeArray(reactData.formRec.fields[this_field].prompt.ignore_if);
-                  if ((ignoreList.includes('%%no_data%%') && (defaultText.length === 0))
-                    || (ignoreList.some(ignore_me => {
-                      return defaultText.includes(ignore_me);
-                    }))) {
-                    delete reactData.formRec.fields[this_field];
-                    return;
+                else {
+                  if (reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')) {
+                    reactData.formRec.fields[this_field].prompt.ref =
+                      reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText.join('; '));
                   }
-                }
-                if (defaultText.length === 0) {
-                  return '';
-                }
-                let defaultSelections = defaultText;
-                let defaultSelectionList = [];
-                let bonusList = [];
-                let selectionList = reactData.formRec.fields[this_field]?.value?.selection?.selectionList || [];
-                defaultSelections.forEach(this_selection => {
-                  if (selectionList.includes(this_selection)) {
-                    defaultSelectionList.push(this_selection);
+                  if (reactData.formRec.fields[this_field].prompt.ignore_if) {
+                    let ignoreList = makeArray(reactData.formRec.fields[this_field].prompt.ignore_if);
+                    if ((ignoreList.includes('%%no_data%%') && (defaultText.length === 0))
+                      || (ignoreList.some(ignore_me => {
+                        return defaultText.includes(ignore_me);
+                      }))) {
+                      delete reactData.formRec.fields[this_field];
+                      return;
+                    }
                   }
-                  else {
-                    bonusList.push(this_selection);
+                  if (defaultText.length === 0) {
+                    return '';
                   }
-                });
-                if (bonusList.length > 0) {
-                  handleChangeListText({
-                    newText: bonusList.join('; '),
+                  let defaultSelections = defaultText;
+                  let defaultSelectionList = [];
+                  let bonusList = [];
+                  let selectionList = reactData.formRec.fields[this_field]?.value?.selection?.selectionList || [];
+                  defaultSelections.forEach(this_selection => {
+                    if (selectionList.includes(this_selection)) {
+                      defaultSelectionList.push(this_selection);
+                    }
+                    else {
+                      bonusList.push(this_selection);
+                    }
+                  });
+                  if (bonusList.length > 0) {
+                    handleChangeListText({
+                      newText: bonusList.join('; '),
+                      prop: this_field
+                    });
+                  }
+                  if (defaultSelectionList.length === 0) {
+                    return '';
+                  }
+                  handleChangeValue({
+                    newList: defaultSelectionList,
                     prop: this_field
                   });
+                  return defaultSelectionList;
                 }
-                if (defaultSelectionList.length === 0) {
+                break;
+              }
+              case 'signature': {
+                defaultText = `${reactData.formRec.fields[this_field].prompt.ref}: ${defaultText}`;
+                defaultValue = reactData.document[default_ref][this_field];
+                break;
+              }
+              case 'geolocation': {
+                defaultText = `${reactData.formRec.fields[this_field].prompt.ref}: ${defaultText}`;
+                defaultValue = reactData.document[default_ref][this_field];
+                break;
+              }
+              case 'phone': {
+                defaultText = formatPhone(defaultText);
+                defaultValue = `+1${defaultText.replace(/\D/g, '')}`;
+                break;
+              }
+              case 'date': {
+                let defaultDate = makeDate(defaultText, { noTime: true, noYearCorrection: true });
+                if (defaultDate.error) {
                   return '';
                 }
-                handleChangeValue({
-                  newList: defaultSelectionList,
-                  prop: this_field
-                });
-                return defaultSelectionList;
+                defaultText = defaultDate.absolute;
+                defaultValue = defaultDate.numeric$;
+                break;
               }
-            }
-            else if (reactData.formRec.fields[this_field].default.type === 'phone') {
-              defaultText = formatPhone(defaultText);
-              defaultValue = `+1${defaultText.replace(/\D/g, '')}`;
-            }
-            else if (reactData.formRec.fields[this_field].default.type === 'date') {
-              let defaultDate = makeDate(defaultText, { noTime: true, noYearCorrection: true });
-              if (defaultDate.error) {
-                return '';
-              }
-              defaultText = defaultDate.absolute;
-              defaultValue = defaultDate.numeric$;
-            }
-            else if (reactData.formRec.fields[this_field].default.type === 'time') {
-              let defaultDate = makeDate(defaultText, { noYearCorrection: true });
-              if (defaultDate.error) {
-                return '';
-              }
-              defaultText = defaultDate.absolute;
-              defaultValue = defaultDate.timestamp;
-            }
-            else if (reactData.formRec.fields[this_field].default.type === 'id') {
-              defaultValue = reactData?.document[reactData.formRec.fields[this_field].default.ref][this_field];
-              if (reactData.formRec.fields[this_field].choose) {
-                let foundPerson = default_peopleList.find(person => {
-                  return (person.person_id === defaultValue);
-                });
-                if (foundPerson) {
-                  defaultText = foundPerson.display_name;
+              case 'time': {
+                let defaultDate = makeDate(defaultText, { noYearCorrection: true });
+                if (defaultDate.error) {
+                  return '';
                 }
+                defaultText = defaultDate.absolute;
+                defaultValue = defaultDate.timestamp;
+                break;
               }
-              else {
-                defaultText = await makeName(defaultValue);
+              case 'id': {
+                defaultValue = reactData?.document[default_ref][this_field];
+                if (reactData.formRec.fields[this_field].choose) {
+                  let foundPerson = default_peopleList.find(person => {
+                    return (person.person_id === defaultValue);
+                  });
+                  if (foundPerson) {
+                    defaultText = foundPerson.display_name;
+                  }
+                }
+                else {
+                  defaultText = await makeName(defaultValue);
+                }
+                break;
               }
+              default: { }
             }
           }
           break;
         }
         case 'date': {
-          let defaultDate = makeDate(reactData.formRec.fields[this_field].default.ref, { noTime: true, noYearCorrection: true });
+          let defaultDate = makeDate(default_ref, { noTime: true, noYearCorrection: true });
           if (defaultDate.error) {
             return '';
           }
@@ -380,7 +449,7 @@ export default ({ request = {}, onClose }) => {
           break;
         }
         case 'time': {
-          let defaultDate = makeDate(reactData.formRec.fields[this_field].default.ref, {});
+          let defaultDate = makeDate(default_ref, {});
           if (defaultDate.error) {
             return '';
           }
@@ -393,7 +462,7 @@ export default ({ request = {}, onClose }) => {
         case 'selections':
         case 'values':
         case 'value': {
-          let defaultSelections = makeArray(reactData.formRec.fields[this_field].default.ref);
+          let defaultSelections = makeArray(default_ref);
           if (defaultSelections.length === 0) {
             return '';
           }
@@ -435,7 +504,7 @@ export default ({ request = {}, onClose }) => {
           else if (default_source.startsWith('session')) {
             recordID = 'session';
           }
-          switch (reactData.formRec.fields[this_field].default.ref) {
+          switch (default_ref) {
             case 'display_name': {
               defaultText = `${state[recordID]?.name?.first} ${state[recordID]?.name?.last}`;
               break;
@@ -452,7 +521,7 @@ export default ({ request = {}, onClose }) => {
               break;
             }
             default: {
-              defaultText = state[recordID][reactData.formRec.fields[this_field].default.ref] || '';
+              defaultText = state[recordID][default_ref] || '';
               if ((reactData.formRec.fields[this_field].default.type === 'date') && defaultText) {
                 let defaultDate = makeDate(defaultText, { noTime: true, noYearCorrection: true });
                 if (defaultDate.error) {
@@ -478,7 +547,7 @@ export default ({ request = {}, onClose }) => {
           break;
         }
         case 'local': {
-          defaultText = state.patient.local_data[reactData.formRec.fields[this_field].default.ref] || '';
+          defaultText = state.patient.local_data[default_ref] || '';
           if ((reactData.formRec.fields[this_field].default.type === 'date') && defaultText) {
             let defaultDate = makeDate(defaultText, { noTime: true, noYearCorrection: true });
             if (defaultDate.error) {
@@ -494,7 +563,7 @@ export default ({ request = {}, onClose }) => {
           break;
         }
         default: {
-          defaultText = (reactData.formRec.fields[this_field].default.ref || '');
+          defaultText = (default_ref || '');
         }
       }
     }
@@ -511,15 +580,12 @@ export default ({ request = {}, onClose }) => {
     if (reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')) {
       reactData.formRec.fields[this_field].prompt.ref =
         reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText);
-      //  updateReactData will be called once to refresh formRec after all makeDefault calls are complete
     }
-    if (defaultText && (reactData.formRec.fields[this_field].value.type !== 'view')) {
-      handleChangeText({
-        newText: defaultText,
-        newValue: defaultValue,
-        prop: this_field
-      });
-    }
+    handleChangeValue({
+      newText: defaultText,
+      newValue: defaultValue,
+      prop: this_field
+    });
   };
 
   const getDirection = (degrees, isLongitude) =>
@@ -532,8 +598,8 @@ export default ({ request = {}, onClose }) => {
       isLongitude,
     )}`;
 
-  const handleChangeText = ({ newText, newValue, prop, sentenceCase }) => {
-    if (sentenceCase && (newText.length === 1)) {
+  const handleChangeValue = ({ newText, newValue, newList, prop, sentenceCase }) => {
+    if (sentenceCase && newText && (newText.length === 1)) {
       newText = newText.toUpperCase();
     }
     let tempObj = {};
@@ -544,10 +610,16 @@ export default ({ request = {}, onClose }) => {
       tempObj = deepCopy(reactValues.defaultObj);
     }
     tempObj.valueText = newText;
-    tempObj.value = newValue || newText;
+    tempObj.valueList = newList;
+    tempObj.value = newValue || newList || newText;
     updateReactValues({
       [prop]: tempObj
     }, true);
+    if (reactData.formRec.fields[prop].value.assign_to) {
+      updateReactData({
+        assign_to: tempObj.value
+      }, true);
+    }
   };
 
   const handleChangeListText = ({ newText, prop }) => {
@@ -559,21 +631,6 @@ export default ({ request = {}, onClose }) => {
       tempObj = deepCopy(reactValues.defaultObj);
     }
     tempObj.bonusText = newText;
-    updateReactValues({
-      [prop]: tempObj
-    }, true);
-  };
-
-  const handleChangeValue = ({ newList, prop, }) => {
-    let tempObj = {};
-    if (reactValues.hasOwnProperty(prop)) {
-      tempObj = deepCopy(reactValues[prop]);
-    }
-    else {
-      tempObj = deepCopy(reactValues.defaultObj);
-    }
-    tempObj.valueList = newList;
-    tempObj.value = newList;
     updateReactValues({
       [prop]: tempObj
     }, true);
@@ -648,6 +705,7 @@ export default ({ request = {}, onClose }) => {
                   aria-label={`${props.prop}_${tIndex}`}
                   name={`${props.prop}_${tIndex}`}
                   key={`CheckGroup__${props.prop}_${tIndex}`}
+                  disabled={options.viewMode}
                   size='small'
                   checked={reactValues[props.prop]?.valueList && reactValues[props.prop].valueList.includes(text)}
                   onClick={() => {
@@ -674,6 +732,7 @@ export default ({ request = {}, onClose }) => {
                   name={`${props.prop}_other`}
                   key={`CheckGroup__${props.prop}_other`}
                   size='small'
+                  disabled={options.viewMode}
                   checked={reactValues[props.prop]?.valueList && reactValues[props.prop].valueList.includes(reactValues[props.prop].valueText)}
                   onClick={() => {
                     handleClick({
@@ -703,7 +762,7 @@ export default ({ request = {}, onClose }) => {
                     ? reactValues[props.prop].valueText
                     : ''
                   );
-                  handleChangeText({
+                  handleChangeValue({
                     newText: event.target.value,
                     prop: props.prop,
                     sentenceCase: false
@@ -749,6 +808,7 @@ export default ({ request = {}, onClose }) => {
                     margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
                   })}
                   className={classes.radioDays}
+                  disabled={options.viewMode}
                   id={`${props.prop}_otherText`}
                   defaultValue={(reactValues[props.prop] && reactValues[props.prop].bonusText)
                     ? reactValues[props.prop].bonusText
@@ -836,33 +896,64 @@ export default ({ request = {}, onClose }) => {
     }, true);
   };
 
-  const handleSave = async () => {
+  const handleSave = async ({ document_id, save_continue }) => {
     let documentRec = {
       client_id: state.session.client_id,
-      form_id: reactData.form_id,
-      person_id: state.patient.person_id,
       completed_by: state.session.user_id,
-      completed_timestamp: new Date().getTime()
     };
-    documentRec.document_id = `${documentRec.person_id}%%${documentRec.form_id}%%${documentRec.completed_timestamp}`;
+    if (reactData.assign_to) {
+      documentRec.assigned_to = reactData.assign_to;
+    }
+    if (reactData.formRec.title) {
+      let titleFields = reactData.formRec.title.split('%%');
+      let results = '';
+      titleFields.forEach(titleWord => {
+        if (reactData.formRec.fields.hasOwnProperty(titleWord)) {
+          results += ' ' + ((reactValues[titleWord] && reactValues[titleWord].valueText)
+            ? reactValues[titleWord].valueText
+            : reactData.formRec.fields[titleWord].defaultText
+          );
+        }
+        else {
+          results += ' ' + titleWord;
+        }
+      });
+      documentRec.title = results;
+    }
+    if (document_id) {
+      let docParts = document_id.split('%%');
+      documentRec.form_id = docParts[1];
+      documentRec.person_id = docParts[0];
+      documentRec.completed_timestamp = docParts[2];
+      documentRec.document_id = document_id
+    }
+    else {
+      documentRec.form_id = reactData.form_id;
+      documentRec.person_id = state.patient.person_id;
+      documentRec.completed_timestamp = new Date().getTime();
+      documentRec.document_id = `${documentRec.person_id}%%${documentRec.form_id}%%${documentRec.completed_timestamp}`;
+    }
+    documentRec.incomplete = !!save_continue;
     documentRec.values = {};
     delete reactValues.defaultObj;
     let putError = [];
     for (let this_field in reactValues) {
       if (reactData.formRec.fields[this_field].value.type === 'signature') {
-        await s3
-          .upload({
-            Bucket: 'theseus-medical-storage',
-            Key: `${documentRec.completed_by}_signature`,
-            Body: reactValues[this_field].image,
-            ACL: 'public-read-write',
-            ContentType: 'image/png'
-          })
-          .promise()
-          .catch(err => {
-            putError.push(err);
-          });
-        documentRec.values[this_field] = reactValues[this_field].image;
+        if (reactValues[this_field].image) {
+          await s3
+            .upload({
+              Bucket: 'theseus-medical-storage',
+              Key: `${documentRec.completed_by}_signature`,
+              Body: reactValues[this_field].image,
+              ACL: 'public-read-write',
+              ContentType: 'image/png'
+            })
+            .promise()
+            .catch(err => {
+              putError.push(err);
+            });
+          documentRec.values[this_field] = reactValues[this_field].image;
+        }
       }
       else if (reactValues[this_field].bonusText) {
         let valueArray = makeArray(reactValues[this_field].value);
@@ -883,7 +974,32 @@ export default ({ request = {}, onClose }) => {
         console.log(`caught error updating Documents; error is:`, error);
         putError.push(error);
       });
-    return { goodPut: (putError.length === 0), putError };
+    if (options.changeMode) {
+      await dbClient
+        .update({
+          Key: {
+            client_id: state.session.client_id,
+            document_id: options.document_id
+          },
+          UpdateExpression: 'set #s = :s',
+          ExpressionAttributeValues: {
+            ':s': documentRec.document_id
+          },
+          ExpressionAttributeNames: {
+            '#s': 'replaced_by'
+          },
+          TableName: "Documents",
+        })
+        .promise()
+        .catch(error => {
+          cl(`caught error updating Documents; error is: `, error);
+        });
+    }
+    return {
+      goodPut: (putError.length === 0),
+      putError,
+      document_id: documentRec.document_id
+    };
   };
 
   // **************************
@@ -950,11 +1066,9 @@ export default ({ request = {}, onClose }) => {
     if (!recordExists(queryResult)) {
       queryResult.Items = [{ values: {} }];
     }
-    if (recent && (form_id === reactData.form_id)) {
-      documentsObj.recent = queryResult.Items[0].values;
-    }
-    else {
-      documentsObj[form_id] = queryResult.Items[0].values;
+    documentsObj[form_id] = queryResult.Items[0].values;
+    if (queryResult.Items[0].title) {
+      documentsObj[form_id].document__title = queryResult.Items[0].title;
     }
     return documentsObj;
   };
@@ -963,18 +1077,36 @@ export default ({ request = {}, onClose }) => {
     async function initialize() {
       let user_fontSize = AVADefaults({ fontSize: 'get' }) || 1.5;
       let response = await loadForm(reactData.form_id);
-      let documentsObj = await loadDocument({ recent: true });
-      updateReactData({
+      if (isEmpty(response)) {
+        onClose();
+      }
+      let documentsObj;
+      if ((options.changeMode || options.viewMode || options.incompeteMode) && options.document_id) {
+        documentsObj = await loadDocument({
+          specific_document: options.document_id,
+        });
+      }
+      else {
+        documentsObj = await loadDocument({
+          recent: true
+        });
+      }
+      let this_form = (documentsObj ? Object.keys(documentsObj)[0] : options.form_id);
+      let reactObj = {
+        form_id: this_form,
         formRec: response,
-        document: documentsObj || { recent: {} }
-      }, true);
+        document: documentsObj || { [this_form]: {} }
+      }
+      if (options.incompleteMode) {
+        reactObj.document_id = options.document_id;        
+      }
+      updateReactData(reactObj, true);
       for (let sN = 0; sN < reactData.formRec.sections.length; sN++) {
         let this_section = reactData.formRec.sections[sN];
         for (let fN = 0; fN < this_section.fields.length; fN++) {
           await makeDefault(this_section.fields[fN]);
         }
       }
-      console.log(reactValues);
       updateReactData({
         formRec: reactData.formRec,   // makeDefault may have updated this
         user_fontSize,
@@ -1007,7 +1139,7 @@ export default ({ request = {}, onClose }) => {
                 top: 1,
               }
             })}>
-              {reactData.formRec.form_name}
+              {reactData.document[reactData.form_id].document__title || reactData.formRec.form_name}
             </Typography>
           </Box>
           <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
@@ -1044,12 +1176,13 @@ export default ({ request = {}, onClose }) => {
                               size: 0.75,
                               margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                             })}
+                            disabled={options.viewMode}
                             value={(reactValues[this_field] && reactValues[this_field].valueText)
                               ? reactValues[this_field].valueText
                               : ''
                             }
                             onChange={(event) => {
-                              handleChangeText({
+                              handleChangeValue({
                                 newText: event.target.value,
                                 prop: this_field,
                                 sentenceCase: true
@@ -1079,7 +1212,7 @@ export default ({ request = {}, onClose }) => {
                             onBlur={(event) => {
                               if (event.target.value) {
                                 let fPhone = formatPhone(event.target.value);
-                                handleChangeText({
+                                handleChangeValue({
                                   newText: fPhone,
                                   newValue: `+1${fPhone.replace(/\D/g, '')}`,
                                   prop: this_field,
@@ -1094,6 +1227,7 @@ export default ({ request = {}, onClose }) => {
                               }
                             }}
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
+                            disabled={options.viewMode}
                           />
                         }
                         {((reactData.formRec.fields[this_field].value.type === 'date')
@@ -1118,7 +1252,7 @@ export default ({ request = {}, onClose }) => {
                               if (event.target.value) {
                                 let dObj = makeDate(event.target.value, { noTime: (reactData.formRec.fields[this_field].value.type === 'date'), noYearCorrection: true });
                                 if (!dObj.error) {
-                                  handleChangeText({
+                                  handleChangeValue({
                                     newText: dObj.absolute,
                                     newValue: ((reactData.formRec.fields[this_field].value.type === 'date')
                                       ? dObj.numeric$
@@ -1136,6 +1270,7 @@ export default ({ request = {}, onClose }) => {
                               }
                             }}
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
+                            disabled={options.viewMode}
                           />
                         }
                         {(reactData.formRec.fields[this_field].value.type.startsWith('select')) &&
@@ -1277,6 +1412,7 @@ export default ({ request = {}, onClose }) => {
                                 clearOnSelect={true}
                                 clearOnBlur={true}
                                 key={`selectOptions-${this_field}`}
+                                disabled={options.viewMode}
                                 searchable={true}
                                 create={false}
                                 closeOnClickInput={true}
@@ -1297,7 +1433,7 @@ export default ({ request = {}, onClose }) => {
                                 placeholder={``}
                                 onChange={async (values) => {
                                   if (values.length > 0) {
-                                    handleChangeText({
+                                    handleChangeValue({
                                       newText: values[0].label,
                                       newValue: values[0].value,
                                       prop: this_field,
@@ -1345,52 +1481,62 @@ export default ({ request = {}, onClose }) => {
                               key={`geoBox-${this_field}`}
                               display='flex' marginTop={1} flexGrow={1} flexDirection='column'
                             >
-                              <Button
-                                className={AVAClass.AVAButton}
-                                key={`geoButton-${this_field}`}
-                                style={(Object.assign({}, {
-                                  maxWidth: '150px',
-                                  textWrap: 'wrap'
-                                },
-                                  reactData.formRec.fields[this_field].prompt?.options?.button || {}
-                                ))}
-                                size='small'
-                                width={`${reactData.formRec.fields[this_field].prompt.width || 50}px`}
-                                onClick={async () => {
-                                  getPosition();
-                                  let newText;
-                                  let newValue = {};
-                                  if (!isEmpty(positionError)) {
-                                    newText = `Location Error ${JSON.stringify(positionError)}`;
-                                  }
-                                  else if (!isGeolocationAvailable) {
-                                    newText = "Device doesn't support location ID"
-                                  }
-                                  else if (!isGeolocationEnabled) {
-                                    newText = `User blocked location ID`;
-                                  }
-                                  else {
-                                    newText = await reverseGeo({
-                                      latitude: coords.latitude,
-                                      longitude: coords.longitude,
-                                      accuracy: coords.accuracy
-                                    })
-                                    newValue = {
-                                      latitude: coords.latitude,
-                                      longitude: coords.longitude,
-                                      speed: coords.speed,
-                                    };
-                                  }
-                                  newValue.timestamp = new Date().getTime();
-                                  handleChangeText({
-                                    newText,
-                                    newValue,
-                                    prop: this_field
-                                  });
-                                }}
-                              >
-                                {reactData.formRec.fields[this_field].prompt.ref}
-                              </Button>
+                              {!options.viewMode &&
+                                <Button
+                                  className={AVAClass.AVAButton}
+                                  key={`geoButton-${this_field}`}
+                                  style={(Object.assign({}, {
+                                    maxWidth: '150px',
+                                    textWrap: 'wrap'
+                                  },
+                                    reactData.formRec.fields[this_field].prompt?.options?.button || {},
+                                    ((!!(reactValues[this_field] && reactValues[this_field].value))
+                                      ? {
+                                        color: (reactData.formRec.fields[this_field].prompt?.options?.button?.backgroundColor || 'blue'),
+                                        backgroundColor: 'white'
+                                      }
+                                      : {}
+                                    ),
+                                  ))}
+                                  size='small'
+                                  width={`${reactData.formRec.fields[this_field].prompt.width || 50}px`}
+                                  onClick={async () => {
+                                    getPosition();
+                                    let newText;
+                                    let newValue = {};
+                                    if (!isEmpty(positionError)) {
+                                      newText = `Location Error ${JSON.stringify(positionError)}`;
+                                    }
+                                    else if (!isGeolocationAvailable) {
+                                      newText = "Device doesn't support location ID";
+                                    }
+                                    else if (!isGeolocationEnabled) {
+                                      newText = `User blocked location ID`;
+                                    }
+                                    else {
+                                      newText = await reverseGeo({
+                                        latitude: coords.latitude,
+                                        longitude: coords.longitude,
+                                        accuracy: coords.accuracy
+                                      });
+                                      newValue = {
+                                        latitude: coords.latitude,
+                                        longitude: coords.longitude,
+                                        speed: coords.speed,
+                                      };
+                                    }
+                                    newValue.timestamp = new Date().getTime();
+                                    newValue.textDescription = newText;
+                                    handleChangeValue({
+                                      newText,
+                                      newValue,
+                                      prop: this_field
+                                    });
+                                  }}
+                                >
+                                  {reactData.formRec.fields[this_field].prompt.ref}
+                                </Button>
+                              }
                               {reactValues[this_field] && reactValues[this_field].value &&
                                 <Box display='flex'
                                   flexDirection='row'
@@ -1403,7 +1549,7 @@ export default ({ request = {}, onClose }) => {
                                     key={`geoButtonPrompt-${this_field}`}
                                     style={AVATextStyle({
                                       lineHeight: 1,
-                                      width: `${reactData.formRec.fields[this_field].prompt.width || 200}px`,
+                                      width: `${reactData.formRec.fields[this_field].prompt.width || 300}px`,
                                       maxWidth: '90%',
                                       size: 0.75,
                                       opacity: '60%',
@@ -1424,33 +1570,64 @@ export default ({ request = {}, onClose }) => {
               </React.Fragment>
             ))}
           </DialogContent>
-          <DialogActions className={classes.buttonArea} >
-            <Button
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'red', color: 'white' }}
-              size='small'
-              onClick={() => {
-                updateReactData({
-                  stage: 'exit'
-                }, true);
-              }}
-              startIcon={<CloseIcon fontSize="small" />}
+            <Box
+              display='flex'
+              flexDirection='row'
+              alignItems={'center'}
+              justifyContent={'space-between'}
             >
-              {'Exit'}
-            </Button>
-            <Button
-              onClick={async () => {
-                await handleReview();
-                console.log(reactData);
-                console.log(forceRedisplay);
-              }}
-              className={AVAClass.AVAButton}
-              style={{ backgroundColor: 'green', color: 'white' }}
-              size='small'
-            >
-              {'Finish'}
-            </Button>
-          </DialogActions>
+              <Button
+                className={AVAClass.AVAButton}
+                style={{ backgroundColor: 'red', color: 'white' }}
+                size='small'
+                onClick={() => {
+                  if (options.viewMode) {
+                    onClose();
+                  }
+                  else {
+                    updateReactData({
+                      stage: 'exit'
+                    }, true);
+                  }
+                }}
+                startIcon={<CloseIcon fontSize="small" />}
+              >
+                {'Exit'}
+              </Button>
+              {!options.viewMode &&
+                <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                  <Button
+                    onClick={async () => {
+                      let saveCallObj = {
+                        save_continue: true
+                      };
+                      if (reactData.document_id) {
+                        saveCallObj.document_id = reactData.document_id; 
+                      }
+                      let response = await handleSave(saveCallObj);
+                      updateReactData({
+                        document_id: response.document_id
+                      }, true);
+                    }}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'lightcyan', color: 'black' }}
+                    size='small'
+                  >
+                    {'Save/Continue'}
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      await handleReview();
+                    }}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
+                  >
+                    {'Finish'}
+                  </Button>
+                </Box>
+              }
+            </Box>
         </React.Fragment>
       }
       {(reactData.stage === 'confirm') &&
@@ -1467,8 +1644,13 @@ export default ({ request = {}, onClose }) => {
             }, true);
           }}
           onConfirm={async () => {
-            console.log(reactValues);
-            let response = await handleSave();
+            let saveCallObj = {
+              save_continue: false
+            };
+            if (reactData.document_id) {
+              saveCallObj.document_id = reactData.document_id;
+            }
+            let response = await handleSave(saveCallObj);
             if (!response.goodPut) {
               updateReactData({
                 stage: 'error',
