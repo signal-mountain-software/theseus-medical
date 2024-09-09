@@ -676,6 +676,10 @@ export default ({ request = {}, onClose }) => {
                               onClick={() => {
                                 updateReactData({
                                   stage: 'viewDoc',
+                                  signatureData: (this_document.signature_field
+                                    ? this_document.values[this_document.signature_field]
+                                    : null
+                                  ),
                                   selectedDoc_id: this_document.document_id,
                                   incomplete: !!this_document.incomplete
                                 }, true);
@@ -715,9 +719,10 @@ export default ({ request = {}, onClose }) => {
       {(reactData.stage === 'viewDoc') &&
         <FormFill
           request={{
-            "document_id": reactData.selectedDoc_id,
-            "viewMode": !reactData.incomplete,
-            "incompleteMode": reactData.incomplete
+            document_id: reactData.selectedDoc_id,
+            signatureImage: (!reactData.incomplete ? reactData.signatureData : null),
+            viewMode: !reactData.incomplete,
+            incompleteMode: reactData.incomplete
           }}
           onClose={() => {
             updateReactData({

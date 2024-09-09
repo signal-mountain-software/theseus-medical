@@ -160,6 +160,7 @@ export default ({ request = {}, onClose }) => {
     formRec: {},
     peopleList: {},
     initialized: false,
+    storedSignature: null,
     stage: 'initialize',
     version__number: 0,
     document: {},
@@ -387,6 +388,9 @@ export default ({ request = {}, onClose }) => {
                 break;
               }
               case 'signature': {
+                updateReactData({
+                  storedSignature: reactData.document[default_ref][this_field]
+                }, false);
                 defaultText = `${reactData.formRec.fields[this_field].prompt.ref}: ${defaultText}`;
                 defaultValue = reactData.document[default_ref][this_field];
                 break;
@@ -569,7 +573,7 @@ export default ({ request = {}, onClose }) => {
     }
     if (reactData.formRec.fields[this_field].prompt.ignore_if) {
       let ignoreList = makeArray(reactData.formRec.fields[this_field].prompt.ignore_if);
-      if ((ignoreList.includes('%%no_data%%') && !defaultText)
+      if ((ignoreList.includes('%%no_data%%') && (!defaultText || (defaultText.trim() === '')))
         || (ignoreList.some(ignore_me => {
           return (Array.isArray(defaultValue) ? defaultValue.includes(ignore_me) : (defaultValue === ignore_me));
         }))) {
@@ -953,6 +957,7 @@ export default ({ request = {}, onClose }) => {
               putError.push(err);
             });
           documentRec.values[this_field] = reactValues[this_field].image;
+          documentRec.signature_field = this_field;
         }
       }
       else if (reactValues[this_field].bonusText) {
@@ -1337,6 +1342,7 @@ export default ({ request = {}, onClose }) => {
                           </React.Fragment>
                         }
                         {(reactData.formRec.fields[this_field].value.type === 'signature') &&
+                          (!options.viewMode) &&
                           <Box
                             display='flex'
                             flexDirection='column'
@@ -1373,7 +1379,7 @@ export default ({ request = {}, onClose }) => {
                               {reactData.formRec.fields[this_field].prompt.ref}
                             </Typography>
                             <Box display='flex' mt={0} mb={0} flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='center'>
-                              {signatureRef.current && !signatureRef.current.isEmpty() &&
+                              {signatureRef.current &&
                                 <Button
                                   className={AVAClass.AVAMicroButton}
                                   style={{ backgroundColor: 'white', color: 'red' }}
@@ -1389,6 +1395,38 @@ export default ({ request = {}, onClose }) => {
                             </Box>
                           </Box>
                         }
+                        {(reactData.formRec.fields[this_field].value.type === 'signature') &&
+                          (options.viewMode) &&
+                          <Box
+                            display='flex'
+                            flexDirection='column'
+                            id={`sigBox__${this_field}`}
+                            key={`sigBox__${this_field}`}
+                            justifyContent='flex-start'
+                            alignItems='flex-start'
+                            width='97%'
+                          >
+                            <img
+                              className={classes.imageArea}
+                              alt=''
+                              src={request.signatureImage}
+                            />
+                            <Typography
+                              id={`sigBoxText__${this_field}`}
+                              key={`sigBoxText__${this_field}`}
+                              style={AVATextStyle({
+                                lineHeight: 1,
+                                width: `${reactData.formRec.fields[this_field].prompt.width || 200}px`,
+                                maxWidth: '90%',
+                                size: 0.75,
+                                margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
+                              })}
+                            >
+                              {reactData.formRec.fields[this_field].prompt.ref}
+                            </Typography>
+                          </Box>
+                        }
+
                         {(reactData.formRec.fields[this_field].value.type === 'id') &&
                           <Box
                             display='flex'
