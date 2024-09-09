@@ -10,9 +10,6 @@ import CloseIcon from '@material-ui/icons/HighlightOff';
 import Button from '@material-ui/core/Button';
 import { Dialog, DialogActions, DialogContent } from '@material-ui/core';
 
-import ExpandLessIcon from '@material-ui/icons/VisibilityOff';
-import ExpandMoreIcon from '@material-ui/icons/Visibility';
-
 import Box from '@material-ui/core/Box';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -47,6 +44,11 @@ const useStyles = makeStyles(theme => ({
     minHeight: '50px',
     maxHeight: '50px',
     marginRight: theme.spacing(1),
+  },
+  personArea: {
+    marginTop: '20px',
+    minHeight: '30px',
+    maxHeight: '50px',
   },
   formControlLbl: {
     marginRight: 0,
@@ -307,10 +309,12 @@ export default ({ request = {}, onClose }) => {
           if (!rememberedForms.hasOwnProperty(this_document.form_id)) {
             rememberedForms[this_document.form_id] = await makeFormName(this_document);
           }
-          buildDocList = [{
+          let gotImage = getImage(this_document.person_id);
+          let goodImage = await checkURL(gotImage);
+          buildDocList.push({
             person_id: this_document.person_id,
             person_name: rememberedNames[this_document.person_id],
-            person_image: getImage(this_document.person_id),
+            person_image: goodImage ? gotImage : null,
             person_expanded: false,
             formTypes: [{
               form_id: this_document.form_id,
@@ -318,7 +322,7 @@ export default ({ request = {}, onClose }) => {
               form_name: rememberedForms[this_document.form_id],
               documentList: [this_document]
             }]
-          }];
+          });
         }
         else {
           let foundForm = buildDocList[foundAt].formTypes.findIndex(this_form => {
@@ -347,6 +351,21 @@ export default ({ request = {}, onClose }) => {
       });
       buildDocList.sort((a, b) => { return ((a.person_name < b.person_name) ? -1 : 1); });
       return buildDocList;
+
+      async function checkURL(url) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) {
+            return false;
+          }
+          else {
+            return true;
+          }
+        }
+        catch (error) {
+          return false;
+        }
+      } 
     }
 
     async function makeFormName(this_document) {
@@ -580,6 +599,7 @@ export default ({ request = {}, onClose }) => {
                   flexDirection='row'
                   alignItems={'center'}
                   justifyContent={'space-between'}
+                  className={classes.personArea}
                   onClick={() => {
                     reactData.documentList[personNdx].person_expanded = !this_person.person_expanded;
                     updateReactData({
@@ -587,13 +607,20 @@ export default ({ request = {}, onClose }) => {
                     }, true);
                   }}
                 >
-                  <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
-                    <Box
-                      className={classes.imageArea}
-                      component="img"
-                      alt={''}
-                      src={this_person.person_image}
-                    />
+                  <Box
+                    display='flex'
+                    flexDirection='row'
+                    justifyContent='flex-start'
+                    alignItems='center'
+                  >
+                    {!!this_person.person_image &&
+                      <Box
+                        className={classes.imageArea}
+                        component="img"
+                        alt={''}
+                        src={this_person.person_image}
+                      />
+                    }
                     <Typography
                       key={`person__${this_person.person_name}`}
                       style={AVATextStyle({

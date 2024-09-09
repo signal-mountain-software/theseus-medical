@@ -14,7 +14,7 @@ import { SearchPlaceIndexForPositionCommand, LocationClient } from '@aws-sdk/cli
 import { withAPIKey } from '@aws/amazon-location-utilities-auth-helper';
 
 import Box from '@material-ui/core/Box';
-import CloseIcon from '@material-ui/icons/Close';
+import CloseIcon from '@material-ui/icons/HighlightOff';
 import { Dialog, DialogActions, DialogContent } from '@material-ui/core';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
@@ -319,6 +319,10 @@ export default ({ request = {}, onClose }) => {
           if ((!reactData.document[default_ref])
             || (!reactData.document[default_ref][this_field])) {
             // no op - the refererenced form doesn't exist, or this field has no value on that form
+            handleChangeValue({
+              newList: [],
+              prop: this_field
+            });
           }
           else {
             if (isObject(reactData.document[default_ref][this_field])) {
@@ -660,6 +664,9 @@ export default ({ request = {}, onClose }) => {
           reactValues[props.prop].valueList.splice(ogAt, 1);
         }
       }
+      if (!reactValues[props.prop].valueList) {
+        reactValues[props.prop].valueList = [];
+      }
       let foundAt = reactValues[props.prop].valueList.indexOf(props.clickText);
       if (foundAt < 0) {
         reactValues[props.prop].valueList.push(props.clickText);
@@ -929,7 +936,7 @@ export default ({ request = {}, onClose }) => {
       documentRec.form_id = docParts[1];
       documentRec.person_id = docParts[0];
       documentRec.completed_timestamp = docParts[2];
-      documentRec.document_id = document_id
+      documentRec.document_id = document_id;
     }
     else {
       documentRec.form_id = reactData.form_id;
@@ -1101,9 +1108,9 @@ export default ({ request = {}, onClose }) => {
         form_id: this_form,
         formRec: response,
         document: documentsObj || { [this_form]: {} }
-      }
+      };
       if (options.incompleteMode) {
-        reactObj.document_id = options.document_id;        
+        reactObj.document_id = options.document_id;
       }
       updateReactData(reactObj, true);
       for (let sN = 0; sN < reactData.formRec.sections.length; sN++) {
@@ -1608,64 +1615,66 @@ export default ({ request = {}, onClose }) => {
               </React.Fragment>
             ))}
           </DialogContent>
-            <Box
-              display='flex'
-              flexDirection='row'
-              alignItems={'center'}
-              justifyContent={'space-between'}
+          <Box
+            display='flex'
+            flexDirection='row'
+            alignItems={'center'}
+            marginTop={'16px'}
+            marginBottom={'16px'}
+            justifyContent={'space-around'}
+          >
+            <Button
+              className={AVAClass.AVAButton}
+              style={{ backgroundColor: 'red', color: 'white' }}
+              size='small'
+              onClick={() => {
+                if (options.viewMode) {
+                  onClose();
+                }
+                else {
+                  updateReactData({
+                    stage: 'exit'
+                  }, true);
+                }
+              }}
+              startIcon={<CloseIcon fontSize="small" />}
             >
-              <Button
-                className={AVAClass.AVAButton}
-                style={{ backgroundColor: 'red', color: 'white' }}
-                size='small'
-                onClick={() => {
-                  if (options.viewMode) {
-                    onClose();
-                  }
-                  else {
+              {'Exit'}
+            </Button>
+            {!options.viewMode &&
+              <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
+                <Button
+                  onClick={async () => {
+                    let saveCallObj = {
+                      save_continue: true
+                    };
+                    if (reactData.document_id) {
+                      saveCallObj.document_id = reactData.document_id;
+                    }
+                    let response = await handleSave(saveCallObj);
                     updateReactData({
-                      stage: 'exit'
+                      document_id: response.document_id
                     }, true);
-                  }
-                }}
-                startIcon={<CloseIcon fontSize="small" />}
-              >
-                {'Exit'}
-              </Button>
-              {!options.viewMode &&
-                <Box display='flex' flexDirection='row' justifyContent='flex-end' alignItems='center'>
-                  <Button
-                    onClick={async () => {
-                      let saveCallObj = {
-                        save_continue: true
-                      };
-                      if (reactData.document_id) {
-                        saveCallObj.document_id = reactData.document_id; 
-                      }
-                      let response = await handleSave(saveCallObj);
-                      updateReactData({
-                        document_id: response.document_id
-                      }, true);
-                    }}
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'lightcyan', color: 'black' }}
-                    size='small'
-                  >
-                    {'Save/Continue'}
-                  </Button>
-                  <Button
-                    onClick={async () => {
-                      await handleReview();
-                    }}
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'green', color: 'white' }}
-                    size='small'
-                  >
-                    {'Finish'}
-                  </Button>
-                </Box>
-              }
-            </Box>
+                  }}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'lightcyan', color: 'black' }}
+                  size='small'
+                >
+                  {'Save/Continue'}
+                </Button>
+                <Button
+                  onClick={async () => {
+                    await handleReview();
+                  }}
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'green', color: 'white' }}
+                  size='small'
+                >
+                  {'Finish'}
+                </Button>
+              </Box>
+            }
+          </Box>
         </React.Fragment>
       }
       {(reactData.stage === 'confirm') &&
