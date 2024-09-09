@@ -2,7 +2,7 @@ import React from 'react';
 
 import { dbClient, cl, recordExists, deepCopy, makeArray, s3, isEmpty, isObject } from '../../util/AVAUtilities';
 import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
-import { formatPhone, makeName } from '../../util/AVAPeople';
+import { formatPhone, makeName, getPerson, getImage } from '../../util/AVAPeople';
 import { makeDate } from '../../util/AVADateTime';
 import AVAConfirm from './AVAConfirm';
 import { getGroupMembers } from '../../util/AVAGroups';
@@ -15,7 +15,7 @@ import { withAPIKey } from '@aws/amazon-location-utilities-auth-helper';
 
 import Box from '@material-ui/core/Box';
 import CloseIcon from '@material-ui/icons/HighlightOff';
-import { Dialog, DialogActions, DialogContent } from '@material-ui/core';
+import { Dialog, DialogContent } from '@material-ui/core';
 import Typography from '@material-ui/core/Typography';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 import Checkbox from '@material-ui/core/Checkbox';
@@ -66,9 +66,8 @@ const useStyles = makeStyles(theme => ({
     marginBottom: 0,
   },
   imageArea: {
-    minWidth: '100px',
-    maxWidth: '80%',
-    marginTop: theme.spacing(2),
+    minWidth: '150px',
+    maxWidth: '150px'
   },
   formControlDays: {
     margin: 0,
@@ -288,7 +287,11 @@ export default ({ request = {}, onClose }) => {
     if (!reactData.formRec.fields[this_field].default && !options.changeMode && !options.viewMode && !options.incompleteMode) {
       return '';   // there is no default specified for this field (in change mode, ignore this - use value instead)
     }
-    if (options.changeMode || options.viewMode || options.incompleteMode) {
+    if (reactData.formRec.fields?.[this_field]?.default?.ref === 'image') {
+      default_source = reactData.formRec.fields[this_field].default.source;
+      default_ref = 'image';
+    }
+    else if (options.changeMode || options.viewMode || options.incompleteMode) {
       default_source = 'form';
       default_ref = reactData.form_id;
     }
@@ -514,11 +517,31 @@ export default ({ request = {}, onClose }) => {
           }
           switch (default_ref) {
             case 'display_name': {
-              defaultText = `${state[recordID]?.name?.first} ${state[recordID]?.name?.last}`;
+              if (recordID === 'patient') {
+                defaultText = `${reactData.selectedPersonRec.name?.first} ${reactData.selectedPersonRec.name?.last}`;
+              }
+              else {
+                defaultText = `${state[recordID]?.name?.first} ${state[recordID]?.name?.last}`;
+              }
+              break;
+            }
+            case 'image': {
+              if (recordID === 'patient') {
+                defaultText = getImage(reactData.selectedPersonRec.person_id);
+              }
+              else {
+                defaultText = getImage(state[recordID]?.person_id);
+              }
               break;
             }
             case 'phone': {
-              let phone = state[recordID]?.messaging?.voice || state[recordID]?.messaging?.sms;
+              let phone;
+              if (recordID === 'patient') {
+                phone = reactData.selectedPersonRec?.messaging?.voice || reactData.selectedPersonRec?.messaging?.sms;
+              }
+              else {
+                phone = state[recordID]?.messaging?.voice || state[recordID]?.messaging?.sms;
+              }
               if (phone) {
                 defaultText = formatPhone(phone);
                 defaultValue = `+1${defaultText.replace(/\D/g, '')}`;
@@ -529,7 +552,12 @@ export default ({ request = {}, onClose }) => {
               break;
             }
             default: {
-              defaultText = state[recordID][default_ref] || '';
+              if (recordID === 'patient') {
+                defaultText = reactData.selectedPersonRec[default_ref] || '';
+              }
+              else {
+                defaultText = state[recordID][default_ref] || '';
+              }
               if ((reactData.formRec.fields[this_field].default.type === 'date') && defaultText) {
                 let defaultDate = makeDate(defaultText, { noTime: true, noYearCorrection: true });
                 if (defaultDate.error) {
@@ -585,7 +613,9 @@ export default ({ request = {}, onClose }) => {
         return;
       }
     }
-    if (reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')) {
+    if (reactData.formRec.fields[this_field]?.prompt?.ref
+      && reactData.formRec.fields[this_field].prompt.ref.includes('%%default%%')
+    ) {
       reactData.formRec.fields[this_field].prompt.ref =
         reactData.formRec.fields[this_field].prompt.ref.replace('%%default%%', defaultText);
     }
@@ -940,7 +970,7 @@ export default ({ request = {}, onClose }) => {
     }
     else {
       documentRec.form_id = reactData.form_id;
-      documentRec.person_id = state.patient.person_id;
+      documentRec.person_id = options.person_id || state.patient.person_id;
       documentRec.completed_timestamp = new Date().getTime();
       documentRec.document_id = `${documentRec.person_id}%%${documentRec.form_id}%%${documentRec.completed_timestamp}`;
     }
@@ -949,7 +979,7 @@ export default ({ request = {}, onClose }) => {
     delete reactValues.defaultObj;
     let putError = [];
     for (let this_field in reactValues) {
-      if (reactData.formRec.fields[this_field].value.type === 'signature') {
+      if (reactData.formRec.fields?.[this_field]?.value?.type === 'signature') {
         if (reactValues[this_field].image) {
           await s3
             .upload({
@@ -1046,7 +1076,7 @@ export default ({ request = {}, onClose }) => {
     }
     if (recent) {   // recent refers to the most recent version of the requested form
       queryObj.KeyConditionExpression += ' and begins_with(document_id, :dID)';
-      queryObj.ExpressionAttributeValues[':dID'] = `${state.patient.person_id}%%${form_id}%%`;
+      queryObj.ExpressionAttributeValues[':dID'] = `${options.person_id || state.patient.person_id}%%${form_id}%%`;
       queryObj.ScanIndexForward = false;
       queryObj.Limit = 1;
     }
@@ -1054,11 +1084,11 @@ export default ({ request = {}, onClose }) => {
       queryObj.KeyConditionExpression += ' and document_id = :dID';
       let splitDoc = specific_document.split('%%');
       if (splitDoc.length === 1) {
-        queryObj.ExpressionAttributeValues[':dID'] = `${state.patient.person_id}%%${form_id}%%${splitDoc[0]}`;
+        queryObj.ExpressionAttributeValues[':dID'] = `${options.person_id || state.patient.person_id}%%${form_id}%%${splitDoc[0]}`;
       }
       else if (splitDoc.length === 2) {
         form_id = splitDoc[0];
-        queryObj.ExpressionAttributeValues[':dID'] = `${state.patient.person_id}%%${splitDoc[0]}%%${splitDoc[1]}`;
+        queryObj.ExpressionAttributeValues[':dID'] = `${options.person_id || state.patient.person_id}%%${splitDoc[0]}%%${splitDoc[1]}`;
       }
       else {
         form_id = splitDoc[1];
@@ -1093,7 +1123,7 @@ export default ({ request = {}, onClose }) => {
         onClose();
       }
       let documentsObj;
-      if ((options.changeMode || options.viewMode || options.incompeteMode) && options.document_id) {
+      if ((options.changeMode || options.viewMode || options.incompleteMode) && options.document_id) {
         documentsObj = await loadDocument({
           specific_document: options.document_id,
         });
@@ -1104,9 +1134,17 @@ export default ({ request = {}, onClose }) => {
         });
       }
       let this_form = (documentsObj ? Object.keys(documentsObj)[0] : options.form_id);
+      let selectedPersonRec;
+      if (options.person_id) {
+        selectedPersonRec = await getPerson(options.person_id);
+      }
+      else {
+        selectedPersonRec = deepCopy(state.patient);
+      }
       let reactObj = {
         form_id: this_form,
         formRec: response,
+        selectedPersonRec,
         document: documentsObj || { [this_form]: {} }
       };
       if (options.incompleteMode) {
@@ -1130,7 +1168,7 @@ export default ({ request = {}, onClose }) => {
     if (reactData.stage === 'initialize') {
       initialize();
     }
-  }, [reactData.form_id]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reactData.form_id, reactData.document_id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // **************************
 
@@ -1201,6 +1239,14 @@ export default ({ request = {}, onClose }) => {
                               });
                             }}
                             helperText={reactData.formRec.fields[this_field].prompt.ref}
+                          />
+                        }
+                        {(reactData.formRec.fields[this_field].value.type === 'image') &&
+                          <Box
+                            className={classes.imageArea}
+                            component="img"
+                            alt={''}
+                            src={reactValues[this_field].valueText}
                           />
                         }
                         {(reactData.formRec.fields[this_field].value.type === 'phone') &&
@@ -1653,7 +1699,8 @@ export default ({ request = {}, onClose }) => {
                     }
                     let response = await handleSave(saveCallObj);
                     updateReactData({
-                      document_id: response.document_id
+                      document_id: response.document_id,
+                      savePending: true,
                     }, true);
                   }}
                   className={AVAClass.AVAButton}
@@ -1705,7 +1752,7 @@ export default ({ request = {}, onClose }) => {
               }, true);
             }
             else {
-              onClose();
+              onClose('docAdded');
             }
           }}
         />
@@ -1722,7 +1769,7 @@ export default ({ request = {}, onClose }) => {
           }
           }
           onConfirm={async () => {
-            onClose();
+            onClose((reactData.savePending) ? 'docAdded' : '');
           }}
           allowCancel={true}
         />

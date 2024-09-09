@@ -1,14 +1,15 @@
 import React from 'react';
 import { cl, dbClient, recordExists } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
-import { getPerson, getImage } from '../../util/AVAPeople';
+import { getPerson } from '../../util/AVAPeople';
 import AVAConfirm from '../forms/AVAConfirm';
 import FormFill from '../forms/FormFill';
 import useSession from '../../hooks/useSession';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
+import AddIcon from '@material-ui/icons/Add';
 import Button from '@material-ui/core/Button';
-import { Dialog, DialogActions, DialogContent } from '@material-ui/core';
+import { Dialog, DialogActions, DialogContent, IconButton } from '@material-ui/core';
 
 import Box from '@material-ui/core/Box';
 import Typography from '@material-ui/core/Typography';
@@ -25,6 +26,25 @@ const useStyles = makeStyles(theme => ({
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(1),
     minWidth: '100%',
+  },
+  AVAMicroButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(0),
+    marginTop: theme.spacing(0),
+    marginBottom: theme.spacing(0),
+    padding: theme.spacing(0),
+    height: '16px',
+    width: '16px',
+
+    borderRadius: '32px',
+    variant: 'outlined',
+    textTransform: 'none',
+    textDecoration: 'none',
+    border: '0.75px solid gray',
+    size: 'small',
+    '& .MuiSvgIcon-root': {
+      fontSize: '0.8rem',
+    }
   },
   freeInput: {
     marginLeft: '2px',
@@ -75,24 +95,6 @@ const useStyles = makeStyles(theme => ({
     justifyContent: 'center',
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(1)
-  },
-  AVAButton: {
-    marginLeft: theme.spacing(1),
-    marginRight: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    variant: 'outlined',
-    border: '0.75px solid gray',
-    textTransform: 'none',
-    textDecoration: 'none',
-    textWrap: 'nowrap',
-    fontWeight: 'bold',
-    size: 'small',
-  },
-  listItem: {
-    justifyContent: 'space-between',
-    marginTop: theme.spacing(1),
-    marginBottom: theme.spacing(1),
-    marginRight: theme.spacing(1),
   },
   noDisplay: {
     display: 'none',
@@ -251,7 +253,7 @@ export default ({ request = {}, onClose }) => {
     if (reactData.stage === 'initialize') {
       initialize();
     }
-  }, [reactData.form_id]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reactData.stage]);  // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // **********************************
@@ -261,8 +263,36 @@ export default ({ request = {}, onClose }) => {
     let queryObj = makeQueryObj();
     let loopCount = 0;
     let unSortedList = [];
+    let formLibrary = [];
     let rememberedNames = {};
+    let rememberedPeople = {};
     let rememberedForms = {};
+    let formResult = await dbClient
+      .query({
+        TableName: 'Forms',
+        KeyConditionExpression: 'client_id = :c',
+        ExpressionAttributeValues: { ':c': state.session.client_id }
+      })
+      .promise()
+      .catch(error => {
+        if (error.code === 'NetworkingError') {
+          cl(`Security Violation or no Internet Connection`);
+        }
+        cl(`Error reading ${queryObj.TableName} id ${error}`);
+      });
+    if (recordExists(formResult)) {
+      formResult.Items.forEach(this_form => {
+        if (!this_form.hasOwnProperty('active') || this_form.active) {
+          formLibrary.push(this_form);
+          if (!rememberedForms.hasOwnProperty(this_form.form_id)) {
+            rememberedForms[this_form.form_id] = this_form.form_name;
+          }
+        }
+      });
+      formLibrary.sort((a, b) => {
+        return (((a.sequence || 10) < (b.sequence || 10)) ? 1 : -1);
+      });
+    }
     let queryResult;
     do {
       queryResult = await dbClient
@@ -276,9 +306,10 @@ export default ({ request = {}, onClose }) => {
         });
       if (recordExists(queryResult)) {
         unSortedList = unSortedList.concat(queryResult.Items);
-        let sortedList = await makeSortedObj(unSortedList);
+        let { sortedList, rememberedSelections } = await makeSortedObj(unSortedList);
         updateReactData({
           documentList: sortedList,
+          rememberedSelections,
           stage: 'building'
         }, true);
         queryResult.ExclusiveStartKey = queryResult.LastEvaluatedKey;
@@ -288,6 +319,7 @@ export default ({ request = {}, onClose }) => {
     return;
 
     async function makeSortedObj(rawList) {
+      let rememberedSelections = {};
       let buildDocList = [];
       for (let d = 0; d < rawList.length; d++) {
         let this_document = rawList[d];
@@ -295,12 +327,14 @@ export default ({ request = {}, onClose }) => {
           return (this_docObj.person_id === this_document.person_id);
         });
         if (foundAt === -1) {
+          // this is the first time we've encoutered this person; add them to the buildDocList with forms and this_document 
           if (!rememberedNames.hasOwnProperty(this_document.person_id)) {
             let personResult = await getPerson(this_document.person_id);
             if (!personResult) {
               rememberedNames[this_document.person_id] = this_document.person_id;
             }
             else {
+              rememberedPeople[this_document.person_id] = personResult;
               rememberedNames[this_document.person_id] = personResult.name
                 ? (`${personResult.name.first.trim()} ${personResult.name.last.trim()}`)
                 : (personResult.display_name || personResult.person_id);
@@ -309,37 +343,67 @@ export default ({ request = {}, onClose }) => {
           if (!rememberedForms.hasOwnProperty(this_document.form_id)) {
             rememberedForms[this_document.form_id] = await makeFormName(this_document);
           }
-          let gotImage = getImage(this_document.person_id);
-          let goodImage = await checkURL(gotImage);
-          buildDocList.push({
+          let newPerson = {
             person_id: this_document.person_id,
             person_name: rememberedNames[this_document.person_id],
-            person_image: goodImage ? gotImage : null,
-            person_expanded: false,
-            formTypes: [{
-              form_id: this_document.form_id,
-              form_expanded: false,
-              form_name: rememberedForms[this_document.form_id],
-              documentList: [this_document]
-            }]
+            person_incompleteDoc_count: (this_document.incomplete ? 1 : 0),
+            person_expanded: reactData?.rememberedSelections?.[this_document.person_id].expanded || false,
+            formTypes: []
+          };
+          rememberedSelections[this_document.person_id] = {
+            expanded: newPerson.person_expanded,
+            formType_expanded: {}
+          };  
+          formLibrary.forEach(this_form => {
+            if (!this_form.hasOwnProperty('valid_for') ||
+              (rememberedPeople.hasOwnProperty(this_document.person_id)
+                && rememberedPeople[this_document.person_id].groups
+                && rememberedPeople[this_document.person_id].groups.some(this_group => {
+                  return (this_form.valid_for.includes(this_group));
+                })
+              )) {
+              let isExpanded = reactData.rememberedSelections?.[this_document.person_id]?.formType_expanded?.[this_form.form_id] || false;
+              let documentMatchesForm = (this_document.form_id === this_form.form_id);
+              newPerson.formTypes.push({
+                form_id: this_form.form_id,
+                form_expanded: isExpanded,
+                form_incompleteDoc_count: (documentMatchesForm && this_document.incomplete) ? 1 : 0,
+                form_name: rememberedForms[this_form.form_id],
+                documentList: (documentMatchesForm ? [this_document] : [])
+              });
+              rememberedSelections[this_document.person_id].formType_expanded[this_form.form_id] = isExpanded;
+            }
           });
+          buildDocList.push(newPerson);
         }
         else {
           let foundForm = buildDocList[foundAt].formTypes.findIndex(this_form => {
             return (this_form.form_id === this_document.form_id);
           });
           if (foundForm < 0) {
+            // this is the first time we've encoutered this form for this person; add the form to the buildDocList with this_document 
             if (!rememberedForms.hasOwnProperty(this_document.form_id)) {
               rememberedForms[this_document.form_id] = await makeFormName(this_document);
             }
+            let isExpanded = reactData.rememberedSelections?.[this_document.person_id]?.formType_expanded?.[this_document.form_id] || false;
             buildDocList[foundAt].formTypes.push({
               form_id: this_document.form_id,
+              form_expanded: isExpanded,
+              form_incompleteDoc_count: (this_document.incomplete ? 1 : 0),
               form_name: rememberedForms[this_document.form_id],
               documentList: [this_document]
             });
+            if (this_document.incomplete) {
+              buildDocList[foundAt].person_incompleteDoc_count++;
+            }
           }
           else {
+            // the person and the form were already here; add this_document to the list
             buildDocList[foundAt].formTypes[foundForm].documentList.push(this_document);
+            if (this_document.incomplete) {
+              buildDocList[foundAt].person_incompleteDoc_count++;
+              buildDocList[foundAt].formTypes[foundForm].form_incompleteDoc_count++;
+            }
           }
         }
       };
@@ -347,25 +411,9 @@ export default ({ request = {}, onClose }) => {
         personObj.formTypes.forEach(this_type => {
           this_type.documentList.sort((a, b) => { return ((a.completed_timestamp > b.completed_timestamp) ? -1 : 1); });
         });
-        personObj.formTypes.sort((a, b) => { return ((a.form_name < b.form_name) ? -1 : 1); });
       });
       buildDocList.sort((a, b) => { return ((a.person_name < b.person_name) ? -1 : 1); });
-      return buildDocList;
-
-      async function checkURL(url) {
-        try {
-          const response = await fetch(url);
-          if (!response.ok) {
-            return false;
-          }
-          else {
-            return true;
-          }
-        }
-        catch (error) {
-          return false;
-        }
-      } 
+      return { sortedList: buildDocList, rememberedSelections };
     }
 
     async function makeFormName(this_document) {
@@ -602,8 +650,10 @@ export default ({ request = {}, onClose }) => {
                   className={classes.personArea}
                   onClick={() => {
                     reactData.documentList[personNdx].person_expanded = !this_person.person_expanded;
+                    reactData.rememberedSelections[this_person.person_id].expanded = reactData.documentList[personNdx].person_expanded;
                     updateReactData({
-                      documentList: reactData.documentList
+                      documentList: reactData.documentList,
+                      rememberedSelections: reactData.rememberedSelections
                     }, true);
                   }}
                 >
@@ -613,14 +663,6 @@ export default ({ request = {}, onClose }) => {
                     justifyContent='flex-start'
                     alignItems='center'
                   >
-                    {!!this_person.person_image &&
-                      <Box
-                        className={classes.imageArea}
-                        component="img"
-                        alt={''}
-                        src={this_person.person_image}
-                      />
-                    }
                     <Typography
                       key={`person__${this_person.person_name}`}
                       style={AVATextStyle({
@@ -633,20 +675,23 @@ export default ({ request = {}, onClose }) => {
                       {this_person.person_name}
                     </Typography>
                   </Box>
-                  <Typography
-                    key={`person__hide_${this_person.person_name}`}
-                    style={AVATextStyle({
-                      size: 0.5,
-                      bold: true,
-                      margin: {
-                        left: 0
-                      }
-                    })}>
-                    {(this_person.person_expanded
-                      ? 'Hide'
-                      : `Show ${(this_person.formTypes.length > 1) ? (this_person.formTypes.length + ' forms') : 'form'}`
-                    )}
-                  </Typography>
+                  {(this_person.formTypes.length > 0) &&
+                    <Typography
+                      key={`person__hide_${this_person.person_name}`}
+                      style={AVATextStyle({
+                        size: 0.5,
+                        bold: true,
+                        margin: {
+                          left: 0
+                        },
+                        color: (((this_person.person_incompleteDoc_count > 0) && !this_person.person_expanded) ? 'red' : '')
+                      })}>
+                      {(this_person.person_expanded
+                        ? 'Hide'
+                        : `Show ${(this_person.formTypes.length > 1) ? (this_person.formTypes.length + ' forms') : 'form'}`
+                      )}
+                    </Typography>
+                  }
                 </Box>
                 {this_person.person_expanded &&
                   this_person.formTypes.map((this_form, formNdx) => (
@@ -659,39 +704,58 @@ export default ({ request = {}, onClose }) => {
                         alignItems={'center'}
                         justifyContent={'space-between'}
                         marginTop={1}
-                        onClick={() => {
-                          reactData.documentList[personNdx].formTypes[formNdx].form_expanded = !this_form.form_expanded;
-                          updateReactData({
-                            documentList: reactData.documentList
-                          }, true);
-                        }}
                       >
                         <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                          <IconButton
+                            className={classes.AVAMicroButton}
+                            size={'small'}
+                            onClick={() => {
+                              updateReactData({
+                                stage: 'addDoc',
+                                selectedForm_id: this_form.form_id,
+                                selectedPerson_id: this_person.person_id
+                              }, true);
+                            }}
+                          >
+                            <AddIcon />
+                          </IconButton
+                          >
                           <Typography
                             key={`form__${personNdx}_${formNdx}`}
                             style={AVATextStyle({
                               size: 1.3,
                               margin: {
-                                left: 1
+                                left: 0.5
                               }
                             })}>
                             {this_form.form_name}
                           </Typography>
                         </Box>
-                        <Typography
-                          key={`person__hide_${this_person.person_name}`}
-                          style={AVATextStyle({
-                            size: 0.5,
-                            bold: false,
-                            margin: {
-                              left: 0
-                            }
-                          })}>
-                          {(this_form.form_expanded
-                            ? 'Hide'
-                            : `Show ${(this_form.documentList.length > 1) ? (this_form.documentList.length + ' documents') : 'document'}`
-                          )}
-                        </Typography>
+                        {(this_form.documentList.length > 0) &&
+                          <Typography
+                            key={`person__hide_${this_person.person_name}`}
+                            onClick={() => {
+                              reactData.documentList[personNdx].formTypes[formNdx].form_expanded = !this_form.form_expanded;
+                              reactData.rememberedSelections[this_person.person_id].formType_expanded[this_form.form_id] = reactData.documentList[personNdx].formTypes[formNdx].form_expanded
+                              updateReactData({
+                                documentList: reactData.documentList,
+                                rememberedSelections: reactData.rememberedSelections
+                              }, true);
+                            }}
+                            style={AVATextStyle({
+                              size: 0.5,
+                              bold: false,
+                              margin: {
+                                left: 0
+                              },
+                              color: (((this_form.form_incompleteDoc_count > 0) && !this_form.form_expanded) ? 'red' : '')
+                            })}>
+                            {(this_form.form_expanded
+                              ? 'Hide'
+                              : `Show ${(this_form.documentList.length > 1) ? (this_form.documentList.length + ' documents') : 'document'}`
+                            )}
+                          </Typography>
+                        }
                       </Box>
                       {this_form.form_expanded &&
                         this_form.documentList.map((this_document, documentNdx) => (
@@ -719,7 +783,7 @@ export default ({ request = {}, onClose }) => {
                                 },
                                 color: (this_document.incomplete ? 'red' : '')
                               })}>
-                              {this_document.title || makeDate(this_document.completed_timestamp).absolute}
+                              {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${this_document.incomplete ? ' (incomplete)' : ''}`}
                             </Typography>
                           </React.Fragment>
                         ))}
@@ -751,9 +815,22 @@ export default ({ request = {}, onClose }) => {
             viewMode: !reactData.incomplete,
             incompleteMode: reactData.incomplete
           }}
-          onClose={() => {
+          onClose={(formStatus) => {
             updateReactData({
-              stage: 'fill'
+              stage: ((formStatus === 'docAdded') ? 'initialize' : 'fill')
+            }, true);
+          }}
+        />
+      }
+      {(reactData.stage === 'addDoc') &&
+        <FormFill
+          request={{
+            form_id: reactData.selectedForm_id,
+            person_id: reactData.selectedPerson_id
+          }}
+          onClose={(formStatus) => {
+            updateReactData({
+              stage: ((formStatus === 'docAdded') ? 'initialize' : 'fill')
             }, true);
           }}
         />
