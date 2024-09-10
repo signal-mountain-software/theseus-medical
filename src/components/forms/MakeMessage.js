@@ -159,7 +159,7 @@ export default ({
       }
     }
     else {
-      return ['message']
+      return ['message'];
     }
   }
 
@@ -405,12 +405,15 @@ export default ({
     else {
       reactData.multipleRecipients = true;
       let random = Math.floor(Math.random() * rArray.length);
+      let hasGroups = rArray.some(this_item => {
+        return this_item.startsWith('GRP//');
+      });
       if (rArray[random].startsWith('GRP//')) {
         response += `to multiple people, including ${nArray[random]}`;
       }
       else {
         let [last, first] = nArray[random].split(/,/);
-        response += `to ${rArray.length} people, including ${first ? (first + ' ') : ''}${last}`;
+        response += `to ${hasGroups ? 'multiple' : rArray.length} people, including ${first ? (first + ' ') : ''}${last}`;
       }
     }
     reactData.titleText = response;

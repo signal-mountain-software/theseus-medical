@@ -197,7 +197,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                   }
                   if ((myRole === 'member')
                     && (['local', 'resident', 'staff', 'admin'].includes(myClass))
-               //     && (this_group.group_type === 'admin')
+                    //     && (this_group.group_type === 'admin')
                   ) {
                     myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
                   }
@@ -210,16 +210,16 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
           }
         }
         if (myMaxAccessLevelToThisPerson > 0) { accessLevel = accessLevelTable[myMaxAccessLevelToThisPerson]; }
-        if (accessLevel !== 'none') {          
+        if (accessLevel !== 'none') {
           if (p?.local_data?.['date of birth']) {
-            let dob = makeDate(p.local_data['date of birth'], {forceForward: true});
+            let dob = makeDate(p.local_data['date of birth'], { forceForward: true });
             if (!birthdayList.hasOwnProperty(dob.numeric$)) {
               birthdayList[dob.numeric$] = [];
             }
             birthdayList[dob.numeric$].push({
               person_id: p.person_id,
               display_name: `${p.name.first} ${p.name.last}`,
-            })
+            });
           }
           if ((accessLevel === 'proxy') || (accessLevel === 'full')) {
             proxyList.push(p.person_id);
@@ -444,6 +444,163 @@ export async function getGroupsBelongTo(client_id, person_id, options = {}) {
   else { return returnObject; }
 };
 
+export async function getAuthObject(request) {
+  /* 
+  AuthObj in response will set permission level for default, people (as person_id), 
+  groups (as GRP//group_id), and flavors (as FLAV//flavor).  For each key, value should be:
+    0 = none
+    1 = minimal, I may see name only
+    3 = basic, I may see name and location
+    5 = contact detail, I may see contact information
+    7 = edit, I may update person information
+    9 = proxy
+  */
+  if (!request.userRec) {
+    if (!request.user_id) {
+      return {
+        source: 'Error',
+        authObj: { default: 0 }
+      };
+    }
+    else {
+      request.userRec = await getPerson(request.user_id);
+    }
+  }
+  // if account_class is 'master' or 'support' grant full authority
+  if (request.userRec.account_class && (['master', 'support'].includes(request.userRec.account_class))) {
+    return {
+      source: `User Account_class ${request.userRec.person_id}//${request.userRec.account_class}`,
+      authObj: { default: 9 }
+    };
+  }
+  // set based on the user's group
+  if (request.session) {
+    if (request.session.group_precedence) {
+      if (Array.isArray(request.session.group_precedence)) {
+        let lowIndex = 999;
+        request.userRec.groups.forEach(uGroup => {
+          let foundIndex = request.session.group_precedence.indexOf(uGroup);
+          if ((foundIndex > -1) && (foundIndex < lowIndex)) {
+            lowIndex = foundIndex;
+          }
+        });
+        if (lowIndex < 999) {
+          let targetGroupRec = await getGroup(request.session.group_precedence[lowIndex], request.session.client_id);
+          if (targetGroupRec) {
+            cl({ 'HighestPrecedentGroup': targetGroupRec.group_id });
+            if (targetGroupRec.authorities) {
+              return {
+                source: `Authority granted to the highest precedent Group I belong to = ${targetGroupRec.group_id}`,
+                authObj: targetGroupRec.authorities
+              };
+            }
+            else if (targetGroupRec.flavor && request.session.group_flavors) {
+              let foundFlavor = request.session.group_flavors.find(fItem => {
+                return (fItem.flavor === targetGroupRec.flavor);
+              });
+              if (foundFlavor) {
+                return {
+                  source: `Flavor of the Group I belong to that has the highest precedent = ${targetGroupRec.group_id}//${foundFlavor.flavor}`,
+                  authObj: foundFlavor.authorities
+                };
+              }
+              else {
+                cl({ 'Flavor for HighestPrecedentGroup not in Customization group_flavors': targetGroupRec.group_id });
+              }
+            }
+            else {
+              cl({ 'HighestPrecedentGroup has neither Authority nor Flavor': targetGroupRec.group_id });
+            }
+          }
+        }
+        else {
+          cl({ 'None of these User groups in precendent list': request.userRec.groups });
+        }
+      };
+    }
+    else {
+      cl('No precendent list in Customizations');
+    }
+    // set based on the user's group with the highest priority flavor
+    if (request.session.group_flavors) {
+      let lowFlavor = 999;
+      let winningGroup;
+      for (let g = 0; g < request.userRec.groups.length; g++) {
+        if (lowFlavor > 0) {
+          let userGroupRec = await getGroup(request.userRec.groups[g], request.session.client_id);
+          if (userGroupRec) {
+            if (!userGroupRec.flavor && userGroupRec.admin_class) {
+              userGroupRec.flavor = userGroupRec.admin_class;
+            }
+            if (userGroupRec.flavor) {
+              let foundFlavorIndex = request.session.group_flavors.findIndex(fItem => {
+                return (fItem.flavor === userGroupRec.flavor);
+              });
+              if ((foundFlavorIndex > -1) && (foundFlavorIndex < lowFlavor)) {
+                lowFlavor = foundFlavorIndex;
+                winningGroup = request.userRec.groups[g];
+              }
+            }
+          }
+        }
+      };
+      if (lowFlavor < 999) {
+        let foundFlavor = request.session.group_flavors[lowFlavor];
+        return {
+          source: `Highest precedent flavor associated with a Group I belong to = ${winningGroup}//${foundFlavor.flavor}`,
+          authObj: foundFlavor.authorities
+        };
+      }
+      else {
+        cl({ 'None of these User groups have a flavor in the flavor list': request.userRec.groups });
+      }
+    }
+    else {
+      cl('No flavor list in Customizations');
+    }
+    // set based on the user's admin group
+    let allGroupObject = await getAllGroups(request.userRec.person_id, request.session.client_id);
+    let userAdminGroupRec = await getGroup(allGroupObject.selectedID, request.session.client_id);
+    if (userAdminGroupRec) {
+      if (userAdminGroupRec.authorities) {
+        return {
+          source: `Authority granted to my Admin group = ${userAdminGroupRec.group_id}`,
+          authObj: userAdminGroupRec.authorities
+        };
+      }
+      else if (userAdminGroupRec.flavor && request.session.group_flavors) {
+        let foundFlavor = request.session.group_flavors.find(fItem => {
+          return (fItem.flavor === userAdminGroupRec.flavor);
+        });
+        if (foundFlavor) {
+          return {
+            source: `Flavor of my Admin group = ${userAdminGroupRec.group_id}//${foundFlavor.flavor}`,
+            authObj: foundFlavor.authorities
+          };
+        }
+      }
+      else {
+        cl({ 'The Admin group has neither an authority nor a flavor': userAdminGroupRec.group_id });
+      }
+    }
+    // set based on the default authority for this client
+    if (request.session.default_authority) {
+      return {
+        source: 'Default authority for my client',
+        authObj: request.session.default_authority
+      };
+    }
+    else {
+      cl({ 'There is no default authority for this client': request.session.client_id });
+    }
+  }
+  // failed on every effort
+  return {
+    source: 'Failed to find any sources',
+    authObj: { default: 0 }
+  };
+}
+
 export async function getGroup(pGroup_id, pClient_id) {
   if (!pClient_id) {
     if (pGroup_id && pGroup_id.includes('//')) { [pClient_id, pGroup_id] = pGroup_id.split('//'); }
@@ -583,7 +740,7 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
       .query(qParm)
       .promise()
       .catch(error => {
-        cl({ 'Bad scan on People in getGroupMembers - caught error is': error });
+        cl({ 'Bad scan on People in getMemberList - caught error is': error });
       });
     if (recordExists(gPeopleRecs)) {
       for (let p = 0; p < gPeopleRecs.Items.length; p++) {
@@ -646,6 +803,97 @@ export async function getMemberList(pGroups, pClient_id, options = {}) {
     });
   }
   return rObj;
+}
+
+export async function getGroupMembers(request = {}) {
+  /*
+    request...
+      group_id - string: a single group to look for
+      groupList - array: an array of groups to look for
+      ignore_exclude - boolean: true = return even if (directory_option === 'exclude'); false or missing = respect directory option
+      short - boolean: true = return only name, id, and search; false or missing = name, id, search, messaging, member_of
+      ignore_unlisted - boolean: true = return messaging info, even if private is set
+      with_responsible - boolean: true = add responsible_for
+    return an array of objects  
+  */
+  if (!request.groupList) {
+    if (request.group_id) {
+      request.groupList = [request.group_id];
+    }
+    else {
+      return [];
+    }
+  }
+  let response = [];
+  let all_groups = (request.groupList.includes('*all'));
+  if (!request.client_id) {
+    request.client_id = session.client_id;
+  }
+  // retrieve every account in the client; 
+  let gPeopleRecs = await dbClient
+    .query({
+      KeyConditionExpression: 'client_id = :c',
+      ExpressionAttributeValues: { ':c': request.client_id },
+      TableName: "People",
+      IndexName: "client_id-index",
+    })
+    .promise()
+    .catch(error => {
+      cl({ 'Bad scan on People in getGroupMembers - caught error is': error });
+    });
+  if (recordExists(gPeopleRecs)) {
+    gPeopleRecs.Items.forEach(personRec => {
+        if (personRec.groups.some(this_group => {
+          return (all_groups || request.groupList.includes(this_group) || request.groupList.includes(personRec.person_id));
+        })) {
+          let this_response = {
+            person_id: personRec.person_id,
+            display_name: (`${personRec.name.first.trim()} ${personRec.name.last.trim()}`),
+            first_name: personRec.name.first,
+            last_name: personRec.name.last,
+            search_data: personRec.search_data
+          };
+          if (!request.short) {
+            this_response.member_of = deepCopy(personRec.groups);
+            for (const mType in personRec.messaging) {
+              if (!mType.includes('_private')) {
+                if (request.ignore_unlisted || !personRec.messaging[`${mType}_private`]) {
+                  this_response[mType] = personRec.messaging[mType];
+                }
+              }
+            }
+          }
+          response.push(this_response);
+        }
+    });    
+    if (request.withResponsible) {
+      for (let rN = 0; rN < response.length; rN++) {
+        let sessionRec = await getSession(response[rN].person_id);
+        if (sessionRec?.responsible_for) {
+          response[rN].responsible_for = makeArray(sessionRec.responsible_for);
+        }
+      }
+    }
+    let ascending = true;
+    let sort_by = 'display_name';
+    if (request.sort) {
+      if (request.sort.sort_by) {
+        sort_by = request.sort.sort_by;
+      }
+      if (request.sort.descending) {
+        ascending = false;
+      }
+    }
+    response.sort((a, b) => {
+      if (a[sort_by] > b[sort_by]) {
+        return (ascending ? 1 : -1);
+      }
+      else {
+        return (ascending ? -1 : 1);
+      }
+    });
+    return response;
+  }
 }
 
 export async function addMember(pPerson, pClient, pGroup) {

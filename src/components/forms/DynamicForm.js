@@ -10,6 +10,7 @@ import FileUpload from '../forms/FileUpload';
 import ObservationForm from '../forms/ObservationForm';
 
 import FormFill from './FormFill';
+import DocumentDashboard from '../dialogs/DocumentDashboard';
 import MarqueeMaintenance from '../dialogs/MarqueeMaintenance';
 import MultiObservationFormC from '../forms/MultiObservationFormC';
 import MultiObservationFormD from '../forms/MultiObservationFormD';
@@ -514,6 +515,13 @@ export default ({
     case 'form_fill':
       return (
         <FormFill
+          request={defaultValue}
+          onClose={onSave}
+        />
+      );
+    case 'document_dashboard':
+      return (
+        <DocumentDashboard
           request={defaultValue}
           onClose={onSave}
         />
