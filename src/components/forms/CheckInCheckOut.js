@@ -300,6 +300,7 @@ export default ({ onSave, onClose }) => {
         mode = 'resident';
         break;
       }
+      case 'student': 
       case 'resident': {
         reactData.resident_mode = true;
         mode = 'resident';
@@ -540,12 +541,14 @@ export default ({ onSave, onClose }) => {
                   let textInput = {
                     Action: hNote
                   };
-                  responses.forEach((r, x) => {
-                    if (r && state.session.resident_checkout_prompts) {
-                      hNote += ` ${state.session.resident_checkout_prompts[x]}: ${r}.`;
-                      textInput[state.session.resident_checkout_prompts[x]] = r;
-                    }
-                  });
+                  if (responses && (responses.length > 0)) {
+                    responses.forEach((r, x) => {
+                      if (r && state.session.resident_checkout_prompts) {
+                        hNote += ` ${state.session.resident_checkout_prompts[x]}: ${r}.`;
+                        textInput[state.session.resident_checkout_prompts[x]] = r;
+                      }
+                    });
+                  }
                   reactData.currentStatus.reqRec.history.unshift(hNote);
                   if (!isEmpty(textInput)) {
                     reactData.currentStatus.reqRec.current_request = { textInput };
