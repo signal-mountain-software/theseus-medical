@@ -139,7 +139,7 @@ export default ({ request = {}, onClose }) => {
     options.form_id = docParts[1];
   }
 
-  /* 
+   /* 
     if options.changeMode, then
       - expect options.document_id
       - the form_id comes from the document_id (person %% form_id %% version)
@@ -265,20 +265,38 @@ export default ({ request = {}, onClose }) => {
     let default_source, default_ref;
     if (reactData.formRec.fields[this_field].choose) {
       if (!reactData.peopleList.hasOwnProperty(reactData.formRec.fields[this_field].choose.ref)) {
-        default_peopleList = await getGroupMembers({
-          group_id: reactData.formRec.fields[this_field].choose.ref,
-          short: true
-        });
-        reactData.peopleList[reactData.formRec.fields[this_field].choose.ref] =
-          default_peopleList.map(person => {
-            return {
-              value: person.person_id,
-              label: person.display_name
-            };
+        if (reactData.formRec.fields[this_field].choose.ref.startsWith('%%resp')) {
+          if (!state.session.responsible_for || (state.session.responsible_for.length === 0)) {
+            default_peopleList = await getGroupMembers({
+              groupList: state.user.person_id,
+              short: true
+            });
+          }
+          else {
+            default_peopleList = await getGroupMembers({
+              groupList: [...state.session.responsible_for, state.user.person_id],
+              short: true
+            });
+          }
+        }
+        else {
+          default_peopleList = await getGroupMembers({
+            group_id: reactData.formRec.fields[this_field].choose.ref,
+            short: true
           });
-        updateReactData({
-          peopleList: reactData.peopleList
-        }, false);
+        }
+        if (default_peopleList && (default_peopleList.length > 0)) {
+          reactData.peopleList[reactData.formRec.fields[this_field].choose.ref] =
+            default_peopleList.map(person => {
+              return {
+                value: person.person_id,
+                label: person.display_name
+              };
+            });
+          updateReactData({
+            peopleList: reactData.peopleList
+          }, false);
+        }
       }
       else {
         default_peopleList = reactData.peopleList[reactData.formRec.fields[this_field].choose.ref];
@@ -304,6 +322,9 @@ export default ({ request = {}, onClose }) => {
         default_ref = reactData.formRec.fields[this_field].default.ref;
       }
     }
+    if (reactData.formRec.fields[this_field].default.hasOwnProperty('assigned_to')) {
+      default_ref += reactData.formRec.fields[this_field].default.assigned_to;
+    }
     if (!default_source) {
       defaultText = (default_ref || '');
     }
@@ -311,10 +332,21 @@ export default ({ request = {}, onClose }) => {
       switch (default_source) {
         case 'form': {
           if (!reactData?.document.hasOwnProperty(default_ref)) {
-            let documentsObj = await loadDocument({
-              form_id: default_ref,
-              recent: true
-            });
+            let documentsObj;
+            if (reactData.formRec.fields[this_field].default.hasOwnProperty('assigned_to')) {
+              let [this_form, this_assignTo] = default_ref.split('%%');
+              documentsObj = await loadDocument({
+                form_id: this_form,
+                assigned_to: ((this_assignTo === 'person_id') ? state.patient.person_id : this_assignTo),
+                recent: true
+              });
+            }
+            else {
+              documentsObj = await loadDocument({
+                form_id: default_ref,
+                recent: true
+              });
+            }
             updateReactData({
               document: documentsObj
             }, true);
@@ -1067,7 +1099,7 @@ export default ({ request = {}, onClose }) => {
     }
   }
 
-  async function loadDocument({ recent, form_id, specific_document }) {
+  async function loadDocument({ recent, form_id, specific_document, assigned_to }) {
     let queryObj = { TableName: 'Documents' };
     queryObj.KeyConditionExpression = 'client_id = :c';
     queryObj.ExpressionAttributeValues = { ':c': state.session.client_id };
@@ -1095,6 +1127,13 @@ export default ({ request = {}, onClose }) => {
         queryObj.ExpressionAttributeValues[':dID'] = `${splitDoc[0]}%%${splitDoc[1]}%%${splitDoc[2]}`;
       }
     }
+    else if (assigned_to) {
+      queryObj.IndexName = 'assigned_to-index';
+      queryObj.KeyConditionExpression += ' and assigned_to = :a)';
+      queryObj.ExpressionAttributeValues[':a'] = `${assigned_to || state.patient.person_id}`;
+      queryObj.ScanIndexForward = false;
+      queryObj.Limit = 1;
+    }
     let queryResult = await dbClient
       .query(queryObj)
       .promise()
@@ -1107,6 +1146,9 @@ export default ({ request = {}, onClose }) => {
     let documentsObj = deepCopy(reactData.document);
     if (!recordExists(queryResult)) {
       queryResult.Items = [{ values: {} }];
+    }
+    if (assigned_to) {
+      form_id += `%%${assigned_to}`;
     }
     documentsObj[form_id] = queryResult.Items[0].values;
     if (queryResult.Items[0].title) {
@@ -1122,6 +1164,10 @@ export default ({ request = {}, onClose }) => {
       if (isEmpty(response)) {
         onClose();
       }
+      // do I have permission to update this form?
+      if (response.hasOwnProperty('may_update')) {
+
+      } 
       let documentsObj;
       if ((options.changeMode || options.viewMode || options.incompleteMode) && options.document_id) {
         documentsObj = await loadDocument({

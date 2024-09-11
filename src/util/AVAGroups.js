@@ -149,7 +149,7 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
             let gL = p.groups.length;
             for (let x = 0; x < gL; x++) {
               let g = p.groups[x];
-              if ((g === 'ALL') || (g === "__TOP__")) {
+              if ((g === 'ALL') || (g === "__TOP__") || (g === "_TOP_")) {
                 continue;
               }
               // am I specificaly responsible for this person?
@@ -197,7 +197,8 @@ export async function accountAccess(person_id, pClient_id, dispatch) {
                   }
                   if ((myRole === 'member')
                     && (['local', 'resident', 'staff', 'admin'].includes(myClass))
-                    //     && (this_group.group_type === 'admin')
+                    //  if I am a member of a group and not a guest, vendor, or family
+                    //    ... I may(at least) view other members of my group
                   ) {
                     myGroupAccessLevel[g] = Math.max(accessLevelTable.indexOf('view'), myGroupAccessLevel[g]);
                   }
