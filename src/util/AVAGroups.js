@@ -657,7 +657,7 @@ export async function getRole(pGroup, pPerson) {
 
 export function determineClass(gList, group_assignments) {
   let groupFlavor = {};
-  let groupHierarchy = ['inactive', 'admin', 'staff', 'resident', 'family', 'guest', 'vendor', 'other'];
+  let groupHierarchy = ['inactive', 'admin', 'staff', 'resident', 'student', 'family', 'guest', 'vendor', 'other'];
   if (group_assignments) {
     Object.keys(group_assignments).forEach(t => {
       let groups = makeArray(group_assignments[t]);
