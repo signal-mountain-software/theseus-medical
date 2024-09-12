@@ -125,7 +125,16 @@ export default ({ pSession, pGroup_id, pGroup_name, peopleList, showList = 'full
     }
     let reactUpdater = {};
     if (memberInfo.peopleList.length === 0) {
-      enqueueSnackbar(`AVA couldn't find any members in that Group.`, { variant: 'error' });
+      if (pGroupArray.every((this_group) => {
+        return (!state.accessList[state.session.client_id].hasOwnProperty(this_group)
+          || (state.accessList[state.session.client_id][this_group] === 0));
+      })) {
+        enqueueSnackbar(`You don't have permission to view that Group.`, { variant: 'error' });
+
+      }
+      else {
+        enqueueSnackbar(`AVA couldn't find any members in that Group.`, { variant: 'error' });
+      }
     }
     reactUpdater.groupMemberList = deepCopy(memberInfo.peopleList);
     if (pGroupArray.length === 1) {

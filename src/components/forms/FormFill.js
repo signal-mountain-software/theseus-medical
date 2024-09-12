@@ -140,19 +140,19 @@ export default ({ request = {}, onClose }) => {
   }
 
   /* 
-    if options.changeMode, then
-      - expect options.document_id
-      - the form_id comes from the document_id (person %% form_id %% version)
-      - all defaults in form_id are ignored; values from incoming document_id are used as defaults
-      - if saved, add replaced_by = <new document_id> to the incoming document_id and update that document
+   if options.changeMode, then
+     - expect options.document_id
+     - the form_id comes from the document_id (person %% form_id %% version)
+     - all defaults in form_id are ignored; values from incoming document_id are used as defaults
+     - if saved, add replaced_by = <new document_id> to the incoming document_id and update that document
 
-    if options.viewMode, then
-      - expect options.document_id
-      - the form_id comes from the document_id (person %% form_id %% version)
-      - all fields rendered in view mode, including signature
-      - do not show "save" button
+   if options.viewMode, then
+     - expect options.document_id
+     - the form_id comes from the document_id (person %% form_id %% version)
+     - all fields rendered in view mode, including signature
+     - do not show "save" button
 
-  */
+ */
 
   const [reactData, setReactData] = React.useState({
     form_id: options.form_id,
@@ -265,20 +265,38 @@ export default ({ request = {}, onClose }) => {
     let default_source, default_ref;
     if (reactData.formRec.fields[this_field].choose) {
       if (!reactData.peopleList.hasOwnProperty(reactData.formRec.fields[this_field].choose.ref)) {
-        default_peopleList = await getGroupMembers({
-          group_id: reactData.formRec.fields[this_field].choose.ref,
-          short: true
-        });
-        reactData.peopleList[reactData.formRec.fields[this_field].choose.ref] =
-          default_peopleList.map(person => {
-            return {
-              value: person.person_id,
-              label: person.display_name
-            };
+        if (reactData.formRec.fields[this_field].choose.ref.startsWith('%%resp')) {
+          if (!state.session.responsible_for || (state.session.responsible_for.length === 0)) {
+            default_peopleList = await getGroupMembers({
+              groupList: state.user.person_id,
+              short: true
+            });
+          }
+          else {
+            default_peopleList = await getGroupMembers({
+              groupList: [...state.session.responsible_for, state.user.person_id],
+              short: true
+            });
+          }
+        }
+        else {
+          default_peopleList = await getGroupMembers({
+            group_id: reactData.formRec.fields[this_field].choose.ref,
+            short: true
           });
-        updateReactData({
-          peopleList: reactData.peopleList
-        }, false);
+        }
+        if (default_peopleList && (default_peopleList.length > 0)) {
+          reactData.peopleList[reactData.formRec.fields[this_field].choose.ref] =
+            default_peopleList.map(person => {
+              return {
+                value: person.person_id,
+                label: person.display_name
+              };
+            });
+          updateReactData({
+            peopleList: reactData.peopleList
+          }, false);
+        }
       }
       else {
         default_peopleList = reactData.peopleList[reactData.formRec.fields[this_field].choose.ref];
@@ -304,6 +322,10 @@ export default ({ request = {}, onClose }) => {
         default_ref = reactData.formRec.fields[this_field].default.ref;
       }
     }
+    if (reactData.formRec.fields?.[this_field]?.default
+      && reactData.formRec.fields?.[this_field]?.default.hasOwnProperty('assigned_to')) {
+      default_ref += reactData.formRec.fields[this_field].default.assigned_to;
+    }
     if (!default_source) {
       defaultText = (default_ref || '');
     }
@@ -311,10 +333,25 @@ export default ({ request = {}, onClose }) => {
       switch (default_source) {
         case 'form': {
           if (!reactData?.document.hasOwnProperty(default_ref)) {
-            let documentsObj = await loadDocument({
-              form_id: default_ref,
-              recent: true
-            });
+            let documentsObj;
+            if (reactData.formRec.fields[this_field].default.hasOwnProperty('assigned_to')) {
+              let [this_form, this_assignTo] = default_ref.split('%%');
+              if (this_assignTo === 'person_id') {
+                this_assignTo = state.patient.person_id;
+                default_ref = `${this_form}%%${state.patient.person_id}`;
+              }
+              documentsObj = await loadDocument({
+                form_id: this_form,
+                assigned_to: this_assignTo,
+                recent: true
+              });
+            }
+            else {
+              documentsObj = await loadDocument({
+                form_id: default_ref,
+                recent: true
+              });
+            }
             updateReactData({
               document: documentsObj
             }, true);
@@ -432,12 +469,17 @@ export default ({ request = {}, onClose }) => {
               }
               case 'id': {
                 defaultValue = reactData?.document[default_ref][this_field];
-                if (reactData.formRec.fields[this_field].choose) {
+                if ((reactData.formRec.fields[this_field].choose)
+                  && !options.viewMode) {
                   let foundPerson = default_peopleList.find(person => {
                     return (person.person_id === defaultValue);
                   });
                   if (foundPerson) {
                     defaultText = foundPerson.display_name;
+                  }
+                  else {
+                    defaultText = '';
+                    defaultValue = '';
                   }
                 }
                 else {
@@ -1067,14 +1109,14 @@ export default ({ request = {}, onClose }) => {
     }
   }
 
-  async function loadDocument({ recent, form_id, specific_document }) {
+  async function loadDocument({ recent, form_id, specific_document, assigned_to }) {
     let queryObj = { TableName: 'Documents' };
     queryObj.KeyConditionExpression = 'client_id = :c';
     queryObj.ExpressionAttributeValues = { ':c': state.session.client_id };
     if (!form_id || (form_id === 'recent')) {
       form_id = reactData.form_id;
     }
-    if (recent) {   // recent refers to the most recent version of the requested form
+    if (recent && !assigned_to) {   // recent refers to the most recent version of the requested form
       queryObj.KeyConditionExpression += ' and begins_with(document_id, :dID)';
       queryObj.ExpressionAttributeValues[':dID'] = `${options.person_id || state.patient.person_id}%%${form_id}%%`;
       queryObj.ScanIndexForward = false;
@@ -1095,6 +1137,12 @@ export default ({ request = {}, onClose }) => {
         queryObj.ExpressionAttributeValues[':dID'] = `${splitDoc[0]}%%${splitDoc[1]}%%${splitDoc[2]}`;
       }
     }
+    else if (assigned_to) {
+      queryObj.IndexName = 'assigned_to-index';
+      queryObj.KeyConditionExpression += ' and assigned_to = :a';
+      queryObj.ExpressionAttributeValues[':a'] = `${assigned_to || state.patient.person_id}`;
+      queryObj.ScanIndexForward = false;
+    }
     let queryResult = await dbClient
       .query(queryObj)
       .promise()
@@ -1107,6 +1155,24 @@ export default ({ request = {}, onClose }) => {
     let documentsObj = deepCopy(reactData.document);
     if (!recordExists(queryResult)) {
       queryResult.Items = [{ values: {} }];
+    }
+    if (assigned_to) {
+      if (queryResult.Items.length > 1) {
+        queryResult.Items.sort((a, b) => {
+          return ((a.completed_timestamp < b.completed_timestamp) ? 1 : -1);
+        });
+      }
+      let foundIt = 0;
+      let foundDoc = [{ values: {} }];
+      queryResult.Items.forEach(this_document => {
+        if ((this_document.completed_timestamp > foundIt)
+          && (this_document.form_id === form_id)) {
+          foundIt = this_document.completed_timestamp;
+          foundDoc = this_document;
+        }
+      });
+      queryResult.Items[0] = foundDoc;
+      form_id += `%%${assigned_to}`;
     }
     documentsObj[form_id] = queryResult.Items[0].values;
     if (queryResult.Items[0].title) {
@@ -1121,6 +1187,10 @@ export default ({ request = {}, onClose }) => {
       let response = await loadForm(reactData.form_id);
       if (isEmpty(response)) {
         onClose();
+      }
+      // do I have permission to update this form?
+      if (response.hasOwnProperty('may_update')) {
+
       }
       let documentsObj;
       if ((options.changeMode || options.viewMode || options.incompleteMode) && options.document_id) {
@@ -1492,69 +1562,95 @@ export default ({ request = {}, onClose }) => {
                             justifyContent='flex-start'
                             alignItems='flex-start'
                           >
-                            <Box
-                              key={`selectBox-${this_field}`}
-                              display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
-                            >
-                              <Select
-                                options={reactData.peopleList[reactData.formRec.fields[this_field].choose.ref]}
-                                searchBy={'label'}
-                                dropdownHandle={true}
-                                clearOnSelect={true}
-                                clearOnBlur={true}
-                                key={`selectOptions-${this_field}`}
-                                disabled={options.viewMode}
-                                searchable={true}
-                                create={false}
-                                closeOnClickInput={true}
-                                closeOnSelect={true}
-                                style={{
-                                  lineHeight: 1,
-                                  fontSize: `${reactData.user_fontSize * (1.05)}rem`,
-                                  marginLeft: '-5px',
-                                  marginBottom: '-4px',
-                                  borderWidth: 0
-                                }}
+                            {(!options.viewMode) &&
+                              <Box
+                                key={`selectBox-${this_field}`}
+                                display='flex' marginLeft={1} flexGrow={1} flexDirection='column'
+                              >
+                                <Select
+                                  options={reactData.peopleList[reactData.formRec.fields[this_field].choose.ref]}
+                                  searchBy={'label'}
+                                  dropdownHandle={true}
+                                  clearOnSelect={true}
+                                  clearOnBlur={true}
+                                  key={`selectOptions-${this_field}`}
+                                  disabled={options.viewMode}
+                                  searchable={true}
+                                  create={false}
+                                  closeOnClickInput={true}
+                                  closeOnSelect={true}
+                                  style={{
+                                    lineHeight: 1,
+                                    fontSize: `${reactData.user_fontSize * (1.05)}rem`,
+                                    marginLeft: '-5px',
+                                    marginBottom: '-4px',
+                                    borderWidth: 0
+                                  }}
 
-                                noDataLabel={`No ${reactData.formRec.fields[this_field].prompt.ref}s match`}
-                                values={(reactValues[this_field] && reactValues[this_field].valueText)
-                                  ? [{ label: reactValues[this_field].valueText, value: reactValues[this_field].value }]
-                                  : []
-                                }
-                                placeholder={``}
-                                onChange={async (values) => {
-                                  if (values.length > 0) {
-                                    handleChangeValue({
-                                      newText: values[0].label,
-                                      newValue: values[0].value,
-                                      prop: this_field,
-                                      sentenceCase: false
-                                    });
+                                  noDataLabel={`No ${reactData.formRec.fields[this_field].prompt.ref}s match`}
+                                  values={(reactValues[this_field] && reactValues[this_field].valueText)
+                                    ? [{ label: reactValues[this_field].valueText, value: reactValues[this_field].value }]
+                                    : []
                                   }
-                                }}
-                              />
+                                  placeholder={``}
+                                  onChange={async (values) => {
+                                    if (values.length > 0) {
+                                      handleChangeValue({
+                                        newText: values[0].label,
+                                        newValue: values[0].value,
+                                        prop: this_field,
+                                        sentenceCase: false
+                                      });
+                                    }
+                                  }}
+                                />
+                                <Box display='flex'
+                                  flexDirection='row'
+                                  paddingTop={'4px'}
+                                  borderTop={1}
+                                  key={`selectPromptBox-${this_field}`}
+                                >
+                                  <Typography
+                                    key={`selectPrompt-${this_field}`}
+                                    id={`selectPrompt-${this_field}`}
+                                    style={AVATextStyle({
+                                      lineHeight: 1,
+                                      width: `${reactData.formRec.fields[this_field].prompt.width || 200}px`,
+                                      maxWidth: '90%',
+                                      size: 0.75,
+                                      opacity: '60%',
+                                      margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                    })}
+                                  >
+                                    {reactData.formRec.fields[this_field].prompt.ref}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            }
+                            {(options.viewMode) &&
                               <Box display='flex'
                                 flexDirection='row'
-                                paddingTop={'4px'}
-                                borderTop={1}
+                                marginLeft={1}
+                                marginTop={-0.5}
                                 key={`selectPromptBox-${this_field}`}
                               >
                                 <Typography
-                                  key={`selectPrompt-${this_field}`}
-                                  id={`selectPrompt-${this_field}`}
+                                  id={`geoButtonPrompt-${this_field}`}
+                                  key={`geoButtonPrompt-${this_field}`}
                                   style={AVATextStyle({
-                                    lineHeight: 1,
-                                    width: `${reactData.formRec.fields[this_field].prompt.width || 200}px`,
+                                    lineHeight: 1.2,
+                                    width: `${reactData.formRec.fields[this_field].prompt.width || 300}px`,
                                     maxWidth: '90%',
-                                    size: 0.75,
+                                    size: 1,
+                                    bold: true,
                                     opacity: '60%',
-                                    margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                                    margin: { top: 0, bottom: 0, left: 0, right: 3 }
                                   })}
                                 >
-                                  {reactData.formRec.fields[this_field].prompt.ref}
+                                  {reactValues[this_field].valueText}
                                 </Typography>
                               </Box>
-                            </Box>
+                            }
                           </Box>
                         }
                         {(reactData.formRec.fields[this_field].value.type === 'geolocation') &&
