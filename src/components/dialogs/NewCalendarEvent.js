@@ -9,6 +9,8 @@ import ClientsSection from '../sections/ClientsSection';
 import EditList from '../forms/EditList';
 import Select from "react-dropdown-select";
 
+import { makeDate } from '../../util/AVADateTime';
+
 import { useSnackbar } from 'notistack';
 
 import PersonFilter from '../forms/PersonFilter';
@@ -234,7 +236,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     groupList: [],
     restrictToGroups: [],
     slotObjList: [],
-    preReservationList: []
+    preReservationList: [],
+    dateObj: { error: true }  
   });
   //const [forceRedisplay, setForceRedisplay] = React.useState();
 
@@ -345,6 +348,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     else {
       enqueueSnackbar(`Sorry.  AVA could not save this event!`, { variant: 'error' });
     }
+    localStorage.setItem(`calendarChanged`, true);
     onClose(response);
   };
 
@@ -366,7 +370,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   }
 
   function OK2Save() {
-    return ((description.trim() !== '') && (event_date.trim() !== ''));
+    return ((description.trim() !== '') && (!reactData.dateObj.error));
   }
 
   const handleChangeDescription = vCheck => {
@@ -517,12 +521,16 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const handleDateExit = event => {
     if (event.key === 'Enter' || event.type === 'blur') {
       let goodDate = makeDate(event_date.trim());
-      setEventAsADate(goodDate);
+      updateReactData({
+        dateObj: goodDate
+      }, true);
+      setEventAsADate(goodDate.date);
       if (!prefMethod) { setMethod('specific_date'); };
-      setEventDate(goodDate.toDateString());
+      setEventDate(goodDate.absolute);
     }
   };
 
+  /*
   function makeDate(pDate) {
     let goodDate = new Date(pDate);
     if (isNaN(goodDate)) {
@@ -549,7 +557,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     };
     return goodDate;
   }
-
+*/
+  
   const handleChangeLastDate = event => {
     setLastAsADate(null);
     setLastDate(event.target.value);
@@ -1354,7 +1363,10 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                     display='flex' flexGrow={1} flexDirection='column'
                   >
                     <Select
-                      options={makeChoices(state.accessList[state.session.client_id].list)}
+                      options={(state.accessList && state.accessList[state.session.client_id])
+                        ? makeChoices(state.accessList[state.session.client_id].list)
+                        : [{ value: state.session.patient_id, label: state.session.patient_display_name }]
+                      }
                       searchBy={'label'}
                       dropdownHandle={true}
                       multi={true}
@@ -1405,7 +1417,10 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                           margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
                         })}
                       >
-                        Choose Appointment Participants
+                        {(state.accessList && state.accessList[state.session.client_id])
+                          ? ' Choose Appointment Participants'
+                          : 'AVA still loading...'
+                        }
                       </Typography>
                     </Box>
                   </Box>

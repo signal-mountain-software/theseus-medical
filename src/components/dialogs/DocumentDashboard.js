@@ -686,10 +686,7 @@ export default ({ request = {}, onClose }) => {
                         },
                         color: (((this_person.person_incompleteDoc_count > 0) && !this_person.person_expanded) ? 'red' : '')
                       })}>
-                      {(this_person.person_expanded
-                        ? 'Hide'
-                        : `Show ${(this_person.formTypes.length > 1) ? (this_person.formTypes.length + ' forms') : 'form'}`
-                      )}
+                      {`${this_person.formTypes.length} form${(this_person.formTypes.length > 1) ? 's' : ''}`}
                     </Typography>
                   }
                 </Box>
@@ -722,6 +719,14 @@ export default ({ request = {}, onClose }) => {
                           >
                           <Typography
                             key={`form__${personNdx}_${formNdx}`}
+                            onClick={() => {
+                              reactData.documentList[personNdx].formTypes[formNdx].form_expanded = !this_form.form_expanded;
+                              reactData.rememberedSelections[this_person.person_id].formType_expanded[this_form.form_id] = reactData.documentList[personNdx].formTypes[formNdx].form_expanded;
+                              updateReactData({
+                                documentList: reactData.documentList,
+                                rememberedSelections: reactData.rememberedSelections
+                              }, true);
+                            }}
                             style={AVATextStyle({
                               size: 1.3,
                               margin: {
@@ -750,43 +755,61 @@ export default ({ request = {}, onClose }) => {
                               },
                               color: (((this_form.form_incompleteDoc_count > 0) && !this_form.form_expanded) ? 'red' : '')
                             })}>
-                            {(this_form.form_expanded
-                              ? 'Hide'
-                              : `Show ${(this_form.documentList.length > 1) ? (this_form.documentList.length + ' documents') : 'document'}`
-                            )}
+                            {`${this_form.documentList.length} document${(this_form.documentList.length > 1) ? 's' : 'd'}`}
                           </Typography>
                         }
                       </Box>
                       {this_form.form_expanded &&
-                        this_form.documentList.map((this_document, documentNdx) => (
-                          <React.Fragment
-                            key={`docFrag__${personNdx}_${formNdx}_${documentNdx}`}
-                          >
-                            <Typography
-                              key={`doc__${personNdx}_${formNdx}_${documentNdx}`}
-                              onClick={() => {
-                                updateReactData({
-                                  stage: 'viewDoc',
-                                  signatureData: (this_document.signature_field
-                                    ? this_document.values[this_document.signature_field]
-                                    : null
-                                  ),
-                                  selectedDoc_id: this_document.document_id,
-                                  incomplete: !!this_document.incomplete
-                                }, true);
-                              }}
-                              style={AVATextStyle({
-                                size: 0.8, margin: {
-                                  top: 0.5,
-                                  bottom: 0.5,
-                                  left: 2
-                                },
-                                color: (this_document.incomplete ? 'red' : '')
-                              })}>
-                              {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${this_document.incomplete ? ' (incomplete)' : ''}`}
-                            </Typography>
-                          </React.Fragment>
-                        ))}
+                        <React.Fragment>
+                          <Typography
+                            key={`doc__${personNdx}_${formNdx}_addNew`}
+                            onClick={() => {
+                              updateReactData({
+                                stage: 'addDoc',
+                                selectedForm_id: this_form.form_id,
+                                selectedPerson_id: this_person.person_id
+                              }, true);
+                            }}
+                            style={AVATextStyle({
+                              size: 0.8, margin: {
+                                top: 0.5,
+                                bottom: 0.5,
+                                left: 2
+                              },
+                            })}>
+                            {`Add a new ${this_form.form_name}`}
+                          </Typography>
+                          {this_form.documentList.map((this_document, documentNdx) => (
+                            <React.Fragment
+                              key={`docFrag__${personNdx}_${formNdx}_${documentNdx}`}
+                            >
+                              <Typography
+                                key={`doc__${personNdx}_${formNdx}_${documentNdx}`}
+                                onClick={() => {
+                                  updateReactData({
+                                    stage: 'viewDoc',
+                                    signatureData: (this_document.signature_field
+                                      ? this_document.values[this_document.signature_field]
+                                      : null
+                                    ),
+                                    selectedDoc_id: this_document.document_id,
+                                    incomplete: !!this_document.incomplete
+                                  }, true);
+                                }}
+                                style={AVATextStyle({
+                                  size: 0.8, margin: {
+                                    top: 0.5,
+                                    bottom: 0.5,
+                                    left: 2
+                                  },
+                                  color: (this_document.incomplete ? 'red' : '')
+                                })}>
+                                {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${this_document.incomplete ? ' (incomplete)' : ''}`}
+                              </Typography>
+                            </React.Fragment>
+                          ))}
+                        </React.Fragment>
+                      }
                     </React.Fragment>
                   ))}
               </React.Fragment>

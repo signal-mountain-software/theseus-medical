@@ -90,12 +90,15 @@ export async function addEvent(body) {
       return false;
     });
   eventCache[eventID] = eventRec;
-  await getOccurenceList({
+  let occRecords = await getOccurenceList({
     client: body.clientId,
     event: eventID,
     from_date: eventRec.eventData.occPattern.first_date,
     number_of_occurrences: 30
   });
+  if (occRecords) {
+    eventRec.occRecords = occRecords;
+  }
   return eventRec;
 
   // **********

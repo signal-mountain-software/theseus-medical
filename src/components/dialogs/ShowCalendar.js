@@ -119,9 +119,13 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
   const { state } = useSession();
 
   let defaultValues = Object.assign({}, ...currentEvent);
-  let eList = currentEvent.find(e => {
-    return e.hasOwnProperty('eventList');
-  });
+  let eList = {};
+  let needRefresh = localStorage.getItem(`calendarChanged`);
+  if (!needRefresh) {
+    eList = currentEvent.find(e => {
+      return e.hasOwnProperty('eventList');
+    });
+  }
 
   const [reactData, setReactData] = React.useState({
     start_date: 0,
@@ -407,6 +411,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
         birthdayList: true,
         loading: false
       };
+      localStorage.setItem(`calendarChanged`, false);
       let client_style = AVADefaults({ client_style: 'get' });
       if (isObject(client_style)) {
         reactUpdObj.calendar_background = client_style.calendar_background;
