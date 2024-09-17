@@ -4,9 +4,9 @@ import { useSnackbar } from 'notistack';
 
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
 import { makeTime, addDays, makeDate } from '../../util/AVADateTime';
-import { isEmpty, isObject, deepCopy } from '../../util/AVAUtilities';
+import { isEmpty, isObject, deepCopy, makeArray } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
-import { getGroupsBelongTo, getMemberList } from '../../util/AVAGroups';
+import { getGroupsBelongTo, getMemberList, getGroupMembers } from '../../util/AVAGroups';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -111,29 +111,32 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, calendarMode, onClose }) => {
+export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClient, calendarMode, onClose }) => {
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showAll, setShowAll] = React.useState(true);
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
-  let defaultValues = Object.assign({}, ...currentEvent);
-  let eList = {};
-  let needRefresh = localStorage.getItem(`calendarChanged`);
-  if (!needRefresh) {
-    eList = currentEvent.find(e => {
-      return e.hasOwnProperty('eventList');
-    });
+  // let defaultValues = Object.assign({}, ...currentEvent);
+
+  let load_myCal = [];
+  if (defaultObject.hasOwnProperty('eventList')) {
+    if (!defaultObject.eventList.loadError) {
+      let needRefresh = localStorage.getItem(`calendarChanged`);
+      if (!(needRefresh === 'true')) {
+        load_myCal = defaultObject.eventList;
+      }
+    }
   }
 
   const [reactData, setReactData] = React.useState({
     start_date: 0,
     end_date: 0,
-    defaultValues: defaultValues,
-    selectedEvent: (currentEvent && !isObject(currentEvent[0]) ? currentEvent[0] : ''),
-    myCalendar: ((isEmpty(currentEvent) || !eList) ? [] : eList.eventList),
-    loading: ((currentEvent && !isObject(currentEvent[0])) || isEmpty(eList) || (eList && eList.eventList.loadError))
+    defaultValues: defaultObject,
+    selectedEvent: '',
+    myCalendar: load_myCal,
+    loading: true
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -411,6 +414,16 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
         birthdayList: true,
         loading: false
       };
+      if (reactData.defaultValues.assignmentView && reactData.defaultValues.allowAssign) {
+        let assignmentList = await getGroupMembers({
+          groupList: [...makeArray(reactData.defaultValues.allowAssign), state.session.patient_id],
+          short: true
+        });
+        if (assignmentList && (assignmentList.length > 0)) {
+          reactData.defaultValues.assignment__List = assignmentList;
+          reactUpdObj.defaultValues = reactData.defaultValues;
+        }
+      }
       localStorage.setItem(`calendarChanged`, false);
       let client_style = AVADefaults({ client_style: 'get' });
       if (isObject(client_style)) {

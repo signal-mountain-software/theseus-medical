@@ -498,7 +498,7 @@ export default ({
           patient={session}
           OGpatient={OGsession}
           peopleList={values}
-          currentEvent={defaultValue || []}
+          defaultObject={defaultObject || []}
           eventClient={newFact.client_id || session.client_id}
           calendarMode={(type === 'show_calendar') ? 'view' : ((type === 'calendar_history') ? 'history' : 'signUp')}
           onClose={onSave}
