@@ -2100,8 +2100,14 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       Object.assign(response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
     }
     else if ((occurrenceRec.record_type === 'slot') && ((occurrenceRec.slotData.status.current === 'selected') || (occurrenceRec.slotData.status.current === 'notes'))) {
-      response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
-        found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+      if (response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners.hasOwnProperty(occurrenceRec.slotData.owner)) {
+        response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[`${occurrenceRec.slotData.owner}%%${c}`] =
+          found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+      }
+      else {
+        response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
+          found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+      }
       if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
         peopleInfo[occurrenceRec.slotData.owner] = [];
       }
@@ -2133,7 +2139,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       response[this_date].events[`#greeting_${yymmdd}#`] = {
         description: holidays[today.obs],
         sort24: `0000-${holidays[today.obs]}`,
-        slot_owners: [],
+        slot_owners: {},
         type: 'holiday'
       };
     }
@@ -2141,7 +2147,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       response[this_date].events[`#greeting_${yymmdd}#`] = {
         description: holidays[yymmdd],
         sort24: `0000-${holidays[yymmdd]}`,
-        slot_owners: [],
+        slot_owners: {},
         type: 'holiday'
       };
     }
@@ -2149,7 +2155,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       response[this_date].events[`#greeting_${yymmdd}#`] = {
         description: holidays[mmdd],
         sort24: `0000-${holidays[mmdd]}`,
-        slot_owners: [],
+        slot_owners: {},
         type: 'holiday'
       };
     }

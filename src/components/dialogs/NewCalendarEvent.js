@@ -2,21 +2,25 @@ import React from 'react';
 
 import { prepareTargets } from '../../util/AVAGroups';
 import { makeArray } from '../../util/AVAUtilities';
-import { addEvent } from '../../util/AVACalendars';
+import { addEvent, writeSlot } from '../../util/AVACalendars';
 import { AVAclasses } from '../../util/AVAStyles';
 
 import ClientsSection from '../sections/ClientsSection';
 import EditList from '../forms/EditList';
+import Select from "react-dropdown-select";
 
 import { useSnackbar } from 'notistack';
 
 import PersonFilter from '../forms/PersonFilter';
+
+import { AVATextStyle } from '../../util/AVAStyles';
 
 import AppBar from '@material-ui/core/AppBar';
 import Box from '@material-ui/core/Box';
 import CloseIcon from '@material-ui/icons/Close';
 import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
+import DialogContent from '@material-ui/core/DialogContent';
 import IconButton from '@material-ui/core/IconButton';
 import Paper from '@material-ui/core/Paper';
 import Slide from '@material-ui/core/Slide';
@@ -62,6 +66,13 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: -12
+  },
+  dialogBox: {
+    paddingTop: 0,
+    paddingLeft: 0,
+    paddingBottom: theme.spacing(1),
+    overflowX: 'hidden',
+    marginLeft: theme.spacing(2),
   },
   radioDays: {
     fontSize: theme.typography.fontSize * 0.8,
@@ -184,7 +195,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
+export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppointment }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -222,7 +233,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
   const [reactData, setReactData] = React.useState({
     groupList: [],
     restrictToGroups: [],
-    slotObjList: []
+    slotObjList: [],
+    preReservationList: []
   });
   //const [forceRedisplay, setForceRedisplay] = React.useState();
 
@@ -237,6 +249,19 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
     if (force) {
       // setForceRedisplay(forceRedisplay => !forceRedisplay);
     }
+  };
+
+  const makeChoices = (rawList) => {
+    let response = [];
+    rawList.forEach(listEntry => {
+      if ((listEntry.access !== 'none') && (listEntry.access !== 'view')) {
+        response.push({
+          value: listEntry.person_id,
+          label: listEntry.display_name
+        });
+      }
+    });
+    return response;
   };
 
 
@@ -279,11 +304,11 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
         "time_to": time_to_display_string,
         "slots": reactData.slotObjList.map(s => { return s.key; }),
         "slot_object_list": reactData.slotObjList,
-        "defaultSlotOwners": defaultSlotOwners,
+        "defaultSlotOwners": defaultSlotOwners,   // first_occurrence
         "occDays": oDays,
         "location": location,
         "owner": ownerList,
-        "personal_event": !!personalEvent,
+        "personal_event": !!personalEvent && !isAppointment,
         "restrictions": reactData.restrictToGroups,
         "signup_type": signup_type,
         "slot_max_seats": slot_max_seats,
@@ -294,6 +319,25 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
       }
     };
     let response = await addEvent(payload);
+    if (isAppointment && (reactData.preReservationList.length > 0)) {
+      for (let o = 0; o < response.occRecords.occArray.length; o++) {
+        let this_occurrence = response.occRecords.occArray[o];
+        for (let s = 0; s < reactData.preReservationList.length; s++) {
+          let this_person = reactData.preReservationList[s];
+          let writeRequest = {
+            "client": state.session.client_id,
+            "event": response.event_id,
+            occurrence_date: this_occurrence,
+            "owner": this_person,
+            "slot": payload.calendar_info.slots[s] || this_person,
+            "status": 'selected',
+            "show_this_slot": true,
+            "no_messaging": false
+          };
+          await writeSlot(writeRequest);
+        }
+      }
+    }
     closeSnackbar();
     if (response) {
       enqueueSnackbar(`${response.eventData.event_data.description} has been saved!`, { variant: 'success' });
@@ -674,8 +718,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
       open={showNewEvent}
       onClose={handleAbort}
       TransitionComponent={Transition}
-      fullScreen={!personalEvent}
-      classes={{ paper: personalEvent ? classes.radius_rounded : null }}
+      fullScreen={true}
     >
       {!personalEvent &&
         <React.Fragment>
@@ -694,647 +737,713 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose }) => {
       }
       {showNewEvent && !customizeButton &&
         <React.Fragment>
-          <Box m={2}>
-            <Box mt={1} py={1} px={3} borderBottom={2}>
-              <Typography variant='h6'>Event Details</Typography>
-            </Box>
-            <Paper
-              component={Box}
-              p={3}
-              elevation={0}
-              display='flex'
-              flexDirection='row'
-              justifyContent='center'
-              alignItems='center'>
-              <Box flexGrow={2} display='flex' flexDirection='column'>
-                <form className={classes.root} noValidate autoComplete='off'>
-                  <div>
-                    <TextField
-                      id='description'
-                      value={description}
-                      fullWidth
-                      onChange={event => (handleChangeDescription(event.target.value))}
-                      helperText='Description'
-                    />
-                  </div>
-                  <div>
-                    <TextField
-                      id='location'
-                      value={location}
-                      fullWidth
-                      onChange={event => (handleChangeLocation(event.target.value))}
-                      helperText='Location'
-                    />
-                  </div>
-                  <div>
-                    <TextField
-                      id='event_date'
-                      value={event_date}
-                      onKeyPress={handleDateExit}
-                      onChange={handleChangeDate}
-                      onBlur={handleDateExit}
-                      helperText='Event Date'
-                    />
-                  </div>
-                  {(typeof (eventAsADate) === 'object') && eventAsADate &&
-                    <Box
-                      display="flex"
-                      pb={1}
-                      flexDirection='column'
-                      justifyContent="center"
+          <Box mt={1} py={1} px={3} borderBottom={2}>
+            <Typography variant='h6'>
+              {`${isAppointment ? 'Appointment' : 'Event'} Details`}
+            </Typography>
+          </Box>
+          <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+            <Box flexGrow={2} display='flex' paddingTop={2} flexDirection='column'>
+              <div>
+                <TextField
+                  id='description'
+                  value={description}
+                  fullWidth
+                  onChange={event => (handleChangeDescription(event.target.value))}
+                  helperText='Description'
+                />
+              </div>
+              <div>
+                <TextField
+                  id='location'
+                  value={location}
+                  fullWidth
+                  onChange={event => (handleChangeLocation(event.target.value))}
+                  helperText='Location'
+                />
+              </div>
+              <div>
+                <TextField
+                  id='event_date'
+                  value={event_date}
+                  onKeyPress={handleDateExit}
+                  onChange={handleChangeDate}
+                  onBlur={handleDateExit}
+                  helperText='Event Date'
+                />
+              </div>
+              {(typeof (eventAsADate) === 'object') && eventAsADate &&
+                <Box
+                  display="flex"
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup
+                      row
+                      defaultValue={prefMethod}
+                      aria-label="PrefMethod"
+                      name="method"
+                      value={prefMethod}
+                      onChange={handleChangeMethod}
                     >
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup
-                          row
-                          defaultValue={prefMethod}
-                          aria-label="PrefMethod"
-                          name="method"
-                          value={prefMethod}
-                          onChange={handleChangeMethod}
-                        >
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="specific_date"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                This date only
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="annually_on"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                {`Every year on ${eventAsADate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="weekly_on"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                {`Every week`}
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="bi-weekly_on"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                {`Every other week`}
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="monthly_by_dayOfWeek"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                {`Every month on the ${ordinal[(Math.min(Math.floor(eventAsADate.getDate() / 7.1) + 1, 4)) - 1]} ${eventAsADate.toLocaleDateString(undefined, { weekday: 'long' })}`}
-                              </Typography>}
-                          />
-                          {eventAsADate.getDate() < 29 &&
-                            <FormControlLabel
-                              className={classes.formControlLbl}
-                              value="monthly_by_date"
-                              control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                              label={
-                                <Typography className={classes.radioText}>
-                                  {`Every month on the ${ordinal[(eventAsADate.getDate()) - 1]}`}
-                                </Typography>}
-                            />
-                          }
-                        </RadioGroup>
-                      </FormControl>
-                    </Box>
-                  }
-                  {(prefMethod && ((prefMethod === 'weekly_on') || (prefMethod === 'bi-weekly_on'))) &&
-                    <Box display={'flex'} flexDirection={'row'} className={classes.formControlDayRow} flexWrap={'wrap'} >
-                      <Typography className={classes.radioText}>
-                        {`Which days?`}
-                      </Typography>
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <FormGroup row aria-label={`message_routedays_method`} name="method">
-                          <FormControlLabel
-                            className={classes.formControlDays}
-                            control={
-                              <Checkbox
-                                className={classes.centerCenter}
-                                value={checkedDays['0']}
-                                name={`message_routing_0`}
-                                onClick={() => {
-                                  if (checkedDays[0]) { checkedDays[0] = false; }
-                                  else { checkedDays[0] = true; }
-                                  setCheckedDays(checkedDays);
-                                }}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `message_routing_0` }}
-                              />
-                            }
-                            label={<Typography className={classes.radioDays}>Sun</Typography>}
-                            labelPlacement='bottom'
-                          />
-                          <FormControlLabel
-                            className={classes.formControlDays}
-                            control={
-                              <Checkbox
-                                className={classes.centerCenter}
-                                value={checkedDays['1']}
-                                name={`message_routing_1`}
-                                onClick={() => {
-                                  if (checkedDays[1]) { checkedDays[1] = false; }
-                                  else { checkedDays[1] = true; }
-                                  setCheckedDays(checkedDays);
-                                }}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `message_routing_1` }}
-                              />
-                            }
-                            label={<Typography className={classes.radioDays}>Mon</Typography>}
-                            labelPlacement='bottom'
-                          />
-                          <FormControlLabel
-                            className={classes.formControlDays}
-                            value="AVA"
-                            control={
-                              <Checkbox
-                                className={classes.centerCenter}
-                                value={checkedDays['2']}
-                                name={`message_routing_2`}
-                                onClick={() => {
-                                  if (checkedDays[2]) { checkedDays[2] = false; }
-                                  else { checkedDays[2] = true; }
-                                  setCheckedDays(checkedDays);
-                                }}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `message_routing_2` }}
-                              />
-                            }
-                            label={<Typography className={classes.radioDays}>Tue</Typography>}
-                            labelPlacement='bottom'
-                          />
-                          <FormControlLabel
-                            className={classes.formControlDays}
-                            value="AVA"
-                            control={
-                              <Checkbox
-                                className={classes.centerCenter}
-                                value={checkedDays['3']}
-                                name={`message_routing_3`}
-                                onClick={() => {
-                                  if (checkedDays[3]) { checkedDays[3] = false; }
-                                  else { checkedDays[3] = true; }
-                                  setCheckedDays(checkedDays);
-                                }}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `message_routing_3` }}
-                              />
-                            }
-                            label={<Typography className={classes.radioDays}>Wed</Typography>}
-                            labelPlacement='bottom'
-                          />
-                          <FormControlLabel
-                            className={classes.formControlDays}
-                            value="AVA"
-                            control={
-                              <Checkbox
-                                className={classes.centerCenter}
-                                value={checkedDays['4']}
-                                name={`message_routing_4`}
-                                onClick={() => {
-                                  if (checkedDays[4]) { checkedDays[4] = false; }
-                                  else { checkedDays[4] = true; }
-                                  setCheckedDays(checkedDays);
-                                }}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `message_routing_4` }}
-                              />
-                            }
-                            label={<Typography className={classes.radioDays}>Thu</Typography>}
-                            labelPlacement='bottom'
-                          />
-                          <FormControlLabel
-                            className={classes.formControlDays}
-                            value="AVA"
-                            control={
-                              <Checkbox
-                                className={classes.centerCenter}
-                                value={checkedDays['5']}
-                                name={`message_routing_5`}
-                                onClick={() => {
-                                  if (checkedDays[5]) { checkedDays[5] = false; }
-                                  else { checkedDays[5] = true; }
-                                  setCheckedDays(checkedDays);
-                                }}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `message_routing_5` }}
-                              />
-                            }
-                            label={<Typography className={classes.radioDays}>Fri</Typography>}
-                            labelPlacement='bottom'
-                          />
-                          <FormControlLabel
-                            className={classes.formControlDays}
-                            value="AVA"
-                            control={
-                              <Checkbox
-                                className={classes.centerCenter}
-                                value={checkedDays['6']}
-                                name={`message_routing_6`}
-                                onClick={() => {
-                                  if (checkedDays[6]) { checkedDays[6] = false; }
-                                  else { checkedDays[6] = true; }
-                                  setCheckedDays(checkedDays);
-                                }}
-                                disableRipple
-                                inputProps={{ 'aria-labelledby': `message_routing_6` }}
-                              />
-                            }
-                            label={<Typography className={classes.radioDays}>Sat</Typography>}
-                            labelPlacement='bottom'
-                          />
-                        </FormGroup>
-                      </FormControl>
-                    </Box>
-                  }
-                  {(prefMethod && (prefMethod !== 'specific_date')) &&
-                    <div>
-                      <TextField
-                        id='last_date'
-                        value={last_date}
-                        onKeyPress={handleLastDateExit}
-                        onChange={handleChangeLastDate}
-                        onBlur={handleLastDateExit}
-                        helperText='Last Date to Schedule'
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="specific_date"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            This date only
+                          </Typography>}
                       />
-                    </div>
-                  }
-                  {prefMethod && (prefMethod !== 'specific_date') && !personalEvent &&
-                    <Box
-                      display="flex"
-                      pt={2}
-                      pb={1}
-                      flexDirection='column'
-                      justifyContent="center"
-                    >
-                      <Typography className={classes.radioText}>When accessing a new occurrence, copy previous names?</Typography>
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup
-                          row
-                          defaultValue={defaultSlotOwners}
-                          aria-label="SignUp"
-                          name="signup"
-                          value={defaultSlotOwners}
-                          onChange={handleChangeDefaultSlotOwners}
-                        >
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="none"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                Do not copy
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="first_occurrence"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                Copy from first occurrence
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="prior_occurrence"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                Copy from last active occurrence
-                              </Typography>}
-                          />
-                        </RadioGroup>
-                      </FormControl>
-                    </Box>
-                  }
-                  <div>
-                    <TextField
-                      id='time_from_display_string'
-                      value={time_from_display_string}
-                      onChange={handleChangeTimeFrom}
-                      onKeyPress={handleTimeFromExit}
-                      onBlur={handleTimeFromExit}
-                      helperText='Start time'
-                    />
-                    {'    '}
-                    <TextField
-                      id='time_to_display_string'
-                      value={time_to_display_string}
-                      onChange={handleChangeTimeTo}
-                      onKeyPress={handleTimeToExit}
-                      onBlur={handleTimeToExit}
-                      helperText='End time'
-                    />
-                  </div>
-                  {!personalEvent &&
-                    <Box
-                      display="flex"
-                      pt={2}
-                      pb={1}
-                      flexDirection='column'
-                      justifyContent="center"
-                    >
-                      <Typography className={classes.radioText}>Does this event require sign-up?</Typography>
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup
-                          row
-                          defaultValue={signup_type}
-                          aria-label="SignUp"
-                          name="signup"
-                          value={signup_type}
-                          onChange={handleChangeSignUp}
-                        >
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="none"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                Open/Unlimited
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="seats"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                Limited to a maximum number of Participants
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="time"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                Schedule appointments at specific intervals
-                              </Typography>}
-                          />
-                        </RadioGroup>
-                      </FormControl>
-                    </Box>
-                  }
-                  {(signup_type === 'seats') &&
-                    <div>
-                      <TextField
-                        id='slot_max_seats'
-                        value={slot_max_seats}
-                        onChange={handleChangeMaxSeats}
-                        helperText='Maximum number of participants'
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="annually_on"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            {`Every year on ${eventAsADate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+                          </Typography>}
                       />
-                    </div>
-                  }
-                  {(signup_type === 'time') &&
-                    <div>
-                      <TextField
-                        id='slot_interval'
-                        value={slot_interval}
-                        onChange={handleChangeInterval}
-                        onKeyPress={handleExitInterval}
-                        onBlur={handleExitInterval}
-                        helperText='How long between appointment times? (in minutes)'
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="weekly_on"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            {`Every week`}
+                          </Typography>}
                       />
-                    </div>
-                  }
-                  {(displayTimes.length > 0) && (signup_type === 'time') &&
-                    <React-Fragment>
-                      <Box flexGrow={1} mr={3} mt={2}
-                        display="flex"
-                        flexDirection='row'
-                        flexWrap={'wrap'}
-                        alignItems="center"
-                        justifyContent="flex-start"
-                      >
-                        <Typography className={classes.radioText}>
-                          {'Appointment schedule will be'}
-                        </Typography>
-                        {displayTimes.map((time) => (
-                          <Typography key={`t${time}`} className={classes.radioText}>
-                            {time}
-                          </Typography>
-                        ))}
-                      </Box>
-                    </React-Fragment>
-                  }
-                  {reactData.slotObjList && (reactData.slotObjList.length > 0) &&
-                    <Box
-                      display="flex"
-                      pt={2}
-                      pb={1}
-                      flexDirection='column'
-                      justifyContent="center"
-                    >
-                      <Typography className={classes.radioText}>Tap to Customize this event</Typography>
-                      <Box
-                        display="flex"
-                        pt={0}
-                        mt={0}
-                        width={'100px'}
-                        flexDirection='column'
-                        justifyContent="center"
-                      >
-                        <Button
-                          className={AVAClass.AVAButton}
-                          style={{ backgroundColor: 'green', color: 'white' }}
-                          size='small'
-                          onClick={async () => {
-                            setcustomizeButton(true);
-                          }}
-                        >
-                          Customize
-                        </Button>
-                      </Box>
-                    </Box>
-                  }
-                  {!personalEvent &&
-                    <Box
-                      display="flex"
-                      pt={2}
-                      pb={1}
-                      flexDirection='column'
-                      justifyContent="center"
-                    >
-                      <Typography className={classes.radioText}>Do you wish to restrict this event to specific groups only?</Typography>
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup
-                          row
-                          defaultValue={'no'}
-                          aria-label="restrictions"
-                          name="restrictions"
-                          value={specificPeople}
-                          onChange={handleChangePeopleToggle}
-                        >
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="no"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                No
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="yes"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                Yes
-                              </Typography>}
-                          />
-                        </RadioGroup>
-                      </FormControl>
-                    </Box>
-                  }
-                  {(specificPeople === 'yes') &&
-                    <ClientsSection
-                      person={patient}
-                      groupData={state.groups}
-                      multiple={true}
-                      updateGroups={(selections) => {
-                        if (selections.length === 0) {
-                          selections = ['*all'];
-                        }
-                        updateReactData({
-                          restrictToGroups: selections
-                        }, false);
-                      }}
-                    />
-                  }
-                  {!personalEvent &&
-                    <Box
-                      display="flex"
-                      pt={2}
-                      pb={1}
-                      flexDirection='column'
-                      justifyContent="center"
-                    >
-                      <Typography className={classes.radioText}>Show someone other than you be listed as an event owner?</Typography>
-                      <FormControl className={classes.formControl} component="fieldset">
-                        <RadioGroup
-                          row
-                          defaultValue={'no'}
-                          aria-label="ownership"
-                          name="ownership"
-                          value={specificOwners}
-                          onChange={handleChangeOwnersToggle}
-                        >
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="no"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                No
-                              </Typography>}
-                          />
-                          <FormControlLabel
-                            className={classes.formControlLbl}
-                            value="yes"
-                            control={<Radio disableRipple className={classes.radioButton} size='small' />}
-                            label={
-                              <Typography className={classes.radioText}>
-                                Yes
-                              </Typography>}
-                          />
-                        </RadioGroup>
-                      </FormControl>
-                    </Box>
-                  }
-                  {(specificOwners === 'yes') &&
-                    <div>
-                      {ownerList.length > 0 ?
-                        ownerList.map((ownerEntry, x) => (
-                          (
-                            <ListItem
-                              key={`${ownerEntry}_selected_${x}`}
-                              className={classes.noRow}
-                            >
-                              <Typography
-                                className={classes.radioText}>
-                                {ownerTargetInfo && ownerTargetInfo[ownerEntry] &&
-                                  ((typeof ownerTargetInfo[ownerEntry].name === 'object')
-                                    ? `${ownerTargetInfo[ownerEntry].name.first} ${ownerTargetInfo[ownerEntry].name.last}`
-                                    : ownerTargetInfo[ownerEntry].name
-                                  )
-                                }
-                              </Typography>
-                            </ListItem>
-                          )
-                        ))
-                        : (
-                          <Typography
-                            className={classes.radioText}>
-                            {'Tap the button below to choose...'}
-                          </Typography>
-                        )
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="bi-weekly_on"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            {`Every other week`}
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="monthly_by_dayOfWeek"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            {`Every month on the ${ordinal[(Math.min(Math.floor(eventAsADate.getDate() / 7.1) + 1, 4)) - 1]} ${eventAsADate.toLocaleDateString(undefined, { weekday: 'long' })}`}
+                          </Typography>}
+                      />
+                      {eventAsADate.getDate() < 29 &&
+                        <FormControlLabel
+                          className={classes.formControlLbl}
+                          value="monthly_by_date"
+                          control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                          label={
+                            <Typography className={classes.radioText}>
+                              {`Every month on the ${ordinal[(eventAsADate.getDate()) - 1]}`}
+                            </Typography>}
+                        />
                       }
-                      <Button
-                        className={AVAClass.AVAButton}
-                        style={{ backgroundColor: 'green', color: 'white' }}
-                        size='small'
-                        onClick={async () => {
-                          let ownerTargetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: false, includePeople: true });
-                          setOwnerTargets(ownerTargetObj.responsibleList.sort());
-                          setOwnerTargetInfo(ownerTargetObj.responsibleObj);
-                          setShowOwnerSelect(true);
-                        }}
-                      >
-                        {`Tap to select`}
-                      </Button>
-                    </div>
-                  }
-                </form>
-              </Box>
-            </Paper>
-            <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
-              <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
-                <DialogActions className={classes.buttonArea} >
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'red', color: 'white' }}
-                    size='small'
-                    onClick={() => { onClose(); }}
-                    startIcon={<CloseIcon fontSize="small" />}
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+              }
+              {(prefMethod && ((prefMethod === 'weekly_on') || (prefMethod === 'bi-weekly_on'))) &&
+                <Box display={'flex'} flexDirection={'row'} className={classes.formControlDayRow} flexWrap={'wrap'} >
+                  <Typography className={classes.radioText}>
+                    {`Which days?`}
+                  </Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <FormGroup row aria-label={`message_routedays_method`} name="method">
+                      <FormControlLabel
+                        className={classes.formControlDays}
+                        control={
+                          <Checkbox
+                            className={classes.centerCenter}
+                            value={checkedDays['0']}
+                            name={`message_routing_0`}
+                            onClick={() => {
+                              if (checkedDays[0]) { checkedDays[0] = false; }
+                              else { checkedDays[0] = true; }
+                              setCheckedDays(checkedDays);
+                            }}
+                            disableRipple
+                            inputProps={{ 'aria-labelledby': `message_routing_0` }}
+                          />
+                        }
+                        label={<Typography className={classes.radioDays}>Sun</Typography>}
+                        labelPlacement='bottom'
+                      />
+                      <FormControlLabel
+                        className={classes.formControlDays}
+                        control={
+                          <Checkbox
+                            className={classes.centerCenter}
+                            value={checkedDays['1']}
+                            name={`message_routing_1`}
+                            onClick={() => {
+                              if (checkedDays[1]) { checkedDays[1] = false; }
+                              else { checkedDays[1] = true; }
+                              setCheckedDays(checkedDays);
+                            }}
+                            disableRipple
+                            inputProps={{ 'aria-labelledby': `message_routing_1` }}
+                          />
+                        }
+                        label={<Typography className={classes.radioDays}>Mon</Typography>}
+                        labelPlacement='bottom'
+                      />
+                      <FormControlLabel
+                        className={classes.formControlDays}
+                        value="AVA"
+                        control={
+                          <Checkbox
+                            className={classes.centerCenter}
+                            value={checkedDays['2']}
+                            name={`message_routing_2`}
+                            onClick={() => {
+                              if (checkedDays[2]) { checkedDays[2] = false; }
+                              else { checkedDays[2] = true; }
+                              setCheckedDays(checkedDays);
+                            }}
+                            disableRipple
+                            inputProps={{ 'aria-labelledby': `message_routing_2` }}
+                          />
+                        }
+                        label={<Typography className={classes.radioDays}>Tue</Typography>}
+                        labelPlacement='bottom'
+                      />
+                      <FormControlLabel
+                        className={classes.formControlDays}
+                        value="AVA"
+                        control={
+                          <Checkbox
+                            className={classes.centerCenter}
+                            value={checkedDays['3']}
+                            name={`message_routing_3`}
+                            onClick={() => {
+                              if (checkedDays[3]) { checkedDays[3] = false; }
+                              else { checkedDays[3] = true; }
+                              setCheckedDays(checkedDays);
+                            }}
+                            disableRipple
+                            inputProps={{ 'aria-labelledby': `message_routing_3` }}
+                          />
+                        }
+                        label={<Typography className={classes.radioDays}>Wed</Typography>}
+                        labelPlacement='bottom'
+                      />
+                      <FormControlLabel
+                        className={classes.formControlDays}
+                        value="AVA"
+                        control={
+                          <Checkbox
+                            className={classes.centerCenter}
+                            value={checkedDays['4']}
+                            name={`message_routing_4`}
+                            onClick={() => {
+                              if (checkedDays[4]) { checkedDays[4] = false; }
+                              else { checkedDays[4] = true; }
+                              setCheckedDays(checkedDays);
+                            }}
+                            disableRipple
+                            inputProps={{ 'aria-labelledby': `message_routing_4` }}
+                          />
+                        }
+                        label={<Typography className={classes.radioDays}>Thu</Typography>}
+                        labelPlacement='bottom'
+                      />
+                      <FormControlLabel
+                        className={classes.formControlDays}
+                        value="AVA"
+                        control={
+                          <Checkbox
+                            className={classes.centerCenter}
+                            value={checkedDays['5']}
+                            name={`message_routing_5`}
+                            onClick={() => {
+                              if (checkedDays[5]) { checkedDays[5] = false; }
+                              else { checkedDays[5] = true; }
+                              setCheckedDays(checkedDays);
+                            }}
+                            disableRipple
+                            inputProps={{ 'aria-labelledby': `message_routing_5` }}
+                          />
+                        }
+                        label={<Typography className={classes.radioDays}>Fri</Typography>}
+                        labelPlacement='bottom'
+                      />
+                      <FormControlLabel
+                        className={classes.formControlDays}
+                        value="AVA"
+                        control={
+                          <Checkbox
+                            className={classes.centerCenter}
+                            value={checkedDays['6']}
+                            name={`message_routing_6`}
+                            onClick={() => {
+                              if (checkedDays[6]) { checkedDays[6] = false; }
+                              else { checkedDays[6] = true; }
+                              setCheckedDays(checkedDays);
+                            }}
+                            disableRipple
+                            inputProps={{ 'aria-labelledby': `message_routing_6` }}
+                          />
+                        }
+                        label={<Typography className={classes.radioDays}>Sat</Typography>}
+                        labelPlacement='bottom'
+                      />
+                    </FormGroup>
+                  </FormControl>
+                </Box>
+              }
+              {(prefMethod && (prefMethod !== 'specific_date')) &&
+                <div>
+                  <TextField
+                    id='last_date'
+                    value={last_date}
+                    onKeyPress={handleLastDateExit}
+                    onChange={handleChangeLastDate}
+                    onBlur={handleLastDateExit}
+                    helperText='Last Date to Schedule'
+                  />
+                </div>
+              }
+              {prefMethod && (prefMethod !== 'specific_date') && !personalEvent &&
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <Typography className={classes.radioText}>When accessing a new occurrence, copy previous names?</Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup
+                      row
+                      defaultValue={defaultSlotOwners}
+                      aria-label="SignUp"
+                      name="signup"
+                      value={defaultSlotOwners}
+                      onChange={handleChangeDefaultSlotOwners}
+                    >
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="none"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Do not copy
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="first_occurrence"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Copy from first occurrence
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="prior_occurrence"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Copy from last active occurrence
+                          </Typography>}
+                      />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+              }
+              <div>
+                <TextField
+                  id='time_from_display_string'
+                  value={time_from_display_string}
+                  onChange={handleChangeTimeFrom}
+                  onKeyPress={handleTimeFromExit}
+                  onBlur={handleTimeFromExit}
+                  helperText='Start time'
+                />
+                {'    '}
+                <TextField
+                  id='time_to_display_string'
+                  value={time_to_display_string}
+                  onChange={handleChangeTimeTo}
+                  onKeyPress={handleTimeToExit}
+                  onBlur={handleTimeToExit}
+                  helperText='End time'
+                />
+              </div>
+              {!personalEvent &&
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <Typography className={classes.radioText}>Does this event require sign-up?</Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup
+                      row
+                      defaultValue={signup_type}
+                      aria-label="SignUp"
+                      name="signup"
+                      value={signup_type}
+                      onChange={handleChangeSignUp}
+                    >
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="none"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Open/Unlimited
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="seats"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Limited to a maximum number of Participants
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="time"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Schedule appointments at specific intervals
+                          </Typography>}
+                      />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+              }
+              {(signup_type === 'seats') &&
+                <div>
+                  <TextField
+                    id='slot_max_seats'
+                    value={slot_max_seats}
+                    onChange={handleChangeMaxSeats}
+                    helperText='Maximum number of participants'
+                  />
+                </div>
+              }
+              {(signup_type === 'time') &&
+                <div>
+                  <TextField
+                    id='slot_interval'
+                    value={slot_interval}
+                    onChange={handleChangeInterval}
+                    onKeyPress={handleExitInterval}
+                    onBlur={handleExitInterval}
+                    helperText='How long between appointment times? (in minutes)'
+                  />
+                </div>
+              }
+              {(displayTimes.length > 0) && (signup_type === 'time') &&
+                <React-Fragment>
+                  <Box flexGrow={1} mr={3} mt={2}
+                    display="flex"
+                    flexDirection='row'
+                    flexWrap={'wrap'}
+                    alignItems="center"
+                    justifyContent="flex-start"
                   >
-                    {'Done'}
-                  </Button>
-                  {OK2Save() &&
+                    <Typography className={classes.radioText}>
+                      {'Appointment schedule will be'}
+                    </Typography>
+                    {displayTimes.map((time) => (
+                      <Typography key={`t${time}`} className={classes.radioText}>
+                        {time}
+                      </Typography>
+                    ))}
+                  </Box>
+                </React-Fragment>
+              }
+              {reactData.slotObjList && (reactData.slotObjList.length > 0) &&
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <Typography className={classes.radioText}>Tap to Customize this event</Typography>
+                  <Box
+                    display="flex"
+                    pt={0}
+                    mt={0}
+                    width={'100px'}
+                    flexDirection='column'
+                    justifyContent="center"
+                  >
                     <Button
-                      onClick={() => {
-                        handleUpdate();
-                      }}
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'green', color: 'white' }}
                       size='small'
+                      onClick={async () => {
+                        setcustomizeButton(true);
+                      }}
                     >
-                      {'Save'}
+                      Customize
                     </Button>
+                  </Box>
+                </Box>
+              }
+              {!personalEvent &&
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <Typography className={classes.radioText}>Do you wish to restrict this event to specific groups only?</Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup
+                      row
+                      defaultValue={'no'}
+                      aria-label="restrictions"
+                      name="restrictions"
+                      value={specificPeople}
+                      onChange={handleChangePeopleToggle}
+                    >
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="no"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            No
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="yes"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Yes
+                          </Typography>}
+                      />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+              }
+              {(specificPeople === 'yes') &&
+                <ClientsSection
+                  person={patient}
+                  groupData={state.groups}
+                  multiple={true}
+                  updateGroups={(selections) => {
+                    if (selections.length === 0) {
+                      selections = ['*all'];
+                    }
+                    updateReactData({
+                      restrictToGroups: selections
+                    }, false);
+                  }}
+                />
+              }
+              {!personalEvent &&
+                <Box
+                  display="flex"
+                  pt={2}
+                  pb={1}
+                  flexDirection='column'
+                  justifyContent="center"
+                >
+                  <Typography className={classes.radioText}>Show someone other than you be listed as an event owner?</Typography>
+                  <FormControl className={classes.formControl} component="fieldset">
+                    <RadioGroup
+                      row
+                      defaultValue={'no'}
+                      aria-label="ownership"
+                      name="ownership"
+                      value={specificOwners}
+                      onChange={handleChangeOwnersToggle}
+                    >
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="no"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            No
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
+                        value="yes"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            Yes
+                          </Typography>}
+                      />
+                    </RadioGroup>
+                  </FormControl>
+                </Box>
+              }
+              {(specificOwners === 'yes') &&
+                <div>
+                  {ownerList.length > 0 ?
+                    ownerList.map((ownerEntry, x) => (
+                      (
+                        <ListItem
+                          key={`${ownerEntry}_selected_${x}`}
+                          className={classes.noRow}
+                        >
+                          <Typography
+                            className={classes.radioText}>
+                            {ownerTargetInfo && ownerTargetInfo[ownerEntry] &&
+                              ((typeof ownerTargetInfo[ownerEntry].name === 'object')
+                                ? `${ownerTargetInfo[ownerEntry].name.first} ${ownerTargetInfo[ownerEntry].name.last}`
+                                : ownerTargetInfo[ownerEntry].name
+                              )
+                            }
+                          </Typography>
+                        </ListItem>
+                      )
+                    ))
+                    : (
+                      <Typography
+                        className={classes.radioText}>
+                        {'Tap the button below to choose...'}
+                      </Typography>
+                    )
                   }
-                </DialogActions>
-              </Box>
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
+                    onClick={async () => {
+                      let ownerTargetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: false, includePeople: true });
+                      setOwnerTargets(ownerTargetObj.responsibleList.sort());
+                      setOwnerTargetInfo(ownerTargetObj.responsibleObj);
+                      setShowOwnerSelect(true);
+                    }}
+                  >
+                    {`Tap to select`}
+                  </Button>
+                </div>
+              }
+              {isAppointment &&
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  key={`selectParent`}
+                  id={`selectParent`}
+                  width={`350px`}
+                  flexGrow={1}
+                  marginBottom={0}
+                  marginTop={1}
+                  justifyContent='flex-start'
+                  alignItems='flex-start'
+                >
+                  <Box
+                    key={`selectBox`}
+                    display='flex' flexGrow={1} flexDirection='column'
+                  >
+                    <Select
+                      options={makeChoices(state.accessList[state.session.client_id].list)}
+                      searchBy={'label'}
+                      dropdownHandle={true}
+                      multi={true}
+                      clearOnSelect={true}
+                      clearOnBlur={true}
+                      key={`selectOptions`}
+                      searchable={true}
+                      create={false}
+                      closeOnClickInput={true}
+                      values={[{ value: state.session.patient_id, label: state.session.patient_display_name }]}
+                      closeOnSelect={true}
+                      style={{
+                        lineHeight: 1,
+                        fontSize: `0.85rem`,
+                        marginLeft: '-5px',
+                        marginBottom: '-4px',
+                        borderWidth: 0,
+                        control: (defaultStyles, state) => ({
+                          ...defaultStyles,
+                          color: 'black',
+                          backgroundColor: state.isSelected ? 'red' : 'orange'
+                        })
+                      }}
+                      noDataLabel={`No names match`}
+                      placeholder={``}
+                      onChange={async (values) => {
+                        if (values.length > 0) {
+                          updateReactData({
+                            preReservationList: values.map(this_value => { return this_value.value; })
+                          }, true);
+                        }
+                      }}
+                    />
+                    <Box display='flex'
+                      flexDirection='row'
+                      paddingTop={'4px'}
+                      borderTop={1}
+                      key={`selectPromptBox`}
+                    >
+                      <Typography
+                        key={`selectPrompt`}
+                        id={`selectPrompt`}
+                        style={AVATextStyle({
+                          lineHeight: 1,
+                          maxWidth: '90%',
+                          size: 0.75,
+                          opacity: '60%',
+                          margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                        })}
+                      >
+                        Choose Appointment Participants
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              }
+            </Box>
+          </DialogContent>
+          <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
+            <Box display='flex' flexDirection='row' justifyContent='center' alignItems='center'>
+              <DialogActions className={classes.buttonArea} >
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'red', color: 'white' }}
+                  size='small'
+                  onClick={() => { onClose(); }}
+                  startIcon={<CloseIcon fontSize="small" />}
+                >
+                  {'Done'}
+                </Button>
+                {OK2Save() &&
+                  <Button
+                    onClick={() => {
+                      handleUpdate();
+                    }}
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'green', color: 'white' }}
+                    size='small'
+                  >
+                    {'Save'}
+                  </Button>
+                }
+              </DialogActions>
             </Box>
           </Box>
           {showOwnerSelect &&
             <PersonFilter
               prompt={`Who else should be listed as an owner for ${description}?`}
-              peopleList={owner_targets}
+              peopleList={state.accessList[state.session.client_id].list}
               multiSelect={true}
               alreadyChecked={ownerList}
               onCancel={() => {

@@ -1,6 +1,6 @@
 import React from 'react';
-import { makeArray } from '../../util/AVAUtilities';
-import { makeName, getImage } from '../../util/AVAPeople';
+import { makeArray, isObject, deepCopy } from '../../util/AVAUtilities';
+import { getImage } from '../../util/AVAPeople';
 
 import Paper from '@material-ui/core/Paper';
 import TextField from '@material-ui/core/TextField';
@@ -94,6 +94,7 @@ export default ({
   multiSelect = false,
   splitter = ':',
   alreadyChecked,
+  options,
   returnValue = 'ID'        // returnValue = 'object' returns object with {id: name, id: name, ...}
 }) => {
 
@@ -102,9 +103,20 @@ export default ({
   const [random_address, setRandomAddress] = React.useState('');
   const [rowLimit, setRowLimit] = React.useState(20);
   const [maxY, setMaxY] = React.useState(0);
-  const [forceRedisplay, setForceRedisplay] = React.useState(false);
   const [checkList, setCheckList] = React.useState({});
-  const [selectedNames, setSelectedNames] = React.useState([]);
+ // const [selectedNames, setSelectedNames] = React.useState([]);
+
+  const [reactData, setReactData] = React.useState({
+    peopleList: peopleList || []
+  });
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) { setForceRedisplay(forceRedisplay => !forceRedisplay); }
+  };
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -123,24 +135,20 @@ export default ({
   };
 
   async function toggleCheck(pIn) {
-    let [pName, pKey] = pIn.split(splitter);
-    if (!pName) {
-      pName = await makeName(pKey);
-    }
-    let tempNames = [];
-    if (isChecked(pKey)) {
-      delete checkList[pKey];
-      let nList = Object.keys(checkList);
-      for (let n = 0; n < nList.length; n++) {
-        tempNames.push(pName);
-      }
+ //   let tempNames = [];
+    if (isChecked(pIn.person_id)) {
+      delete checkList[pIn.person_id];
+ //     let nList = Object.keys(checkList);
+ //     for (let n = 0; n < nList.length; n++) {
+ //       tempNames.push(pIn.display_name);
+ //     }
     }
     else {
-      checkList[pKey] = pName;
-      if (selectedNames.length > 0) { tempNames = [...selectedNames]; }
-      tempNames.push(pName);
+      checkList[pIn.person_id] = pIn.display_name;
+ //     if (selectedNames.length > 0) { tempNames = [...selectedNames]; }
+ //     tempNames.push(pIn.display_name);
     }
-    setSelectedNames(tempNames);
+ //   setSelectedNames(tempNames);
     setCheckList(checkList);
     setForceRedisplay(!forceRedisplay);
   }
@@ -182,63 +190,94 @@ export default ({
   };
 
   const buildList = async () => {
-
+    let peopleListObj = peopleList.map(this_person => {
+      let pObj;
+      if (isObject(this_person)) {
+        pObj = deepCopy(this_person);
+      }
+      else {
+        let parts = this_person.split(splitter);
+        pObj = {
+          display_name: parts[0],
+          person_id: parts[1],
+          searchString: parts[2] || this_person
+        };
+      }
+      if (!pObj.hasOwnProperty('last_name')) {
+        let ans = pObj.display_name.split(',');
+        switch (ans.length) {
+          case 3: {
+            pObj.last_name = `${ans[0].trim()}, ${ans[1].trim()}`;
+            pObj.first_name = ans[2].trim();
+            break;
+          }
+          case 2: {
+            if (ans[1].startsWith('group=')) {
+              break;
+            }
+            else {
+              pObj.last_name = ans[0].trim();
+              pObj.first_name = ans[1].trim();
+              break;
+            }
+          }
+          default: {
+            let split_on_whitespace = ans[0].trim().split(/[\s]+/);
+            if (split_on_whitespace.length === 1) {
+              pObj.last_name = split_on_whitespace[0];
+              pObj.first_name = '';
+            }
+            else {
+              pObj.first_name = split_on_whitespace.shift();
+              pObj.last_name = split_on_whitespace.join(' ');
+            }
+          }
+        }
+      }
+      return pObj;
+    });
+    updateReactData({
+      peopleList: peopleListObj
+    }, true);
   };
 
   function okToShow(pLine) {
     if (!pLine) { return false; }
-    else if (!person_filter) { return true; }
-    else { return pLine.toLowerCase().includes(person_filter); }
-  }
-
-  function makeFirstName(pString) {
-    let pName = pString.split(splitter)[0];
-    const regex = new RegExp(`[${splitter},]`, 'g');
-    let ans = pName.split(regex);
-    switch (ans.length) {
-      case 3: { return ans[2].trim(); }
-      case 2: {
-        if (ans[1].startsWith('group=')) { return ''; }
-        else { return ans[1].trim(); }
-      }
-      default: {
-        let a = ans[0].trim().split(/[\s]+/);
-        if (a.length === 1) { return ''; }
-        a.pop();
-        return a.join(' ');
-      }
+    else if (!person_filter || (person_filter.trim() === '')) { return true; }
+    else if (pLine.searchString) {
+      return (pLine.searchString.toLowerCase().includes(person_filter));
     }
-  }
-
-  function makeLastName(pString) {
-    let pName = pString.split(splitter)[0];
-    const regex = new RegExp(`[${splitter},]`, 'g');
-    let ans = pName.split(regex);
-    switch (ans.length) {
-      case 3: { return `${ans[0].trim()}, ${ans[1].trim()}`; }
-      case 2: {
-        if (ans[1].startsWith('group=')) { return ''; }
-        else { return ans[0].trim(); }
-      }
-      default: {
-        let a = ans[0].trim().split(/[\s]+/);
-        if (a.length === 1) { return a; }
-        return a.pop();
-      }
+    else if (pLine.search_data) {
+      return (pLine.search_data.toLowerCase().includes(person_filter));
+    }
+    else {
+      return true;
     }
   }
 
   React.useEffect(() => {
     async function initialize() {
+      if (alreadyChecked) {
+        let initial_checklist = {};
+        makeArray(alreadyChecked).toReversed().forEach(preselected_person => {
+          let foundAt = peopleList.findIndex(this_person => {
+            return (this_person.person_id === preselected_person);
+          });
+          if (foundAt > -1) {
+            let foundPerson = deepCopy(peopleList[foundAt]);
+            initial_checklist[preselected_person] = peopleList[foundAt].display_name;
+            peopleList.splice(foundAt, 1);
+            peopleList.unshift(foundPerson);
+          }
+          else {
+            initial_checklist[preselected_person] = 'true';
+          }
+        });
+        setCheckList(initial_checklist);
+      }
       await buildList();
     }
     initialize();
-    if (alreadyChecked) {
-      let newCheckList = {};
-      let theList = makeArray(alreadyChecked);
-      theList.forEach(p => { newCheckList[p] = 'true'; });
-      setCheckList(newCheckList);
-    }
   }, [peopleList]);  // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -276,14 +315,18 @@ export default ({
           <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
             {rowsWritten = 0}
           </Typography>
-          {peopleList.map((listEntry, x) => (
+          {reactData.peopleList.map((listEntry, x) => (
             ((rowsWritten <= rowLimit) && okToShow(listEntry) &&
               <Paper
                 key={'person-list_' + x}
                 onClick={async () => {
                   if (!multiSelect) {
-                    if (returnValue === 'id') { onSelect(listEntry.split(splitter)[1]); }
-                    else { onSelect(listEntry); }
+                    if (returnValue === 'id') {
+                      onSelect(listEntry.person_id);
+                    }
+                    else {
+                      onSelect(`${listEntry.display_name}%%${listEntry.person_id}%%${listEntry.searchString}`);
+                    }
                   }
                   else {
                     if (!toggling) { await toggleCheck(listEntry); }
@@ -300,7 +343,7 @@ export default ({
                     <Checkbox
                       edge='start'
                       mr={1}
-                      checked={isChecked(listEntry.split(splitter)[1])}
+                      checked={isChecked(listEntry.person_id)}
                       disableRipple
                       key={'checkbox' + x}
                       onClick={async () => {
@@ -318,27 +361,34 @@ export default ({
                     minHeight={50}
                     maxHeight={50}
                     alt=''
-                    src={getImage(listEntry.split(splitter)[1])}
+                    src={getImage(listEntry.person_id)}
                   />
-                  {!listEntry.split(splitter)[1].startsWith('GRP//') ?
+                  {!listEntry.person_id.startsWith('GRP//') ?
                     <Box display='flex' flexWrap='wrap' flexDirection='column' justifyContent='center' alignItems='flex-start'>
-                      <Typography style={AVATextVariableStyle(makeLastName(listEntry), { bold: true, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
-                        {`${makeLastName(listEntry)}`}
+                      <Typography style={AVATextVariableStyle(listEntry.last_name, { bold: true })}>
+                        {listEntry.last_name}
                       </Typography>
-                      <Typography style={AVATextVariableStyle(makeFirstName(listEntry), { size: 0.8, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
-                        {makeFirstName(listEntry)}
+                      <Typography style={AVATextVariableStyle(listEntry.first_name, { size: 0.8 })}>
+                        {listEntry.first_name}
                       </Typography>
                       {(x > 0) && (x < (peopleList.length - 1)) &&
-                        ((peopleList[x - 1].split(splitter)[0] === listEntry.split(splitter)[0])
-                          || (peopleList[x + 1].split(splitter)[0] === listEntry.split(splitter)[0])) &&
-                        <Typography style={AVATextVariableStyle(listEntry.split(/[:]/)[1], { size: 0.8, color: (listEntry.includes('**CONFLICT**') ? 'red' : null) })}>
-                          ({listEntry.split(/[:]/)[1]})
+                        ((peopleList[x - 1].display_name === listEntry.display_name)
+                          || (peopleList[x + 1].display_name === listEntry.display_name)) &&
+                        <Typography style={AVATextVariableStyle(listEntry.person_id, { size: 0.8 })}>
+                          ({listEntry.person_id})
                         </Typography>
                       }
+                      {listEntry.conflict && listEntry.conflict.map((conflictEntry, c) => (
+                        <Typography style={AVATextVariableStyle(listEntry.conflict, { size: 0.5, color: 'red' })}>
+                          {conflictEntry}
+                        </Typography>
+                      ))}
                     </Box>
                     :
                     <Box display='flex' flexWrap='wrap' flexDirection='row' justifyContent='center' alignItems='flex-start'>
-                      <Typography style={AVATextVariableStyle(listEntry.split(splitter)[0], { bold: true, color: 'red' })}>{listEntry.split(splitter)[0]}</Typography>
+                      <Typography style={AVATextVariableStyle(listEntry.display_name, { bold: true, color: 'blue' })}>
+                        {listEntry.display_name}
+                      </Typography>
                     </Box>
                   }
                 </Box>

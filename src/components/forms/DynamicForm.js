@@ -454,10 +454,25 @@ export default ({
       );
     }
     case 'new_event':
+      let isAppointment = false;
+      let personalEvent = false;
+      if (Array.isArray(defaultValue)) {
+        defaultValue.forEach(dV => {
+          if (dV.hasOwnProperty('isAppointment')) {
+            isAppointment = true;
+            personalEvent = true;
+          }
+          else if (dV.hasOwnProperty('personalEvent')) {
+            personalEvent = true;
+          }
+        })
+      }
       return (
         <NewCalendarEvent
           patient={session}
           peopleList={values}
+          isAppointment={isAppointment}
+          personalEvent={personalEvent}
           picture={null}
           showNewEvent={true}
           onClose={onSave}
