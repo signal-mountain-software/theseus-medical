@@ -374,7 +374,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const checkReload = async () => {
     let menuRec = await dbClient
       .get({
-        Key: { person_id: pPerson },
+        Key: { person_id: `${state.session.patient_id}%%${state.session.user_id}` },
         TableName: "AVAMenu"
       })
       .promise()
@@ -450,7 +450,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     // is used to save what the screen looked like last time the user was in AVA
     let menuRec = await dbClient
       .get({
-        Key: { person_id: pPerson },
+        Key: {
+          person_id: `${state.session.patient_id}%%${state.session.user_id}`
+        },
         TableName: "AVAMenu"
       })
       .promise()

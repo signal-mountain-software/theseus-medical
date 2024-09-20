@@ -3,10 +3,10 @@ import React from 'react';
 import { useSnackbar } from 'notistack';
 
 import { getCalendarEntries, getAllOccurrences } from '../../util/AVACalendars';
-import { makeTime, addDays } from '../../util/AVADateTime';
-import { isEmpty, isObject, deepCopy } from '../../util/AVAUtilities';
+import { makeTime, addDays, makeDate } from '../../util/AVADateTime';
+import { isEmpty, isObject, deepCopy, makeArray } from '../../util/AVAUtilities';
 import { AVAclasses, AVADefaults, AVATextStyle } from '../../util/AVAStyles';
-import { getGroupsBelongTo, getMemberList } from '../../util/AVAGroups';
+import { getGroupsBelongTo, getMemberList, getGroupMembers } from '../../util/AVAGroups';
 
 // import useMediaQuery from '@material-ui/core/useMediaQuery';
 
@@ -111,25 +111,32 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, calendarMode, onClose }) => {
+export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClient, calendarMode, onClose }) => {
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showAll, setShowAll] = React.useState(true);
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
-  let defaultValues = Object.assign({}, ...currentEvent);
-  let eList = currentEvent.find(e => {
-    return e.hasOwnProperty('eventList');
-  });
+  // let defaultValues = Object.assign({}, ...currentEvent);
+
+  let load_myCal = [];
+  if (defaultObject.hasOwnProperty('eventList')) {
+    if (!defaultObject.eventList.loadError) {
+      let needRefresh = localStorage.getItem(`calendarChanged`);
+      if (!(needRefresh === 'true')) {
+        load_myCal = defaultObject.eventList;
+      }
+    }
+  }
 
   const [reactData, setReactData] = React.useState({
     start_date: 0,
     end_date: 0,
-    defaultValues: defaultValues,
-    selectedEvent: (currentEvent && !isObject(currentEvent[0]) ? currentEvent[0] : ''),
-    myCalendar: ((isEmpty(currentEvent) || !eList) ? [] : eList.eventList),
-    loading: ((currentEvent && !isObject(currentEvent[0])) || isEmpty(eList) || (eList && eList.eventList.loadError))
+    defaultValues: defaultObject,
+    selectedEvent: '',
+    myCalendar: load_myCal,
+    loading: true
   });
 
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
@@ -283,6 +290,45 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
     onClose();
   };
 
+  const organizeCalendar = (this_calendar) => {
+    let calendarList = [];
+    Object.keys(this_calendar).forEach((this_date) => {
+      if (!(this_date === 'peopleList')) {
+        if (!this_calendar[this_date].events || (Object.keys(this_calendar[this_date].events).length === 0)) {
+          calendarList.push({
+            dateObj: makeDate(this_date),
+            date_words: this_calendar[this_date].date_words,
+            eventList: []
+          });
+        }
+        else {
+          let sorted_eventIDs = Object.keys(this_calendar[this_date].events).sort((s1, s2) => {
+            if (this_calendar[this_date].events[s1].sort24 > this_calendar[this_date].events[s2].sort24) {
+              return 1;
+            }
+            else if (this_calendar[this_date].events[s1].sort24 < this_calendar[this_date].events[s2].sort24) {
+              return -1;
+            }
+            else {
+              return (this_calendar[this_date].events[s1].description > this_calendar[this_date].events[s2].description ? 1 : -1);
+            }
+          });
+          calendarList.push({
+            dateObj: makeDate(this_date),
+            date_words: this_calendar[this_date].date_words,
+            eventList: sorted_eventIDs.map(this_eventID => {
+              return Object.assign({},
+                { event_id: this_eventID },
+                this_calendar[this_date].events[this_eventID]
+              );
+            })
+          });
+        }
+      }
+    });
+    return calendarList;
+  };
+
   React.useEffect(() => {
     async function initialize() {
       // single event you're looking for?  
@@ -326,7 +372,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 oList[keyDate].events[`#birthday_${p.person_id}#`] = {
                   description: `Happy Birthday ${p.display_name}`,
                   sort24: `0000z-${p.display_name}`,
-                  slot_owners: [],
+                  slot_owners: {},
                   type: 'birthday'
                 };
               });
@@ -354,7 +400,7 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                 oList[keyDate].events[`#birthday_${p.person_id}#`] = {
                   description: `Happy Birthday ${p.name.first} ${p.name.last}`,
                   sort24: `0000z-${p.name.first} ${p.name.last}`,
-                  slot_owners: [],
+                  slot_owners: {},
                   type: 'birthday'
                 };
               }
@@ -363,10 +409,22 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
         }
       }
       let reactUpdObj = {
-        myCalendar: oList,
+        myCalendar: organizeCalendar(oList),
+        calendarPeople: oList.peopleInfo,
         birthdayList: true,
         loading: false
       };
+      if (reactData.defaultValues.assignmentView && reactData.defaultValues.allowAssign) {
+        let assignmentList = await getGroupMembers({
+          groupList: [...makeArray(reactData.defaultValues.allowAssign), state.session.patient_id],
+          short: true
+        });
+        if (assignmentList && (assignmentList.length > 0)) {
+          reactData.defaultValues.assignment__List = assignmentList;
+          reactUpdObj.defaultValues = reactData.defaultValues;
+        }
+      }
+      localStorage.setItem(`calendarChanged`, false);
       let client_style = AVADefaults({ client_style: 'get' });
       if (isObject(client_style)) {
         reactUpdObj.calendar_background = client_style.calendar_background;
@@ -389,14 +447,14 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
           classes={{ paper: classes.client_background }}
           fullScreen
         >
-          <Box
-            display='flex'
-            mb={0}
-            flexDirection='row'
-            justifyContent='flex-start'
-            alignItems='center'
-          >
-            {patient.kiosk_mode &&
+          {patient.kiosk_mode &&
+            <Box
+              display='flex'
+              mb={0}
+              flexDirection='row'
+              justifyContent='flex-start'
+              alignItems='center'
+            >
               <Box mr={3} justifySelf={'flex-end'} alignSelf={'center'}>
                 <Button
                   className={AVAClass.AVAButton}
@@ -406,8 +464,8 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
                   {'Resident?'}
                 </Button>
               </Box>
-            }
-          </Box>
+            </Box>
+          }
           {/* Loading spinner */}
           {reactData.loading &&
             <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
@@ -448,16 +506,17 @@ export default ({ patient, OGpatient, peopleList, currentEvent, eventClient, cal
             </DialogContent>
           }
           {!reactData.loading &&
-              <CalendarForm
-                myCalendar={reactData.myCalendar}
-                person_id={patient.patient_id}
-                peopleList={peopleList}
-                onClose={() => {
-                  setShowAll(!reactData.selectedEvent);
-                  onClose();
-                }}
-                defaultValues={reactData.defaultValues}
-              />
+            <CalendarForm
+              myCalendar={reactData.myCalendar}
+              calendarPeople={reactData.calendarPeople}
+              person_id={patient.patient_id}
+              peopleList={peopleList}
+              onClose={() => {
+                setShowAll(!reactData.selectedEvent);
+                onClose();
+              }}
+              defaultValues={reactData.defaultValues}
+            />
           }
           <DialogActions style={{ justifyContent: 'center' }}>
             {reactData.myCalendar && reactData.myCalendar.length > 0 &&
