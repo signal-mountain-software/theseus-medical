@@ -1472,6 +1472,8 @@ export default ({ request = {}, onClose }) => {
                             id={`sigBox__${this_field}`}
                             key={`sigBox__${this_field}`}
                             justifyContent='flex-start'
+                            marginTop={2}
+                            marginBottom={2}
                             alignItems='flex-start'
                             width='97%'
                           >

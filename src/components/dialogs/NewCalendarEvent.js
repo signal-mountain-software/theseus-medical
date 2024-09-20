@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { prepareTargets } from '../../util/AVAGroups';
-import { makeArray } from '../../util/AVAUtilities';
+import { makeArray, titleCase, listFromArray } from '../../util/AVAUtilities';
 import { addEvent, writeSlot } from '../../util/AVACalendars';
 import { AVAclasses } from '../../util/AVAStyles';
 
@@ -9,7 +9,7 @@ import ClientsSection from '../sections/ClientsSection';
 import EditList from '../forms/EditList';
 import Select from "react-dropdown-select";
 
-import { makeDate } from '../../util/AVADateTime';
+import { makeDate, addMonths } from '../../util/AVADateTime';
 
 import { useSnackbar } from 'notistack';
 
@@ -42,6 +42,7 @@ import FormControl from '@material-ui/core/FormControl';
 import ListItem from '@material-ui/core/ListItem';
 
 import useSession from '../../hooks/useSession';
+import { getPerson } from '../../util/AVAPeople';
 
 const useStyles = makeStyles(theme => ({
   title: {
@@ -197,7 +198,7 @@ const useStyles = makeStyles(theme => ({
 
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
-export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppointment }) => {
+export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppointment, options = {} }) => {
   const classes = useStyles();
   const AVAClass = AVAclasses();
 
@@ -205,7 +206,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const { session } = state;
   const [owner_targets, setOwnerTargets] = React.useState();
   const [ownerTargetInfo, setOwnerTargetInfo] = React.useState();
-  const [description, setDescription] = React.useState(' ');
   const [event_date, setEventDate] = React.useState(' ');
 
   const [last_date, setLastDate] = React.useState(' ');
@@ -237,7 +237,12 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     restrictToGroups: [],
     slotObjList: [],
     preReservationList: [],
-    dateObj: { error: true }  
+    dateObj: { error: true },
+    chosen_names: '',
+    event_title: '',
+    title_override: false,
+    event_location: '',
+    location_override: false
   });
   //const [forceRedisplay, setForceRedisplay] = React.useState();
 
@@ -267,6 +272,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     return response;
   };
 
+  const dOfw = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // const [patientGroups, setPatientGroups] = React.useState();
 
@@ -291,14 +297,16 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const handleUpdate = async () => {
     enqueueSnackbar(`AVA is creating your new event!  Stand by...`, { variant: 'warning' });
     let oDays = [];
-    Object.keys(checkedDays).forEach(a => {
-      if (checkedDays[a]) { oDays.push(Number(a)); };
-    });
+    if (prefMethod && ((prefMethod === 'weekly_on') || (prefMethod === 'bi-weekly_on'))) {
+      Object.keys(checkedDays).forEach(a => {
+        if (checkedDays[a]) { oDays.push(Number(a)); };
+      });
+    }
     var payload = {
       "clientId": patient.client_id,
       "calendar_info": {
         "groups": null,
-        "description": description,
+        "description": reactData.event_title,
         "image": null,
         "event_date": eventAsADate.getTime(),
         "last_date": lastAsADate?.getTime() || null,
@@ -335,7 +343,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
             "slot": payload.calendar_info.slots[s] || this_person,
             "status": 'selected',
             "show_this_slot": true,
-            "no_messaging": false
+            "no_messaging": true
           };
           await writeSlot(writeRequest);
         }
@@ -370,15 +378,24 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   }
 
   function OK2Save() {
-    return ((description.trim() !== '') && (!reactData.dateObj.error));
+    return ((!reactData.dateObj.error)
+      && (reactData.event_title.trim() !== '')
+      && (!isAppointment || (reactData.preReservationList.length > 0))
+    );
   }
 
   const handleChangeDescription = vCheck => {
-    setDescription(vCheck);
+    updateReactData({
+      event_title: vCheck,
+      title_override: true
+    }, true);
   };
 
   const handleChangeLocation = vCheck => {
-    setLocation(vCheck);
+    updateReactData({
+      event_location: vCheck,
+      location_override: true
+    }, true);
   };
 
   const handleChangeDate = event => {
@@ -527,6 +544,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       setEventAsADate(goodDate.date);
       if (!prefMethod) { setMethod('specific_date'); };
       setEventDate(goodDate.absolute);
+      let checkedDays = [];
+      checkedDays[goodDate.dayOfWeek] = true;
+      setCheckedDays(checkedDays);
     }
   };
 
@@ -558,7 +578,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     return goodDate;
   }
 */
-  
+
   const handleChangeLastDate = event => {
     setLastAsADate(null);
     setLastDate(event.target.value);
@@ -571,6 +591,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         if (event_date) {
           let addYears = 1;
           if (prefMethod === 'annually_on') { addYears = 10; }
+          if (prefMethod === 'semiannually_on') { addYears = 3; }
           goodDate = new Date(event_date);
           goodDate.setFullYear(goodDate.getFullYear() + addYears);
         }
@@ -748,24 +769,151 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         <React.Fragment>
           <Box mt={1} py={1} px={3} borderBottom={2}>
             <Typography variant='h6'>
-              {`${isAppointment ? 'Appointment' : 'Event'} Details`}
+              {`${options.title || (isAppointment ? 'Appointment' : 'Event')} Details`}
             </Typography>
           </Box>
           <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
             <Box flexGrow={2} display='flex' paddingTop={2} flexDirection='column'>
+              {isAppointment &&
+                <Box
+                  display='flex'
+                  flexDirection='row'
+                  key={`selectParent`}
+                  id={`selectParent`}
+                  width={`350px`}
+                  flexGrow={1}
+                  marginBottom={0}
+                  marginTop={1}
+                  justifyContent='flex-start'
+                  alignItems='flex-start'
+                >
+                  <Box
+                    key={`selectBox`}
+                    display='flex' flexGrow={1} flexDirection='column'
+                  >
+                    <Select
+                      options={(state.accessList && state.accessList[state.session.client_id])
+                        ? makeChoices(state.accessList[state.session.client_id].list)
+                        : [{ value: state.session.patient_id, label: state.session.patient_display_name }]
+                      }
+                      searchBy={'label'}
+                      dropdownHandle={true}
+                      multi={true}
+                      clearOnSelect={true}
+                      clearOnBlur={true}
+                      key={`selectOptions`}
+                      searchable={true}
+                      create={false}
+                      closeOnClickInput={true}
+                      placeholder={'Choose someone...'}
+                      values={[]}
+                      closeOnSelect={true}
+                      contentRenderer={
+                        ({ props, state }) => {
+                          return (
+                            <div>
+                              {reactData.chosen_names || 'Choose someone...'}
+                            </div>
+                          );
+                        }}
+                      style={{
+                        lineHeight: 1,
+                        fontSize: `1rem`,
+                        marginLeft: '-5px',
+                        marginBottom: '-4px',
+                        borderWidth: 0,
+                        control: (defaultStyles, state) => ({
+                          ...defaultStyles,
+                          color: 'black',
+                          backgroundColor: state.isSelected ? 'red' : 'orange'
+                        })
+                      }}
+                      noDataLabel={`No names match`}
+                      onChange={async (values) => {
+                        if (values.length > 0) {
+                          let reactUpd = [];
+                          if (values.length === 1) {
+                            reactUpd = {
+                              preReservationList: [values[0].value],
+                              chosen_names: values[0].label
+                            };
+                            
+                          }
+                          else if (values.length > 1) {
+                            let peopleNames = [];
+                            let reservationList = [];
+                            for (let v = 0; v < values.length; v++) {
+                              peopleNames.push(values[v].label);
+                              reservationList.push(values[v].value);
+                            }
+                            reactUpd = {
+                              preReservationList: reservationList,
+                              chosen_names: listFromArray(peopleNames)
+                            };                            
+                          }
+                          if (!reactData.title_override) {
+                            reactUpd.event_title = `${options.title ? titleCase(options.title.trim()) : 'Appointment'} for ${reactUpd.chosen_names}`;
+                          }
+                          if (!reactData.location_override_override) {
+                            let this_person = await getPerson(values[0].value);
+                            reactUpd.event_location = this_person.location || '';
+                          }
+                          updateReactData(reactUpd, true);
+                        }
+                        else {  // values.length === 0  (no one selected)
+                          let reactUpd = {
+                            preReservationList: [],
+                            chosen_names: ''
+                          };
+                          if (!reactData.title_override) {
+                            reactUpd.event_title = '';
+                          }
+                          if (!reactData.location_override_override) {
+                            reactUpd.event_location = '';
+                          }
+                          updateReactData(reactUpd, true);
+                        }
+                      }}
+                    />
+                    <Box display='flex'
+                      flexDirection='row'
+                      paddingTop={'4px'}
+                      borderTop={1}
+                      key={`selectPromptBox`}
+                    >
+                      <Typography
+                        key={`selectPrompt`}
+                        id={`selectPrompt`}
+                        style={AVATextStyle({
+                          lineHeight: 1,
+                          maxWidth: '90%',
+                          size: 0.75,
+                          opacity: '60%',
+                          margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
+                        })}
+                      >
+                        {(state.accessList && state.accessList[state.session.client_id])
+                          ? `Who is this ${titleCase(options.title)} for?`
+                          : 'AVA still loading...'
+                        }
+                      </Typography>
+                    </Box>
+                  </Box>
+                </Box>
+              }
               <div>
                 <TextField
                   id='description'
-                  value={description}
+                  value={reactData.event_title}
                   fullWidth
                   onChange={event => (handleChangeDescription(event.target.value))}
-                  helperText='Description'
+                  helperText='Event Title'
                 />
               </div>
               <div>
                 <TextField
                   id='location'
-                  value={location}
+                  value={reactData.event_location}
                   fullWidth
                   onChange={event => (handleChangeLocation(event.target.value))}
                   helperText='Location'
@@ -817,6 +965,15 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       />
                       <FormControlLabel
                         className={classes.formControlLbl}
+                        value="semiannually_on"
+                        control={<Radio disableRipple className={classes.radioButton} size='small' />}
+                        label={
+                          <Typography className={classes.radioText}>
+                            {`Twice a year (${eventAsADate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} and ${addMonths(eventAsADate, 6).date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})`}
+                          </Typography>}
+                      />
+                      <FormControlLabel
+                        className={classes.formControlLbl}
                         value="weekly_on"
                         control={<Radio disableRipple className={classes.radioButton} size='small' />}
                         label={
@@ -864,144 +1021,31 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   </Typography>
                   <FormControl className={classes.formControl} component="fieldset">
                     <FormGroup row aria-label={`message_routedays_method`} name="method">
-                      <FormControlLabel
-                        className={classes.formControlDays}
-                        control={
-                          <Checkbox
-                            className={classes.centerCenter}
-                            value={checkedDays['0']}
-                            name={`message_routing_0`}
-                            onClick={() => {
-                              if (checkedDays[0]) { checkedDays[0] = false; }
-                              else { checkedDays[0] = true; }
-                              setCheckedDays(checkedDays);
-                            }}
-                            disableRipple
-                            inputProps={{ 'aria-labelledby': `message_routing_0` }}
-                          />
-                        }
-                        label={<Typography className={classes.radioDays}>Sun</Typography>}
-                        labelPlacement='bottom'
-                      />
-                      <FormControlLabel
-                        className={classes.formControlDays}
-                        control={
-                          <Checkbox
-                            className={classes.centerCenter}
-                            value={checkedDays['1']}
-                            name={`message_routing_1`}
-                            onClick={() => {
-                              if (checkedDays[1]) { checkedDays[1] = false; }
-                              else { checkedDays[1] = true; }
-                              setCheckedDays(checkedDays);
-                            }}
-                            disableRipple
-                            inputProps={{ 'aria-labelledby': `message_routing_1` }}
-                          />
-                        }
-                        label={<Typography className={classes.radioDays}>Mon</Typography>}
-                        labelPlacement='bottom'
-                      />
-                      <FormControlLabel
-                        className={classes.formControlDays}
-                        value="AVA"
-                        control={
-                          <Checkbox
-                            className={classes.centerCenter}
-                            value={checkedDays['2']}
-                            name={`message_routing_2`}
-                            onClick={() => {
-                              if (checkedDays[2]) { checkedDays[2] = false; }
-                              else { checkedDays[2] = true; }
-                              setCheckedDays(checkedDays);
-                            }}
-                            disableRipple
-                            inputProps={{ 'aria-labelledby': `message_routing_2` }}
-                          />
-                        }
-                        label={<Typography className={classes.radioDays}>Tue</Typography>}
-                        labelPlacement='bottom'
-                      />
-                      <FormControlLabel
-                        className={classes.formControlDays}
-                        value="AVA"
-                        control={
-                          <Checkbox
-                            className={classes.centerCenter}
-                            value={checkedDays['3']}
-                            name={`message_routing_3`}
-                            onClick={() => {
-                              if (checkedDays[3]) { checkedDays[3] = false; }
-                              else { checkedDays[3] = true; }
-                              setCheckedDays(checkedDays);
-                            }}
-                            disableRipple
-                            inputProps={{ 'aria-labelledby': `message_routing_3` }}
-                          />
-                        }
-                        label={<Typography className={classes.radioDays}>Wed</Typography>}
-                        labelPlacement='bottom'
-                      />
-                      <FormControlLabel
-                        className={classes.formControlDays}
-                        value="AVA"
-                        control={
-                          <Checkbox
-                            className={classes.centerCenter}
-                            value={checkedDays['4']}
-                            name={`message_routing_4`}
-                            onClick={() => {
-                              if (checkedDays[4]) { checkedDays[4] = false; }
-                              else { checkedDays[4] = true; }
-                              setCheckedDays(checkedDays);
-                            }}
-                            disableRipple
-                            inputProps={{ 'aria-labelledby': `message_routing_4` }}
-                          />
-                        }
-                        label={<Typography className={classes.radioDays}>Thu</Typography>}
-                        labelPlacement='bottom'
-                      />
-                      <FormControlLabel
-                        className={classes.formControlDays}
-                        value="AVA"
-                        control={
-                          <Checkbox
-                            className={classes.centerCenter}
-                            value={checkedDays['5']}
-                            name={`message_routing_5`}
-                            onClick={() => {
-                              if (checkedDays[5]) { checkedDays[5] = false; }
-                              else { checkedDays[5] = true; }
-                              setCheckedDays(checkedDays);
-                            }}
-                            disableRipple
-                            inputProps={{ 'aria-labelledby': `message_routing_5` }}
-                          />
-                        }
-                        label={<Typography className={classes.radioDays}>Fri</Typography>}
-                        labelPlacement='bottom'
-                      />
-                      <FormControlLabel
-                        className={classes.formControlDays}
-                        value="AVA"
-                        control={
-                          <Checkbox
-                            className={classes.centerCenter}
-                            value={checkedDays['6']}
-                            name={`message_routing_6`}
-                            onClick={() => {
-                              if (checkedDays[6]) { checkedDays[6] = false; }
-                              else { checkedDays[6] = true; }
-                              setCheckedDays(checkedDays);
-                            }}
-                            disableRipple
-                            inputProps={{ 'aria-labelledby': `message_routing_6` }}
-                          />
-                        }
-                        label={<Typography className={classes.radioDays}>Sat</Typography>}
-                        labelPlacement='bottom'
-                      />
+                      {[0, 1, 2, 3, 4, 5, 6].map(this_dow => (
+                        <FormControlLabel
+                          className={classes.formControlDays}
+                          control={
+                            <Checkbox
+                              className={classes.centerCenter}
+                              key={`dow_check_${this_dow}`}
+                              value={checkedDays[this_dow]}
+                              checked={checkedDays[this_dow]}
+                              name={`dow_check_${this_dow}`}
+                              onClick={() => {
+                                if (checkedDays[this_dow]) { checkedDays[this_dow] = false; }
+                                else { checkedDays[this_dow] = true; }
+                                setCheckedDays(checkedDays);
+                              }}
+                              disableRipple
+                              inputProps={{ 'aria-labelledby': `message_routing_0` }}
+                            />
+                          }
+                          label={<Typography className={classes.radioDays}>
+                            {dOfw[this_dow]}
+                          </Typography>}
+                          labelPlacement='bottom'
+                        />
+                      ))}
                     </FormGroup>
                   </FormControl>
                 </Box>
@@ -1345,87 +1389,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                   </Button>
                 </div>
               }
-              {isAppointment &&
-                <Box
-                  display='flex'
-                  flexDirection='row'
-                  key={`selectParent`}
-                  id={`selectParent`}
-                  width={`350px`}
-                  flexGrow={1}
-                  marginBottom={0}
-                  marginTop={1}
-                  justifyContent='flex-start'
-                  alignItems='flex-start'
-                >
-                  <Box
-                    key={`selectBox`}
-                    display='flex' flexGrow={1} flexDirection='column'
-                  >
-                    <Select
-                      options={(state.accessList && state.accessList[state.session.client_id])
-                        ? makeChoices(state.accessList[state.session.client_id].list)
-                        : [{ value: state.session.patient_id, label: state.session.patient_display_name }]
-                      }
-                      searchBy={'label'}
-                      dropdownHandle={true}
-                      multi={true}
-                      clearOnSelect={true}
-                      clearOnBlur={true}
-                      key={`selectOptions`}
-                      searchable={true}
-                      create={false}
-                      closeOnClickInput={true}
-                      values={[{ value: state.session.patient_id, label: state.session.patient_display_name }]}
-                      closeOnSelect={true}
-                      style={{
-                        lineHeight: 1,
-                        fontSize: `0.85rem`,
-                        marginLeft: '-5px',
-                        marginBottom: '-4px',
-                        borderWidth: 0,
-                        control: (defaultStyles, state) => ({
-                          ...defaultStyles,
-                          color: 'black',
-                          backgroundColor: state.isSelected ? 'red' : 'orange'
-                        })
-                      }}
-                      noDataLabel={`No names match`}
-                      placeholder={``}
-                      onChange={async (values) => {
-                        if (values.length > 0) {
-                          updateReactData({
-                            preReservationList: values.map(this_value => { return this_value.value; })
-                          }, true);
-                        }
-                      }}
-                    />
-                    <Box display='flex'
-                      flexDirection='row'
-                      paddingTop={'4px'}
-                      borderTop={1}
-                      key={`selectPromptBox`}
-                    >
-                      <Typography
-                        key={`selectPrompt`}
-                        id={`selectPrompt`}
-                        style={AVATextStyle({
-                          lineHeight: 1,
-                          maxWidth: '90%',
-                          size: 0.75,
-                          opacity: '60%',
-                          margin: { top: 0.25, bottom: 0.5, left: 0, right: 3 }
-                        })}
-                      >
-                        {(state.accessList && state.accessList[state.session.client_id])
-                          ? ' Choose Appointment Participants'
-                          : 'AVA still loading...'
-                        }
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Box>
-              }
             </Box>
           </DialogContent>
           <Box display='flex' flexDirection='column' justifyContent='center' alignItems='center'>
@@ -1457,7 +1420,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
           </Box>
           {showOwnerSelect &&
             <PersonFilter
-              prompt={`Who else should be listed as an owner for ${description}?`}
+              prompt={`Who else should be listed as an owner for ${reactData.event_title}?`}
               peopleList={state.accessList[state.session.client_id].list}
               multiSelect={true}
               alreadyChecked={ownerList}

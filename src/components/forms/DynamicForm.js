@@ -456,8 +456,15 @@ export default ({
     case 'new_event':
       let isAppointment = false;
       let personalEvent = false;
+      let defaultObj = {};
       if (Array.isArray(defaultValue)) {
         defaultValue.forEach(dV => {
+          if (typeof (dV) === 'string') {
+            let [dVKey, dVValue] = dV.split('=');
+            if (dVValue) {
+              dV = { [dVKey]: dVValue };
+            }
+          }
           if (dV.hasOwnProperty('isAppointment')) {
             isAppointment = true;
             personalEvent = true;
@@ -465,6 +472,7 @@ export default ({
           else if (dV.hasOwnProperty('personalEvent')) {
             personalEvent = true;
           }
+          Object.assign(defaultObj, dV);
         })
       }
       return (
@@ -473,6 +481,7 @@ export default ({
           peopleList={values}
           isAppointment={isAppointment}
           personalEvent={personalEvent}
+          options={defaultObj}
           picture={null}
           showNewEvent={true}
           onClose={onSave}

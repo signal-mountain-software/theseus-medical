@@ -247,6 +247,16 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
         let aL = this_group.common_activities.length;
         screenStatus(`Common activities for ${this_group.name}`, ((a / aL) * 100), ((aL / 40) + .75), returnArray);
         let this_activity = this_group.common_activities[a];
+        if (isObject(this_activity)) {
+          if (this_activity.auth) {
+            let authorized = state.user.groups.some(user_group => {
+              return (this_activity.auth.includes(user_group));
+            });
+            if (!authorized) {
+              continue;
+            }
+          }
+        }
         let overrideColor = '';
         let overrideIcon = '';
         if (!allowDuplicates && duplicateCheck.includes(this_activity)) {   // this_activity is already loaded
@@ -470,7 +480,7 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
     await dbClient
       .update({
         Key: {
-          person_id: pPerson
+          person_id: `${state.session.patient_id}%%${state.session.user_id}`
         },
         UpdateExpression: "set AVA_main_menu = :m, menu_version = :v",
         ExpressionAttributeValues: {

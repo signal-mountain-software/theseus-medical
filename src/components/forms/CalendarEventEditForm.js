@@ -1050,104 +1050,106 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
                   {isOwned(this_item.slotData) &&
                     <Box display='flex' width='100%'
                       mt={(this_item.slotData?.slot_description ? 1 : 0)}
-                      flexDirection='row' justifyContent='flex-start' alignItems='center'
+                      flexDirection='row' justifyContent='space-between' alignItems='center'
                     >
-                      {/* Mark an item - Radio button */}
-                      <Box width={40} display='flex' mr={0} flexDirection='row' justifyContent='center' alignItems='center'>
+                      <Box display='flex' mr={0} flexDirection='row' justifyContent='flex-start' alignItems='center'>
+                        {/* Mark an item - Radio button */}
                         {isEventOwner &&
-                          <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
-                            <IconButton mr={0} ml={0} color='inherit'
-                              onClick={async () => {
-                                await dbClient
-                                  .update({
-                                    Key: {
-                                      "client": pClient,
-                                      "event_key": `${pEventCode}#${this_item.slotData.id}`
-                                    },
-                                    UpdateExpression: 'set marked = :m',
-                                    ExpressionAttributeValues: { ':m': !this_item.marked },
-                                    TableName: "Calendar"
-                                  })
-                                  .promise()
-                                  .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
-                                eventSlotList[index].marked = !this_item.marked;
-                                setEventSlotList(eventSlotList);
-                                setForceRedisplay(!forceRedisplay);
-                              }}
-                            >
-                              {this_item.marked ? <RadioButtonCheckedIcon mr={0} ml={0} /> : <RadioButtonUncheckedIcon mr={0} ml={0} />}
-                            </IconButton>
-                          </Tooltip>
+                          <Box width={40} display='flex' mr={0} flexDirection='row' justifyContent='center' alignItems='center'>
+                            <Tooltip mr={0} ml={0} title={`Mark ${this_item.marked ? 'not ' : ''}attended`} >
+                              <IconButton mr={0} ml={0} color='inherit'
+                                onClick={async () => {
+                                  await dbClient
+                                    .update({
+                                      Key: {
+                                        "client": pClient,
+                                        "event_key": `${pEventCode}#${this_item.slotData.id}`
+                                      },
+                                      UpdateExpression: 'set marked = :m',
+                                      ExpressionAttributeValues: { ':m': !this_item.marked },
+                                      TableName: "Calendar"
+                                    })
+                                    .promise()
+                                    .catch(error => { cl(`caught error updating Calendar; error is: `, error); });
+                                  eventSlotList[index].marked = !this_item.marked;
+                                  setEventSlotList(eventSlotList);
+                                  setForceRedisplay(!forceRedisplay);
+                                }}
+                              >
+                                {this_item.marked ? <RadioButtonCheckedIcon mr={0} ml={0} /> : <RadioButtonUncheckedIcon mr={0} ml={0} />}
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
                         }
-                      </Box>
-                      {/* Image and Name */}
-                      {(!(state.user.account_class
-                        && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
-                        && !(isEventOwner || isSlotOwner(this_item.slotData))
-                      )) &&
-                        <Box
-                          component="img"
-                          mr={1}
-                          minWidth={50}
-                          maxWidth={50}
-                          minHeight={50}
-                          maxHeight={50}
-                          border={1}
-                          alt=''
-                          src={getImage(this_item.slotData.owner)}
-                        />
-                      }
-                      <Box display='flex' flexDirection='column' width='100%'>
-                        <Typography style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}  >
-                          {(state.user.account_class
-                            && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
-                            && !(isEventOwner || isSlotOwner(this_item.slotData))
-                          ) ? 'Reserved' : this_item.slotData.display_name
-                          }
-                        </Typography>
-                        {/* There are notes and I am the event or slot owner 
-                                OR You've asked to edit notes (which you only could do if you are the owner) */}
-                        {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
-                          (editNoteNumber === index ?
-                            <Box display='flex' mr={4} flexDirection='row' alignItems='center' flexGrow={1}>
-                              <TextField
-                                classes={{ root: classes.standard }}
-                                id={`prompt-msg`}
-                                key={`prompt-msg`}
-                                multiline
-                                inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
-                                defaultValue={this_item.slotData.notes || ''}
-                                onChange={(event) => { setNewNote(event.target.value); }}
-                                autoComplete='off'
-                              />
-                              {((pOccData.notes_required && newNote) || !pOccData.notes_required) &&
-                                <SaveIcon
-                                  aria-label="saveNote_icon"
-                                  onClick={() => {
-                                    handleChangeNotes(index, newNote);
-                                  }}
-                                  edge="end"
-                                />
-                              }
-                              {(!pOccData.notes_required || this_item.slotData.notes) &&
-                                <CloseIcon
-                                  aria-label="closeNote_icon"
-                                  onClick={() => { setEditNoteNumber(-1); }}
-                                  edge="end"
-                                />
-                              }
-                            </Box>
-                            :
-                            <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} >
-                              {this_item.slotData.notes}
-                            </Typography>
-                          )
+                        {/* Image and Name */}
+                        {(!(state.user.account_class
+                          && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                          && !(isEventOwner || isSlotOwner(this_item.slotData))
+                        )) &&
+                          <Box
+                            component="img"
+                            mr={1}
+                            minWidth={50}
+                            maxWidth={50}
+                            minHeight={50}
+                            maxHeight={50}
+                            border={1}
+                            alt=''
+                            src={getImage(this_item.slotData.owner)}
+                          />
                         }
-                        {pOccData.notes_required && (pOccData.notes_required !== '') && (editNoteNumber === index) &&
-                          <Typography style={AVATextStyle({ size: 0.8, margin: { right: 1 } })} >
-                            {pOccData.notes_required}
+                        <Box display='flex' flexDirection='column' width='100%'>
+                          <Typography style={AVATextStyle({ size: 1.5, margin: { right: 1 } })}  >
+                            {(state.user.account_class
+                              && ['family', 'guest', 'vendor', 'other'].includes(state.user.account_class)
+                              && !(isEventOwner || isSlotOwner(this_item.slotData))
+                            ) ? 'Reserved' : this_item.slotData.display_name
+                            }
                           </Typography>
-                        }
+                          {/* There are notes and I am the event or slot owner 
+                                OR You've asked to edit notes (which you only could do if you are the owner) */}
+                          {((this_item.slotData.notes && (isEventOwner || isSlotOwner(this_item.slotData))) || (editNoteNumber === index)) &&
+                            (editNoteNumber === index ?
+                              <Box display='flex' mr={4} flexDirection='row' alignItems='center' flexGrow={1}>
+                                <TextField
+                                  classes={{ root: classes.standard }}
+                                  id={`prompt-msg`}
+                                  key={`prompt-msg`}
+                                  multiline
+                                  inputProps={{ style: { fontSize: `${user_fontSize}rem`, lineHeight: `${user_fontSize * 1.2}rem` } }}
+                                  defaultValue={this_item.slotData.notes || ''}
+                                  onChange={(event) => { setNewNote(event.target.value); }}
+                                  autoComplete='off'
+                                />
+                                {((pOccData.notes_required && newNote) || !pOccData.notes_required) &&
+                                  <SaveIcon
+                                    aria-label="saveNote_icon"
+                                    onClick={() => {
+                                      handleChangeNotes(index, newNote);
+                                    }}
+                                    edge="end"
+                                  />
+                                }
+                                {(!pOccData.notes_required || this_item.slotData.notes) &&
+                                  <CloseIcon
+                                    aria-label="closeNote_icon"
+                                    onClick={() => { setEditNoteNumber(-1); }}
+                                    edge="end"
+                                  />
+                                }
+                              </Box>
+                              :
+                              <Typography style={AVATextStyle({ margin: { right: 1 } })} className={classes.standard} >
+                                {this_item.slotData.notes}
+                              </Typography>
+                            )
+                          }
+                          {pOccData.notes_required && (pOccData.notes_required !== '') && (editNoteNumber === index) &&
+                            <Typography style={AVATextStyle({ size: 0.8, margin: { right: 1 } })} >
+                              {pOccData.notes_required}
+                            </Typography>
+                          }
+                        </Box>
                       </Box>
                       {(isEventOwner || isSlotOwner(this_item.slotData)) &&
                         (editNoteNumber === -1) &&
@@ -1541,112 +1543,106 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
           <DialogActions className={classes.buttonArea} style={{ justifyContent: 'center' }}>
             <Box display='flex' flexDirection='column'>
               <Box display='flex' flexDirection='row' paddingBottom={1} justifyContent='center' alignItems='center'>
-                <Tooltip title={`Exit`} placement='top'>
-                  <Button
-                    className={AVAClass.AVAButton}
-                    style={{ backgroundColor: 'red', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
-                    size='small'
-                    onClick={() => {
-                      let summaryInfo = {
-                        totalSlots: 0,
-                        ownedSlots: 0,
-                        markedSlots: 0,
-                        listComplete: false,
-                        slot_owners: {}
-                      };
-                      if (eventSlotList) {
-                        eventSlotList.forEach(s => {
-                          if (s.slotData) {
-                            summaryInfo.totalSlots++;
-                            if (s.slotData.owner) {
-                              summaryInfo.ownedSlots++;
-                              summaryInfo.slot_owners[s.slotData.owner] = s.slotData.slot_description || s.slotData.id;
-                            }
-                            if (s.marked) {
-                              summaryInfo.markedSlots++;
-                            }
+                <Button
+                  className={AVAClass.AVAButton}
+                  style={{ backgroundColor: 'red', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
+                  size='small'
+                  onClick={() => {
+                    let summaryInfo = {
+                      totalSlots: 0,
+                      ownedSlots: 0,
+                      markedSlots: 0,
+                      listComplete: false,
+                      slot_owners: {}
+                    };
+                    if (eventSlotList) {
+                      eventSlotList.forEach(s => {
+                        if (s.slotData) {
+                          summaryInfo.totalSlots++;
+                          if (s.slotData.owner) {
+                            summaryInfo.ownedSlots++;
+                            summaryInfo.slot_owners[s.slotData.owner] = s.slotData.slot_description || s.slotData.id;
                           }
-                        });
-                        summaryInfo.listComplete = ((summaryInfo.ownedSlots > 0) && (summaryInfo.markedSlots >= summaryInfo.ownedSlots));
-                      }
-                      pOccData.summaryInfo = summaryInfo;
-                      onReset(pOccData);
-                    }}
-                    startIcon={<CloseIcon size="small" />}
-                  >
-                    {'Done'}
-                  </Button>
-                </Tooltip>
+                          if (s.marked) {
+                            summaryInfo.markedSlots++;
+                          }
+                        }
+                      });
+                      summaryInfo.listComplete = ((summaryInfo.ownedSlots > 0) && (summaryInfo.markedSlots >= summaryInfo.ownedSlots));
+                    }
+                    pOccData.summaryInfo = summaryInfo;
+                    onReset(pOccData);
+                  }}
+                  startIcon={<CloseIcon size="small" />}
+                >
+                  {'Done'}
+                </Button>
                 {['time', 'seats'].includes(pOccData.signup_type) &&
                   (eventSlotList.length <= reactData.numberOfOwnedSlots) &&
                   (!ownerOfSlots || isEventOwner) &&
-                  <Tooltip title={`WaitList`} placement='top'>
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'orange', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
-                      size='small'
-                      onClick={async () => {
-                        if (isEventOwner) {
-                          await setChoices({ pGroups: peopleList, noCurrent: true });
-                          updateReactData({
-                            editWaitList: true
-                          }, true);
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'orange', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
+                    size='small'
+                    onClick={async () => {
+                      if (isEventOwner) {
+                        await setChoices({ pGroups: peopleList, noCurrent: true });
+                        updateReactData({
+                          editWaitList: true
+                        }, true);
+                      }
+                      else {
+                        if (!isWaitListed(pPatient)) {
+                          reactData.waitList.push(pPatient);
                         }
                         else {
-                          if (!isWaitListed(pPatient)) {
-                            reactData.waitList.push(pPatient);
+                          let foundAt = reactData.waitList.findIndex(wl_entry => {
+                            return (wl_entry === pPatient);
+                          });
+                          if (foundAt > -1) {
+                            reactData.waitList.splice(foundAt, 1);
                           }
-                          else {
-                            let foundAt = reactData.waitList.findIndex(wl_entry => {
-                              return (wl_entry === pPatient);
-                            });
-                            if (foundAt > -1) {
-                              reactData.waitList.splice(foundAt, 1);
-                            }
-                          }
-                          await handleUpdateWaitList(reactData.waitList);
-                          updateReactData({
-                            waitList: reactData.waitList,
-                          }, true);
                         }
-                      }}
-                    >
-                      {`${!isEventOwner ? (isWaitListed(pPatient) ? 'Remove me from ' : 'Add me to ') : ''}Wait List`}
-                    </Button>
-                  </Tooltip>
+                        await handleUpdateWaitList(reactData.waitList);
+                        updateReactData({
+                          waitList: reactData.waitList,
+                        }, true);
+                      }
+                    }}
+                  >
+                    {`${!isEventOwner ? (isWaitListed(pPatient) ? 'Remove me from ' : 'Add me to ') : ''}Wait List`}
+                  </Button>
                 }
                 {((!ownerOfSlots && !pViewOnly) || isEventOwner) &&
                   (!['time', 'seats'].includes(pOccData.signup_type)) &&
-                  <Tooltip title={'Add to the list'} placement='top'>
-                    <Button
-                      className={AVAClass.AVAButton}
-                      style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
-                      size='small'
-                      onClick={async () => {
-                        console.log(firstAvailableSlot);
-                        if (isEventOwner) {
-                          setEditSlot(true);
-                          await setChoices({ pGroups: peopleList });
-                          setSelectNewSlotOwner(true);
+                  <Button
+                    className={AVAClass.AVAButton}
+                    style={{ backgroundColor: 'blue', color: 'white', marginBottom: '-12px', marginLeft: '16px', marginRight: '16px' }}
+                    size='small'
+                    onClick={async () => {
+                      console.log(firstAvailableSlot);
+                      if (isEventOwner) {
+                        setEditSlot(true);
+                        await setChoices({ pGroups: peopleList });
+                        setSelectNewSlotOwner(true);
+                      }
+                      else {
+                        let pName = await makeName(pPatient);
+                        let request = { person: `${pName}:${pPatient}` };
+                        let addedIndexAt = await handleAllocateSlot(request);
+                        setOwnerOfSlots(true);
+                        if (pOccData.signup_type !== 'none') {
+                          request.slot = firstAvailableSlot;
                         }
-                        else {
-                          let pName = await makeName(pPatient);
-                          let request = { person: `${pName}:${pPatient}` };
-                          let addedIndexAt = await handleAllocateSlot(request);
-                          setOwnerOfSlots(true);
-                          if (pOccData.signup_type !== 'none') {
-                            request.slot = firstAvailableSlot;
-                          }
-                          if (pOccData.notes_required) {
-                            setEditNoteNumber(addedIndexAt);
-                          }
+                        if (pOccData.notes_required) {
+                          setEditNoteNumber(addedIndexAt);
                         }
-                      }}
-                      startIcon={<PersonAddIcon size="small" />}
-                    >
-                      {isEventOwner ? `Add someone` : `Add myself`}
-                    </Button>
-                  </Tooltip>
+                      }
+                    }}
+                    startIcon={<PersonAddIcon size="small" />}
+                  >
+                    {isEventOwner ? `Add someone` : `Add myself`}
+                  </Button>
                 }
               </Box>
             </Box>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { cl, dbClient, recordExists } from '../../util/AVAUtilities';
+import { cl, dbClient, recordExists, makeArray } from '../../util/AVAUtilities';
 import { makeDate } from '../../util/AVADateTime';
 import { getPerson } from '../../util/AVAPeople';
 import AVAConfirm from '../forms/AVAConfirm';
@@ -222,7 +222,7 @@ export default ({ request = {}, onClose }) => {
 
   const [reactData, setReactData] = React.useState({
     formType_filter: options.formTypeList || ['*all'],
-    people_filter: options.peopleList || ['*person'],
+    people_filter: makeArray(options.peopleList) || ['*person'],
     assignedTo_filter: options.assignedToList || null,
     user_fontSize: AVADefaults({ fontSize: 'get' }) || 1.5,
     initialized: false,
@@ -313,6 +313,12 @@ export default ({ request = {}, onClose }) => {
           stage: 'building'
         }, true);
         queryResult.ExclusiveStartKey = queryResult.LastEvaluatedKey;
+      }
+      else {
+        updateReactData({
+          documentList: [],
+          stage: 'building'
+        }, true);
       }
       loopCount++;
     } while (queryResult.ExclusiveStartKey && (loopCount < 10));
@@ -638,6 +644,18 @@ export default ({ request = {}, onClose }) => {
             </Typography>
           </Box>
           <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
+            {(reactData.documentList.length === 0) && 
+              <Typography style={AVATextStyle({
+                size: 1.2,
+                margin: {
+                  bottom: 1,
+                  top: 1,
+                },
+                align: 'center'
+              })}>
+                No Completed Documents yet
+              </Typography>
+            }
             {reactData.documentList.map((this_person, personNdx) => (
               <React.Fragment
                 key={`personFrag__${this_person.person_name}`}
@@ -755,7 +773,7 @@ export default ({ request = {}, onClose }) => {
                               },
                               color: (((this_form.form_incompleteDoc_count > 0) && !this_form.form_expanded) ? 'red' : '')
                             })}>
-                            {`${this_form.documentList.length} document${(this_form.documentList.length > 1) ? 's' : 'd'}`}
+                            {`${this_form.documentList.length} document${(this_form.documentList.length > 1) ? 's' : ''}`}
                           </Typography>
                         }
                       </Box>

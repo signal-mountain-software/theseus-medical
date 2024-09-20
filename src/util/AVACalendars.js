@@ -1,6 +1,6 @@
 import { clt, cl, recordExists, getCustomizations, makeArray, makeString, makeNumber, uuid, dbClient, titleCase, isEmpty, isObject } from './AVAUtilities';
 import { makeName, getPerson, formatPhone } from './AVAPeople';
-import { addDays, daysDiff, makeDate, makeTime } from './AVADateTime';
+import { addDays, daysDiff, makeDate, makeTime, addMonths } from './AVADateTime';
 import { sendMessages, resolveMessageVariables } from './AVAMessages';
 
 import { jsPDF } from "jspdf";
@@ -122,6 +122,13 @@ export async function addEvent(body) {
           first_date: first_date.numeric,
           last_date,
           day_of_year: [first_date.numeric % 10000]
+        };
+      }
+      case 'semiannually_on': {
+        return {
+          recurrence: 'semi_annual',
+          first_date: first_date.numeric,
+          last_date,
         };
       }
       case 'daily': {
@@ -969,6 +976,17 @@ export async function getOccurenceList(request) {
       } // end loop from first date to last date
       break;
     } // end monthly case
+    case "semi_annual": {
+      for (let candidate = makeDate(from_date).date; true; candidate = addMonths(candidate, 6).date) {
+        let done = foundEnough();
+        if ((candidate > to_date) || done) {
+          break;
+        }
+        await validateOccurrenceDate(makeDate(candidate).numeric);
+        if (foundEnough()) { break; }
+      }
+      break;
+    } // end semi_annual case
     case "yearly": {
       let targetArray = [];
       if (typeof occPattern.day_of_year === 'string') { targetArray[0] = Number(occPattern.day_of_year); }
@@ -1124,6 +1142,8 @@ export async function writeSlot(body) {
     "slot (alternate form = id)": <"0900 (time) or s#103 (seat) or r#12/s#103 (row and seat) or rsteele (user_id)">,
     "status": <"null (=selected), released, reserved, confirmed, attended, no-show, off_campus, left_campus, entered_campus... ">
     "show_this_slot": <boolean>  (assume true if missing or null)
+    "no_messaging": false
+    "overrideRecipient": [array of recipients to send message to instead of event owner]
   */
   let [event_id, occ_id] = makeString(body.event, 1).split('#');
   let occurrence = body.occurrence_date || occ_id;
@@ -1210,6 +1230,10 @@ export async function writeSlot(body) {
     // no op here... just drop through
   }
   else {
+    let overrideRecipientList = false;
+    if (body.overrideRecipient) {
+      overrideRecipientList = body.overrideRecipient;
+    }
     let [eventRec] = await getCalendarEntries({ client: body.client, event: `${event_key}`, type: 'event' });
     if (eventRec.eventData && (!eventRec.eventData.messaging || (eventRec.eventData.messaging.length === 0))) {
       let subjectText = '';
@@ -1253,7 +1277,7 @@ export async function writeSlot(body) {
           subject: subjectText,
           text: messageText
         },
-        recipientList: ownerList
+        recipientList: overrideRecipientList || ownerList
       };
     }
     if (eventRec.eventData && eventRec.eventData.messaging) {
@@ -2346,6 +2370,13 @@ export function occurrenceDateBuilder(eventRec, start_date, end_date) {
       } // end loop from first date to last date
       break;
     } // end monthly case
+    case "semi_annual": {
+      let to_date = makeDate(end_date).date;
+      for (let candidate = makeDate(start_date).date; ((candidate < to_date) && (responseArray.length < 10)); addMonths(candidate, 6)) {
+        responseArray.push((makeDate(candidate).numeric));
+      }
+      break;
+    } // end semi_annual case
     case "yearly": {
       //*****************  RAY GO HERE  ***************
       let targetArray = [];
