@@ -57,7 +57,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
   });
   const [forceRedisplay, setForceRedisplay] = React.useState(false);
 
-  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
+  const { enqueueSnackbar } = useSnackbar();
 
   const hiddenFileInput = React.useRef(null);
 
@@ -151,6 +151,7 @@ export default ({ onCancel, onLoad, options = {} }) => {
           enqueueSnackbar(`Conversion unsuccessful`, { variant: 'failure', persist: true });
           converterOK = false;
         });
+      if (false) { console.log(data); }
       if (converterOK) {
         s3Resp.Location = `${s3Resp.Location.split('.').slice(0, -1).join('.')}.mp4`;
         extension = 'mp4';
