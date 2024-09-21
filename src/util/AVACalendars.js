@@ -2028,6 +2028,10 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   qQ.ExpressionAttributeValues[':e'] = makeDate(end_date, { noTime: true }).numeric$;
 
   let peopleInfo = {};
+  let conflicts = {};
+  // key = person_id; value = { <date - YYYYMMDD>: [ {yymm24: "open"/<event_key>} ] }
+  //   sort inner array { person: {date: [array]}} by keys (time)
+  //   then, search through array from to back for last entry before the time you're interested in
   let response = {};
   for (let date = start_date; date <= end_date; date = addDays(date, 1)) {
     let thisDate = makeDate(date);
@@ -2137,6 +2141,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       }
       if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
         peopleInfo[occurrenceRec.slotData.owner] = [];
+        conflicts[occurrenceRec.slotData.owner] = {};
       }
       let slotTimesResponse = slotTimes(found_events[occurrenceRec.event_id], response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
       peopleInfo[occurrenceRec.slotData.owner].push(Object.assign({},
@@ -2149,6 +2154,13 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         },
         occurrenceRec.slotData)
       );
+      if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty(occurrenceRec.occurrence_date)) {
+        conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date] = [{ time: 0, open: true }];
+      }
+      conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date].push(
+        { time: makeNumber(slotTimesResponse.start24), open: false, event_id: occurrenceRec.event_id, event_title: found_events[occurrenceRec.event_id].description },
+        { time: makeNumber(slotTimesResponse.end24), open: true }
+      )
     }
   };
 
@@ -2215,7 +2227,19 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
       }
     }
   }
-
+  for (let this_person in conflicts) {
+    for (let this_date in conflicts[this_person]) {
+      conflicts[this_person][this_date].sort((a, b) => {
+        if (a.time === b.time) {
+          return (!a.open ? 1 : -1);
+        }
+        else {
+          return ((a.time < b.time) ? -1 : 1);
+        }
+      })
+    }
+  }
+  response.conflicts = conflicts;
   response.peopleInfo = peopleInfo;
   return response;
 

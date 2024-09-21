@@ -404,6 +404,8 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
     if (room && (room !== '')) {
       newCompositeKey += `_${room}`;
     }
+    //  ***** OVERRIDE FOR AVT ONLY HERE ******* //
+    newCompositeKey = `${state.session.client_id}~${menu_category}_${menu_date}`
     let selected_okey = (Array.isArray(values) ? values[0].value : values.value);
     if (!selected_okey || (selected_okey.trim() === '')) {
       selected_okey = null;
@@ -415,8 +417,8 @@ export default ({ observationList, recipeList, keyDate, onReset }) => {
       observation_key: new_okey,
       date_key: ((useDate === '%date%') ? selectedDate('ymd') : useDate),
       client_id: state.session.client_id,
-      observation_type: `${meal_type}_${menu_category}`,
-      sort_order: `${meal_type}_${menu_category}`
+      observation_type: `${menu_category}`,
+      sort_order: `${menu_category}`
     };
     updateReactData({
       addMode: true,

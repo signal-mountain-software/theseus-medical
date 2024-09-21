@@ -243,6 +243,7 @@ export default ({
 
   function okToShow(pLine) {
     if (!pLine) { return false; }
+    else if (!isObject(pLine)) { return false; }
     else if (!person_filter || (person_filter.trim() === '')) { return true; }
     else if (pLine.searchString) {
       return (pLine.searchString.toLowerCase().includes(person_filter));

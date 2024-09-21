@@ -511,7 +511,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (pOpen) {
       dbClient
         .update({
-          Key: { person_id: pPerson },
+          Key: { person_id: `${state.session.patient_id}%%${state.session.user_id}` },
           UpdateExpression: 'set AVA_section_open = :o',
           ExpressionAttributeValues: {
             ':o': pOpen

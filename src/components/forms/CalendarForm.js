@@ -1,12 +1,12 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 
-import { makeTime } from '../../util/AVADateTime';
-import { cl, isMobile, isObject, deepCopy, titleCase, makeArray } from '../../util/AVAUtilities';
+import { makeTime, makeDate } from '../../util/AVADateTime';
+import { cl, isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
 import { getCalendarEntries, writeSlot, getSlotList } from '../../util/AVACalendars';
 import { getImage } from '../../util/AVAPeople';
 
-import { List, Box, Typography, Avatar, Tooltip } from '@material-ui/core';
+import { Box, Typography, Avatar, Tooltip } from '@material-ui/core';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
@@ -41,7 +41,7 @@ import PersonFilter from '../forms/PersonFilter';
 
 import Button from '@material-ui/core/Button';
 
-import { AVAclasses, AVATextStyle, AVADefaults, hexColors } from '../../util/AVAStyles';
+import { AVAclasses, AVATextStyle, AVADefaults } from '../../util/AVAStyles';
 import useSession from '../../hooks/useSession';
 import useMediaQuery from '@material-ui/core/useMediaQuery';
 import { printCalendar } from '../../util/AVACalendarPrint';
@@ -115,6 +115,11 @@ const useStyles = makeStyles(theme => ({
   },
   popUpFooter: {
     fontSize: theme.typography.fontSize * 0.8,
+  },
+  dragNames: {
+    fontSize: theme.typography.fontSize * 0.8,
+    marginTop: '3px',
+    marginBottom: '-10px'
   },
   AVAButton: {
     marginLeft: theme.spacing(1),
@@ -205,7 +210,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-export default ({ myCalendar, calendarPeople, person_id, peopleList, onClose, defaultValues = {} }) => {
+export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peopleList, onClose, defaultValues = {} }) => {
 
   /*
   DEFAULT VALUES
@@ -227,7 +232,7 @@ export default ({ myCalendar, calendarPeople, person_id, peopleList, onClose, de
     }
   */
 
-  const { enqueueSnackbar } = useSnackbar();
+  const { enqueueSnackbar, closeSnackbar } = useSnackbar();
 
   const classes = useStyles();
   const AVAClass = AVAclasses();
@@ -264,6 +269,7 @@ export default ({ myCalendar, calendarPeople, person_id, peopleList, onClose, de
       event_being_edited: false,
       pWidth: 60,
       defaultValues: defaultValues,
+      conflictInfo: conflictInfo,
       colorScheme: defaultValues.colorScheme || defaultColorScheme,
       calendar_fill: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill : null,
       calendar_fill_text: isObject(AVADefaults({ client_style: 'get' })) ? AVADefaults({ client_style: 'get' }).calendar_fill_text : null
@@ -379,9 +385,62 @@ export default ({ myCalendar, calendarPeople, person_id, peopleList, onClose, de
     let dragged_id = ev.dataTransfer.getData('id');
     console.log(`dropped ${dragged_id} onto ${droppedOn_event.description}`);
     if (ownerOfSlots(droppedOn_event, dragged_id)) {
-      console.log(`You are already signed up for ${droppedOn_event.description}`);
+      enqueueSnackbar(`${dragged_id} is already included in ${droppedOn_event.description}`, { variant: 'warning' });
     }
     else {
+      // does this person have a conflict with this event?
+      // what is the start time of this event?
+      let eventStart24 = droppedOn_event.time?.from ? makeTime(droppedOn_event.time.from.trim()).numeric24 : 0;
+      let eventEnd24 = droppedOn_event.time?.to ? makeTime(droppedOn_event.time.to.trim()).numeric24 : 2359;
+      if (!isEmpty(reactData.conflictInfo)
+        && reactData.conflictInfo.hasOwnProperty(dragged_id)
+        && reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)
+      ) {
+        let isAvailable = true;
+        let conflictingEvent;
+        let eventStarted = false;
+        let status_message = 'No conflicts';
+        reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].some(this_time => {
+          if (!eventStarted) {
+            if (this_time.time < eventStart24) {
+              // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
+              isAvailable = this_time.open;
+              conflictingEvent = !this_time.open ? this_time.event_title : null;
+            }
+            else if (!isAvailable) {
+              // event HAS started before you got to this entry;  your availability was stored in the earlier step(s)
+              // if you are not available, use the info you stored above to tell what the conflict is and leave             
+              return true;   // breaks the loop
+            }
+            else {
+              // event started and you were availble at the beginning.  Keep looking to see if you become unavailable before the end
+              eventStarted = true;
+            }
+          }
+          else {
+            if (this_time.time > eventEnd24) {
+              // no conflicts
+              return true;
+            }
+            else {
+              // an entry was found that is in the middle of the event we are checking
+              isAvailable = this_time.open;
+              conflictingEvent = !this_time.open ? this_time.event_title : null;
+              if (!isAvailable) {
+                return true;
+              }
+            }
+          }
+          return false;     // return false to the .some function to keep it running
+        });
+        if (!isAvailable) {
+          status_message = `This conflicts with ${conflictingEvent}`;
+          let requestAction = await orderWarning(status_message);
+          if (requestAction === 'stop') {
+            return;
+          }
+        }
+      }
       let slotAssigned = await handleAllocateSlot({
         person_id: dragged_id,
         this_event: droppedOn_event,
@@ -393,12 +452,64 @@ export default ({ myCalendar, calendarPeople, person_id, peopleList, onClose, de
           reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners = {};
         }
         reactData.myCalendar[dateIndex].eventList[eventIndex].slot_owners[dragged_id] = slotAssigned;
+        if (!reactData.conflictInfo.hasOwnProperty(dragged_id)) {
+          reactData.conflictInfo[dragged_id] = {};
+        }
+        if (!reactData.conflictInfo[dragged_id].hasOwnProperty(droppedOn_event.occurrence_date)) {
+          reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date] = [];
+        }
+        reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].push(
+          {
+            time: eventStart24, open: false, event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_key,
+            event_title: reactData.myCalendar[dateIndex].eventList[eventIndex].description
+           },
+          { time: eventEnd24, open: true }
+        );
+        reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].sort((a, b) => {
+          if (a.time === b.time) {
+            return (!a.open ? 1 : -1);
+          }
+          else {
+            return ((a.time < b.time) ? -1 : 1);
+          }
+        });
         updateReactData({
           myCalendar: reactData.myCalendar
         }, true);
       }
     }
   };
+
+  async function orderWarning(status_message) {
+    const showWarning = new Promise((resolve, reject) => {
+      let response = '';
+      const snackAction = (
+        <React-Fragment>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'assign'; resolve(response); }}
+          >
+            Go ahead
+          </Button>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            onClick={() => { response = 'stop'; resolve(response); }}
+          >
+            Don't assign
+          </Button>
+        </React-Fragment>
+      );
+      enqueueSnackbar(
+        `${status_message}.  What would you like to do?`,
+        { variant: 'warning', persist: true, action: snackAction }
+      );
+    });
+    let rValue = await showWarning;
+    closeSnackbar();
+    return rValue;
+  }
 
   const handleAllocateSlot = async ({ this_event, person_id, eventIndex, dateIndex }) => {
     let slotToUse;
@@ -467,6 +578,7 @@ export default ({ myCalendar, calendarPeople, person_id, peopleList, onClose, de
       }
     }
     await writeSlot(writeRequest);
+    localStorage.setItem(`calendarChanged`, true);
     console.log(`Added ${person_id} to ${this_event.description}${(slotToUse === person_id) ? '' : ' - ' + slotToUse}`);
     return slotToUse;
   };
@@ -774,18 +886,34 @@ export default ({ myCalendar, calendarPeople, person_id, peopleList, onClose, de
                       draggable={true}
                       onDragStart={(e) => handleDragStart(e, this_candidate.person_id)}
                       title={
-                        <Typography variant='caption'>
-                          {this_candidate.display_name}
-                        </Typography>
+                        <Box key={`conflict-${cX}`} mx={1} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                          <Typography variant='caption'>
+                            {this_candidate.display_name}
+                          </Typography>
+                          {reactData.conflictInfo[this_candidate.person_id] &&
+                            Object.keys(reactData.conflictInfo[this_candidate.person_id]).map(conflict_date => (
+                              <Box key={`conflict-${cX}_${conflict_date}`} marginTop={3} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                                <Typography marginTop={3} variant='caption'>
+                                  {makeDate(conflict_date).relative}
+                                </Typography>
+                                {reactData.conflictInfo[this_candidate.person_id][conflict_date].map(this_conflict => (
+                                  !this_conflict.open &&
+                                  <Typography variant='caption'>
+                                    {`${(this_conflict.time > 0) ? makeTime(this_conflict.time).short : 'All Day'} - ${titleCase(this_conflict.event_title).slice(0, 30)}`}
+                                  </Typography>
+                                ))}
+                              </Box>
+                            ))}
+                        </Box>
                       }
-                      placement='bottom-start'>
+                      placement='top-end'>
                       <Avatar src={getImage(this_candidate.person_id)} />
                     </Tooltip>
-                    <Typography className={classes.popUpFooter}>
+                    <Typography className={classes.dragNames}>
                       {this_candidate.display_name.split(' ')[0]}
                     </Typography>
-                    <Typography className={classes.popUpFooter}>
-                      {this_candidate.display_name.split(' ')[-1]}
+                    <Typography className={classes.dragNames}>
+                      {this_candidate.display_name.split(' ').slice(-1)[0]}
                     </Typography>
                   </Box>
                 ))}
@@ -983,20 +1111,18 @@ export default ({ myCalendar, calendarPeople, person_id, peopleList, onClose, de
                                                     {`You're signed up!`}
                                                   </Typography>
                                                 }
-                                                {(this_event.type !== 'seats') &&
-                                                  <Typography style={AVATextStyle({})}>
-                                                    {((this_event.type === 'time')
-                                                      ? (makeTime(this_event.slot_owners[reactData.selectedPerson_id]).time)
-                                                      : (makeCalendarTime(this_event.time)))
-                                                    }
-                                                  </Typography>
-                                                }
+                                                <Typography style={AVATextStyle({ size: 0.8 })}>
+                                                  {((this_event.type === 'time')
+                                                    ? (makeTime(this_event.slot_owners[reactData.selectedPerson_id]).time)
+                                                    : (makeCalendarTime(this_event.time)))
+                                                  }
+                                                </Typography>
                                               </React.Fragment>
                                               :
                                               <React.Fragment>
                                                 {this_event.time
                                                   &&
-                                                  <Typography style={AVATextStyle({})}>
+                                                  <Typography style={AVATextStyle({ size: 0.8 })}>
                                                     {makeCalendarTime(this_event.time)}
                                                   </Typography>
                                                 }

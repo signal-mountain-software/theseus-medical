@@ -835,6 +835,7 @@ export default ({ request = {}, onClose }) => {
                   margin: { top: 0.5, bottom: 0.5, left: -0.3, right: 3 }
                 })}
                 className={classes.radioDays}
+                autoComplete='off'
                 id={`${props.prop}_otherText`}
                 defaultValue={(reactValues[props.prop] && reactValues[props.prop].valueText)
                   ? reactValues[props.prop].valueText
@@ -891,6 +892,7 @@ export default ({ request = {}, onClose }) => {
                     margin: { top: 0, bottom: 0.5, left: 0.5, right: 3 }
                   })}
                   className={classes.radioDays}
+                  autoComplete='off'
                   disabled={options.viewMode}
                   id={`${props.prop}_otherText`}
                   defaultValue={(reactValues[props.prop] && reactValues[props.prop].bonusText)
@@ -1297,6 +1299,7 @@ export default ({ request = {}, onClose }) => {
                               margin: { top: 0.5, bottom: 0.5, left: 0.5, right: 3 }
                             })}
                             disabled={options.viewMode}
+                            autoComplete='off'
                             value={(reactValues[this_field] && reactValues[this_field].valueText)
                               ? reactValues[this_field].valueText
                               : ''
@@ -1323,6 +1326,7 @@ export default ({ request = {}, onClose }) => {
                           <TextField
                             id={`field__${fieldNdx}`}
                             className={classes.inputDisplay}
+                            autoComplete='off'
                             key={`field__${fieldNdx}_${(reactValues[this_field] && reactValues[this_field].valueText)
                               ? reactValues[this_field].valueText
                               : ''}`}
@@ -1363,6 +1367,7 @@ export default ({ request = {}, onClose }) => {
                           <TextField
                             id={`field__${fieldNdx}`}
                             className={classes.inputDisplay}
+                            autoComplete='off'
                             key={`field__${fieldNdx}_${(reactValues[this_field] && reactValues[this_field].value)
                               ? reactValues[this_field].value
                               : ''}`}
