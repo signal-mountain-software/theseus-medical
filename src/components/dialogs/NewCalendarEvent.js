@@ -24,7 +24,6 @@ import Dialog from '@material-ui/core/Dialog';
 import DialogActions from '@material-ui/core/DialogActions';
 import DialogContent from '@material-ui/core/DialogContent';
 import IconButton from '@material-ui/core/IconButton';
-import Paper from '@material-ui/core/Paper';
 import Slide from '@material-ui/core/Slide';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
@@ -204,7 +203,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   const { state } = useSession();
   const { session } = state;
-  const [owner_targets, setOwnerTargets] = React.useState();
   const [ownerTargetInfo, setOwnerTargetInfo] = React.useState();
   const [event_date, setEventDate] = React.useState(' ');
 
@@ -224,7 +222,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   const [displayTimes, setIntervalDisplay] = React.useState([]);
   const [time_to_display_string, setTimeToAsDisplayString] = React.useState(' ');
   const [timeToAs24HourNumber, setTimeToAs24HourNumber] = React.useState();
-  const [location, setLocation] = React.useState(' ');
   const [showOwnerSelect, setShowOwnerSelect] = React.useState(false);
   const [ownerList, setOwnerList] = React.useState([patient.patient_id]);
 
@@ -315,9 +312,9 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
         "time_to": time_to_display_string,
         "slots": reactData.slotObjList.map(s => { return s.key; }),
         "slot_object_list": reactData.slotObjList,
-        "defaultSlotOwners": defaultSlotOwners,   // first_occurrence
+        "defaultSlotOwners": defaultSlotOwners,
         "occDays": oDays,
-        "location": location,
+        "location": reactData.event_location,
         "owner": ownerList,
         "personal_event": !!personalEvent && !isAppointment,
         "restrictions": reactData.restrictToGroups,
@@ -330,7 +327,13 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       }
     };
     let response = await addEvent(payload);
-    if (isAppointment && (reactData.preReservationList.length > 0)) {
+    if (!!personalEvent
+      && !isAppointment    // this is a personal event, not an appointment; the owner MUST be added to a slot
+      && (!reactData.preReservationList.includes(state.session.patient_id))
+    ) {
+      reactData.preReservationList.push(state.session.patient_id);
+    }
+    if ((isAppointment || personalEvent) && (reactData.preReservationList.length > 0)) {
       for (let o = 0; o < response.occRecords.occArray.length; o++) {
         let this_occurrence = response.occRecords.occArray[o];
         for (let s = 0; s < reactData.preReservationList.length; s++) {
@@ -837,7 +840,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                               preReservationList: [values[0].value],
                               chosen_names: values[0].label
                             };
-                            
+
                           }
                           else if (values.length > 1) {
                             let peopleNames = [];
@@ -849,7 +852,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                             reactUpd = {
                               preReservationList: reservationList,
                               chosen_names: listFromArray(peopleNames)
-                            };                            
+                            };
                           }
                           if (!reactData.title_override) {
                             reactUpd.event_title = `${options.title ? titleCase(options.title.trim()) : 'Appointment'} for ${reactUpd.chosen_names}`;
@@ -1380,7 +1383,6 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                     size='small'
                     onClick={async () => {
                       let ownerTargetObj = await prepareTargets(session.user_id, session.client_id, { includeGroups: false, includePeople: true });
-                      setOwnerTargets(ownerTargetObj.responsibleList.sort());
                       setOwnerTargetInfo(ownerTargetObj.responsibleObj);
                       setShowOwnerSelect(true);
                     }}

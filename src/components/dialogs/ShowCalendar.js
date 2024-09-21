@@ -411,6 +411,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       let reactUpdObj = {
         myCalendar: organizeCalendar(oList),
         calendarPeople: oList.peopleInfo,
+        conflictInfo: oList.conflicts,
         birthdayList: true,
         loading: false
       };
@@ -509,6 +510,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
             <CalendarForm
               myCalendar={reactData.myCalendar}
               calendarPeople={reactData.calendarPeople}
+              conflictInfo={reactData.conflictInfo}
               person_id={patient.patient_id}
               peopleList={peopleList}
               onClose={() => {
