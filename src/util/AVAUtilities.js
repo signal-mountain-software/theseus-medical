@@ -47,6 +47,12 @@ export const s3 = new AWS.S3({
   secretAccessKey: sak()[1]
 });
 
+export const elastictranscoder = new AWS.ElasticTranscoder({
+  accessKeyId: sak()[0],
+  secretAccessKey: sak()[1],
+  region: "us-east-1"
+});
+
 const StepFunctions = require('aws-sdk/clients/stepfunctions');
 export const stepFunctions = new StepFunctions({
   accessKeyId: sak()[0],

@@ -153,6 +153,57 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
     }
   };
 
+  const handleDragStart = (ev, id) => {
+    ev.dataTransfer.setData('id', JSON.stringify(id));
+  };
+
+  const handleDragOver = (ev) => {
+    ev.preventDefault();
+  };
+
+  const handleDrop = async (ev, { droppedOn }) => {
+    ev.preventDefault();
+    let dragged_id = JSON.parse(ev.dataTransfer.getData('id'));
+    let draggedFromIndex = (reactData.bBoardList[dragged_id.group][dragged_id.section_name].generic_activities_list[dragged_id.aNdx]).group_list_index;
+    let droppedOnIndex = (reactData.bBoardList[droppedOn.group][droppedOn.section_name].generic_activities_list[droppedOn.aNdx]).group_list_index;
+    // add draggedfrom from before droppedon
+    // - this will change the position of everything after droppedon
+    // - to remove the dragged from: 
+    //       if it's position was LESS THAN droppedon, remove it in place
+    //       if it's position was GREATER THAN droppedon, add one and then remove it
+    let entryToAdd = reactData.bBoardList[dragged_id.group].groupRec.common_activities[draggedFromIndex];
+    reactData.bBoardList[dragged_id.group].groupRec.common_activities.splice(droppedOnIndex, 0, entryToAdd);
+    if (draggedFromIndex > droppedOnIndex) {
+      draggedFromIndex++;
+    }
+    reactData.bBoardList[dragged_id.group].groupRec.common_activities.splice(draggedFromIndex, 1);
+    await dbClient
+      .update({
+        Key: {
+          client_id: pClient,
+          group_id: reactData.group_id
+        },
+        UpdateExpression: 'set #c = :c',
+        ExpressionAttributeValues: {
+          ':c': reactData.bBoardList[reactData.group_id].groupRec.common_activities
+        },
+        ExpressionAttributeNames: {
+          '#c': 'common_activities'
+        },
+        TableName: "Groups",
+      })
+      .promise()
+      .catch(error => {
+        cl(`caught error updating Group; error is: `, error);
+      });
+    let response = await setBBoard();
+    updateReactData({
+      bBoardList: response,
+      changesMade: true
+    }, true);
+  };
+
+
   const handleChangeTextInput = (inputValue, section_name, ndx = 'new') => {
     if (!reactData.textInput.hasOwnProperty(section_name)) {
       reactData.textInput[section_name] = [];
@@ -323,7 +374,7 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                       id={`Group-title-box-${section_name}-title`}
                       style={AVATextStyle({ size: 1.3, bold: true, margin: { bottom: 0.8, top: 0 } })}
                     >
-                      {titleCase(section_name)}
+                        {section_name.toLowerCase().startsWith('submenu') ? titleCase(section_name.slice(8)) : titleCase(section_name) }
                     </Typography>
                     <Typography className={classes.noDisplay} sx={{ display: 'none', visibility: 'hidden' }}>
                       {rowsWritten++}
@@ -406,6 +457,12 @@ export default ({ pClient, pGroup = 'ALL', onClose }) => {
                       { /* Existing items in this Section */}
                       {reactData.bBoardList[reactData.group_id][section_name].generic_activities_list.map((aData, aNdx) => (
                         <Box display='flex' flexDirection='row' justifyContent='flex-start' alignItems='center'
+                          draggable={true}
+                          onDragStart={(e) => handleDragStart(e, { group: reactData.group_id, section_name, aData, aNdx })}
+                          onDragOver={(e) => handleDragOver(e)}
+                          onDrop={async (e) => {
+                            await handleDrop(e, { droppedOn: { group: reactData.group_id, section_name, aData, aNdx } });
+                          }}
                           key={`row_box_grandparent-${aNdx}`}
                         >
                           <Box display='flex' flexDirection='column' mb={'8px'} width='100%' textOverflow='ellipsis'
