@@ -93,11 +93,6 @@ const useStyles = makeStyles(theme => ({
   },
   title: {
     flexGrow: 1,
-    marginTop: theme.spacing(2),
-    marginLeft: theme.spacing(2),
-    marginBottom: theme.spacing(0.5),
-    fontSize: theme.typography.fontSize * 1.5,
-    fontWeight: 'bold',
   },
   subTitle: {
     marginRight: theme.spacing(2),
@@ -216,6 +211,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   DEFAULT VALUES
     slotsView - show all people that are signed up
     agendaView - show in straigh-line "agenda" format
+    subtitle - if present, text to show under the person name
     onlyRegistered - only show events that I am signed-up for
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
@@ -398,37 +394,28 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       ) {
         let isAvailable = true;
         let conflictingEvent;
-        let eventStarted = false;
         let status_message = 'No conflicts';
         reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].some(this_time => {
-          if (!eventStarted) {
-            if (this_time.time < eventStart24) {
-              // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
-              isAvailable = this_time.open;
-              conflictingEvent = !this_time.open ? this_time.event_title : null;
-            }
-            else if (!isAvailable) {
-              // event HAS started before you got to this entry;  your availability was stored in the earlier step(s)
-              // if you are not available, use the info you stored above to tell what the conflict is and leave             
-              return true;   // breaks the loop
-            }
-            else {
-              // event started and you were availble at the beginning.  Keep looking to see if you become unavailable before the end
-              eventStarted = true;
-            }
+          if (this_time.time < eventStart24) {
+            // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
+            isAvailable = this_time.open;
+            conflictingEvent = !this_time.open ? this_time.event_title : null;
+          }
+          else if (this_time.time >= eventEnd24) {
+            // the event started and ended before this possible conflict came up;  
+            // your availability for the event will depend on what your availabilty was immediately BEFORE the event - which was stored in the earlier step(s)
+            return true;   // break the loop and use the current value of isAvailable
           }
           else {
-            if (this_time.time > eventEnd24) {
-              // no conflicts
-              return true;
+            // implied (this_time.time < eventEnd24)
+            // this entry is changing your availability DURING the event;  
+            // if this conflict marker marks you as unavailable OR you were unavailable from before the event, there is a conflict
+            if (!this_time.open) {
+              isAvailable = false;
+              conflictingEvent = this_time.event_title;
             }
-            else {
-              // an entry was found that is in the middle of the event we are checking
-              isAvailable = this_time.open;
-              conflictingEvent = !this_time.open ? this_time.event_title : null;
-              if (!isAvailable) {
-                return true;
-              }
+            if (!isAvailable) {
+              return true;
             }
           }
           return false;     // return false to the .some function to keep it running
@@ -462,7 +449,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           {
             time: eventStart24, open: false, event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_key,
             event_title: reactData.myCalendar[dateIndex].eventList[eventIndex].description
-           },
+          },
           { time: eventEnd24, open: true }
         );
         reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].sort((a, b) => {
@@ -720,12 +707,25 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     placement='bottom-start'>
                     <Avatar src={getImage(reactData.selectedPerson_id)} />
                   </Tooltip>
-                  <Typography
-                    className={classes.title}
-                    style={AVATextStyle({ size: 1.3, bold: true, margin: { left: 1, right: 1 } })}
+                  <Box
+                    display='flex' flexDirection='column'
+                    key={'nameRows'}
                   >
-                    {`${reactData.display_name}${reactData.display_name.slice(-1) === 's' ? "'" : "'s"} Calendar`}
-                  </Typography>
+                    <Typography
+                      className={classes.title}
+                      style={AVATextStyle({ size: 1.3, bold: true, margin: { left: 1, right: 1 } })}
+                    >
+                      {`${reactData.display_name}${reactData.display_name.slice(-1) === 's' ? "'" : "'s"} Calendar`}
+                    </Typography>
+                    {reactData.defaultValues.subtitle &&
+                      <Typography
+                        className={classes.title}
+                        style={AVATextStyle({ size: 1, margin: { top: 0, left: 1, right: 1 } })}
+                      >
+                        {reactData.defaultValues.subtitle}
+                      </Typography>
+                    }
+                  </Box>
                 </Box>
                 {(reactData.myCalendar.length === 0) &&
                   <Box
@@ -1108,7 +1108,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                               <React.Fragment>
                                                 {!reactData.defaultValues.onlyRegistered &&
                                                   <Typography style={AVATextStyle({ size: 1, italic: true })}>
-                                                    {`You're signed up!`}
+                                                    {`You're on the list`}
                                                   </Typography>
                                                 }
                                                 <Typography style={AVATextStyle({ size: 0.8 })}>

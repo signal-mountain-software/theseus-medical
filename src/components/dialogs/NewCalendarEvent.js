@@ -9,7 +9,7 @@ import ClientsSection from '../sections/ClientsSection';
 import EditList from '../forms/EditList';
 import Select from "react-dropdown-select";
 
-import { makeDate, addMonths } from '../../util/AVADateTime';
+import { makeDate, makeTime, addMonths } from '../../util/AVADateTime';
 
 import { useSnackbar } from 'notistack';
 
@@ -411,62 +411,17 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
   };
 
   const handleTimeFromExit = event => {
-    if ((event.key === 'Enter' || event.type === 'blur') && time_from_display_string.trim()) {
-      let ampm = null;
-      if (time_from_display_string.includes('p')) { ampm = 'pm'; }
-      else if (time_from_display_string.includes('a')) { ampm = 'am'; };
-      let [hh$, mm$] = time_from_display_string.split(':');
-      let hh = Number(hh$.replace(/\D+/g, ''));
-      let mm = 0;
-      if (hh > 100) {
-        if (!mm$) { mm = hh % 100; }
-        hh = Math.floor(hh / 100);
-      }
-      if (mm$) { mm = Number(mm$.replace(/\D+/g, '')); }
-      if (mm > 59) {
-        let hAdd = Math.floor(mm / 60);
-        mm -= (hAdd * 60);
-        hh += hAdd;
-      }
-      if (hh >= 23) {
-        hh = hh % 24;
-      }
-      if (hh >= 12) {
-        hh -= 12;
-        ampm = 'pm';
-      }
-      if (hh === 0) {
-        hh = 12;
-        ampm = 'pm';
-      }
-      if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
-      setTimeFromAsDisplayString(`${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
-      let calcFromTime = 0;   // numeric 24 hour clock version of time as hhmm
-      if (ampm === 'pm') {
-        calcFromTime = (hh < 12 ? ((hh + 12) * 100) : 1200) + mm;
-      }
-      else {
-        calcFromTime = ((hh < 12 ? (hh * 100) : 0) + mm);
-      }
-      setTimeFromAs24HourNumber(calcFromTime);
-      if (!time_to_display_string) {
-        if (slot_interval) { assumeToTime(calcFromTime); }
-      }
-      else if (timeToAs24HourNumber && (timeToAs24HourNumber < calcFromTime)) {
-        if (timeToAs24HourNumber < 1200) {
-          setTimeToAs24HourNumber(timeToAs24HourNumber + 1200);
-          setTimeToAsDisplayString(time_to_display_string.replace('am', 'pm'));
+    if ((event.key === 'Enter' || event.type === 'blur') && time_from_display_string) {
+      let madeTime = makeTime(time_from_display_string);
+      setTimeFromAs24HourNumber(madeTime.numeric24);
+      setTimeFromAsDisplayString(madeTime.time);
+      if ((!time_to_display_string) || (timeToAs24HourNumber && (timeToAs24HourNumber < madeTime.numeric24))) {
+        let calcTo = makeTime(madeTime.numeric24 + 100);
+        setTimeToAs24HourNumber(calcTo.numeric24);
+        setTimeToAsDisplayString(calcTo.time);
+        if (displayTimes.length > 0) {
+          handleExitInterval({ key: event.key, type: event.type, toTime: calcTo.numeric24 });
         }
-        else {
-          setTimeToAs24HourNumber(timeFromAs24HourNumber + 100);
-          if (hh === 11) { ampm = (ampm = 'am' ? 'pm' : 'am'); }
-          if (hh === 12) { hh = 1; }
-          else { hh++; };
-          setTimeToAsDisplayString(`${hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
-        }
-      }
-      if (displayTimes.length > 0) {
-        handleExitInterval({ key: event.key, type: event.type, fromTime: calcFromTime });
       }
     }
   };
@@ -481,55 +436,11 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
 
   const handleTimeToExit = event => {
     if ((event.key === 'Enter' || event.type === 'blur') && time_to_display_string) {
-      let ampm = null;
-      if (time_to_display_string.includes('p')) { ampm = 'pm'; }
-      else if (time_to_display_string.includes('a')) { ampm = 'am'; };
-      let [hh$, mm$] = time_to_display_string.split(':');
-      let hh = Number(hh$.replace(/\D+/g, ''));
-      let mm = 0;
-      if (hh > 100) {
-        if (!mm$) { mm = hh % 100; }
-        hh = Math.floor(hh / 100);
-      }
-      if (mm > 59) {
-        let hAdd = Math.floor(mm / 60);
-        mm -= (hAdd * 60);
-        hh += hAdd;
-      }
-      if (hh >= 23) {
-        hh = hh % 24;
-      }
-      if (hh >= 12) {
-        hh -= 12;
-        ampm = 'pm';
-      }
-      if (hh === 0) {
-        hh = 12;
-        ampm = 'pm';
-      }
-      if (!ampm) { ampm = ((hh > 6) && (hh < 12)) ? 'am' : 'pm'; }
-      let calcToTime = 0;
-      if (ampm === 'pm') {
-        calcToTime = (hh < 12 ? ((hh + 12) * 100) : 1200) + mm;
-      }
-      else {
-        calcToTime = ((hh < 12 ? (hh * 100) : 0) + mm);
-      }
-      if (timeFromAs24HourNumber && (calcToTime < timeFromAs24HourNumber)) {
-        if (calcToTime < 1200) {
-          calcToTime += 1200;
-        }
-        else {
-          calcToTime = timeFromAs24HourNumber + 100;
-        }
-      }
-      setTimeToAs24HourNumber(calcToTime);
-      mm = calcToTime % 100;
-      hh = Math.floor(calcToTime / 100);
-      ampm = hh > 11 ? 'pm' : 'am';
-      setTimeToAsDisplayString(`${hh > 12 ? hh - 12 : hh}:${mm < 10 ? ('0' + mm) : mm} ${ampm}`);
+      let madeTime = makeTime(time_to_display_string);
+      setTimeToAs24HourNumber(madeTime.numeric24);
+      setTimeToAsDisplayString(madeTime.time);
       if (displayTimes.length > 0) {
-        handleExitInterval({ key: event.key, type: event.type, toTime: calcToTime });
+        handleExitInterval({ key: event.key, type: event.type, toTime: madeTime.numeric24 });
       }
     }
   };
