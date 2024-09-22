@@ -1,12 +1,13 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 
-import { makeTime, makeDate } from '../../util/AVADateTime';
+import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
 import { cl, isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
 import { getCalendarEntries, writeSlot, getSlotList } from '../../util/AVACalendars';
 import { getImage } from '../../util/AVAPeople';
 
-import { Box, Typography, Avatar, Tooltip } from '@material-ui/core';
+import { Box, Typography, Avatar } from '@material-ui/core';
+import Tooltip from '@material-ui/core/Tooltip';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
@@ -87,17 +88,26 @@ const useStyles = makeStyles(theme => ({
     paddingTop: 0,
     fontSize: '0.8rem',
   },
+  tooltipBody: {
+    backgroundColor: 'rgba(245, 245, 249, 0.8)',
+    color: 'rgba(0, 0, 0, 0.87)',
+    maxWidth: 500,
+    maxHeight: 300,
+    minHeight: 50,
+    paddingBottom: 1,
+    fontSize: theme.typography.pxToRem(12),
+    border: '1px solid #242426',
+  },
+  arrowBody: {
+    color: '#f5f5f9',
+    fontSize: theme.typography.pxToRem(12),
+  },
   noDisplay: {
     display: 'none',
     visibility: 'hidden'
   },
   title: {
     flexGrow: 1,
-    marginTop: theme.spacing(2),
-    marginLeft: theme.spacing(2),
-    marginBottom: theme.spacing(0.5),
-    fontSize: theme.typography.fontSize * 1.5,
-    fontWeight: 'bold',
   },
   subTitle: {
     marginRight: theme.spacing(2),
@@ -216,6 +226,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
   DEFAULT VALUES
     slotsView - show all people that are signed up
     agendaView - show in straigh-line "agenda" format
+    subtitle - if present, text to show under the person name
     onlyRegistered - only show events that I am signed-up for
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
@@ -398,37 +409,28 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
       ) {
         let isAvailable = true;
         let conflictingEvent;
-        let eventStarted = false;
         let status_message = 'No conflicts';
         reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].some(this_time => {
-          if (!eventStarted) {
-            if (this_time.time < eventStart24) {
-              // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
-              isAvailable = this_time.open;
-              conflictingEvent = !this_time.open ? this_time.event_title : null;
-            }
-            else if (!isAvailable) {
-              // event HAS started before you got to this entry;  your availability was stored in the earlier step(s)
-              // if you are not available, use the info you stored above to tell what the conflict is and leave             
-              return true;   // breaks the loop
-            }
-            else {
-              // event started and you were availble at the beginning.  Keep looking to see if you become unavailable before the end
-              eventStarted = true;
-            }
+          if (this_time.time < eventStart24) {
+            // event hasn't started - hold onto current availability and (if not available) the event that causes the potential conflict,
+            isAvailable = this_time.open;
+            conflictingEvent = !this_time.open ? this_time.event_title : null;
+          }
+          else if (this_time.time >= eventEnd24) {
+            // the event started and ended before this possible conflict came up;  
+            // your availability for the event will depend on what your availabilty was immediately BEFORE the event - which was stored in the earlier step(s)
+            return true;   // break the loop and use the current value of isAvailable
           }
           else {
-            if (this_time.time > eventEnd24) {
-              // no conflicts
-              return true;
+            // implied (this_time.time < eventEnd24)
+            // this entry is changing your availability DURING the event;  
+            // if this conflict marker marks you as unavailable OR you were unavailable from before the event, there is a conflict
+            if (!this_time.open) {
+              isAvailable = false;
+              conflictingEvent = this_time.event_title;
             }
-            else {
-              // an entry was found that is in the middle of the event we are checking
-              isAvailable = this_time.open;
-              conflictingEvent = !this_time.open ? this_time.event_title : null;
-              if (!isAvailable) {
-                return true;
-              }
+            if (!isAvailable) {
+              return true;
             }
           }
           return false;     // return false to the .some function to keep it running
@@ -462,7 +464,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           {
             time: eventStart24, open: false, event_id: reactData.myCalendar[dateIndex].eventList[eventIndex].event_key,
             event_title: reactData.myCalendar[dateIndex].eventList[eventIndex].description
-           },
+          },
           { time: eventEnd24, open: true }
         );
         reactData.conflictInfo[dragged_id][droppedOn_event.occurrence_date].sort((a, b) => {
@@ -720,12 +722,25 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     placement='bottom-start'>
                     <Avatar src={getImage(reactData.selectedPerson_id)} />
                   </Tooltip>
-                  <Typography
-                    className={classes.title}
-                    style={AVATextStyle({ size: 1.3, bold: true, margin: { left: 1, right: 1 } })}
+                  <Box
+                    display='flex' flexDirection='column'
+                    key={'nameRows'}
                   >
-                    {`${reactData.display_name}${reactData.display_name.slice(-1) === 's' ? "'" : "'s"} Calendar`}
-                  </Typography>
+                    <Typography
+                      className={classes.title}
+                      style={AVATextStyle({ size: 1.3, bold: true, margin: { left: 1, right: 1 } })}
+                    >
+                      {`${reactData.display_name}${reactData.display_name.slice(-1) === 's' ? "'" : "'s"} Calendar`}
+                    </Typography>
+                    {reactData.defaultValues.subtitle &&
+                      <Typography
+                        className={classes.title}
+                        style={AVATextStyle({ size: 1, margin: { top: 0, left: 1, right: 1 } })}
+                      >
+                        {reactData.defaultValues.subtitle}
+                      </Typography>
+                    }
+                  </Box>
                 </Box>
                 {(reactData.myCalendar.length === 0) &&
                   <Box
@@ -882,32 +897,49 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 {reactData.defaultValues.assignment__List.map((this_candidate, cX) => (
                   <Box key={`candidate-${cX}`} mx={1} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
                     <Tooltip
-                      className={classes.assignment_avatar}
+                      classes={{ tooltip: classes.tooltipBody, arrow: classes.arrowBody }}
                       draggable={true}
+                      arrow
+                      enterDelay={500}
                       onDragStart={(e) => handleDragStart(e, this_candidate.person_id)}
                       title={
-                        <Box key={`conflict-${cX}`} mx={1} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
-                          <Typography variant='caption'>
+                        <Box
+                          key={`conflict-${cX}`} mx={1} mb={1} maxHeight={'500px'} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                          <Typography
+                            style={AVATextStyle({ bold: true, size: 1, margin: { top: 0.2 } })}>
                             {this_candidate.display_name}
                           </Typography>
-                          {reactData.conflictInfo[this_candidate.person_id] &&
-                            Object.keys(reactData.conflictInfo[this_candidate.person_id]).map(conflict_date => (
-                              <Box key={`conflict-${cX}_${conflict_date}`} marginTop={3} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
-                                <Typography marginTop={3} variant='caption'>
+                          {reactData.conflictInfo[this_candidate.person_id]
+                            ?
+                            Object.keys(reactData.conflictInfo[this_candidate.person_id]).map((conflict_date, cDateX) => (
+                              (cDateX < 7) &&
+                              <Box key={`conflict-${cX}_${conflict_date}`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                                <Typography
+                                  style={AVATextStyle({ italic: true, size: 0.8, margin: { top: 0.2 } })}>
                                   {makeDate(conflict_date).relative}
                                 </Typography>
                                 {reactData.conflictInfo[this_candidate.person_id][conflict_date].map(this_conflict => (
                                   !this_conflict.open &&
-                                  <Typography variant='caption'>
+                                  <Typography
+                                    style={AVATextStyle({ size: 0.5 })}>
                                     {`${(this_conflict.time > 0) ? makeTime(this_conflict.time).short : 'All Day'} - ${titleCase(this_conflict.event_title).slice(0, 30)}`}
                                   </Typography>
                                 ))}
                               </Box>
-                            ))}
+                            ))
+                            :
+                            <Box key={`conflict-${cX}_noconflict`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                              <Typography
+                                style={AVATextStyle({ italic: true, size: 0.8, margin: { top: 0.2 } })}>
+                                {'No Conflicts'}
+                              </Typography>
+                            </Box>
+                          }
                         </Box>
                       }
-                      placement='top-end'>
-                      <Avatar src={getImage(this_candidate.person_id)} />
+                      placement='top-end'
+                    >
+                      <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} />
                     </Tooltip>
                     <Typography className={classes.dragNames}>
                       {this_candidate.display_name.split(' ')[0]}
@@ -1108,7 +1140,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                                               <React.Fragment>
                                                 {!reactData.defaultValues.onlyRegistered &&
                                                   <Typography style={AVATextStyle({ size: 1, italic: true })}>
-                                                    {`You're signed up!`}
+                                                    {`You're on the list`}
                                                   </Typography>
                                                 }
                                                 <Typography style={AVATextStyle({ size: 0.8 })}>

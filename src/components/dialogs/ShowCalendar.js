@@ -112,14 +112,37 @@ const useStyles = makeStyles(theme => ({
 const Transition = React.forwardRef((props, ref) => <Slide direction='up' ref={ref} {...props} />);
 
 export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClient, calendarMode, onClose }) => {
+
+  /*
+ DEFAULT VALUES
+   USED IN ShowCalendar
+    show_group - only include events authorized for these groups
+    eventList - an already contructed calendar, usually passed in from the background load done at AVA restart
+    assignmentView - show list of people you can assign to events
+    allowAssign - required when assignmentView is true; this becomes assignment__list
+   
+   CREATED BY ShowCalendar and sent to CalendarForm
+    assignment__list - this is a list of people and groups that you may choose from to assign to events
+   
+   PASSED THROUGH to CalendarForm without consideration
+    slotsView - show all people that are signed up
+    subtitle - if present, text to show under the person name
+    agendaView - show in straigh-line "agenda" format
+    onlyRegistered - only show events that I am signed-up for
+    message_override - [list of IDs] or [*none*] (default if missing: added slots = message to the event owner)
+    colorScheme - see CalendarForm for details of this object
+ */
+
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showAll, setShowAll] = React.useState(true);
 
   const { enqueueSnackbar } = useSnackbar();
   const { state } = useSession();
 
-  // let defaultValues = Object.assign({}, ...currentEvent);
-
+  // some other function (assigments, new calendar entry, etc) may have changed the calendar
+  //   in this case, that function will have put "true" in local storage key calendarChanged
+  //   and require a rebuild of the calendar - this code checks for that, only using a passed in calendar
+  //   if the calendarChanged rebuild is not triggered...
   let load_myCal = [];
   if (defaultObject.hasOwnProperty('eventList')) {
     if (!defaultObject.eventList.loadError) {
@@ -350,14 +373,20 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       let oList = {};
       if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError) {
         let rightNow = new Date();
-        let belongsTo = await getGroupsBelongTo(patient.client_id, patient.patient_id, { sort: true });
+        let filterGroup = [];
+        if (reactData.defaultValues.hasOwnProperty('show_group')) {
+          filterGroup = makeArray(reactData.defaultValues.show_group);
+        }
+        else {
+          filterGroup = await getGroupsBelongTo(patient.client_id, patient.patient_id, { sort: true });
+        }
         oList = await getAllOccurrences(
           {
             client_id: patient.client_id,
             this_person: patient.patient_id,
             start_date: rightNow,
             end_date: addDays(rightNow, 35),
-            filter: { group: belongsTo }
+            filter: { group: filterGroup }
           }, onStatusUpdate
         );
       }

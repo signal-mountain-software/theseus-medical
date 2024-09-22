@@ -364,8 +364,8 @@ export function slotTimes(eventRec, occRec, slotRec) {
   }
   else {
     return {
-      start24: 0,
-      end24: 2359
+      start24: event_start_time24 || 0,
+      end24: event_end_time24 || 2359
     };
   }
 }
@@ -2209,12 +2209,17 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
           (!found_events[this_event].owner.includes(body.this_person))) {
           allowed_event = false;
         }
-        else if ((body.filter.group) && (found_events[this_event]?.groups)) {
+        if (allowed_event && (body.filter.group) && (found_events[this_event]?.groups)) {
           // event must allow *all OR must allow a group that is in the filter.group list
           if (found_events[this_event].groups.includes('*all')) { }
           else {
             allowed_event = found_events[this_event].groups.some(allowed_group => {
-              return Object.keys(body.filter.group).includes(allowed_group);
+              if (Array.isArray(body.filter.group)) {
+                return body.filter.group.includes(allowed_group);
+              }
+              else {
+                return Object.keys(body.filter.group).includes(allowed_group);
+              }
             });
           }
         }
