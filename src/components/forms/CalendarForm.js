@@ -1,12 +1,13 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 
-import { makeTime, makeDate } from '../../util/AVADateTime';
+import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
 import { cl, isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
 import { getCalendarEntries, writeSlot, getSlotList } from '../../util/AVACalendars';
 import { getImage } from '../../util/AVAPeople';
 
-import { Box, Typography, Avatar, Tooltip } from '@material-ui/core';
+import { Box, Typography, Avatar } from '@material-ui/core';
+import Tooltip from '@material-ui/core/Tooltip';
 import makeStyles from '@material-ui/core/styles/makeStyles';
 
 import CloseIcon from '@material-ui/icons/ExitToApp';
@@ -86,6 +87,20 @@ const useStyles = makeStyles(theme => ({
     width: 40,
     paddingTop: 0,
     fontSize: '0.8rem',
+  },
+  tooltipBody: {
+    backgroundColor: 'rgba(245, 245, 249, 0.8)',
+    color: 'rgba(0, 0, 0, 0.87)',
+    maxWidth: 500,
+    maxHeight: 300,
+    minHeight: 50,
+    paddingBottom: 1,
+    fontSize: theme.typography.pxToRem(12),
+    border: '1px solid #242426',
+  },
+  arrowBody: {
+    color: '#f5f5f9',
+    fontSize: theme.typography.pxToRem(12),
   },
   noDisplay: {
     display: 'none',
@@ -882,32 +897,49 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 {reactData.defaultValues.assignment__List.map((this_candidate, cX) => (
                   <Box key={`candidate-${cX}`} mx={1} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
                     <Tooltip
-                      className={classes.assignment_avatar}
+                      classes={{ tooltip: classes.tooltipBody, arrow: classes.arrowBody }}
                       draggable={true}
+                      arrow
+                      enterDelay={500}
                       onDragStart={(e) => handleDragStart(e, this_candidate.person_id)}
                       title={
-                        <Box key={`conflict-${cX}`} mx={1} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
-                          <Typography variant='caption'>
+                        <Box
+                          key={`conflict-${cX}`} mx={1} mb={1} maxHeight={'500px'} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                          <Typography
+                            style={AVATextStyle({ bold: true, size: 1, margin: { top: 0.2 } })}>
                             {this_candidate.display_name}
                           </Typography>
-                          {reactData.conflictInfo[this_candidate.person_id] &&
-                            Object.keys(reactData.conflictInfo[this_candidate.person_id]).map(conflict_date => (
-                              <Box key={`conflict-${cX}_${conflict_date}`} marginTop={3} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
-                                <Typography marginTop={3} variant='caption'>
+                          {reactData.conflictInfo[this_candidate.person_id]
+                            ?
+                            Object.keys(reactData.conflictInfo[this_candidate.person_id]).map((conflict_date, cDateX) => (
+                              (cDateX < 7) &&
+                              <Box key={`conflict-${cX}_${conflict_date}`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                                <Typography
+                                  style={AVATextStyle({ italic: true, size: 0.8, margin: { top: 0.2 } })}>
                                   {makeDate(conflict_date).relative}
                                 </Typography>
                                 {reactData.conflictInfo[this_candidate.person_id][conflict_date].map(this_conflict => (
                                   !this_conflict.open &&
-                                  <Typography variant='caption'>
+                                  <Typography
+                                    style={AVATextStyle({ size: 0.5 })}>
                                     {`${(this_conflict.time > 0) ? makeTime(this_conflict.time).short : 'All Day'} - ${titleCase(this_conflict.event_title).slice(0, 30)}`}
                                   </Typography>
                                 ))}
                               </Box>
-                            ))}
+                            ))
+                            :
+                            <Box key={`conflict-${cX}_noconflict`} display='flex' justifyContent='center' alignItems='center' flexDirection='column'>
+                              <Typography
+                                style={AVATextStyle({ italic: true, size: 0.8, margin: { top: 0.2 } })}>
+                                {'No Conflicts'}
+                              </Typography>
+                            </Box>
+                          }
                         </Box>
                       }
-                      placement='top-end'>
-                      <Avatar src={getImage(this_candidate.person_id)} />
+                      placement='top-end'
+                    >
+                      <Avatar className={classes.assignment_avatar} src={getImage(this_candidate.person_id)} />
                     </Tooltip>
                     <Typography className={classes.dragNames}>
                       {this_candidate.display_name.split(' ')[0]}
