@@ -157,7 +157,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
     start_date: 0,
     end_date: 0,
     defaultValues: defaultObject,
-    selectedEvent: '',
+    selectedEvent: defaultObject.selectedEvent || '',
     myCalendar: load_myCal,
     loading: true
   });
