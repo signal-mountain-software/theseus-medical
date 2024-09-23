@@ -8,7 +8,7 @@ import { addDays } from '../util/AVADateTime';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
-import { AVADefaults, AVATextStyle } from '../util/AVAStyles';
+import { AVAclasses, AVADefaults, AVATextStyle } from '../util/AVAStyles';
 import AVAConfirm from '../components/forms/AVAConfirm';
 import MakeAVAMenu from '../util/MakeAVAMenu';
 
@@ -32,6 +32,18 @@ const useStyles = makeStyles(theme => ({
     maxWidth: '100px',
     marginBottom: '15px'
   },
+  AVAButton: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(1),
+    marginBottom: theme.spacing(1),
+    variant: 'outlined',
+    border: '0.75px solid gray',
+    textTransform: 'none',
+    textDecoration: 'none',
+    textWrap: 'nowrap',
+    fontWeight: 'bold',
+    size: 'small',
+  },
   notTitle: {
     marginTop: theme.spacing(2),
     marginLeft: theme.spacing(1),
@@ -54,6 +66,7 @@ export default Component => props => {
   const { closeSnackbar, enqueueSnackbar } = useSnackbar();
 
   const { dispatch, state } = useSession();
+  const AVAClass = AVAclasses();
 
   const [cookies, setCookie,] = useCookies(['AVAuser', 'AVAclient', 'AVAvalidated']);
 
@@ -379,6 +392,39 @@ export default Component => props => {
     );
   }
 
+  async function forgotPassword() {
+    const showWarning = new Promise((resolve, reject) => {
+      const snackAction = (
+        <React-Fragment>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'green', color: 'white' }}
+            size='small'
+            onClick={() => { resolve('got_it'); }}
+          >
+            I got it!
+          </Button>
+          <Button className={AVAClass.AVAButton}
+            style={{ backgroundColor: 'red', color: 'white' }}
+            size='small'
+            onClick={() => { resolve('need_help'); }}
+          >
+            That didn't help
+          </Button>
+        </React-Fragment>
+      );
+      let lKP = AVAFollowUpData.possibleUserRecs[0].sessionRec.last_login.length;
+      let exposed = AVAFollowUpData.possibleUserRecs[0].sessionRec.last_login.slice(0, 3);
+      let hint = exposed.padEnd(lKP, '*');
+      enqueueSnackbar(
+        `Here's a hint...  your password is ${hint}`,
+        { variant: 'warning', persist: true, action: snackAction }
+      );
+    });
+    let rValue = await showWarning;
+    closeSnackbar();
+    return rValue;
+  }
+
   if (!AVAReady && !localAVAReady) {
     return (
       <Dialog
@@ -491,16 +537,31 @@ export default Component => props => {
             titleText={customizationData ? customizationData.client_name : 'AVA Sign-in'}
             promptText={"Password"}
             options={{ 'save_on_enter': true }}
-            buttonText='Continue'
+            buttonText={['Continue', 'Cancel', 'Forgot Password']}
             onCancel={() => {
               setMessageList([]);
               closeSnackbar();
               enqueueSnackbar(`Please enter your User ID or Name`, { variant: 'info', persist: true });
               setAVAFollowUpData({ 'NeedUser': true });
             }}
-            onSave={async (enteredPass) => {
+            onSave={async (enteredPass, whichButton) => {
               setMessageList([]);
               closeSnackbar();
+              if (whichButton === 2) {
+                let requestAction = await forgotPassword();
+                if (requestAction === 'need_help') {
+                  await sendMessages({
+                    client: AVAFollowUpData.possibleUserRecs[0].sessionRec.client_id,
+                    author: AVAFollowUpData.possibleUserRecs[0].sessionRec.user_id,
+                    person_id: AVAFollowUpData.possibleUserRecs[0].person_id,
+                    messageText: `Account holder ${AVAFollowUpData.possibleUserRecs[0].person_id} in client ${customizationData ? customizationData.client_name : AVAFollowUpData.possibleUserRecs[0].sessionRec.client_id} has asked for password help.`,
+                    recipientList: ['ava-support', 'rsteele'],
+                    subject: 'Password Assistance Requested'
+                  });
+                  enqueueSnackbar(`A request was sent to the AVA Support team`, { variant: 'info' });
+                }
+                return;
+              }
               enqueueSnackbar(`AVA is verifying your information`, { variant: 'info' });
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let [thatWorked, ,] = await cognitoLogin(AVAFollowUpData.possibleUserRecs[p].person_id, enteredPass);
@@ -515,7 +576,6 @@ export default Component => props => {
                 }
               }
               // the entered data did not work as a password; perhaps as a apartment number, etc?
-              enqueueSnackbar(`Still looking...`, { variant: 'info' });
               for (let p = 0; p < AVAFollowUpData.possibleUserRecs.length; p++) {
                 let possibility = AVAFollowUpData.possibleUserRecs[p];
                 if (AVAFollowUpData.possibleUserRecs[p].sessionRec.last_login.toLowerCase() === enteredPass.toLowerCase()) {

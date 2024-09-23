@@ -264,6 +264,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
   const [sectionOpen, setSectionOpen] = React.useState();
   const [showPersonSelect, setShowPersonSelect] = React.useState(false);
   const [showProfileEdit, setShowProfileEdit] = React.useState(false);
+  const [showPasswordEdit, setShowPasswordEdit] = React.useState(false);
   const [showAddAccount, setShowAddAccount] = React.useState(false);
   const [showNewFactDialog, setShowNewFactDialog] = React.useState(-1);
   const [needsConfirmation, setNeedsConfirmation] = React.useState(-1);
@@ -1123,6 +1124,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                 setPopupMenuOpen(false);
                 setGroupData(state.groups);
                 setShowProfileEdit(true);
+                setShowPasswordEdit(false);
               }
             }}
           >
@@ -1246,6 +1248,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                     setPopupMenuOpen(false);
                     setGroupData(state.groups);
                     setShowProfileEdit(true);
+                    setShowPasswordEdit(true);
                   }
                 }}>
                   <Box
@@ -1254,7 +1257,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                   >
                     <EditIcon />
                     <Typography className={classes.popUpMenuRow} >
-                      {(session.patient_id === session.user_id) ? `Edit your Profile` : `Edit ${greetingName}'${greetingName.slice(-1) === 's' ? '' : 's'} Profile`}
+                      {`Manage ${(session.patient_id === session.user_id) ? 'my' : greetingName + "'" + ((greetingName.slice(-1) === 's') ? '' : 's')} Password`}
                     </Typography>
                   </Box>
                 </MenuItem>
@@ -1690,6 +1693,9 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
             patient={patient}
             groupData={groupData}
             open={true}
+            options={{
+              scrollToPassword: showPasswordEdit
+            }}
             onClose={(updatedPerson) => {
               setShowProfileEdit(false);
               if (updatedPerson) {
