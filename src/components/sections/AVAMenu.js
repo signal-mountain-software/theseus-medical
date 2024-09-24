@@ -1448,6 +1448,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               backgroundColor: hexToRgb(this_row.section_color, 1),
                               textDecoration: 'none'
                             }}
+                            borderTop={1}
+                            borderLeft={1}
+                            borderRight={1}
+                            borderBottom={1}
                             justifyContent='center'
                             flexDirection='column'
                             minHeight={80}
@@ -1491,6 +1495,10 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               key={this_row.activity_code + 'detail' + index}
                               display='flex'
                               ml={2} mr={2} mt={.2} mb={.2}
+                              borderTop={.5}
+                              borderBottom={.5}
+                              borderLeft={1}
+                              borderRight={1}
                               style={{
                                 backgroundColor: hexToRgb(this_row.row_color, 0.7),
                                 textDecoration: 'none',
@@ -1599,7 +1607,8 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
                               || (this_row.section_name !== mainMenu[index + 1].section_name)
                             ) &&
                               <Box
-                                display='flex'
+                              display='flex'
+                              border={1}
                                 style={{
                                   borderRadius: '0px 0px 30px 30px',
                                   backgroundColor: hexToRgb(this_row.row_color, 1),
