@@ -199,7 +199,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   const [patientSession, setPatientSession] = React.useState();
   const [sessionVersion, setSessionVersion] = React.useState(0);
 
-  const [changes, setChanges] = React.useState(false);
+  const [changes, setChangesReact] = React.useState(false);
   const [showQuestionMark, setShowQuestionMark] = React.useState(false);
   const [photoChanges, setPhotoChanges] = React.useState(false);
   const [resettingPwd, setResettingPwd] = React.useState(0);
@@ -229,6 +229,10 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
   const [reactData, setReactData] = React.useState({
     options
   });
+
+  const setChanges = (cValue) => {
+    setChangesReact(cValue);
+  }
 
   const updateReactData = (newData, force = false) => {
     setReactData((prevValues) => (Object.assign(
@@ -1524,6 +1528,7 @@ export default ({ patient, picture, groupData, options = {}, open, onClose }) =>
             <ClientsSection
               person={patient}
               groupData={groupData}
+              multiple={true}
               updateGroups={handleChangeGroups}
             />
             <RelationshipSection person={patient} />
