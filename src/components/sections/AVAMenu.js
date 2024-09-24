@@ -466,7 +466,7 @@ export default ({ pPerson, patient, defaultClient, onReset }) => {
     if (recordExists(menuRec)) {
       updateReactData({ loadedMenuVersion: menuRec.Item.menu_version }, false);
       setSectionOpen(menuRec.Item.AVA_section_open || {});
-      if ((menuRec.Item.AVA_main_menu.length > 0) && !reload) {
+      if ((menuRec.Item.AVA_main_menu && (menuRec.Item.AVA_main_menu.length > 0)) && !reload) {
         setMainMenu(menuRec.Item.AVA_main_menu);
         return menuRec.Item.AVA_main_menu;
       }
