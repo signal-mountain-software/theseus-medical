@@ -118,6 +118,8 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
    USED IN ShowCalendar
     show_group - only include events authorized for these groups
     eventList - an already contructed calendar, usually passed in from the background load done at AVA restart
+    start_date - when building a calendar, start from this date
+    end_date - when building a calendar, build through this date
     assignmentView - show list of people you can assign to events
     allowAssign - required when assignmentView is true; this becomes assignment__list
    
@@ -372,7 +374,19 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
       }
       let oList = {};
       if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError) {
-        let rightNow = new Date();
+        let startDate, endDate;
+        if (reactData.defaultValues.start_date) {
+          startDate = makeDate(reactData.defaultValues.start_date).date;
+        }
+        else {
+          startDate = new Date();
+        }
+        if (reactData.defaultValues.end_date) {
+          endDate = makeDate(reactData.defaultValues.end_date).date;
+        }
+        else {
+          endDate = addDays(startDate, 35);
+        }
         let filterGroup = [];
         if (reactData.defaultValues.hasOwnProperty('show_group')) {
           filterGroup = makeArray(reactData.defaultValues.show_group);
@@ -384,8 +398,8 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
           {
             client_id: patient.client_id,
             this_person: patient.patient_id,
-            start_date: rightNow,
-            end_date: addDays(rightNow, 35),
+            start_date: startDate,
+            end_date: endDate,
             filter: { group: filterGroup }
           }, onStatusUpdate
         );
