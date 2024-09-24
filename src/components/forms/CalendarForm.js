@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSnackbar } from 'notistack';
 
-import { makeTime, makeDate, addDays } from '../../util/AVADateTime';
+import { makeTime, makeDate } from '../../util/AVADateTime';
 import { cl, isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
 import { getCalendarEntries, writeSlot, getSlotList } from '../../util/AVACalendars';
 import { getImage } from '../../util/AVAPeople';

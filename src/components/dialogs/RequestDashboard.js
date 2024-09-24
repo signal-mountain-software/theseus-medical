@@ -2644,7 +2644,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                 });
                 await handleUpdates({
                   newStatus: 'Assigned',
-                  assigned_to: selectedPerson.split(':')[1]
+                  assigned_to: selectedPerson.split(/:|%%/)[1]
                 });
                 updateReactData({
                   selectAssignTo: false
@@ -2992,7 +2992,7 @@ export default ({ session, title, filter = { 'person_id': session.patient_id }, 
                       {'Assign'}
                     </Button>
                   }
-                  {anyRowsSelected() &&
+                  {anyRowsSelected() && false &&
                     <Button
                       className={AVAClass.AVAButton}
                       style={{ backgroundColor: 'aqua', color: 'black' }}

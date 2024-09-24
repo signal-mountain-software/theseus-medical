@@ -63,48 +63,87 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
   const classes = useStyles();
   const { state } = useSession();
 
-  const [adminSelected, setAdminSelected] = React.useState(groupData.selectedID);
-  const [selectedGroups, setSelectedGroups] = React.useState({});
-  const [reactData, setReactData] = React.useState(groupData);
-  const [accountClass, setAccountClass] = React.useState(person.account_class || null);
-  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const [reactData, setReactData] = React.useState({
+    ...Object.assign({}, groupData),
+    adminGroupList: groupData.adminHierarchy.map(this_group => {
+      if (this_group.selectable) {
+        return this_group.id;
+      }
+      else {
+        return null;
+      }
+    }),
+    fullGroupList: [],
+    accountClass: person.account_class || null
+  });
 
   const { enqueueSnackbar } = useSnackbar();
 
-  function handleUpdate(adminGroup) {
-    let memberOf = [adminGroup || adminSelected];
-    let checkGroup = memberOf[0];
-    let nextGroup;
-    let loopCount = 0;
-    do {
-      nextGroup = null;
-      loopCount++;
-      // eslint-disable-next-line
-      reactData.adminHierarchy.forEach(gObj => {
-        if ((gObj.id === checkGroup) && (gObj.belongs_to)) {
-          if (!memberOf.includes(gObj.belongs_to)) { memberOf.push(gObj.belongs_to); }
-          nextGroup = gObj.belongs_to;
+  const [forceRedisplay, setForceRedisplay] = React.useState(false);
+  const updateReactData = (newData, force = false) => {
+    setReactData((prevValues) => (Object.assign(
+      prevValues,
+      newData
+    )));
+    if (force) {
+      setForceRedisplay(!forceRedisplay);
+    }
+  };
+
+  if ((reactData.fullGroupList.length === 0) && (person.groups.length > 0)) {
+    updateGroupList(person.groups);
+  }
+  function updateGroupList(groupList) {
+    let myAdminGroups = [];
+    let myOtherGroups = [];
+    groupList.forEach(this_group => {
+      if (reactData.adminGroupList.includes(this_group)) {
+        myAdminGroups.push(this_group);
+      }
+      else if (reactData.publicGroups.hasOwnProperty(this_group)) {
+        if (!reactData.publicGroups[this_group].role.startsWith('non')) {
+          myOtherGroups.push(this_group);
         }
+      }
+      else if (reactData.privateGroups.hasOwnProperty(this_group)) {
+        if (!reactData.privateGroups[this_group].role.startsWith('non')) {
+          myOtherGroups.push(this_group);
+        }
+      }
+    });
+    // now add parents of the adminGroups
+    let myRollUpGroups = [];
+    let groupsToCheck = [...myAdminGroups];
+    do {
+      let this_group = groupsToCheck.shift();
+      reactData.adminHierarchy.some(gObj => {
+        if (gObj.id === this_group) {
+          if ((gObj.belongs_to) && !myRollUpGroups.includes(gObj.belongs_to)) {
+            myRollUpGroups.push(gObj.belongs_to);
+            groupsToCheck.push(gObj.belongs_to);
+          }
+          return true;
+        }
+        return false;
       });
-      checkGroup = nextGroup;
-    } while (checkGroup && (loopCount < 20));
-    for (let gID in reactData.publicGroups) {
-      if (!reactData.publicGroups[gID].role.startsWith('non')
-        && !memberOf.includes(gID)) {
-        memberOf.push(gID);
-      }
+    } while (groupsToCheck.length > 0);
+    let response = [...myAdminGroups, ...myOtherGroups, ...myRollUpGroups];
+    if (!['master', 'support'].includes(person.account_class)) {
+      person.account_class = determineClass(response);
     }
-    for (let gID in reactData.privateGroups) {
-      if (!reactData.privateGroups[gID].role.startsWith('non') 
-        && !memberOf.includes(gID)) {
-        memberOf.push(gID);
-      }
-    };
-    updateGroups(memberOf);
-    if (!person.account_class || (person.account_class === '')) {
-      setAccountClass(determineClass(memberOf), state.session.group_assignments);
+    updateReactData({
+      fullGroupList: response,
+      accountClass: person.account_class
+    });
+    if ((person.groups.length !== response.length)
+      || !((response.every(this_response => {
+        return person.groups.includes(this_response);
+      })) && ((person.groups.every(this_response => {
+        return response.includes(this_response);
+      }))))) {
+      updateGroups(response);
     }
-    setForceRedisplay(!forceRedisplay);
+    return response;
   }
 
   return (
@@ -130,27 +169,18 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
                     className={classes.radioButton}
                     size="small"
                     onClick={() => {
-                      if (!multiple && (adminSelected === gObj.id)) {
-                        enqueueSnackbar(`You need to choose one.  Pick the group you are a member of and ${gObj.name} will be unchecked automatically!`, { variant: 'warning' });
+                      let foundIt = reactData.fullGroupList.findIndex(this_group => {
+                        return (this_group === gObj.id);
+                      });
+                      if (foundIt < 0) {
+                        reactData.fullGroupList.push(gObj.id);
                       }
                       else {
-                        if (multiple) {
-                          if (selectedGroups.hasOwnProperty(gObj.id)) {
-                            delete selectedGroups[gObj.id];
-                          }
-                          else {
-                            selectedGroups[gObj.id] = true;
-                          }
-                          setSelectedGroups(selectedGroups);
-                          updateGroups(Object.keys(selectedGroups));
-                        }
-                        else {
-                          setAdminSelected(gObj.id);
-                          handleUpdate(gObj.id);
-                        }
+                        reactData.fullGroupList.splice(foundIt, 1);
                       }
+                      updateGroupList(reactData.fullGroupList);
                     }}
-                    checked={(!multiple && (adminSelected === gObj.id)) || (multiple && (selectedGroups.hasOwnProperty(gObj.id)))}
+                    checked={reactData.fullGroupList.includes(gObj.id)}
                   />
                   <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{gObj.name}</Typography>
                 </Box>
@@ -183,27 +213,19 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
                   className={classes.radioButton}
                   size="small"
                   onClick={() => {
-                    if (multiple) { 
-                      if (selectedGroups.hasOwnProperty(gID)) {
-                        delete selectedGroups[gID];
-                      }
-                      else {
-                        selectedGroups[gID] = true;
-                      }
-                      setSelectedGroups(selectedGroups);
-                      updateGroups(Object.keys(selectedGroups));
+                    let foundIt = reactData.fullGroupList.findIndex(this_group => {
+                      return (this_group === gID);
+                    });
+                    if (foundIt < 0) {
+                      reactData.fullGroupList.push(gID);
                     }
                     else {
-                      if (reactData.publicGroups[gID].role.startsWith('non-')) {
-                        reactData.publicGroups[gID].role = reactData.publicGroups[gID].role.slice(4);
-                      }
-                      else { reactData.publicGroups[gID].role = `non-${reactData.publicGroups[gID].role}`; }
-                      setReactData(reactData);
-                      handleUpdate();
+                      reactData.fullGroupList.splice(foundIt, 1);
                     }
+                    updateGroupList(reactData.fullGroupList);
                   }}
+                  checked={reactData.fullGroupList.includes(gID)}
                   disabled={reactData.publicGroups[gID].role.startsWith('resp')}
-                  checked={((!multiple && (!reactData.publicGroups[gID].role.startsWith('non-'))) || (multiple && (selectedGroups.hasOwnProperty(gID))))}
                 />
                 <Typography className={classes.radioText} style={{ fontWeight: (reactData.publicGroups[gID].role.startsWith('resp') ? 'bold' : '') }}>{reactData.publicGroups[gID].group_name}</Typography>
               </Box>
@@ -229,32 +251,24 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
               <Box display='flex' flexDirection='row' justifyContent='flex-start'
                 alignItems='center' flexWrap='wrap' key={`pubopt-${ndx}`}
               >
-                {(!reactData.privateGroups[gID].role.startsWith('non-') || (['master', 'support'].includes(state.user.account_class))) &&   
+                {(!reactData.privateGroups[gID].role.startsWith('non-') || (['master', 'support'].includes(state.user.account_class))) &&
                   <Checkbox
                     className={classes.radioButton}
                     size="small"
                     onClick={() => {
-                      if (multiple) {
-                        if (selectedGroups.hasOwnProperty(gID)) {
-                          delete selectedGroups[gID];
-                        }
-                        else {
-                          selectedGroups[gID] = true;
-                        }
-                        setSelectedGroups(selectedGroups);
-                        updateGroups(Object.keys(selectedGroups));
+                      let foundIt = reactData.fullGroupList.findIndex(this_group => {
+                        return (this_group === gID);
+                      });
+                      if (foundIt < 0) {
+                        reactData.fullGroupList.push(gID);
                       }
                       else {
-                        if (reactData.privateGroups[gID].role.startsWith('non-')) {
-                          reactData.privateGroups[gID].role = reactData.privateGroups[gID].role.slice(4);
-                        }
-                        else { reactData.privateGroups[gID].role = `non-${reactData.privateGroups[gID].role}`; }
-                        setReactData(reactData);
-                        handleUpdate();
+                        reactData.fullGroupList.splice(foundIt, 1);
                       }
-                  }}
-                  disabled={reactData.privateGroups[gID].role.startsWith('resp')}
-                    checked={((!multiple && (!reactData.privateGroups[gID].role.startsWith('non-'))) || (multiple && (selectedGroups.hasOwnProperty(gID))))}
+                      updateGroupList(reactData.fullGroupList);
+                    }}
+                    checked={reactData.fullGroupList.includes(gID)}
+                    disabled={reactData.privateGroups[gID].role.startsWith('resp')}
                   />
                 }
                 <Typography className={classes.radioText} style={{ fontWeight: (reactData.privateGroups[gID].role.startsWith('resp') ? 'bold' : '') }}>{reactData.privateGroups[gID].group_name || gID}</Typography>
@@ -268,7 +282,7 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
       <Box display='flex' style={{ height: 40, marginLeft: 20 }} flexDirection='row' justifyContent='flex-start'
         alignItems='center' flexWrap='wrap'
       >
-        <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{sentenceCase(accountClass || determineClass(person.groups))}</Typography>
+        <Typography className={classes.radioText} style={{ fontWeight: 'bold' }}>{sentenceCase(reactData.accountClass || determineClass(person.groups))}</Typography>
       </Box>
     </Section>
   );

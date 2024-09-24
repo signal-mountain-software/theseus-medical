@@ -105,7 +105,18 @@ export default async (requestor, masterClient, screenStatus, subMenuData = null,
       for (let a = 0; a < aL; a++) {
         let pos = 100 + a;
         let subClient, subKey;
-        if (subActivities[a].includes('//')) { [subClient, subKey] = subActivities[a].split('//'); }
+        if (isObject(subActivities[a])) {
+          if (subActivities[a].hasOwnProperty('client')) {
+            subClient = subActivities[a].client;
+          }
+          else {
+            subClient = pSubMenu.client_id;
+          }
+          subKey = subActivities[a].activity_code;
+        }
+        else if (subActivities[a].includes('//')) {
+          [subClient, subKey] = subActivities[a].split('//');
+        }
         else {
           subClient = pSubMenu.client_id;
           subKey = subActivities[a];
