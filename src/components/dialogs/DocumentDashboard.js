@@ -312,7 +312,7 @@ export default ({ request = {}, onClose }) => {
           rememberedSelections,
           stage: 'building'
         }, true);
-        queryResult.ExclusiveStartKey = queryResult.LastEvaluatedKey;
+        queryObj.ExclusiveStartKey = queryResult.LastEvaluatedKey;
       }
       else {
         updateReactData({
@@ -321,7 +321,7 @@ export default ({ request = {}, onClose }) => {
         }, true);
       }
       loopCount++;
-    } while (queryResult.ExclusiveStartKey && (loopCount < 10));
+    } while (queryObj.ExclusiveStartKey && (loopCount < 10));
     return;
 
     async function makeSortedObj(rawList) {
@@ -353,7 +353,7 @@ export default ({ request = {}, onClose }) => {
             person_id: this_document.person_id,
             person_name: rememberedNames[this_document.person_id],
             person_incompleteDoc_count: (this_document.incomplete ? 1 : 0),
-            person_expanded: reactData?.rememberedSelections?.[this_document.person_id].expanded || false,
+            person_expanded: reactData?.rememberedSelections?.[this_document.person_id]?.expanded || false,
             formTypes: []
           };
           rememberedSelections[this_document.person_id] = {
