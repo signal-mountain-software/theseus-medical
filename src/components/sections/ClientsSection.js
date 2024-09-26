@@ -128,12 +128,9 @@ export default ({ person, groupData, multiple = false, updateGroups }) => {
       });
     } while (groupsToCheck.length > 0);
     let response = [...myAdminGroups, ...myOtherGroups, ...myRollUpGroups];
-    if (!['master', 'support'].includes(person.account_class)) {
-      person.account_class = determineClass(response);
-    }
     updateReactData({
       fullGroupList: response,
-      accountClass: person.account_class
+      accountClass: ((!['master', 'support'].includes(person.account_class)) ? determineClass(response) : person.account_class)
     });
     if ((person.groups.length !== response.length)
       || !((response.every(this_response => {
