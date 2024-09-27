@@ -721,36 +721,36 @@ export default Component => props => {
             }}
             groupData={{}}
             open={true}
-          onClose={async (response) => {
-            if (response) {
-              let request = {
-                client: AVAFollowUpData.client_id,
-                author: AVAFollowUpData.pUser.toLowerCase(),
-                person_id: AVAFollowUpData.pUser.toLowerCase(),
-                messageText:
-                  `${(response.first + ' ' + response.last).trim()} has created an account in ${AVAFollowUpData.client_id} with the ID ${response.person_id}.`,
-                recipientList: ['ava-support'],
-                subject: `New Account for ${(response.first + ' ' + response.last).trim()}`
-              };
-              await sendMessages(request);
-              setDoneTrying(true);
-              setAVAFollowUpData({
-                'addAccount': true,
-                'prompt': [
-                  'Tap below to continue'
-                ],
-                pUser: AVAFollowUpData.pUser,
-                pSource: AVAFollowUpData.pSource,
-                pClient: AVAFollowUpData.pClient,
-                client_id: AVAFollowUpData.pClient
-              });
-              setDoneTrying(true);
-              return (await genericLogin(response.person_id, AVAFollowUpData.pSource));
-            }
-            else {
-              setDoneTrying(true);
-              setAVAFollowUpData({ 'NeedUser': true });
-            }
+            onClose={async (response) => {
+              if (response) {
+                let request = {
+                  client: AVAFollowUpData.client_id,
+                  author: AVAFollowUpData.pUser.toLowerCase(),
+                  person_id: AVAFollowUpData.pUser.toLowerCase(),
+                  messageText:
+                    `${(response.first + ' ' + response.last).trim()} has created an account in ${AVAFollowUpData.client_id} with the ID ${response.person_id}.`,
+                  recipientList: ['ava-support'],
+                  subject: `New Account for ${(response.first + ' ' + response.last).trim()}`
+                };
+                await sendMessages(request);
+                setDoneTrying(true);
+                setAVAFollowUpData({
+                  'addAccount': true,
+                  'prompt': [
+                    'Tap below to continue'
+                  ],
+                  pUser: AVAFollowUpData.pUser,
+                  pSource: AVAFollowUpData.pSource,
+                  pClient: AVAFollowUpData.pClient,
+                  client_id: AVAFollowUpData.pClient
+                });
+                setDoneTrying(true);
+                return (await genericLogin(response.person_id, AVAFollowUpData.pSource));
+              }
+              else {
+                setDoneTrying(true);
+                setAVAFollowUpData({ 'NeedUser': true });
+              }
             }}
           />
         }
