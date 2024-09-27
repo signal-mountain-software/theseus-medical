@@ -1,10 +1,11 @@
 import React from 'react';
 import { cl, dbClient, recordExists, makeArray } from '../../util/AVAUtilities';
-import { makeDate } from '../../util/AVADateTime';
+import { makeDate, addDays } from '../../util/AVADateTime';
 import { getPerson } from '../../util/AVAPeople';
 import AVAConfirm from '../forms/AVAConfirm';
 import FormFill from '../forms/FormFill';
 import useSession from '../../hooks/useSession';
+import { getAllOccurrences } from '../../util/AVACalendars';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import AddIcon from '@material-ui/icons/Add';
@@ -226,6 +227,7 @@ export default ({ request = {}, onClose }) => {
     assignedTo_filter: options.assignedToList || null,
     user_fontSize: AVADefaults({ fontSize: 'get' }) || 1.5,
     initialized: false,
+    documentList: [],
     stage: 'initialize',
     version__number: 0,
   });
@@ -260,7 +262,7 @@ export default ({ request = {}, onClose }) => {
 
 
   async function loadDocuments() {
-    let queryObj = makeQueryObj();
+    let queryObj = await makeQueryObj();
     let loopCount = 0;
     let unSortedList = [];
     let formLibrary = [];
@@ -282,7 +284,8 @@ export default ({ request = {}, onClose }) => {
       });
     if (recordExists(formResult)) {
       formResult.Items.forEach(this_form => {
-        if (!this_form.hasOwnProperty('active') || this_form.active) {
+        if ((!this_form.hasOwnProperty('active') || this_form.active)
+          && ((reactData.formType_filter.includes('*all')) || (reactData.formType_filter.includes(this_form.form_id)))) {
           formLibrary.push(this_form);
           if (!rememberedForms.hasOwnProperty(this_form.form_id)) {
             rememberedForms[this_form.form_id] = this_form.form_name;
@@ -312,11 +315,16 @@ export default ({ request = {}, onClose }) => {
           rememberedSelections,
           stage: 'building'
         }, true);
-        queryObj.ExclusiveStartKey = queryResult.LastEvaluatedKey;
+        if (queryResult.LastEvaluatedKey) {
+          queryObj.ExclusiveStartKey = queryResult.LastEvaluatedKey;
+        }
+        else {
+          delete queryObj.ExclusiveStartKey;
+        }
       }
       else {
+        delete queryObj.ExclusiveStartKey;
         updateReactData({
-          documentList: [],
           stage: 'building'
         }, true);
       }
@@ -337,13 +345,25 @@ export default ({ request = {}, onClose }) => {
           if (!rememberedNames.hasOwnProperty(this_document.person_id)) {
             let personResult = await getPerson(this_document.person_id);
             if (!personResult) {
-              rememberedNames[this_document.person_id] = this_document.person_id;
+              rememberedNames[this_document.person_id] = {
+                id: this_document.person_id,
+                display_name: this_document.person_id,
+                lastName: this_document.person_id,
+                firstName: ''
+              }
             }
             else {
               rememberedPeople[this_document.person_id] = personResult;
-              rememberedNames[this_document.person_id] = personResult.name
-                ? (`${personResult.name.first.trim()} ${personResult.name.last.trim()}`)
-                : (personResult.display_name || personResult.person_id);
+              rememberedNames[this_document.person_id] =
+              {
+                id: this_document.person_id,
+                display_name: (personResult.name
+                  ? (`${personResult.name.first.trim()} ${personResult.name.last.trim()}`)
+                  : (personResult.display_name || personResult.person_id)),
+                lastName: personResult?.name?.last?.trim(),
+                firstName: personResult?.name?.first?.trim()
+              }
+                ;
             }
           }
           if (!rememberedForms.hasOwnProperty(this_document.form_id)) {
@@ -351,7 +371,9 @@ export default ({ request = {}, onClose }) => {
           }
           let newPerson = {
             person_id: this_document.person_id,
-            person_name: rememberedNames[this_document.person_id],
+            person_name: rememberedNames[this_document.person_id].display_name,
+            person_last: rememberedNames[this_document.person_id].lastName,
+            person_first: rememberedNames[this_document.person_id].firstName,
             person_incompleteDoc_count: (this_document.incomplete ? 1 : 0),
             person_expanded: reactData?.rememberedSelections?.[this_document.person_id]?.expanded || false,
             formTypes: []
@@ -359,7 +381,7 @@ export default ({ request = {}, onClose }) => {
           rememberedSelections[this_document.person_id] = {
             expanded: newPerson.person_expanded,
             formType_expanded: {}
-          };  
+          };
           formLibrary.forEach(this_form => {
             if (!this_form.hasOwnProperty('valid_for') ||
               (rememberedPeople.hasOwnProperty(this_document.person_id)
@@ -418,7 +440,17 @@ export default ({ request = {}, onClose }) => {
           this_type.documentList.sort((a, b) => { return ((a.completed_timestamp > b.completed_timestamp) ? -1 : 1); });
         });
       });
-      buildDocList.sort((a, b) => { return ((a.person_name < b.person_name) ? -1 : 1); });
+      buildDocList.sort((a, b) => {
+        if ((a.person_last < b.person_last)) {
+          return -1;
+        }
+        else if ((a.person_last > b.person_last)) {
+          return 1;
+        }
+        else {
+          return ((a.person_first < b.person_first) ? -1 : 1);
+        }
+      });
       return { sortedList: buildDocList, rememberedSelections };
     }
 
@@ -443,7 +475,7 @@ export default ({ request = {}, onClose }) => {
       }
     }
 
-    function makeQueryObj() {
+    async function makeQueryObj() {
       let queryObj = { TableName: 'Documents' };
       queryObj.KeyConditionExpression = 'client_id = :c';
       queryObj.ExpressionAttributeValues = { ':c': state.session.client_id };
@@ -456,14 +488,14 @@ export default ({ request = {}, onClose }) => {
       */
       if (!reactData.formType_filter.includes('*all')) {
         // selecting on form type - use form id index and filter on people and assigned to
-        queryObj.IndexName = 'form_id-index';
-        queryObj.KeyConditionExpression += ' and form_id in (';
+        //      queryObj.IndexName = 'form_id-index';
+        queryObj.FilterExpression = 'form_id in (';
         reactData.formType_filter.forEach((filter, ndx) => {
-          queryObj.KeyConditionExpression += `${ndx > 0 ? ', ' : ''}:t${ndx}`;
+          queryObj.FilterExpression += `${ndx > 0 ? ', ' : ''}:t${ndx}`;
           queryObj.ExpressionAttributeValues[`:t${ndx}`] = filter;
         });
-        queryObj.KeyConditionExpression += ')';
-        queryObj = peopleFilter(queryObj);
+        queryObj.FilterExpression += ')';
+        queryObj = await peopleFilter(queryObj);
         queryObj = assignedToFilter(queryObj);
       }
       else if ((reactData.assignedTo_filter)
@@ -539,7 +571,7 @@ export default ({ request = {}, onClose }) => {
       return queryObj;
     }
 
-    function peopleFilter(queryObj) {
+    async function peopleFilter(queryObj) {
       if (!reactData.people_filter.includes('*all')) {
         if (queryObj.FilterExpression) {
           queryObj.FilterExpression += ' and ';
@@ -547,24 +579,55 @@ export default ({ request = {}, onClose }) => {
         else {
           queryObj.FilterExpression = '';
         }
-        queryObj.FilterExpression = 'person_id in (';
-        reactData.people_filter.forEach((filter, ndx) => {
-          queryObj.KeyConditionExpression += `${ndx > 0 ? ', ' : ''}:p${ndx}`;
+        queryObj.FilterExpression += 'person_id in (';
+        let count = 0;
+        for (let ndx = 0; ndx < reactData.people_filter.length; ndx++) {
+          let filter = reactData.people_filter[ndx];          
           switch (filter) {
             case '*user': {
+              queryObj.FilterExpression += `${ndx > 0 ? ', ' : ''}:p${ndx}`;
               queryObj.ExpressionAttributeValues[`:p${ndx}`] = state.session.user_id;
               break;
             }
             case '*self':
             case '*person': {
+              queryObj.FilterExpression += `${ndx > 0 ? ', ' : ''}:p${ndx}`;
               queryObj.ExpressionAttributeValues[`:p${ndx}`] = state.patient.person_id;
+              break;
+            }
+            case '*calendar': {
+              let today = new Date();
+              let startDate = addDays(today, -2);
+              let endDate = addDays(today, 35);
+              let oList = await getAllOccurrences(
+                {
+                  client_id: state.session.client_id,
+                  start_date: startDate,
+                  end_date: endDate,
+                  filter: { slot_owner: [state.patient.person_id] }
+                }, (() => { })
+              );
+              console.log(oList);
+              let personList = [];
+              for (let this_date in oList) {
+                for (let this_event in oList[this_date].events) {
+                  for (let this_slotOwner in oList[this_date].events[this_event].slot_owners) {
+                    if (!personList.includes(this_slotOwner)) {
+                      personList.push(this_slotOwner);
+                      count++;
+                      queryObj.FilterExpression += `${count > 1 ? ', ' : ''}:p${ndx}_${count}`;
+                      queryObj.ExpressionAttributeValues[`:p${ndx}_${count}`] = this_slotOwner;
+                    }
+                  }
+                }
+              }
               break;
             }
             default: {
               queryObj.ExpressionAttributeValues[`:p${ndx}`] = filter;
             }
           }
-        });
+        };
         queryObj.FilterExpression += ')';
       }
       return queryObj;
@@ -572,32 +635,33 @@ export default ({ request = {}, onClose }) => {
 
     function assignedToFilter(queryObj) {
       if (reactData.assignedTo_filter) {
+        let assignedToList = makeArray(reactData.assignedTo_filter);
         if (queryObj.FilterExpression) {
           queryObj.FilterExpression += ' and ';
         }
         else {
           queryObj.FilterExpression = '';
         }
-        if (reactData.assignedTo_filter.includes('*anybody')) {
+        if (assignedToList.includes('*anybody')) {
           queryObj.ExpressionAttributeNames['#a'] = 'assigned_to';
           queryObj.ExpressionAttributeValues[':zero'] = 0;
           queryObj.FilterExpression += 'attribute_exists(#a) and (size (#a) > :zero)';
         }
-        else if (reactData.assignedTo_filter.includes('*nobody')) {
+        else if (assignedToList.includes('*nobody')) {
           queryObj.ExpressionAttributeNames['#a'] = 'assigned_to';
           queryObj.ExpressionAttributeValues[':zero'] = 0;
           queryObj.FilterExpression += 'attribute_not_exists(#a) or (size (#a) = :zero)';
         }
         else {
           queryObj.FilterExpression += 'assigned_to in (';
-          reactData.assignedTo_filter.forEach((filter, ndx) => {
+          assignedToList.forEach((filter, ndx) => {
             queryObj.FilterExpression += `${ndx > 0 ? ', ' : ''}a${ndx}`;
             switch (filter) {
-              case '*self':
               case '*user': {
                 queryObj.ExpressionAttributeValues[`:a${ndx}`] = state.session.user_id;
                 break;
               }
+              case '*self':
               case '*person': {
                 queryObj.ExpressionAttributeValues[`:a${ndx}`] = state.patient.person_id;
                 break;
@@ -644,7 +708,7 @@ export default ({ request = {}, onClose }) => {
             </Typography>
           </Box>
           <DialogContent dividers={true} classes={{ dividers: classes.dialogBox }}>
-            {(reactData.documentList.length === 0) && 
+            {(reactData.documentList.length === 0) &&
               <Typography style={AVATextStyle({
                 size: 1.2,
                 margin: {
@@ -653,7 +717,7 @@ export default ({ request = {}, onClose }) => {
                 },
                 align: 'center'
               })}>
-                No Completed Documents yet
+                No Documents Found
               </Typography>
             }
             {reactData.documentList.map((this_person, personNdx) => (
@@ -679,10 +743,10 @@ export default ({ request = {}, onClose }) => {
                     display='flex'
                     flexDirection='row'
                     justifyContent='flex-start'
-                    alignItems='center'
+                    alignItems='flex-end'
                   >
                     <Typography
-                      key={`person__${this_person.person_name}`}
+                      key={`person__${this_person.person_last}`}
                       style={AVATextStyle({
                         size: 1.3,
                         bold: true,
@@ -690,8 +754,20 @@ export default ({ request = {}, onClose }) => {
                           left: 0
                         }
                       })}>
-                      {this_person.person_name}
+                      {this_person.person_last}
                     </Typography>
+                    {this_person.person_first &&
+                      <Typography
+                        key={`person__${this_person.person_first}`}
+                        style={AVATextStyle({
+                          size: 1.2,
+                          margin: {
+                            left: 0.5
+                          }
+                        })}>
+                        {this_person.person_first}
+                      </Typography>
+                    }
                   </Box>
                   {(this_person.formTypes.length > 0) &&
                     <Typography
@@ -733,8 +809,7 @@ export default ({ request = {}, onClose }) => {
                             }}
                           >
                             <AddIcon />
-                          </IconButton
-                          >
+                          </IconButton>
                           <Typography
                             key={`form__${personNdx}_${formNdx}`}
                             onClick={() => {
@@ -759,7 +834,7 @@ export default ({ request = {}, onClose }) => {
                             key={`person__hide_${this_person.person_name}`}
                             onClick={() => {
                               reactData.documentList[personNdx].formTypes[formNdx].form_expanded = !this_form.form_expanded;
-                              reactData.rememberedSelections[this_person.person_id].formType_expanded[this_form.form_id] = reactData.documentList[personNdx].formTypes[formNdx].form_expanded
+                              reactData.rememberedSelections[this_person.person_id].formType_expanded[this_form.form_id] = reactData.documentList[personNdx].formTypes[formNdx].form_expanded;
                               updateReactData({
                                 documentList: reactData.documentList,
                                 rememberedSelections: reactData.rememberedSelections
