@@ -213,6 +213,7 @@ export default ({ request = {}, onClose }) => {
   /*
     expect options to contain
       formTypeList []   when missing, use *all
+      formNoAdd []    if a form is in this list, do not allow "create new"... view only for that form type
       peopleList []       can be *self, *user, *person, *all, or list of person_id's  (default *person)
       assignedToList []      can be *nobody, *self, *user, *person, *anybody, or list of person_id's  (default null - don't care if assigned or not)
   */
@@ -223,6 +224,7 @@ export default ({ request = {}, onClose }) => {
 
   const [reactData, setReactData] = React.useState({
     formType_filter: options.formTypeList || ['*all'],
+    formNoAdd: (options.formNoAdd ? makeArray(options.formNoAdd) : []),
     people_filter: makeArray(options.peopleList) || ['*person'],
     assignedTo_filter: options.assignedToList || null,
     user_fontSize: AVADefaults({ fontSize: 'get' }) || 1.5,
@@ -350,7 +352,7 @@ export default ({ request = {}, onClose }) => {
                 display_name: this_document.person_id,
                 lastName: this_document.person_id,
                 firstName: ''
-              }
+              };
             }
             else {
               rememberedPeople[this_document.person_id] = personResult;
@@ -582,7 +584,7 @@ export default ({ request = {}, onClose }) => {
         queryObj.FilterExpression += 'person_id in (';
         let count = 0;
         for (let ndx = 0; ndx < reactData.people_filter.length; ndx++) {
-          let filter = reactData.people_filter[ndx];          
+          let filter = reactData.people_filter[ndx];
           switch (filter) {
             case '*user': {
               queryObj.FilterExpression += `${ndx > 0 ? ', ' : ''}:p${ndx}`;
@@ -801,11 +803,13 @@ export default ({ request = {}, onClose }) => {
                             className={classes.AVAMicroButton}
                             size={'small'}
                             onClick={() => {
-                              updateReactData({
-                                stage: 'addDoc',
-                                selectedForm_id: this_form.form_id,
-                                selectedPerson_id: this_person.person_id
-                              }, true);
+                              if (!reactData.formNoAdd.includes(this_form.form_id)) {
+                                updateReactData({
+                                  stage: 'addDoc',
+                                  selectedForm_id: this_form.form_id,
+                                  selectedPerson_id: this_person.person_id
+                                }, true);
+                              }
                             }}
                           >
                             <AddIcon />
@@ -854,24 +858,26 @@ export default ({ request = {}, onClose }) => {
                       </Box>
                       {this_form.form_expanded &&
                         <React.Fragment>
-                          <Typography
-                            key={`doc__${personNdx}_${formNdx}_addNew`}
-                            onClick={() => {
-                              updateReactData({
-                                stage: 'addDoc',
-                                selectedForm_id: this_form.form_id,
-                                selectedPerson_id: this_person.person_id
-                              }, true);
-                            }}
-                            style={AVATextStyle({
-                              size: 0.8, margin: {
-                                top: 0.5,
-                                bottom: 0.5,
-                                left: 2
-                              },
-                            })}>
-                            {`Add a new ${this_form.form_name}`}
-                          </Typography>
+                          {!reactData.formNoAdd.includes(this_form.form_id) &&
+                            <Typography
+                              key={`doc__${personNdx}_${formNdx}_addNew`}
+                              onClick={() => {
+                                updateReactData({
+                                  stage: 'addDoc',
+                                  selectedForm_id: this_form.form_id,
+                                  selectedPerson_id: this_person.person_id
+                                }, true);
+                              }}
+                              style={AVATextStyle({
+                                size: 0.8, margin: {
+                                  top: 0.5,
+                                  bottom: 0.5,
+                                  left: 2
+                                },
+                              })}>
+                              {`Add a new ${this_form.form_name}`}
+                            </Typography>
+                          }
                           {this_form.documentList.map((this_document, documentNdx) => (
                             <React.Fragment
                               key={`docFrag__${personNdx}_${formNdx}_${documentNdx}`}
