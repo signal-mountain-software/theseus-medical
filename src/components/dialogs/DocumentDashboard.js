@@ -6,6 +6,7 @@ import AVAConfirm from '../forms/AVAConfirm';
 import FormFill from '../forms/FormFill';
 import useSession from '../../hooks/useSession';
 import { getAllOccurrences } from '../../util/AVACalendars';
+import PrintIcon from '@material-ui/icons/Print';
 
 import CloseIcon from '@material-ui/icons/HighlightOff';
 import AddIcon from '@material-ui/icons/Add';
@@ -36,12 +37,26 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(0),
     height: '16px',
     width: '16px',
-
     borderRadius: '32px',
     variant: 'outlined',
     textTransform: 'none',
     textDecoration: 'none',
     border: '0.75px solid gray',
+    size: 'small',
+    '& .MuiSvgIcon-root': {
+      fontSize: '0.8rem',
+    }
+  },
+  AVAMicroButtonClean: {
+    marginLeft: theme.spacing(1),
+    marginRight: theme.spacing(0),
+    marginTop: theme.spacing(0),
+    marginBottom: theme.spacing(0),
+    padding: theme.spacing(0),
+    height: '16px',
+    width: '16px',
+    textTransform: 'none',
+    textDecoration: 'none',
     size: 'small',
     '& .MuiSvgIcon-root': {
       fontSize: '0.8rem',
@@ -825,7 +840,7 @@ export default ({ request = {}, onClose }) => {
                               }, true);
                             }}
                             style={AVATextStyle({
-                              size: 1.3,
+                              size: 1,
                               margin: {
                                 left: 0.5
                               }
@@ -879,8 +894,12 @@ export default ({ request = {}, onClose }) => {
                             </Typography>
                           }
                           {this_form.documentList.map((this_document, documentNdx) => (
-                            <React.Fragment
+                            <Box
                               key={`docFrag__${personNdx}_${formNdx}_${documentNdx}`}
+                              display='flex'
+                              flexDirection='row'
+                              alignItems={'center'}
+                              justifyContent={'space-between'}
                             >
                               <Typography
                                 key={`doc__${personNdx}_${formNdx}_${documentNdx}`}
@@ -897,7 +916,6 @@ export default ({ request = {}, onClose }) => {
                                 }}
                                 style={AVATextStyle({
                                   size: 0.8, margin: {
-                                    top: 0.5,
                                     bottom: 0.5,
                                     left: 2
                                   },
@@ -905,7 +923,24 @@ export default ({ request = {}, onClose }) => {
                                 })}>
                                 {`${this_document.title || makeDate(this_document.completed_timestamp).absolute}${this_document.incomplete ? ' (incomplete)' : ''}`}
                               </Typography>
-                            </React.Fragment>
+                              <IconButton
+                                className={classes.AVAMicroButtonClean}
+                                size={'small'}
+                                onClick={() => {
+                                  updateReactData({
+                                    stage: 'printDoc',
+                                    signatureData: (this_document.signature_field
+                                      ? this_document.values[this_document.signature_field]
+                                      : null
+                                    ),
+                                    selectedDoc_id: this_document.document_id,
+                                    incomplete: !!this_document.incomplete
+                                  }, true);
+                                }}
+                              >
+                                <PrintIcon />
+                              </IconButton>
+                            </Box>
                           ))}
                         </React.Fragment>
                       }
@@ -929,11 +964,12 @@ export default ({ request = {}, onClose }) => {
           </DialogActions>
         </React.Fragment>
       }
-      {(reactData.stage === 'viewDoc') &&
+      {((reactData.stage === 'viewDoc') || (reactData.stage === 'printDoc')) &&
         <FormFill
           request={{
             document_id: reactData.selectedDoc_id,
             signatureImage: (!reactData.incomplete ? reactData.signatureData : null),
+            printMode: (reactData.stage === 'printDoc'),
             viewMode: !reactData.incomplete,
             incompleteMode: reactData.incomplete
           }}
