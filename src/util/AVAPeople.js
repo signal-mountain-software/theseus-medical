@@ -227,15 +227,16 @@ export async function getPerson(pID, pElement = '*all', override = false) {
         if (!personRec.Item.hasOwnProperty('name')) {
             personRec.Item.name = {};
         }
-        personRec.Item.first = personRec.Item.name.first;
-        personRec.Item.last = personRec.Item.name.last;
+        personRec.Item.first = personRec.Item?.name.first;
+        personRec.Item.last = personRec.Item?.name.last;
+        personRec.Item.display_name = (`${personRec.Item.first} ${personRec.Item.last}`).trim();
         if (!personRec.Item.search_data) { personRec.Item.search_data = ''; }
+        personRec.Item.search_data += personRec.Item.search_data.toLowerCase();
         personRec.Item.search_data +=
             ' ' + personRec.Item.messaging.email +
-            ' ' + personRec.Item.messaging.first +
-            ' ' + personRec.Item.messaging.last +
-            ' ' + personRec.Item.messaging.location;
-        personRec.Item.search_data = personRec.Item.search_data.toLowerCase();
+            ' ' + (personRec.Item.messaging.voice || '') +
+            ' ' + (personRec.Item.messaging.office || '') +
+            ' ' + (personRec.Item.messaging.sms || '');
         foundPeople[pID] = personRec.Item;
     }
     switch (pElement.toLowerCase()) {
