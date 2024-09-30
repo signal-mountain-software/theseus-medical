@@ -1660,7 +1660,6 @@ export default ({ request = {}, onClose }) => {
                                     marginBottom: '-4px',
                                     borderWidth: 0
                                   }}
-
                                   noDataLabel={`No ${reactData.formRec.fields[this_field].prompt.ref}s match`}
                                   values={(reactValues[this_field] && reactValues[this_field].valueText)
                                     ? [{ label: reactValues[this_field].valueText, value: reactValues[this_field].value }]

@@ -200,7 +200,8 @@ export default Component => props => {
           else if (cookieValues.client) {
             let cData = await getCustomizations('*all', (cookieValues.client));
             updateReactData({
-              customizationData: Object.assign({}, cData, { client_id: cookieValues.client })
+              customizationData: Object.assign({}, cData, { client_id: cookieValues.client }),
+              currentClientLogo: cData.logo
             });
           }
           if (cookieValues.user_id && (!reactData.urlData.user_id)) {
@@ -560,6 +561,18 @@ export default Component => props => {
             onSave={async (enteredUserID) => {
               if (!enteredUserID) {
                 enqueueSnackbar(`You must enter an ID`, { variant: 'info' });
+              }
+              else if (enteredUserID.toLowerCase() === 'client') {
+                if (reactData.hasOwnProperty('urlData')) {
+                  delete reactData.urlData.client_id;
+                }
+                updateReactData({
+                  urlData: reactData.urlData,
+                  customizationData: { client_name: 'AVA Sign-in' }
+                });
+                setAVAFollowUpData({
+                  NeedUser: true,
+                });
               }
               else {
                 setMessageList([]);

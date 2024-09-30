@@ -2057,6 +2057,7 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
   let ccL = calendarRecs.Items.length;
   let screenDate = 0;
   let found_events = {};
+  let cancelled_occurrences = {};
   for (let c = 0; c < ccL; c++) {
     let occurrenceRec = calendarRecs.Items[c];
     if (occurrenceRec.occurrence_date !== screenDate) {  // send a message back... now processing date xxxx
@@ -2121,46 +2122,60 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
         }
       }
     }
-    // find and add this event in the proper date
-    if (!response[occurrenceRec.occurrence_date].events.hasOwnProperty(occurrenceRec.event_id)) {
-      response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id] = {
-        slot_owners: {}
-      };
+    // identify any cancelled occurrences; we'll remove them later
+    if (occurrenceRec.occurrence_cancelled) {
+      let [eID, eDate] = occurrenceRec.event_key.split('#');
+      if (!cancelled_occurrences.hasOwnProperty(eID)) {
+        cancelled_occurrences[eID] = [];
+      }
+      cancelled_occurrences[eID].push(eDate);
     }
-    if (occurrenceRec.record_type === 'occurrence') {
-      Object.assign(response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
+    if ((cancelled_occurrences.hasOwnProperty(occurrenceRec.event_id))
+      && (cancelled_occurrences[occurrenceRec.event_id].includes(occurrenceRec.occurrence_date))) {
+      continue;
     }
-    else if ((occurrenceRec.record_type === 'slot') && ((occurrenceRec.slotData.status.current === 'selected') || (occurrenceRec.slotData.status.current === 'notes'))) {
-      if (response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners.hasOwnProperty(occurrenceRec.slotData.owner)) {
-        response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[`${occurrenceRec.slotData.owner}%%${c}`] =
-          found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+    else {
+      // find and add this event in the proper date
+      if (!response[occurrenceRec.occurrence_date].events.hasOwnProperty(occurrenceRec.event_id)) {
+        response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id] = {
+          slot_owners: {}
+        };
       }
-      else {
-        response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
-          found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+      if (occurrenceRec.record_type === 'occurrence') {
+        Object.assign(response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
       }
-      if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
-        peopleInfo[occurrenceRec.slotData.owner] = [];
-        conflicts[occurrenceRec.slotData.owner] = {};
+      else if ((occurrenceRec.record_type === 'slot') && ((occurrenceRec.slotData.status.current === 'selected') || (occurrenceRec.slotData.status.current === 'notes'))) {
+        if (response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners.hasOwnProperty(occurrenceRec.slotData.owner)) {
+          response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[`${occurrenceRec.slotData.owner}%%${c}`] =
+            found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+        }
+        else {
+          response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id].slot_owners[occurrenceRec.slotData.owner] =
+            found_events[occurrenceRec.event_id]?.slot_names?.[occurrenceRec.slotData.slot] || ((found_events[occurrenceRec.event_id].type === 'seats') ? '' : occurrenceRec.slotData.slot);
+        }
+        if (!peopleInfo.hasOwnProperty(occurrenceRec.slotData.owner)) {
+          peopleInfo[occurrenceRec.slotData.owner] = [];
+          conflicts[occurrenceRec.slotData.owner] = {};
+        }
+        let slotTimesResponse = slotTimes(found_events[occurrenceRec.event_id], response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
+        peopleInfo[occurrenceRec.slotData.owner].push(Object.assign({},
+          {
+            occurrence_date: occurrenceRec.occurrence_date,
+            event_id: occurrenceRec.event_id,
+            event_description: found_events[occurrenceRec.event_id].description,
+            start_time24: slotTimesResponse.start24,
+            end_time24: slotTimesResponse.end24,
+          },
+          occurrenceRec.slotData)
+        );
+        if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty(occurrenceRec.occurrence_date)) {
+          conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date] = [{ time: 0, open: true }];
+        }
+        conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date].push(
+          { time: makeNumber(slotTimesResponse.start24), open: false, event_id: occurrenceRec.event_id, event_title: found_events[occurrenceRec.event_id].description },
+          { time: makeNumber(slotTimesResponse.end24), open: true }
+        );
       }
-      let slotTimesResponse = slotTimes(found_events[occurrenceRec.event_id], response[occurrenceRec.occurrence_date].events[occurrenceRec.event_id], occurrenceRec);
-      peopleInfo[occurrenceRec.slotData.owner].push(Object.assign({},
-        {
-          occurrence_date: occurrenceRec.occurrence_date,
-          event_id: occurrenceRec.event_id,
-          event_description: found_events[occurrenceRec.event_id].description,
-          start_time24: slotTimesResponse.start24,
-          end_time24: slotTimesResponse.end24,
-        },
-        occurrenceRec.slotData)
-      );
-      if (!conflicts[occurrenceRec.slotData.owner].hasOwnProperty(occurrenceRec.occurrence_date)) {
-        conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date] = [{ time: 0, open: true }];
-      }
-      conflicts[occurrenceRec.slotData.owner][occurrenceRec.occurrence_date].push(
-        { time: makeNumber(slotTimesResponse.start24), open: false, event_id: occurrenceRec.event_id, event_title: found_events[occurrenceRec.event_id].description },
-        { time: makeNumber(slotTimesResponse.end24), open: true }
-      )
     }
   };
 
@@ -2201,7 +2216,11 @@ export async function getAllOccurrences(body, screenStatus = () => { }) {
     for (let this_event in response[this_date].events) {
       let allowed_event = true;
       if (found_events[this_event]) {
-        if (found_events[this_event].owner.includes(body.this_person)) {
+        if ((cancelled_occurrences.hasOwnProperty(this_event))
+          && (cancelled_occurrences[this_event].includes(this_date))) {
+          allowed_event = false;
+        }
+        else if (found_events[this_event].owner.includes(body.this_person)) {
           allowed_event = true;
         }
         else if ((found_events[this_event].type === 'personal') &&

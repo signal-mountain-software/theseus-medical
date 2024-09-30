@@ -4,7 +4,7 @@ import { useSnackbar } from 'notistack';
 import { makeTime, makeDate } from '../../util/AVADateTime';
 import { cl, isMobile, isObject, deepCopy, titleCase, makeArray, isEmpty } from '../../util/AVAUtilities';
 import { getCalendarEntries, writeSlot, getSlotList } from '../../util/AVACalendars';
-import { getImage } from '../../util/AVAPeople';
+import { getImage, getPerson } from '../../util/AVAPeople';
 
 import { Box, Typography, Avatar } from '@material-ui/core';
 import Tooltip from '@material-ui/core/Tooltip';
@@ -1009,7 +1009,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                               >
                                 {(this_date.dateObj.date.getDate() === 1) &&
                                   <Typography
-                                    style={AVATextStyle({ size: 1.5, margin: { top: 1, bottom: -1 }, color: reactData.calendar_fill_text })}
+                                    style={AVATextStyle({ size: 1.5, margin: { left: (agendaView() ? 1 : 0), top: 1, bottom: -1 }, color: reactData.calendar_fill_text })}
                                     key={this_date.dateObj.numeric$ + 'head2' + dateIndex}
                                   >
                                     {this_date.dateObj.date.toLocaleString([], { month: 'long' })}
@@ -1203,20 +1203,29 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                 let updateObj = {
                   event_being_edited: false
                 };
-                let calRef = reactData.myCalendar[reactData.event_being_edited.date_index].eventList[reactData.event_being_edited.event_index];
-                calRef.description = updatedData.description;
-                calRef.slot_owners = updatedData.summaryInfo.slot_owners;
-                if (updatedData.wait_list) {
-                  calRef.wait_list = updatedData.wait_list;
+                if (updatedData.event_cancelled) {
+                  reactData.myCalendar[reactData.event_being_edited.date_index].eventList.splice(reactData.event_being_edited.event_index, 1);
+                  updateObj.myCalendar = reactData.myCalendar;
+                  localStorage.setItem(`calendarChanged`, true);
                 }
-                if (calRef.time24 !== updatedData.time24) {
-                  calRef.time = updatedData.time$;
-                  calRef.time24 = updatedData.time24;
-                }
-                if (calRef.occurrence_date !== updatedData.date) {
-                  if (reactData.myCalendar.hasOwnProperty(updatedData.date)) {
-                    reactData.myCalendar[updatedData.date].eventList[reactData.event_being_edited.event_index] = deepCopy(calRef);
-                    updateObj.myCalendar = reactData.myCalendar;
+                else {
+                  let calRef = reactData.myCalendar[reactData.event_being_edited.date_index].eventList[reactData.event_being_edited.event_index];
+                  calRef.description = updatedData.description;
+                  calRef.slot_owners = updatedData.summaryInfo.slot_owners;
+                  if (updatedData.wait_list) {
+                    calRef.wait_list = updatedData.wait_list;
+                  }
+                  if (calRef.time24 !== updatedData.time24) {
+                    calRef.time = updatedData.time$;
+                    calRef.time24 = updatedData.time24;
+                    localStorage.setItem(`calendarChanged`, true);
+                  }
+                  if (calRef.occurrence_date !== updatedData.date) {
+                    if (reactData.myCalendar.hasOwnProperty(updatedData.date)) {
+                      reactData.myCalendar[updatedData.date].eventList[reactData.event_being_edited.event_index] = deepCopy(calRef);
+                      updateObj.myCalendar = reactData.myCalendar;
+                      localStorage.setItem(`calendarChanged`, true);
+                    }
                   }
                 }
                 updateReactData(updateObj, true);
@@ -1225,23 +1234,52 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
           }
           {!reactData.loading && reactData.addPersonalEvent &&
             <NewCalendarEvent
-              patient={state.session}
+              patient={reactData.isAppointment ? reactData.selectedPersonRec : state.session}
               personalEvent={true}
               showNewEvent={true}
-              onClose={(newEvent) => {
-                if (newEvent && reactData.myCalendar.hasOwnProperty(newEvent.eventData.start_Date)) {
-                  reactData.myCalendar[newEvent.eventData.start_Date].eventList[newEvent.event_id] = {
-                    description: newEvent.eventData.event_data.description,
-                    slot_owners: [],
-                    time: makeCalendarTime(newEvent.eventData.event_data.time),
-                    time24: (newEvent.eventData.event_data.time.from ? makeTime(newEvent.eventData.event_data.time.from).numeric24 : 0),
-                    type: 'personal'
-                  };
+              options={reactData.isAppointment ? { setPerson: true } : {}}
+              isAppointment={reactData.isAppointment}
+            onClose={(newEvent) => {
+              let reactUpdObj = {
+                addPersonalEvent: false,
+                isAppointment: false               
+              }
+                if (newEvent) {
+                  let slotObj = {};
+                  newEvent.slots.forEach(this_slot => {
+                    slotObj[this_slot.slot_owner] = this_slot.slot_owner;
+                  })
+                  newEvent.occRecords.occArray.forEach(newOccDate => {
+                    let foundIt = reactData.myCalendar.findIndex(this_date => {
+                      return (this_date.dateObj.numeric === newOccDate);
+                    });
+                    if (foundIt > -1) {
+                      let newEntry = {
+                        "event_id": newEvent.event_id,
+                        "owner": [state.session.user_id],
+                        "image": null,
+                        "description": newEvent.eventData.event_data.description,
+                        "groups": newEvent.eventData.event_data.groups,
+                        "location": newEvent.eventData.event_data.location,
+                        "time": newEvent.eventData.event_data.time,
+                        "type": 'personal',
+                        "sort24": (newEvent.eventData.event_data.time.from ? makeTime(newEvent.eventData.event_data.time.from).numeric24 : 0),
+                        "slot_owners": slotObj,
+                        "occurrence_date": newOccDate,
+                        "event_key": newEvent.event_key,
+                        "client": newEvent.client,
+                        "record_type": "occurrence"
+                      };
+                      reactData.myCalendar[foundIt].eventList.push(newEntry);
+                      reactData.myCalendar[foundIt].eventList.sort((a, b) => {
+                        return ((a.sort24 < b.sort24) ? -1 : 1)
+                      })
+                    }
+                  });
+                  reactUpdObj.myCalendar = reactData.myCalendar;
+                  localStorage.setItem(`calendarChanged`, true);
                 }
-                updateReactData({
-                  addPersonalEvent: false,
-                  myCalendar: reactData.myCalendar
-                }, true);
+                updateReactData(reactUpdObj, true);
               }}
             />
           }
@@ -1292,12 +1330,17 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
             size='small'
             startIcon={<AddEventIcon fontSize="small" />}
             onClick={async () => {
-              updateReactData({
+              let reactUpdObj = {
                 addPersonalEvent: true
-              }, true);
+              };
+              if (reactData.selectedPerson_id !== state.session.person_id) {
+                reactUpdObj.selectedPersonRec = await getPerson(reactData.selectedPerson_id);
+                reactUpdObj.isAppointment = true;
+              }
+              updateReactData(reactUpdObj, true);
             }}
           >
-            {'Add a Personal Event'}
+            {(reactData.selectedPerson_id !== state.session.person_id) ? 'Make an Appointment' : 'Add a Personal Event'}
           </Button>
           <Button
             className={AVAClass.AVAButton}
