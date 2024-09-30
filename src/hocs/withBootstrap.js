@@ -8,7 +8,7 @@ import { addDays } from '../util/AVADateTime';
 import { useSnackbar } from 'notistack';
 import { Auth } from 'aws-amplify';
 import { useLocation } from 'react-router-dom';
-import { AVAclasses, AVADefaults, AVATextStyle } from '../util/AVAStyles';
+import { AVAclasses, AVADefaults } from '../util/AVAStyles';
 import AVAConfirm from '../components/forms/AVAConfirm';
 import MakeAVAMenu from '../util/MakeAVAMenu';
 import PatientDialog from '../components/dialogs/PatientDialog';
@@ -462,7 +462,8 @@ export default Component => props => {
         p={2}
         fullScreen
       >
-        {reactData?.customizationData?.client_style?.checkin_image &&
+        {reactData?.customizationData?.client_style?.checkin_image
+          ?
           <Box
             display='flex' flexDirection='row' justifyContent='center' alignItems='center'
             width={'100%'}
@@ -474,50 +475,43 @@ export default Component => props => {
               component="img"
               m={2}
               alt=''
+              style={{ width: '100%', height: '100%' }}
               src={reactData?.customizationData?.client_style?.checkin_image}
             />
           </Box>
-        }
-        <React.Fragment>
-          <Box
-            display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-            key={'loadingBox'}
-            ml={2} mr={2} mt={20}
-          >
+          :
+          <React.Fragment>
             <Box
-              display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+              display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'
               key={'loadingBox'}
-              ml={2} mr={2} mb={2} mt={2}
-              minWidth={250}
-              maxWidth={250}
-              minHeight={250}
-              maxHeight={250}
-              borderColor={'black'}
-              border={2}
-              style={{ borderRadius: '120px 120px 120px 120px', overflow: 'hidden', backgroundColor: 'white', textDecoration: 'none' }}
+              ml={2} mr={2} mt={2}
             >
               <Box
-                component="img"
-                mb={2}
-                minHeight={'60%'}
-                maxHeight={'60%'}
-                alt=''
-                src={reactData.currentClientLogo}
-              />
-              <React.Fragment>
+                display='flex' flexDirection='column' justifyContent='center' alignItems='center'
+                key={'loadingBox'}
+                ml={2} mr={2} mb={2} mt={2}
+                minWidth={100}
+                maxWidth={100}
+                minHeight={100}
+                maxHeight={100}
+                borderColor={'black'}
+                border={2}
+                style={{ borderRadius: '120px 120px 120px 120px', overflow: 'hidden', backgroundColor: 'white', textDecoration: 'none' }}
+              >
                 <Box
-                  display='flex' flexDirection='column' justifyContent='center' alignItems='center'
-                  flexWrap='wrap' textOverflow='ellipsis' width='100%' overflow={'hidden'}
-                  key={'loadingBox'}
+                  component="img"
                   mb={2}
-                >
-                  <Typography style={AVATextStyle({ size: 1.5, color: 'black', align: 'center' })}  >{`Loading AVA`}</Typography>
-                  <Typography style={AVATextStyle({ size: 0.8, color: 'black', align: 'center' })} >{`version ${process.env.REACT_APP_AVA_VERSION}${window.location.href.split('//')[1].slice(0, 1).toUpperCase()}`}</Typography>
-                </Box>
-              </React.Fragment>
+                  minWidth={'80%'}
+                  maxWidth={'80%'}
+                  minHeight={'80%'}
+                  maxHeight={'80%'}
+                  alt=''
+                  src={reactData.currentClientLogo}
+                />
+              </Box>
             </Box>
-          </Box>
-        </React.Fragment>
+          </React.Fragment>
+        }
         {testModeErrorTrap() &&
           <Box
             display='flex' flexDirection='column' justifyContent='flex-start' alignItems='center'
