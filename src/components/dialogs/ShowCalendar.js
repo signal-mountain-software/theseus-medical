@@ -373,7 +373,7 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
         return;
       }
       let oList = {};
-      if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError) {
+      if (isEmpty(reactData.myCalendar) || reactData.myCalendar.loadError || reactData.defaultValues.forceReload) {
         let startDate, endDate;
         if (reactData.defaultValues.start_date) {
           startDate = makeDate(reactData.defaultValues.start_date).date;
