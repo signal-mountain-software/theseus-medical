@@ -233,14 +233,18 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
     groupList: [],
     restrictToGroups: [],
     slotObjList: [],
-    preReservationList: [],
+    preReservationList: ((options.setPerson && isAppointment) ? [patient.person_id]: []),
     dateObj: { error: true },
-    chosen_names: '',
-    event_title: '',
+    chosen_names: ((options.setPerson && isAppointment) ? patient.display_name : ''),
+    event_title: ((options.setPerson && isAppointment) ? (`${options.title ? titleCase(options.title.trim()) : 'Appointment'} for ${patient.display_name}`) : ''),
     title_override: false,
-    event_location: '',
+    event_location: ((options.setPerson && isAppointment) ? patient.location : ''),
     location_override: false
   });
+  /*
+   preReservationList: reservationList,
+                              chosen_names: listFromArray(peopleNames)
+  */
   //const [forceRedisplay, setForceRedisplay] = React.useState();
 
   const updateReactData = (newData, force = false) => {
@@ -327,6 +331,7 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
       }
     };
     let response = await addEvent(payload);
+    response.slots = [];
     if (!!personalEvent
       && !isAppointment    // this is a personal event, not an appointment; the owner MUST be added to a slot
       && (!reactData.preReservationList.includes(state.session.patient_id))
@@ -348,7 +353,8 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
             "show_this_slot": true,
             "no_messaging": true
           };
-          await writeSlot(writeRequest);
+          let this_slot = await writeSlot(writeRequest);
+          response.slots.push(this_slot);
         }
       }
     }
@@ -712,24 +718,18 @@ export default ({ patient, personalEvent, picture, showNewEvent, onClose, isAppo
                       }
                       searchBy={'label'}
                       dropdownHandle={true}
-                      multi={true}
                       clearOnSelect={true}
                       clearOnBlur={true}
                       key={`selectOptions`}
                       searchable={true}
                       create={false}
                       closeOnClickInput={true}
-                      placeholder={'Choose someone...'}
-                      values={[]}
+                      placeholder={''}
+                      values={(options.setPerson) 
+                        ? [{ label: patient.display_name, value: patient.patient_id }]
+                        : []
+                      }
                       closeOnSelect={true}
-                      contentRenderer={
-                        ({ props, state }) => {
-                          return (
-                            <div>
-                              {reactData.chosen_names || 'Choose someone...'}
-                            </div>
-                          );
-                        }}
                       style={{
                         lineHeight: 1,
                         fontSize: `1rem`,

@@ -657,16 +657,14 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
   };
 
   const handleCancelEvent = async () => {
-    let updateExpression = 'set';
-    let expressionAttributeValues = {};
-    updateExpression += ' occurrence_date = :date';
-    expressionAttributeValues[':date'] = '29991231';
+    let updateExpression = 'set occurrence_cancelled = :true';
+    let expressionAttributeValues = { ':true': true };
     let goodUpdate = true;
     await dbClient
       .update({
         Key: {
           "client": pClient,
-          "event_key": `${pEventCode}`
+          "event_key": pEventCode
         },
         UpdateExpression: updateExpression,
         ExpressionAttributeValues: expressionAttributeValues,
@@ -678,7 +676,6 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
         goodUpdate = false;
       });
     if (goodUpdate) {
-      pOccData.date = '29991231';
       enqueueSnackbar('Event cancelled!', { variant: 'success' });
     }
     else {
@@ -1463,6 +1460,7 @@ export default ({ pEventCode, peopleList, pPatient, pSignUps, pViewOnly = false,
               reactData.cancelPending = false;
               setReactData(reactData);
               setForceRedisplay(!forceRedisplay);
+              onReset({event_cancelled: true});
             }}
             allowCancel={true}
           />

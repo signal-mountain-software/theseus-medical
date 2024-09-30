@@ -464,7 +464,12 @@ export default ({ patient, OGpatient, peopleList, defaultObject = {}, eventClien
           short: true
         });
         if (assignmentList && (assignmentList.length > 0)) {
-          reactData.defaultValues.assignment__List = assignmentList;
+          reactData.defaultValues.assignment__List = assignmentList.sort((a, b) => {
+            if (a.last_name < b.last_name) { return -1; }
+            else if (a.last_name > b.last_name) { return 1; }
+            else if (a.first_name < b.first_name) { return -1; }
+            else { return 1; }
+          });
           reactUpdObj.defaultValues = reactData.defaultValues;
         }
       }
