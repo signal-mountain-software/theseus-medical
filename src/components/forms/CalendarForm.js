@@ -1277,6 +1277,7 @@ export default ({ myCalendar, calendarPeople, conflictInfo = {}, person_id, peop
                     }
                   });
                   reactUpdObj.myCalendar = reactData.myCalendar;
+                  localStorage.setItem(`calendarChanged`, true);
                 }
                 updateReactData(reactUpdObj, true);
               }}
